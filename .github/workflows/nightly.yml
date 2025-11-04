@@ -1,0 +1,96 @@
+name: Nightly Build & Pages Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo build data
+        uses: Swatinem/rust-cache@v2
+
+      - name: Compile project documentation (build check)
+        run: cargo doc --workspace --no-deps --release
+
+      - name: Install wasm-bindgen CLI
+        run: cargo install wasm-bindgen-cli --locked
+
+      - name: Build WASM binary
+        env:
+          CARGO_PROFILE_RELEASE_LTO: "thin"
+        run: |
+          cargo build --release --target wasm32-unknown-unknown
+          wasm-bindgen \
+            --out-dir wasm-out \
+            --out-name project_transport \
+            --target web \
+            target/wasm32-unknown-unknown/release/project_transport.wasm
+
+      - name: Prepare Pages artifact
+        run: |
+          PROJECT_DIR="Paiagram"
+          NIGHTLY_ROOT="public/${PROJECT_DIR}/nightly"
+          DOCS_DIR="${NIGHTLY_ROOT}/docs"
+          mkdir -p "${DOCS_DIR}" "${NIGHTLY_ROOT}/assets"
+          cp -r target/doc/* "${DOCS_DIR}/"
+          cp -r assets/* "${NIGHTLY_ROOT}/assets/"
+          cp wasm-out/* "${NIGHTLY_ROOT}/"
+          cat <<'EOF' > "${NIGHTLY_ROOT}/index.html"
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="utf-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1" />
+            <title>Paiagram Nightly</title>
+            <style>
+              html, body { margin: 0; height: 100%; background: #101018; color: #f0f0ff; font-family: sans-serif; }
+              canvas { width: 100%; height: 100%; display: block; }
+              .fallback { padding: 2rem; text-align: center; }
+              a { color: #7fb3ff; }
+            </style>
+          </head>
+          <body>
+            <div class="fallback" id="loading">Loading Paiagram Nightly Web Build…</div>
+            <script type="module">
+              import init from "./project_transport.js";
+              init().then(() => {
+                const loading = document.getElementById("loading");
+                if (loading) loading.remove();
+              });
+            </script>
+            <noscript>
+              <div class="fallback">JavaScript is required to run the Paiagram nightly build.</div>
+            </noscript>
+          </body>
+          </html>
+          EOF
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4

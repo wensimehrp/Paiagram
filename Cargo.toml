@@ -1,0 +1,83 @@
+[package]
+name = "project-transport"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bevy = { version = "0.17.2", default-features = false, features = [
+    "bevy_core_pipeline",
+    "bevy_render",
+    # "bevy_ui",
+    "bevy_window",
+    "bevy_winit",
+    "bevy_log",
+    "bevy_picking",
+    "multi_threaded",
+    "wayland",
+    "web",
+    "webgl2",
+    "x11",
+] }
+bevy_egui = "0.38.0"
+egui_extras = "0.33.0"
+egui_dock = "0.18.0"
+petgraph = "0.8.3"
+derive_more = { version = "2.0.1", features = ["full"] }
+serde_json = "1.0.145"
+serde = "1.0.228"
+bevy_camera = "0.17.2"
+rand = "0.9.2"
+ib-matcher = { version = "0.4.0", features = ["pinyin", "romaji"] }
+rfd = "0.15.4"
+pest = "2.8.3"
+pest_derive = "2.8.3"
+git-version = "0.3.9"
+chrono = "0.4.42"
+clap = { version = "4.5.51", features = ["derive"] }
+egui_taffy = "0.10.0"
+bevy_framepace = "0.20.0"
+indexmap = "2.12.0"
+egui_deferred_table = "0.1.6"
+instant = { version = "0.1.13", features = ["wasm-bindgen"] }
+rayon = "1.11.0"
+egui = "0.33.0"
+smallvec = "1.15.1"
+either = "1.15.0"
+egui_ltreeview = "0.6.0"
+kdl = "6.5.0"
+nonmax = "0.5.5"
+
+[patch.crates-io]
+egui_deferred_table = { path = "vendor/egui_deferred_table" }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.3.*", features = ["wasm_js"] }
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+
+# Enable a small amount of optimization in the dev profile.
+[profile.dev]
+opt-level = 1
+
+# Enable a large amount of optimization in the dev profile for dependencies.
+[profile.dev.package."*"]
+opt-level = 3
+
+# Enable more optimization in the release profile at the cost of compile time.
+[profile.release]
+# Compile the entire crate as one unit.
+# Slows compile times, marginal improvements.
+codegen-units = 1
+opt-level = "s"
+# Do a second optimization pass over the entire program, including dependencies.
+# Slows compile times, marginal improvements.
+lto = "thin"
+
+# Optimize for size in the wasm-release profile to reduce load times and bandwidth usage on web.
+[profile.wasm-release]
+# Default to release profile values.
+inherits = "release"
+# Optimize with size in mind (also try "z", sometimes it is better).
+# Slightly slows compile times, great improvements to file size and runtime performance.
+# Strip all debugging information from the binary to slightly reduce file size.
+strip = "debuginfo"
