@@ -41,7 +41,7 @@ jobs:
         run: nix develop .#default --command cargo doc --workspace --no-deps --release
 
       - name: Install wasm-bindgen CLI
-        run: nix develop .#default --command cargo install wasm-bindgen-cli --locked
+        run: nix develop .#default --command cargo install wasm-bindgen-cli --locked --version 0.2.104
 
       - name: Build WASM binary
         env:
