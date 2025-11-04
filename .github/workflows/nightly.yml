@@ -30,6 +30,11 @@ jobs:
       - name: Cache cargo build data
         uses: Swatinem/rust-cache@v2
 
+      - name: Install mold linker dependency
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mold
+
       - name: Compile project documentation (build check)
         run: cargo doc --workspace --no-deps --release
 
