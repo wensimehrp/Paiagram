@@ -253,14 +253,14 @@ fn apply_custom_fonts(ctx: &egui::Context) {
     fonts.font_data.insert(
         "app_default".to_owned(),
         Arc::new(egui::FontData::from_static(include_bytes!(
-            "../assets/font.ttf"
+            "../assets/fonts/SarasaUiSC-Regular.ttf"
         ))),
     );
 
     fonts.font_data.insert(
         "app_mono".to_owned(),
         Arc::new(egui::FontData::from_static(include_bytes!(
-            "../assets/monospace.ttf"
+            "../assets/fonts/SarasaTermSC-Regular.ttf"
         ))),
     );
 

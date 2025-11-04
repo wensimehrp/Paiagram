@@ -35,6 +35,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y mold
 
+      - name: Download Sarasa fonts
+        run: |
+          wget https://github.com/be5invis/Sarasa-Gothic/releases/download/v1.0.33/SarasaUiSC-TTF-1.0.33.7z
+          7z x SarasaUiSC-TTF-1.0.33.7z -oassets/fonts
+          wget https://github.com/be5invis/Sarasa-Gothic/releases/download/v1.0.33/SarasaTermSC-TTF-1.0.33.7z
+          7z x SarasaTermSC-TTF-1.0.33.7z -oassets/fonts
+
       - name: Compile project documentation (build check)
         run: cargo doc --workspace --no-deps --release
 
