@@ -254,8 +254,14 @@ impl std::ops::Div<TimetableTime> for TrackDistance {
     }
 }
 
+/// A note attached to an entity
+/// The note contains text and a modified timestamp
 #[derive(Component, Debug)]
 pub struct Note {
+    /// The text of the note
     pub text: String,
-    pub modified_at: i64,
+    /// The modified timestamp of the note
+    pub modified_time: i64,
+    /// The created timestamp of the note
+    pub created_time: i64,
 }

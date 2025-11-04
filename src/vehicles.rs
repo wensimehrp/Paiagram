@@ -13,6 +13,11 @@ pub struct Service {
     pub class: Option<Entity>,
 }
 
+/// A Driver that drives a vehicle
+#[derive(Component)]
+#[require(Name)]
+pub struct Driver;
+
 #[derive(Component)]
 #[require(Name)]
 pub struct Class;
@@ -39,7 +44,7 @@ impl Default for ScheduleStart {
     }
 }
 
-/// Arrival type at a stop
+/// How would the vehicle arrive at a stop
 #[derive(Debug, Default, Reflect, Clone, Copy)]
 pub enum ArrivalType {
     /// The vehicle would travel for a fixed duration and arrive
@@ -81,7 +86,7 @@ impl ArrivalType {
     }
 }
 
-/// Departure type at a stop
+/// How would the vehicle depart from a stop
 #[derive(Debug, Default, Reflect, Clone, Copy)]
 pub enum DepartureType {
     /// The vehicle would stay for a fixed duration
@@ -222,7 +227,8 @@ pub fn adjust_timetable_entry(
                 if let Some(text) = note {
                     commands.entity(*entity).insert(crate::basic::Note {
                         text: text.clone(),
-                        modified_at: chrono::Utc::now().timestamp(),
+                        modified_time: chrono::Utc::now().timestamp(),
+                        created_time: chrono::Utc::now().timestamp(),
                     });
                 } else {
                     commands.entity(*entity).remove::<crate::basic::Note>();

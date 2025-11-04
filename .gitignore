@@ -3,3 +3,4 @@
 *.json
 *.oud2
 *.kdl
+wasm-out

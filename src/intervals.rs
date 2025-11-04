@@ -14,6 +14,7 @@ pub struct Graph(pub IntervalGraphType);
 pub struct Station;
 
 /// A depot or yard in the transportation network
+/// A depot cannot be a node in the transportation network graph. Use `Station` for that.
 #[derive(Component)]
 #[require(Name)]
 pub struct Depot;
@@ -22,9 +23,9 @@ pub struct Depot;
 #[derive(Component, Reflect)]
 #[require(Name)]
 pub struct Interval {
-    // The length of the track segment
+    /// The length of the track segment
     pub length: TrackDistance,
-    // The speed limit on the track segment, if any
+    /// The speed limit on the track segment, if any
     pub speed_limit: Option<Speed>,
 }
 

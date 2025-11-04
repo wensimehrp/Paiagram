@@ -19,13 +19,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v1
+        uses: DeterminateSystems/nix-installer-action@v20
 
       - name: Configure Nix cache
-        uses: DeterminateSystems/magic-nix-cache-action@v1
+        uses: DeterminateSystems/magic-nix-cache-action@v13
 
       - name: Cache cargo build data
         uses: Swatinem/rust-cache@v2
@@ -40,16 +40,11 @@ jobs:
       - name: Compile project documentation (build check)
         run: nix develop .#default --command cargo doc --workspace --no-deps --release
 
-      - name: Install wasm-bindgen CLI
-        run: nix develop .#default --command cargo install wasm-bindgen-cli --locked --version 0.2.104
-
       - name: Build WASM binary
-        env:
-          CARGO_PROFILE_RELEASE_LTO: "thin"
         run: |
           nix develop .#default --command bash -lc '
             cargo build --release --target wasm32-unknown-unknown
-            ~/.cargo/bin/wasm-bindgen \
+            wasm-bindgen \
               --out-dir wasm-out \
               --out-name paiagram \
               --target web \
@@ -96,7 +91,7 @@ jobs:
           EOF
 
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v4
         with:
           path: public
 

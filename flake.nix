@@ -36,7 +36,7 @@
                 ];
               })
               pkg-config
-              cargo-flamegraph
+              wasm-bindgen-cli_0_2_104
             ]
             ++ lib.optionals (lib.strings.hasInfix "linux" system) [
               # for Linux

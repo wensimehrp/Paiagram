@@ -16,7 +16,9 @@ struct RawQETRCRoot {
     // qETRC has the line field and the lines array, both contains line data
     // but for some unknown(tm) reason sometimes the `lines` field is missing
     // hence Option<T>
+    /// A single line
     line: RawQETRCLine,
+    /// Additional lines. This field does not exist in pyETRC, only in qETRC.
     lines: Option<Vec<RawQETRCLine>>,
     #[serde(rename = "circuits")]
     vehicles: Vec<RawQETRCVehicle>,

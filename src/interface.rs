@@ -7,6 +7,7 @@ use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass, egui};
 use egui_dock::{DockArea, DockState};
 use std::{collections::VecDeque, sync::Arc};
 
+/// Plugin that sets up the user interface
 pub struct InterfacePlugin;
 
 impl Plugin for InterfacePlugin {
@@ -20,12 +21,14 @@ impl Plugin for InterfacePlugin {
     }
 }
 
+/// The state of the user interface
 #[derive(Resource)]
 struct UiState {
     dock_state: DockState<AppTab>,
     status_bar_text: String,
 }
 
+/// Modify the dock state based on UI commands
 fn modify_dock_state(mut dock_state: ResMut<UiState>, mut msg_reader: MessageReader<UiCommand>) {
     for msg in msg_reader.read() {
         match msg {
@@ -46,7 +49,7 @@ impl UiState {
             status_bar_text: "Ready".into(),
         }
     }
-
+    /// Open a tab if it is not already open, or focus it if it is
     fn open_or_focus_tab(&mut self, tab: AppTab) {
         if let Some((surface_index, node_index, tab_index)) = self.dock_state.find_tab(&tab) {
             self.dock_state
@@ -59,6 +62,7 @@ impl UiState {
     }
 }
 
+/// An application tab
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub enum AppTab {
     AllNames,
@@ -66,12 +70,15 @@ pub enum AppTab {
     LineTimetable(Entity),
 }
 
+/// User interface commands sent between systems
 #[derive(Message)]
 pub enum UiCommand {
     OpenOrFocusVehicleTab(AppTab),
     SetStatusBarText(String),
 }
 
+/// A viewer for application tabs. This struct holds a single mutable reference to the world,
+/// and is constructed each frame.
 struct AppTabViewer<'w> {
     world: &'w mut World,
 }
@@ -142,6 +149,7 @@ impl<'w> egui_dock::TabViewer for AppTabViewer<'w> {
     }
 }
 
+/// Main function to show the user interface
 fn show_ui(
     world: &mut World,
     ctx: &mut SystemState<EguiContexts>,
@@ -247,6 +255,7 @@ fn show_ui(
     Ok(())
 }
 
+/// Apply custom fonts to the egui context
 fn apply_custom_fonts(ctx: &egui::Context) {
     let mut fonts = egui::FontDefinitions::default();
 
