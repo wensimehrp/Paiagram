@@ -4074,6 +4074,44 @@ dependencies = [
 ]
 
 [[package]]
+name = "paiagram"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "bevy_camera",
+ "bevy_egui",
+ "bevy_framepace",
+ "chrono",
+ "clap",
+ "derive_more",
+ "egui",
+ "egui_deferred_table",
+ "egui_dock",
+ "egui_extras",
+ "egui_ltreeview",
+ "egui_taffy",
+ "either",
+ "getrandom",
+ "git-version",
+ "ib-matcher",
+ "indexmap",
+ "instant",
+ "kdl",
+ "nonmax",
+ "pest",
+ "pest_derive",
+ "petgraph",
+ "rand 0.9.2",
+ "rayon",
+ "rfd",
+ "serde",
+ "serde_json",
+ "smallvec",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+]
+
+[[package]]
 name = "parking"
 version = "2.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4399,44 +4437,6 @@ name = "profiling"
 version = "1.0.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3eb8486b569e12e2c32ad3e204dbaba5e4b5b216e9367044f25f1dba42341773"
-
-[[package]]
-name = "project-transport"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "bevy_camera",
- "bevy_egui",
- "bevy_framepace",
- "chrono",
- "clap",
- "derive_more",
- "egui",
- "egui_deferred_table",
- "egui_dock",
- "egui_extras",
- "egui_ltreeview",
- "egui_taffy",
- "either",
- "getrandom",
- "git-version",
- "ib-matcher",
- "indexmap",
- "instant",
- "kdl",
- "nonmax",
- "pest",
- "pest_derive",
- "petgraph",
- "rand 0.9.2",
- "rayon",
- "rfd",
- "serde",
- "serde_json",
- "smallvec",
- "wasm-bindgen",
- "wasm-bindgen-futures",
-]
 
 [[package]]
 name = "pxfm"
