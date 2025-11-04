@@ -53,8 +53,7 @@ jobs:
 
       - name: Prepare Pages artifact
         run: |
-          PROJECT_DIR="Paiagram"
-          NIGHTLY_ROOT="public/${PROJECT_DIR}/nightly"
+          NIGHTLY_ROOT="public/nightly"
           DOCS_DIR="${NIGHTLY_ROOT}/docs"
           mkdir -p "${DOCS_DIR}" "${NIGHTLY_ROOT}/assets"
           cp -r target/doc/* "${DOCS_DIR}/"

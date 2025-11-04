@@ -5,3 +5,7 @@ rustflags = ["-C", "link-arg=-fuse-ld=mold"]
 [target.wasm32-unknown-unknown]
 rustflags = ["--cfg", "getrandom_backend=\"wasm_js\""]
 runner = "/home/jeremyg/.cargo/bin/wasm-server-runner"
+
+[doc.extern-map.regular]
+bevy = "https://docs.rs/bevy/latest/"
+egui = "https://docs.rs/egui/latest/"
