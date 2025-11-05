@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Paiagram Nightly</title>
+    <style>
+        html,
+        body {
+            margin: 0;
+            height: 100%;
+            background: #101018;
+            color: #f0f0ff;
+            font-family: sans-serif;
+        }
+
+        canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        .fallback {
+            padding: 2rem;
+            text-align: center;
+        }
+
+        a {
+            color: #7fb3ff;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="fallback" id="loading">Loading Paiagram Nightly Web Build…</div>
+    <script type="module">
+        import init from "./paiagram.js";
+        init().then(() => {
+            const loading = document.getElementById("loading");
+            if (loading) loading.remove();
+        });
+    </script>
+    <noscript>
+        <div class="fallback">JavaScript is required to run the Paiagram nightly build.</div>
+    </noscript>
+</body>
+
+</html>

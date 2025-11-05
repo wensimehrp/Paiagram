@@ -53,46 +53,16 @@ jobs:
 
       - name: Prepare Pages artifact
         run: |
-          NIGHTLY_ROOT="public/nightly"
+          NIGHTLY_ROOT="web/nightly"
           DOCS_DIR="${NIGHTLY_ROOT}/docs"
-          mkdir -p "${DOCS_DIR}" "${NIGHTLY_ROOT}/assets"
+          mkdir -p "${DOCS_DIR}" "${NIGHTLY_ROOT}"
           cp -r target/doc/* "${DOCS_DIR}/"
-          cp -r assets/* "${NIGHTLY_ROOT}/assets/"
           cp wasm-out/* "${NIGHTLY_ROOT}/"
-          cat <<'EOF' > "${NIGHTLY_ROOT}/index.html"
-          <!DOCTYPE html>
-          <html lang="en">
-          <head>
-            <meta charset="utf-8" />
-            <meta name="viewport" content="width=device-width, initial-scale=1" />
-            <title>Paiagram Nightly</title>
-            <style>
-              html, body { margin: 0; height: 100%; background: #101018; color: #f0f0ff; font-family: sans-serif; }
-              canvas { width: 100%; height: 100%; display: block; }
-              .fallback { padding: 2rem; text-align: center; }
-              a { color: #7fb3ff; }
-            </style>
-          </head>
-          <body>
-            <div class="fallback" id="loading">Loading Paiagram Nightly Web Build…</div>
-            <script type="module">
-              import init from "./paiagram.js";
-              init().then(() => {
-                const loading = document.getElementById("loading");
-                if (loading) loading.remove();
-              });
-            </script>
-            <noscript>
-              <div class="fallback">JavaScript is required to run the Paiagram nightly build.</div>
-            </noscript>
-          </body>
-          </html>
-          EOF
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v4
         with:
-          path: public
+          path: web
 
       - name: Deploy to GitHub Pages
         id: deploy
