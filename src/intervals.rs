@@ -45,9 +45,7 @@ pub struct IntervalsResource {
 impl FromWorld for IntervalsResource {
     fn from_world(world: &mut World) -> Self {
         // create a depot once and stash the entity so callers can rely on it existing
-        let default_depot = world
-            .spawn((Name::new("Default Depot"), Depot))
-            .id();
+        let default_depot = world.spawn((Name::new("Default Depot"), Depot)).id();
         Self { default_depot }
     }
 }

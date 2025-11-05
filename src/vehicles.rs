@@ -84,6 +84,12 @@ impl ArrivalType {
     pub fn set_type(&mut self, new_type: ArrivalType) {
         *self = new_type;
     }
+    pub fn time(self) -> Option<TimetableTime> {
+        match self {
+            Self::At(time) | Self::Duration(time) => Some(time),
+            Self::Flexible => None,
+        }
+    }
 }
 
 /// How would the vehicle depart from a stop

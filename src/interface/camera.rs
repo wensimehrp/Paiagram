@@ -1,5 +1,5 @@
-use bevy::prelude::*;
 use bevy::color::palettes::tailwind;
+use bevy::prelude::*;
 
 pub fn setup_camera(mut commands: Commands) {
     commands.spawn((

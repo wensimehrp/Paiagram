@@ -54,7 +54,7 @@ fn handle_args(cli: Res<Cli>, mut msg: MessageWriter<rw_data::ModifyData>, mut c
     if let Some(path) = &cli.open {
         use rw_data::ModifyData;
         // match the ending of the path
-        match path.split('.').last() {
+        match path.split('.').next_back() {
             Some("paiagram") => {
                 warn!("Opening .paiagram files is not yet implemented.");
             }

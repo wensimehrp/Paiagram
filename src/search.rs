@@ -37,7 +37,7 @@ pub fn search(
     for (msg, id) in msg_reader.read_with_id() {
         match msg {
             SearchCommand::Table { data, query } => {
-                let result = search_table(&data, &build_matcher(&query, &settings));
+                let result = search_table(data, &build_matcher(query, &settings));
                 msg_writer.write(SearchResponse::Table(id, result));
             }
         }
@@ -51,7 +51,11 @@ fn build_matcher(query: &str, settings: &Settings) -> IbMatcher<'static> {
         .pinyin(PinyinMatchConfig::notations(
             PinyinNotation::Ascii | PinyinNotation::DiletterMicrosoft,
         ))
-        .maybe_romaji(settings.enable_romaji_search.then(|| RomajiMatchConfig::default()))
+        .maybe_romaji(
+            settings
+                .enable_romaji_search
+                .then(RomajiMatchConfig::default),
+        )
         .build();
     debug!("Matcher built in {:?}", now.elapsed());
     matcher

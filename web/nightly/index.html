@@ -40,6 +40,10 @@
             const loading = document.getElementById("loading");
             if (loading) loading.remove();
         });
+        window.addEventListener("beforeunload", (event) => {
+            event.preventDefault();
+            event.returnValue = "";
+        });
     </script>
     <noscript>
         <div class="fallback">JavaScript is required to run the Paiagram nightly build.</div>

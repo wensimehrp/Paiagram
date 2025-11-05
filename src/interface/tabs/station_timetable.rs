@@ -3,7 +3,7 @@ use crate::{
     interface::UiCommand,
     intervals::{Depot, Station},
     vehicle_set::VehicleSet,
-    vehicles::{Schedule, TimetableEntry, Vehicle},
+    vehicles::{DepartureType, Schedule, TimetableEntry, Vehicle},
 };
 use bevy::ecs::{
     entity::Entity,
@@ -27,7 +27,7 @@ pub fn show_station_timetable(
     let stopping_vehicles = timetable_entries
         .iter()
         .filter_map(|(entry, parent_vehicle)| {
-            if entry.station == station {
+            if entry.station == station && !matches!(entry.departure, DepartureType::NonStop) {
                 Some((entry, parent_vehicle.0))
             } else {
                 None

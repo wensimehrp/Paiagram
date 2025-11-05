@@ -11,3 +11,7 @@
 
 - All UI components
   - Export to Typst (AST and hand that to Typstyle)
+
+- OuDiaSecond
+  - Handle 運用 better
+  - Handle composition and decomposition of trains

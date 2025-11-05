@@ -1,3 +1,5 @@
+use std::{any::Any, collections::BTreeMap, iter::zip};
+
 use kdl::{KdlDocument, KdlEntry, KdlNode, KdlValue};
 use pest::Parser;
 use pest_derive::Parser;
@@ -112,9 +114,13 @@ enum OUD2OperationType {
     Before,
 }
 
+/// How a train would service a station
 enum OUD2ServiceMode {
+    /// This train does not pass the station at all
     NoPassing,
+    /// This train makes a stop at the station
     Stop,
+    /// This train passes the station, but does not stop
     NonStop,
 }
 
@@ -124,6 +130,7 @@ struct OUD2TimetableEntry {
     departure: DepartureType,
     track: Option<nonmax::NonMaxUsize>,
     operations: Option<
+        // A station entry could optionally have a set of operations attached
         Vec<(
             Vec<(Option<nonmax::NonMaxUsize>, OUD2OperationType)>,
             Vec<Vec<String>>,
@@ -461,17 +468,18 @@ use crate::vehicles::*;
 use bevy::prelude::{Commands, Entity, MessageReader, Name, Res, info};
 use petgraph::graphmap::GraphMap;
 
-/// A pool of services available at each station and track.
+/// A pool of vehicles available at each station and track.
 /// This is because OuDiaSecond uses a service based model, while Paiagram uses a vehicle based model.
 /// OuDiaSecond does not keep track of which vehicle is assigned to which service directly, rather, each service would
 /// have events at different stations and tracks. This structure helps to map services to vehicles.
 #[rustfmt::skip]
-struct StationServicePool(
+type StationVehicleSchedulePool =
     Vec< // stations
     Vec< // tracks
-    Vec< // train components
-    Entity>>> // each available vehicle entity
-);
+    BTreeMap< // train components
+    TimetableTime, Vec< // The schedule. The TimetableTime is the last entry's arrival/departure time, whichever is later
+    Entity>>>> // each available vehicle entity
+;
 
 pub fn load_oud2(
     mut commands: Commands,
@@ -518,72 +526,68 @@ fn make_vehicle_set(
     stations: &Vec<Entity>,
     depot: Entity,
 ) -> Entity {
-    let vehicle_set_entity = commands
-        .spawn((VehicleSet, Name::new(diagram.name.clone())))
-        .id();
-    let mut station_service_pool = StationServicePool(vec![Vec::new(); stations.len()]);
-    for service in diagram.services {
+    let vehicle_set_entity = commands.spawn((VehicleSet, Name::new(diagram.name))).id();
+    // collect, sort, then organize
+    let mut station_vehicle_schedule_pool: StationVehicleSchedulePool =
+        vec![Vec::new(); stations.len()];
+    let mut service_entities: Vec<Entity> = Vec::new();
+    for service in diagram.services.iter() {
         let service_entity = commands
-            .spawn((Name::new(service.name), Service { class: None }))
+            .spawn((Name::new(service.name.clone()), Service { class: None }))
             .id();
-        #[rustfmt::skip]
-        let mut timetable_entries: Vec< // a service could have multiple trains
-                                   Vec< // each of those trains holds a list of timetable entries
-                                   Entity>> = Vec::new();
-        for (i, entry) in service.timetable.into_iter().enumerate() {
-            let station_index = if service.reverse {
-                stations.len() - 1 - i
-            } else {
-                i
-            };
-            let mut current_station_pool = &mut station_service_pool.0[station_index];
-            if let Some(operations) = entry.operations {
-                for (op_tree, op_events) in operations {
-                    // TODO organize this better
-                    // I might be considering the niche cases that don't exist in OuDiaSecond
-                    let (maybe_vehicle_index, op_type) = op_tree.last().unwrap();
-                    match maybe_vehicle_index {
-                        Some(idx) => {
-                            let vehicle_index = nonmax::NonMaxUsize::get(idx);
-                        }
-                        None => {
-                            // this is not a vehicle index, instead the options are performed directly
-                            // on the train as a whole
-                            // TODO: complete this
-                            for op_event in op_events {
-                                match (op_type, op_event.first().unwrap().parse::<usize>().unwrap())
-                                {
-                                    (OUD2OperationType::After, 0) => {}
-                                    _ => {}
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            if matches!(entry.service_mode, OUD2ServiceMode::NoPassing) {
+        service_entities.push(service_entity);
+        let mut service_schedule: Vec<Entity> = Vec::new();
+        let mut first_stop_info: Option<(usize, usize, TimetableTime)> = None;
+        for (entry_index, timetable_entry) in service.timetable.iter().enumerate() {
+            if matches!(timetable_entry.service_mode, OUD2ServiceMode::NoPassing) {
                 continue;
             }
-            let timetable_entry_entity = commands
+            let station_index = if service.reverse {
+                stations.len() - 1 - entry_index
+            } else {
+                entry_index
+            };
+            let track_index = timetable_entry
+                .track
+                .and_then(|v| Some(v.get()))
+                .unwrap_or(0);
+            if first_stop_info.is_none() {
+                first_stop_info = Some((
+                    station_index,
+                    track_index,
+                    timetable_entry.arrival.time().unwrap(),
+                ))
+            }
+            let entry_entity = commands
                 .spawn(TimetableEntry {
-                    station: stations[station_index],
-                    arrival: entry.arrival,
-                    departure: entry.departure,
+                    arrival: timetable_entry.arrival,
+                    departure: timetable_entry.departure,
                     service: Some(service_entity),
                     track: None,
+                    station: stations[station_index],
                 })
                 .id();
-            commands
-                .entity(service_entity)
-                .add_child(timetable_entry_entity);
-            for vehicle in timetable_entries.iter_mut() {
-                vehicle.push(timetable_entry_entity);
-            }
+            service_schedule.push(entry_entity)
         }
+        let Some((station_index, track_index, first_stop_arrival_time)) = first_stop_info else {
+            continue;
+        };
+        let station_pool = station_vehicle_schedule_pool
+            .get_mut(station_index)
+            .unwrap();
+        while station_pool.len() <= track_index {
+            station_pool.push(BTreeMap::new())
+        }
+        station_pool[track_index].insert(first_stop_arrival_time, service_schedule);
+    }
+    info!(?station_vehicle_schedule_pool);
+    for (service, service_entity) in zip(diagram.services, service_entities) {
+        // TODO
     }
     vehicle_set_entity
 }
 
+/// Creates the graph map from the list of stations in the OuDiaSecond data.
 fn make_graph_map(
     commands: &mut Commands,
     oud2_stations: &Vec<OUD2Station>,
@@ -594,23 +598,9 @@ fn make_graph_map(
     for (_ci, curr_station) in oud2_stations.iter().enumerate() {
         let branch_index = curr_station.branch_index;
         let station_entity;
-        //TODO: handle branches properly
-        // if let Some(bi) = branch_index {
-        //     info!("Branched to station index: {}", bi);
-        //     // copy from the previous station entity for branches
-        //     if bi < ci {
-        //         station_entity = stations[bi];
-        //     } else if bi > ci {
-        //         futures.push((prev_entity, ci, bi));
-        //
-        //     } else {
-        //
-        //     }
-        // } else {
         station_entity = commands
             .spawn((Name::new(curr_station.name.clone()), Station))
             .id();
-        // }
         if let Some(prev) = prev_entity
             && branch_index.is_none()
         {
@@ -629,6 +619,7 @@ fn make_graph_map(
     (graph_map, stations)
 }
 
+/// Converts the OuDiaSecond AST back into KDL format for debugging purposes.
 fn make_kdl(oud2_root: &OuDiaSecondStruct) -> String {
     fn to_kdl_value(raw: &str) -> KdlValue {
         KdlValue::String(raw.trim().to_string())
