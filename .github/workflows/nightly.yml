@@ -63,7 +63,7 @@ jobs:
           NIGHTLY_ROOT="web/nightly"
           API_DOCS_DIR="${NIGHTLY_ROOT}/api-docs"
           DOCS_DIR="${NIGHTLY_ROOT}/docs"
-          mkdir -p "${API_DOCS_DIR}" "${NIGHTLY_ROOT}"
+          mkdir -p "${API_DOCS_DIR}" "${NIGHTLY_ROOT}" "${DOCS_DIR}"
           cp -r target/doc/* "${API_DOCS_DIR}/"
           cp wasm-out/* "${NIGHTLY_ROOT}/"
           cp docs/index.* "${DOCS_DIR}/"
