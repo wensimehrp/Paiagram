@@ -51,13 +51,23 @@ jobs:
               target/wasm32-unknown-unknown/release/paiagram.wasm
           '
 
+      - name: Build HTML and PDF documentation
+        run: |
+          nix develop .#default --command bash -lc '
+            typst c docs/index.typ --features html -f html --root .
+            typst c docs/index.typ --features html -f pdf --root .
+          '
+
       - name: Prepare Pages artifact
         run: |
           NIGHTLY_ROOT="web/nightly"
+          API_DOCS_DIR="${NIGHTLY_ROOT}/api-docs"
           DOCS_DIR="${NIGHTLY_ROOT}/docs"
-          mkdir -p "${DOCS_DIR}" "${NIGHTLY_ROOT}"
-          cp -r target/doc/* "${DOCS_DIR}/"
+          mkdir -p "${API_DOCS_DIR}" "${NIGHTLY_ROOT}"
+          cp -r target/doc/* "${API_DOCS_DIR}/"
           cp wasm-out/* "${NIGHTLY_ROOT}/"
+          cp docs/index.* "${DOCS_DIR}/"
+          cp docs/style.css "${DOCS_DIR}/"
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v4

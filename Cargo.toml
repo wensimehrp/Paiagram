@@ -46,6 +46,9 @@ either = "1.15.0"
 egui_ltreeview = "0.6.0"
 kdl = "6.5.0"
 nonmax = "0.5.5"
+egui_table = "0.5.0"
+slotmap = "1.0.7"
+slab = "0.4.11"
 
 [patch.crates-io]
 egui_deferred_table = { path = "vendor/egui_deferred_table" }

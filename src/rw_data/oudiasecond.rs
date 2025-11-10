@@ -1,4 +1,4 @@
-use std::{any::Any, collections::BTreeMap, iter::zip};
+use std::collections::{BTreeMap, VecDeque};
 
 use kdl::{KdlDocument, KdlEntry, KdlNode, KdlValue};
 use pest::Parser;
@@ -109,9 +109,56 @@ struct OUD2Service {
 }
 
 #[derive(Debug, Clone, Copy)]
-enum OUD2OperationType {
+enum OUD2OperationOrder {
     After,
     Before,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum OUD2Operation {
+    // before operations
+    ChangeTrackBeforeStop,
+    ComposeBeforeStop,
+    DecomposeBeforeStop,
+    EnterCurrentLineFromDepot,
+    EnterCurrentLineFromExternalLine,
+    ContinuePreviousService,
+    ChangeServiceNumberBeforeStop,
+    // after operations
+    ChangeTrackAfterStop,
+    ComposeAfterStop,
+    DecomposeAfterStop,
+    ExitFromCurrentLineToDepot,
+    ExitFromCurrentLineToExternalLine,
+    ContinueToNextService,
+    ChangeServiceNumberAfterStop,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum OUD2Operation2 {
+    // before operations
+    ChangeTrackBeforeStop {
+        target_track_index: usize, // param 0
+        start_time: TimetableTime, // param 1,
+        end_time: TimetableTime, // param 2,
+        reverse_service_number: bool, // param 3
+    },
+    ComposeBeforeStop {
+
+    },
+    DecomposeBeforeStop,
+    EnterCurrentLineFromDepot,
+    EnterCurrentLineFromExternalLine,
+    ContinuePreviousService,
+    ChangeServiceNumberBeforeStop,
+    // after operations
+    ChangeTrackAfterStop,
+    ComposeAfterStop,
+    DecomposeAfterStop,
+    ExitFromCurrentLineToDepot,
+    ExitFromCurrentLineToExternalLine,
+    ContinueToNextService,
+    ChangeServiceNumberAfterStop,
 }
 
 /// How a train would service a station
@@ -129,13 +176,68 @@ struct OUD2TimetableEntry {
     arrival: ArrivalType,
     departure: DepartureType,
     track: Option<nonmax::NonMaxUsize>,
-    operations: Option<
-        // A station entry could optionally have a set of operations attached
-        Vec<(
-            Vec<(Option<nonmax::NonMaxUsize>, OUD2OperationType)>,
-            Vec<Vec<String>>,
-        )>,
-    >,
+    operations: TimetableEntryOperation,
+}
+
+#[derive(Clone, Default, Debug)]
+struct TimetableEntryOperation {
+    value: Option<[String; 6]>,
+    // 0B, 1B, 0A, 1A
+    before_children: Vec<TimetableEntryOperation>,
+    after_children: Vec<TimetableEntryOperation>,
+}
+
+type Item = Option<(OUD2OperationOrder, Vec<[String; 6]>)>;
+
+impl TimetableEntryOperation {
+    // pre-order
+    fn iterate(self, operation_type: OUD2OperationOrder, result: &mut Vec<Item>) {
+        result.push(self.value.and_then(|v| Some((operation_type, v))));
+        for child in self.before_children.into_iter() {
+            child.iterate(OUD2OperationOrder::Before, result);
+        }
+        for child in self.after_children.into_iter() {
+            child.iterate(OUD2OperationOrder::After, result);
+        }
+    }
+    fn to_vec(self) -> Vec<Item> {
+        let mut result: Vec<Item> = Vec::new();
+        for child in self.before_children.into_iter() {
+            child.iterate(OUD2OperationOrder::Before, &mut result);
+        }
+        for child in self.after_children.into_iter() {
+            child.iterate(OUD2OperationOrder::After, &mut result);
+        }
+        result
+    }
+    fn insert_by_path<T>(&mut self, mut path: T, value: Option<Vec<[String; 6]>>) -> bool
+    where
+        T: Iterator<Item = (usize, OUD2OperationOrder)>,
+    {
+        let Some((index, operation_type)) = path.next() else {
+            // reached the target node; store the value here
+            self.value = value;
+            return true;
+        };
+
+        let child_node = match operation_type {
+            OUD2OperationOrder::Before => {
+                while self.before_children.len() <= index {
+                    self.before_children
+                        .push(TimetableEntryOperation::default());
+                }
+                &mut self.before_children[index]
+            }
+            OUD2OperationOrder::After => {
+                while self.after_children.len() <= index {
+                    self.after_children.push(TimetableEntryOperation::default());
+                }
+                &mut self.after_children[index]
+            }
+        };
+
+        child_node.insert_by_path(path, value)
+    }
 }
 
 fn parse_oud2(file: &str) -> Result<OUD2Root, String> {
@@ -285,10 +387,7 @@ fn parse_service(
 ) -> Result<Option<OUD2Service>, String> {
     let mut name: Option<String> = None;
     let mut timetable: Option<Vec<OUD2TimetableEntry>> = None;
-    let mut operations: Vec<(
-        Vec<(nonmax::NonMaxUsize, OUD2OperationType)>,
-        Vec<Vec<String>>,
-    )> = Vec::new();
+    let mut operations: VecDeque<TimetableEntryOperation> = VecDeque::new();
     use OuDiaSecondStruct::*;
     for entry in input {
         match entry {
@@ -312,85 +411,74 @@ fn parse_service(
                 }
             }
             Pair(n, v) if n.starts_with("Operation") => {
-                // remove the word Operation from the name
-                let tree = n
-                    .strip_prefix("Operation")
-                    .unwrap()
-                    .split(".")
-                    .map(|s| {
-                        // always in the form of <number><A|B>
-                        let (num, operation_type) = s.split_at(s.len() - 1);
-                        let operation_type = match operation_type {
-                            "A" => OUD2OperationType::After,
-                            "B" => OUD2OperationType::Before,
-                            _ => unreachable!(),
-                        };
-                        (num.parse::<nonmax::NonMaxUsize>().unwrap(), operation_type)
-                    })
-                    .collect::<Vec<_>>();
-                let ops = match v {
-                    OuDiaSecondValue::Single(s) => vec![s],
-                    OuDiaSecondValue::List(l) => l,
+                // construct the tree
+                // example: Operation1A, Operation76B,
+                // Strip away the Operation prefix, parse the number, keep the A/B
+                let mut parts = n["Operation".len()..].split(".");
+                // only the first index is tread specially
+                let first_str = parts.next().unwrap();
+                let (index_str, operation_type_str) = first_str.split_at(first_str.len() - 1);
+                let index = index_str.parse::<usize>().unwrap();
+                let operation_type = match operation_type_str {
+                    "B" => OUD2OperationOrder::Before,
+                    "A" => OUD2OperationOrder::After,
+                    _ => return Err("wtf??".into()),
                 };
-                let ops = ops
-                    .iter()
-                    .map(|s| {
-                        OuDiaSecondParser::parse(Rule::event, s)
-                            .unwrap()
-                            .next()
-                            .unwrap()
-                            .into_inner()
-                            .map(|p| p.as_str().to_string())
-                            .collect::<Vec<String>>()
-                    })
-                    .collect::<Vec<_>>();
-                operations.push((tree, ops));
+                while operations.len() <= index {
+                    operations.push_back(TimetableEntryOperation::default());
+                }
+                // chain the iterator
+                let path_iterator =
+                    [(0usize, operation_type)]
+                        .into_iter()
+                        .chain(parts.map(|part_str| {
+                            let (index_str, operation_type_str) =
+                                part_str.split_at(part_str.len() - 1);
+                            let index = index_str.parse::<usize>().unwrap();
+                            let operation_type = match operation_type_str {
+                                "B" => OUD2OperationOrder::Before,
+                                "A" => OUD2OperationOrder::After,
+                                _ => OUD2OperationOrder::After,
+                            };
+                            (index, operation_type)
+                        }));
+                let value = match v {
+                    OuDiaSecondValue::List(v) => v,
+                    OuDiaSecondValue::Single(v) => vec![v],
+                }
+                .iter()
+                .map(|v| {
+                    let mut parsed = OuDiaSecondParser::parse(Rule::event, v)
+                        .unwrap()
+                        .next()
+                        .unwrap()
+                        .into_inner()
+                        .map(|r| r.as_str().to_string())
+                        .collect::<Vec<_>>();
+                    parsed.resize(6, String::new());
+                    let parsed: [String; 6] = parsed.try_into().unwrap();
+                    parsed
+                })
+                .collect::<Vec<_>>();
+                operations[index].insert_by_path(path_iterator, Some(value));
             }
             _ => {}
         }
     }
-    if timetable.is_some() {
+    if let Some(timetable) = timetable {
         return Ok(Some(OUD2Service {
             reverse,
             name: name.unwrap_or("<unnamed>".to_string()),
-            timetable: {
-                // modify the timetable with operations
-                let mut timetable = timetable.unwrap();
-                for (tree, ops) in operations {
-                    // the index is always the first element of the tree
-                    let mut tree = tree.iter();
-                    let (index, op_type) = tree.next().unwrap();
-                    let idx = nonmax::NonMaxUsize::get(index);
-                    match tree.next() {
-                        None => {
-                            // apply to single entry
-                            if let Some(entry) = timetable.get_mut(idx) {
-                                entry
-                                    .operations
-                                    .get_or_insert_default()
-                                    .push((vec![(None, *op_type)], ops));
-                            }
-                        }
-                        Some(entry) => {
-                            let mut remainder = vec![entry];
-                            remainder.extend(tree);
-                            if let Some(entry) = timetable.get_mut(idx) {
-                                entry.operations.get_or_insert_default().push((
-                                    {
-                                        let mut returned_remainder = vec![(None, *op_type)];
-                                        returned_remainder.extend(
-                                            remainder.iter().map(|(idx, op)| (Some(*idx), *op)),
-                                        );
-                                        returned_remainder
-                                    },
-                                    ops,
-                                ));
-                            }
-                        }
-                    }
-                }
-                timetable
-            },
+            // TODO: handle this part
+            timetable: timetable
+                .into_iter()
+                .map(|mut v| {
+                    if let Some(operations) = operations.pop_front() {
+                        v.operations = operations;
+                    };
+                    return v;
+                })
+                .collect::<Vec<_>>(),
         }));
     }
     Ok(None)
@@ -407,7 +495,7 @@ fn parse_timetable_entry(input: &str) -> Result<OUD2TimetableEntry, String> {
             service_mode,
             arrival,
             departure,
-            operations: None,
+            operations: TimetableEntryOperation::default(),
             track,
         });
     }
@@ -456,7 +544,7 @@ fn parse_timetable_entry(input: &str) -> Result<OUD2TimetableEntry, String> {
         service_mode,
         arrival,
         departure,
-        operations: None,
+        operations: TimetableEntryOperation::default(),
         track,
     })
 }
@@ -465,7 +553,10 @@ use super::ModifyData;
 use crate::basic::*;
 use crate::intervals::*;
 use crate::vehicles::*;
-use bevy::prelude::{Commands, Entity, MessageReader, Name, Res, info};
+use bevy::{
+    log::warn,
+    prelude::{Commands, Entity, MessageReader, Name, Res, info},
+};
 use petgraph::graphmap::GraphMap;
 
 /// A pool of vehicles available at each station and track.
@@ -520,6 +611,47 @@ pub fn load_oud2(
     info!("Loaded OUD2 data in {:?}", now.elapsed());
 }
 
+/// How the service would start
+#[derive(Clone, Copy)]
+enum ServiceStartEvent {
+    /// Enter current line and spawn a new vehicle
+    EnterCurrentLine(TimetableTime, (usize, usize), Entity),
+    /// Continue from previous service
+    ContinuePreviousService(TimetableTime, (usize, usize)),
+}
+
+impl ServiceStartEvent {
+    fn time(self) -> TimetableTime {
+        match self {
+            Self::EnterCurrentLine(time, ..) | Self::ContinuePreviousService(time, ..) => time,
+        }
+    }
+    fn station_and_track_index(self) -> (usize, usize) {
+        match self {
+            Self::EnterCurrentLine(_, station_and_track_index, ..)
+            | Self::ContinuePreviousService(_, station_and_track_index, ..) => {
+                station_and_track_index
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum ServiceEndEvent {
+    /// Exit current line
+    ExitCurrentLine,
+    /// Continue to another service
+    ContinueToNextService(TimetableTime, usize, usize),
+}
+
+#[derive(Clone, Copy)]
+struct AvailableSchedule<'a> {
+    service_entity: Entity,
+    schedule: &'a [Option<Entity>],
+    start_event: ServiceStartEvent,
+    end_event: ServiceEndEvent,
+}
+
 fn make_vehicle_set(
     commands: &mut Commands,
     diagram: OUD2Diagram,
@@ -527,19 +659,22 @@ fn make_vehicle_set(
     depot: Entity,
 ) -> Entity {
     let vehicle_set_entity = commands.spawn((VehicleSet, Name::new(diagram.name))).id();
-    // collect, sort, then organize
-    let mut station_vehicle_schedule_pool: StationVehicleSchedulePool =
-        vec![Vec::new(); stations.len()];
-    let mut service_entities: Vec<Entity> = Vec::new();
-    for service in diagram.services.iter() {
+    let mut vehicles: Vec<Entity> = Vec::new();
+    let mut service_schedules: Vec<(Entity, Vec<Option<Entity>>)> =
+        Vec::with_capacity(diagram.services.len());
+    // actual capacity is usually bigger
+    let mut available_schedules_by_parts: Vec<AvailableSchedule> =
+        Vec::with_capacity(diagram.services.len());
+    for service in diagram.services {
         let service_entity = commands
             .spawn((Name::new(service.name.clone()), Service { class: None }))
             .id();
-        service_entities.push(service_entity);
-        let mut service_schedule: Vec<Entity> = Vec::new();
-        let mut first_stop_info: Option<(usize, usize, TimetableTime)> = None;
-        for (entry_index, timetable_entry) in service.timetable.iter().enumerate() {
+        let mut service_schedule: Vec<Option<Entity>> = Vec::with_capacity(service.timetable.len());
+        let mut available_schedule: VecDeque<AvailableSchedule> = VecDeque::new();
+        for (entry_index, timetable_entry) in service.timetable.into_iter().enumerate() {
             if matches!(timetable_entry.service_mode, OUD2ServiceMode::NoPassing) {
+                // It does not pass the station at all!
+                service_schedule.push(None);
                 continue;
             }
             let station_index = if service.reverse {
@@ -547,42 +682,83 @@ fn make_vehicle_set(
             } else {
                 entry_index
             };
-            let track_index = timetable_entry
-                .track
-                .and_then(|v| Some(v.get()))
-                .unwrap_or(0);
-            if first_stop_info.is_none() {
-                first_stop_info = Some((
-                    station_index,
-                    track_index,
-                    timetable_entry.arrival.time().unwrap(),
-                ))
-            }
-            let entry_entity = commands
+            let timetable_entity = commands
                 .spawn(TimetableEntry {
                     arrival: timetable_entry.arrival,
                     departure: timetable_entry.departure,
                     service: Some(service_entity),
-                    track: None,
                     station: stations[station_index],
+                    track: None,
                 })
                 .id();
-            service_schedule.push(entry_entity)
+            service_schedule.push(Some(timetable_entity));
+            if matches!(timetable_entry.service_mode, OUD2ServiceMode::NonStop) {
+                // Non stopping service modes cannot have operations attached to them
+                continue;
+            }
+            // check if there are any special operations
+            #[rustfmt::skip]
+            let operations = timetable_entry
+            .operations
+            .to_vec()
+            .into_iter()
+            .flatten()
+            .flat_map(move |(operation_type, value)| {
+                value.into_iter().map(move |v| {
+                    let [first, a, b, c, d, e] = v;
+                    (
+                        match (operation_type, first.parse::<usize>().unwrap()) {
+                            (OUD2OperationOrder::Before, 0) => OUD2Operation::ChangeTrackBeforeStop,
+                            (OUD2OperationOrder::Before, 1) => OUD2Operation::ComposeBeforeStop,
+                            (OUD2OperationOrder::Before, 2) => OUD2Operation::DecomposeBeforeStop,
+                            (OUD2OperationOrder::Before, 3) => OUD2Operation::EnterCurrentLineFromDepot,
+                            (OUD2OperationOrder::Before, 4) => OUD2Operation::EnterCurrentLineFromExternalLine,
+                            (OUD2OperationOrder::Before, 5) => OUD2Operation::ContinuePreviousService,
+                            (OUD2OperationOrder::Before, 6) => OUD2Operation::ChangeServiceNumberBeforeStop,
+                            (OUD2OperationOrder::After, 0)  => OUD2Operation::ChangeTrackAfterStop,
+                            (OUD2OperationOrder::After, 1)  => OUD2Operation::ComposeAfterStop,
+                            (OUD2OperationOrder::After, 2)  => OUD2Operation::DecomposeAfterStop,
+                            (OUD2OperationOrder::After, 3)  => OUD2Operation::ExitFromCurrentLineToDepot,
+                            (OUD2OperationOrder::After, 4)  => OUD2Operation::ExitFromCurrentLineToExternalLine,
+                            (OUD2OperationOrder::After, 5)  => OUD2Operation::ContinueToNextService,
+                            (OUD2OperationOrder::After, 6)  => OUD2Operation::ChangeServiceNumberAfterStop,
+                            _ => panic!(),
+                        },
+                        [a, b, c, d, e],
+                    )
+                })
+            });
+            let a = operations.clone().collect::<Vec<_>>();
+            info!(?a);
+            for (operation_type, operation_params) in operations {
+                match operation_type {
+                    OUD2Operation::ChangeTrackBeforeStop => {
+                        // TODO: complete in the future
+                    }
+                    OUD2Operation::ComposeBeforeStop => {}
+                    OUD2Operation::DecomposeBeforeStop => {}
+                    OUD2Operation::EnterCurrentLineFromDepot => {}
+                    OUD2Operation::EnterCurrentLineFromExternalLine => {}
+                    OUD2Operation::ContinuePreviousService => {}
+                    OUD2Operation::ChangeServiceNumberBeforeStop => {
+                        // TODO
+                    }
+                    OUD2Operation::ChangeTrackAfterStop => {
+                        // TODO
+                    }
+                    OUD2Operation::ComposeAfterStop => {}
+                    OUD2Operation::DecomposeAfterStop => {}
+                    OUD2Operation::ExitFromCurrentLineToDepot => {}
+                    OUD2Operation::ExitFromCurrentLineToExternalLine => {}
+                    OUD2Operation::ContinueToNextService => {}
+                    OUD2Operation::ChangeServiceNumberAfterStop => {
+                        // TODO
+                    }
+                }
+            }
         }
-        let Some((station_index, track_index, first_stop_arrival_time)) = first_stop_info else {
-            continue;
-        };
-        let station_pool = station_vehicle_schedule_pool
-            .get_mut(station_index)
-            .unwrap();
-        while station_pool.len() <= track_index {
-            station_pool.push(BTreeMap::new())
-        }
-        station_pool[track_index].insert(first_stop_arrival_time, service_schedule);
-    }
-    info!(?station_vehicle_schedule_pool);
-    for (service, service_entity) in zip(diagram.services, service_entities) {
-        // TODO
+        service_schedules.push((service_entity, service_schedule));
+        available_schedules_by_parts.extend(available_schedule);
     }
     vehicle_set_entity
 }

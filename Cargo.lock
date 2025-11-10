@@ -23,6 +23,10 @@ name = "accesskit"
 version = "0.21.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf203f9d3bd8f29f98833d1fbef628df18f759248a547e7e01cfbf63cda36a99"
+dependencies = [
+ "enumn",
+ "serde",
+]
 
 [[package]]
 name = "accesskit_consumer"
@@ -90,6 +94,7 @@ dependencies = [
  "cfg-if",
  "getrandom",
  "once_cell",
+ "serde",
  "version_check",
  "zerocopy",
 ]
@@ -2288,6 +2293,7 @@ checksum = "adf31f99fad93fe83c1055b92b5c1b135f1ecfa464789817c372000e768d4bd1"
 dependencies = [
  "bytemuck",
  "emath",
+ "serde",
 ]
 
 [[package]]
@@ -2296,6 +2302,7 @@ version = "0.33.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ab9b5d3376c79439f53a78bf7da1e3c0b862ffa3e29f46ab0f3e107430f2e576"
 dependencies = [
+ "accesskit",
  "ahash",
  "bitflags 2.9.4",
  "emath",
@@ -2303,6 +2310,7 @@ dependencies = [
  "log",
  "nohash-hasher",
  "profiling",
+ "serde",
  "smallvec",
  "unicode-segmentation",
 ]
@@ -2351,6 +2359,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "egui_table"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8cc6e7eef49daf597eab65ed37c1b0058e34a1b7b10b4a0239a6e244c66917a9"
+dependencies = [
+ "egui",
+ "serde",
+ "vec1",
+]
+
+[[package]]
 name = "egui_taffy"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2376,6 +2395,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c615516cdceec867065f20d7db13d8eb8aedd65c9e32cc0c7c379380fa42e6e8"
 dependencies = [
  "bytemuck",
+ "serde",
 ]
 
 [[package]]
@@ -2458,6 +2478,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "enumn"
+version = "0.1.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2f9ed6b3789237c8a0c1c505af1c7eb2c560df6186f01b098c3a1064ea532f38"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.106",
+]
+
+[[package]]
 name = "epaint"
 version = "0.33.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2473,6 +2504,7 @@ dependencies = [
  "nohash-hasher",
  "parking_lot",
  "profiling",
+ "serde",
 ]
 
 [[package]]
@@ -4089,6 +4121,7 @@ dependencies = [
  "egui_dock",
  "egui_extras",
  "egui_ltreeview",
+ "egui_table",
  "egui_taffy",
  "either",
  "getrandom",
@@ -4106,6 +4139,8 @@ dependencies = [
  "rfd",
  "serde",
  "serde_json",
+ "slab",
+ "slotmap",
  "smallvec",
  "wasm-bindgen",
  "wasm-bindgen-futures",
@@ -5597,6 +5632,12 @@ dependencies = [
  "quote",
  "syn 2.0.106",
 ]
+
+[[package]]
+name = "vec1"
+version = "1.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eab68b56840f69efb0fefbe3ab6661499217ffdc58e2eef7c3f6f69835386322"
 
 [[package]]
 name = "version_check"

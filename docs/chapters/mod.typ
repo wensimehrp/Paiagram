@@ -1,4 +1,7 @@
 #let kbd(..args, mix-color: blue) = context {
+  if target() == "html" {
+    return args.pos().map(it => html.kbd(it)).join()
+  }
   let shortcuts = args
     .pos()
     .map(word => {
@@ -44,9 +47,11 @@
 
 #kbd[1][2][Ctrl]
 
-#let path(..args, mix-color: yellow.darken(50%)) = {
+#let path(..args, mix-color: yellow.darken(50%)) = context {
+  if target() == "html" {
+    return args.pos().map(it => html.kbd(class: "path", it)).join()
+  }
   set text(size: .7em, font: "Fira Sans", weight: "bold", fill: gray.mix(mix-color).darken(50%))
-
   let paths = args
     .pos()
     .map(key => {
