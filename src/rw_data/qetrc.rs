@@ -386,7 +386,9 @@ fn create_timetable_entries(
                     } else {
                         ArrivalType::At(entry.arrival)
                     },
+                    arrival_estimate: None,
                     departure: DepartureType::At(entry.departure),
+                    departure_estimate: None,
                     station: station_entity,
                     service: service_entity,
                     track: None,
@@ -394,11 +396,13 @@ fn create_timetable_entries(
             } else {
                 TimetableEntry {
                     arrival: ArrivalType::At(entry.arrival),
+                    arrival_estimate: None,
                     departure: if entry.arrival == entry.departure {
                         DepartureType::NonStop
                     } else {
                         DepartureType::At(entry.departure)
                     },
+                    departure_estimate: None,
                     station: station_entity,
                     service: service_entity,
                     track: None,

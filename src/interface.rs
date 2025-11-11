@@ -163,7 +163,7 @@ fn show_ui(
     let ctx = &ctx.ctx_mut().unwrap().clone();
     if !*initialized {
         ctx.options_mut(|options| {
-            options.max_passes = std::num::NonZeroUsize::new(3).unwrap();
+            options.max_passes = std::num::NonZeroUsize::new(2).unwrap();
         });
         ctx.style_mut(|style| {
             style.spacing.window_margin = egui::Margin::same(2);

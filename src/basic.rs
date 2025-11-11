@@ -162,8 +162,23 @@ impl std::fmt::Display for TimetableTime {
 }
 
 /// Distance between two points on a real-world map, in metres.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd, Default, Reflect)]
-pub struct TrackDistance(i32);
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    Ord,
+    PartialOrd,
+    Default,
+    Reflect,
+    Add,
+    AddAssign,
+    Sub,
+    SubAssign,
+)]
+pub struct TrackDistance(pub i32);
 
 impl TrackDistance {
     #[inline(always)]
@@ -222,27 +237,27 @@ impl From<TrackDistance> for CanvasDistance {
     }
 }
 
-/// Speed in km/h
+/// Speed in metres per second
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Default, Reflect)]
-pub struct Speed(f32);
+pub struct Speed(pub f32);
 impl Speed {
     // #[inline(always)]
     // pub fn from_kmh<T: Into<f32>>(kmh: T) -> Self {
-    //     Speed(kmh.into())
+    //     Speed(kmh.into() / 3.6)
     // }
     // #[inline(always)]
     // pub fn from_ms<T: Into<f32>>(ms: T) -> Self {
-    //     Speed(ms.into() * 3.6)
+    //     Speed(ms.into())
     // }
     // #[inline(always)]
     // pub fn from_mph<T: Into<f32>>(mph: T) -> Self {
-    //     Speed(mph.into() * 1.609344)
+    //     Speed(mph.into() * 0.44704)
     // }
 }
 
 impl std::fmt::Display for Speed {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:.2} km/h", self.0)
+        write!(f, "{:.2} m/s", self.0)
     }
 }
 
@@ -250,7 +265,29 @@ impl std::ops::Div<TimetableTime> for TrackDistance {
     type Output = Speed;
 
     fn div(self, rhs: TimetableTime) -> Self::Output {
-        Speed(self.0 as f32 / 1000.0 / rhs.0 as f32 * 3600.0)
+        if rhs.0 == 0 {
+            return Speed(0.0);
+        }
+        Speed(self.0 as f32 / rhs.0 as f32)
+    }
+}
+
+impl std::ops::Mul<TimetableTime> for Speed {
+    type Output = TrackDistance;
+
+    fn mul(self, rhs: TimetableTime) -> Self::Output {
+        TrackDistance((self.0 * rhs.0 as f32).round() as i32)
+    }
+}
+
+impl std::ops::Div<Speed> for TrackDistance {
+    type Output = TimetableTime;
+
+    fn div(self, rhs: Speed) -> Self::Output {
+        if rhs.0 == 0.0 {
+            return TimetableTime(0);
+        }
+        TimetableTime((self.0 as f32 / rhs.0).round() as i32)
     }
 }
 
