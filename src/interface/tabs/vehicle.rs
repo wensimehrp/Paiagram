@@ -111,7 +111,7 @@ impl<'a> TableDelegate for TableCache<'a> {
                 if ui.monospace(format!("{}", self.arrivals[i].1)).clicked() {
                     self.msg_sender.write(AdjustTimetableEntry {
                         entity: self.arrivals[i].0,
-                        adjustment: TimetableAdjustment::AdjustArrivalType(ArrivalType::Flexible),
+                        adjustment: TimetableAdjustment::SetArrivalType(ArrivalType::Flexible),
                     });
                 };
             }
@@ -119,9 +119,9 @@ impl<'a> TableDelegate for TableCache<'a> {
                 if ui.monospace(format!("{}", self.departures[i].1)).clicked() {
                     self.msg_sender.write(AdjustTimetableEntry {
                         entity: self.arrivals[i].0,
-                        adjustment: TimetableAdjustment::AdjustDepartureType(
-                            DepartureType::Flexible,
-                        ),
+                        adjustment: TimetableAdjustment::SetDepartureType(DepartureType::Duration(
+                            TimetableTime(100),
+                        )),
                     });
                 };
             }

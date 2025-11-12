@@ -208,12 +208,20 @@ fn calculate_estimations(
         stack.clear();
         total_distances.clear();
         let mut current_time_and_location: Option<(Entity, TimetableTime)> = None;
+        let mut pending_time_and_location: Option<(Entity, TimetableTime)> = None;
+        let mut pending_entry: Option<(Entity, Option<TimetableTime>)> = None;
         'iter_entries: for entity in schedule.1.iter() {
             let mut unwind_stack: Option<(bool, Option<(Entity, TimetableTime)>)> = None;
             {
                 let Ok((mut entry, _)) = entries.get_mut(*entity) else {
                     continue;
                 };
+                if pending_time_and_location.is_some() {
+                    current_time_and_location = pending_time_and_location;
+                }
+                if let Some(pending_entry) = pending_entry.take() {
+                    stack.push(pending_entry);
+                }
                 match entry.arrival {
                     ArrivalType::At(t) => {
                         entry.arrival_estimate = Some(t);
@@ -238,25 +246,44 @@ fn calculate_estimations(
                     DepartureType::At(t) => {
                         entry.departure_estimate = Some(t);
                         if unwind_stack.is_none() {
+                            // the arrival is not of AT type, thus directly replace the current time and location
                             unwind_stack = Some((false, current_time_and_location));
+                            current_time_and_location = Some((entry.station, t));
+                        } else {
+                            // the arrival is of AT type. This means that the stack would be unwound right after
+                            // processing the departure.
+                            pending_time_and_location = Some((entry.station, t));
                         }
-                        current_time_and_location = Some((entry.station, t));
                     }
                     DepartureType::Duration(t) => {
                         if stack.is_empty()
                             && let Some((_, unwrapped_time)) = current_time_and_location
                         {
                             entry.departure_estimate = Some(unwrapped_time + t);
-                            current_time_and_location = Some((entry.station, unwrapped_time + t));
+                            if unwind_stack.is_none() {
+                                current_time_and_location =
+                                    Some((entry.station, unwrapped_time + t));
+                            } else {
+                                pending_time_and_location =
+                                    Some((entry.station, unwrapped_time + t));
+                            }
                         } else {
-                            stack.push((*entity, Some(t)));
+                            if unwind_stack.is_none() {
+                                stack.push((*entity, Some(t)));
+                            } else {
+                                pending_entry = Some((*entity, Some(t)));
+                            }
                         }
                     }
                     DepartureType::Flexible | DepartureType::NonStop => {
                         if let ArrivalType::At(t) = entry.arrival {
                             entry.departure_estimate = Some(t);
                         } else {
-                            stack.push((*entity, None));
+                            if unwind_stack.is_none() {
+                                stack.push((*entity, None));
+                            } else {
+                                pending_entry = Some((*entity, None));
+                            }
                         }
                     }
                 }
@@ -290,12 +317,11 @@ fn calculate_estimations(
                         total_distances.clear();
                         continue 'iter_entries;
                     };
+                    if let Some(time_span) = time_span {
+                        total_time -= *time_span;
+                    }
                     if previous_station == entry.station {
                         total_distances.push(TrackDistance(0));
-                    } else if let Some(time_span) = time_span {
-                        // don't add the distance here and remove the time span
-                        total_distances.push(TrackDistance(0));
-                        total_time -= *time_span;
                     } else {
                         total_distances.push(
                             match graph.0.edge_weight(previous_station, entry.station) {
@@ -321,6 +347,7 @@ fn calculate_estimations(
                     }
                     previous_station = entry.station;
                 }
+                info!(?total_time);
                 // the last interval must be non-determinant
                 if previous_station == current_station {
                     total_distances.push(TrackDistance(0));
@@ -361,6 +388,10 @@ fn calculate_estimations(
                 }
                 let mut current_time = current_time;
                 let speed = total_distance / total_time;
+                if speed == Speed(0.0) {
+                    stack.clear();
+                    continue 'iter_entries;
+                }
                 while let (Some((intermediate_entry, time_span)), Some(interval_distance)) =
                     (stack.pop(), total_distances.pop())
                 {
@@ -369,14 +400,8 @@ fn calculate_estimations(
                         total_distances.clear();
                         continue 'iter_entries;
                     };
-                    let estimated_time = if let Some(time_span) = time_span {
-                        current_time - time_span
-                    } else if interval_distance == TrackDistance(0) {
+                    let estimated_time = if interval_distance == TrackDistance(0) {
                         current_time
-                    } else if speed == Speed(0.0) {
-                        stack.clear();
-                        total_distances.clear();
-                        continue 'iter_entries;
                     } else {
                         current_time - interval_distance / speed
                     };
@@ -386,6 +411,9 @@ fn calculate_estimations(
                         entry.arrival_estimate = Some(estimated_time)
                     }
                     current_time = estimated_time;
+                    if let Some(time_span) = time_span {
+                        current_time -= time_span;
+                    }
                     is_departure = !is_departure;
                 }
             }
@@ -409,14 +437,14 @@ fn calculate_estimations(
 }
 
 pub enum TimetableAdjustment {
-    AdjustArrivalType(crate::vehicles::ArrivalType),
+    SetArrivalType(crate::vehicles::ArrivalType),
     AdjustArrivalTime(crate::basic::TimetableTime),
-    AdjustDepartureType(crate::vehicles::DepartureType),
+    SetDepartureType(crate::vehicles::DepartureType),
     AdjustDepartureTime(crate::basic::TimetableTime),
-    AdjustStation(Entity),
-    AdjustService(Option<Entity>),
-    AdjustTrack(Option<Entity>),
-    AdjustNote(Option<String>),
+    SetStation(Entity),
+    SetService(Option<Entity>),
+    SetTrack(Option<Entity>),
+    SetNote(Option<String>),
 }
 
 #[derive(Message)]
@@ -456,13 +484,13 @@ pub fn adjust_timetable_entry(
         use TimetableAdjustment::*;
         match adjustment {
             AdjustArrivalTime(dt) => entry.arrival.adjust_time(dt.0),
-            AdjustArrivalType(nt) => entry.arrival.set_type(*nt),
+            SetArrivalType(nt) => entry.arrival.set_type(*nt),
             AdjustDepartureTime(dt) => entry.departure.adjust_time(dt.0),
-            AdjustDepartureType(nt) => entry.departure.set_type(*nt),
-            AdjustStation(ns) => entry.station = *ns,
-            AdjustService(ns) => entry.service = *ns,
-            AdjustTrack(nt) => entry.track = *nt,
-            AdjustNote(note) => {
+            SetDepartureType(nt) => entry.departure.set_type(*nt),
+            SetStation(ns) => entry.station = *ns,
+            SetService(ns) => entry.service = *ns,
+            SetTrack(nt) => entry.track = *nt,
+            SetNote(note) => {
                 if let Some(text) = note {
                     commands.entity(*entity).insert(crate::basic::Note {
                         text: text.clone(),
