@@ -1,6 +1,7 @@
 mod about;
 mod camera;
 mod tabs;
+mod widgets;
 
 use bevy::{ecs::system::SystemState, prelude::*};
 use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass, egui};

@@ -170,15 +170,13 @@ impl Plugin for VehiclesPlugin {
             .add_message::<AdjustVehicle>()
             .add_systems(
                 FixedUpdate,
-                adjust_timetable_entry.run_if(on_message::<AdjustTimetableEntry>),
+                (adjust_timetable_entry, calculate_estimations)
+                    .chain()
+                    .run_if(on_message::<AdjustTimetableEntry>),
             )
             .add_systems(
                 FixedUpdate,
                 adjust_vehicle.run_if(on_message::<AdjustVehicle>),
-            )
-            .add_systems(
-                FixedPostUpdate,
-                calculate_estimations.run_if(on_message::<AdjustTimetableEntry>),
             );
     }
 }
@@ -271,7 +269,7 @@ fn calculate_estimations(
                             if unwind_stack.is_none() {
                                 stack.push((*entity, Some(t)));
                             } else {
-                                pending_entry = Some((*entity, Some(t)));
+                                pending_entry = Some((*entity, None));
                             }
                         }
                     }
@@ -319,8 +317,8 @@ fn calculate_estimations(
                     };
                     if let Some(time_span) = time_span {
                         total_time -= *time_span;
-                    }
-                    if previous_station == entry.station {
+                    };
+                    if previous_station == entry.station || time_span.is_some() {
                         total_distances.push(TrackDistance(0));
                     } else {
                         total_distances.push(
@@ -339,7 +337,6 @@ fn calculate_estimations(
                                 // TODO: implement Dijkstra
                                 None => {
                                     stack.clear();
-                                    total_distances.clear();
                                     continue 'iter_entries;
                                 }
                             },
@@ -347,7 +344,6 @@ fn calculate_estimations(
                     }
                     previous_station = entry.station;
                 }
-                info!(?total_time);
                 // the last interval must be non-determinant
                 if previous_station == current_station {
                     total_distances.push(TrackDistance(0));
@@ -388,10 +384,6 @@ fn calculate_estimations(
                 }
                 let mut current_time = current_time;
                 let speed = total_distance / total_time;
-                if speed == Speed(0.0) {
-                    stack.clear();
-                    continue 'iter_entries;
-                }
                 while let (Some((intermediate_entry, time_span)), Some(interval_distance)) =
                     (stack.pop(), total_distances.pop())
                 {
@@ -402,6 +394,11 @@ fn calculate_estimations(
                     };
                     let estimated_time = if interval_distance == TrackDistance(0) {
                         current_time
+                    } else if speed == Speed(0.0) {
+                        // this check is placed here specifically because of contiguous entries that visit the same
+                        // station. In this case, the length rule is more important
+                        stack.clear();
+                        continue 'iter_entries;
                     } else {
                         current_time - interval_distance / speed
                     };
@@ -445,6 +442,7 @@ pub enum TimetableAdjustment {
     SetService(Option<Entity>),
     SetTrack(Option<Entity>),
     SetNote(Option<String>),
+    PassThrough,
 }
 
 #[derive(Message)]
@@ -501,6 +499,7 @@ pub fn adjust_timetable_entry(
                     commands.entity(*entity).remove::<crate::basic::Note>();
                 }
             }
+            PassThrough => (),
         }
     }
 }

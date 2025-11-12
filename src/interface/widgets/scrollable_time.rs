@@ -1,9 +1,7 @@
 use crate::{
     basic::TimetableTime,
     status_bar_text::SetStatusBarText,
-    vehicles::{
-        AdjustTimetableEntry, ArrivalType, TimetableAdjustment, TimetableEntry,
-    },
+    vehicles::{AdjustTimetableEntry, ArrivalType, TimetableAdjustment, TimetableEntry},
 };
 use bevy::prelude::{Entity, MessageWriter};
 use bevy_egui::egui::{
@@ -14,11 +12,12 @@ use std::borrow::Cow;
 
 pub fn time_widget(
     ui: &mut Ui,
-    entry: &TimetableEntry,
+    arrival: ArrivalType,
+    arrival_estimate: Option<TimetableTime>,
+    previous_departure_estimate: Option<TimetableTime>,
     entity: Entity,
     text_edit_buffer: &mut Option<(String, Entity, bool)>,
     msg_writer: &mut MessageWriter<AdjustTimetableEntry>,
-    bar: &mut Cow<'static, str>,
 ) {
     let sense = Sense::click_and_drag();
     let (rect, base_response) = ui.allocate_at_least(ui.available_size(), sense);
@@ -49,7 +48,7 @@ pub fn time_widget(
                     if let Some(parsed_time) = parse_time_input(&text) {
                         msg_writer.write(AdjustTimetableEntry {
                             entity,
-                            adjustment: TimetableAdjustment::AdjustArrivalType(parsed_time),
+                            adjustment: TimetableAdjustment::SetArrivalType(parsed_time),
                         });
                     }
                     *text_edit_buffer = None;
@@ -69,14 +68,14 @@ pub fn time_widget(
                     .collect();
                 *text_edit_buffer = Some((filtered_text, entity, *is_focused));
             } else {
-                let response = ui.monospace(format!("{}", entry.arrival));
+                let response = ui.monospace(format!("{}", arrival));
                 if base_response.union(response).double_clicked() {
-                    *text_edit_buffer = Some((format!("{}", entry.arrival), entity, true));
+                    *text_edit_buffer = Some((format!("{}", arrival), entity, true));
                 }
             }
         },
     );
-    let (show_at, show_for, show_flexible) = match entry.arrival {
+    let (show_at, show_for, show_flexible) = match arrival {
         ArrivalType::At(_) => (false, true, true),
         ArrivalType::Duration(_) => (true, false, true),
         ArrivalType::Flexible => (true, true, false),
@@ -90,17 +89,6 @@ pub fn time_widget(
                     for (s, dt) in [("-10", -10), ("-1", -1), ("+1", 1), ("+10", 10)] {
                         let mut response =
                             ui.add_sized((24.0, 18.0), Button::new(RichText::monospace(s.into())));
-                        response.set_status_bar_text(
-                            bar,
-                            if dt > 0 {
-                                format!("🕑 Add {} seconds to time. Right click for minutes.", dt)
-                            } else {
-                                format!(
-                                    "🕑 Subtract {} seconds from time. Right click for minutes.",
-                                    -dt
-                                )
-                            },
-                        );
                         if response.clicked() {
                             msg_writer.write(AdjustTimetableEntry {
                                 entity,
@@ -123,19 +111,59 @@ pub fn time_widget(
             if ui
                 .add_enabled(
                     show_at,
-                    Button::new("At").right_text(RichText::monospace("00:00:00+0".into())),
+                    Button::new("At").right_text(RichText::monospace(
+                        arrival_estimate
+                            .and_then(|v| Some(format!("{}", v)))
+                            .unwrap_or("--:--:--".into())
+                            .into(),
+                    )),
                 )
                 .clicked()
             {
+                msg_writer.write(AdjustTimetableEntry {
+                    entity,
+                    adjustment: TimetableAdjustment::SetArrivalType(
+                        if let Some(arrival_estimate) = arrival_estimate {
+                            ArrivalType::At(arrival_estimate)
+                        } else {
+                            ArrivalType::At(TimetableTime(0))
+                        },
+                    ),
+                });
                 ui.close();
             };
+            let time_difference =
+                if let (Some(arrival_estimate), Some(previous_departure_estimate)) =
+                    (arrival_estimate, previous_departure_estimate)
+                {
+                    Some(arrival_estimate - previous_departure_estimate)
+                } else {
+                    None
+                };
             if ui
                 .add_enabled(
                     show_for,
-                    Button::new("For").right_text(RichText::monospace("00:00:00+0".into())),
+                    Button::new("For").right_text(RichText::monospace(
+                        if let Some(time_difference) = time_difference {
+                            format!("{}", time_difference)
+                        } else {
+                            "-> --:--:--".into()
+                        }
+                        .into(),
+                    )),
                 )
                 .clicked()
             {
+                msg_writer.write(AdjustTimetableEntry {
+                    entity,
+                    adjustment: TimetableAdjustment::SetArrivalType(
+                        if let Some(time_difference) = time_difference {
+                            ArrivalType::Duration(time_difference)
+                        } else {
+                            ArrivalType::Duration(TimetableTime(0))
+                        },
+                    ),
+                });
                 ui.close();
             };
             if ui
@@ -144,7 +172,7 @@ pub fn time_widget(
             {
                 msg_writer.write(AdjustTimetableEntry {
                     entity,
-                    adjustment: TimetableAdjustment::AdjustArrivalType(ArrivalType::Flexible),
+                    adjustment: TimetableAdjustment::SetArrivalType(ArrivalType::Flexible),
                 });
                 ui.close();
             };

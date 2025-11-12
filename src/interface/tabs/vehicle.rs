@@ -108,12 +108,20 @@ impl<'a> TableDelegate for TableCache<'a> {
                 );
             }
             1 => {
-                if ui.monospace(format!("{}", self.arrivals[i].1)).clicked() {
-                    self.msg_sender.write(AdjustTimetableEntry {
-                        entity: self.arrivals[i].0,
-                        adjustment: TimetableAdjustment::SetArrivalType(ArrivalType::Flexible),
-                    });
-                };
+                use crate::interface::widgets::scrollable_time::time_widget;
+                time_widget(
+                    ui,
+                    self.arrivals[i].1,
+                    self.arrival_estimates[i],
+                    if i == 0 {
+                        None
+                    } else {
+                        self.departure_estimates[i - 1]
+                    },
+                    self.arrivals[i].0,
+                    &mut None,
+                    &mut self.msg_sender,
+                );
             }
             2 => {
                 if ui.monospace(format!("{}", self.departures[i].1)).clicked() {
