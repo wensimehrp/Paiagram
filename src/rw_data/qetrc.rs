@@ -52,6 +52,8 @@ struct RawQETRCService {
 
 #[derive(Deserialize)]
 struct RawQETRCTimetableEntry {
+    #[serde(rename = "business")]
+    stops: Option<bool>,
     #[serde(rename = "ddsj")]
     arrival: String,
     #[serde(rename = "cfsj")]
@@ -109,6 +111,7 @@ impl QETRCService {
 }
 
 struct QETRCTimetableEntry {
+    stops: bool,
     arrival: TimetableTime,
     departure: TimetableTime,
     station_name: String,
@@ -232,6 +235,7 @@ impl TryFrom<RawQETRCTimetableEntry> for QETRCTimetableEntry {
     type Error = String;
     fn try_from(value: RawQETRCTimetableEntry) -> Result<Self, Self::Error> {
         Ok(QETRCTimetableEntry {
+            stops: value.stops.unwrap_or(false),
             arrival: TimetableTime::from_str(&value.arrival).unwrap_or_default(),
             departure: TimetableTime::from_str(&value.departure).unwrap_or_default(),
             station_name: value.station_name,
@@ -378,25 +382,15 @@ fn create_timetable_entries(
             continue;
         };
         let timetable_entry = commands
-            .spawn(if i == 0 {
+            .spawn({
                 TimetableEntry {
-                    arrival: if entry.arrival == entry.departure {
+                    arrival: if entry.stops && entry.arrival == entry.departure {
                         TravelMode::Flexible
                     } else {
                         TravelMode::At(entry.arrival)
                     },
                     arrival_estimate: None,
-                    departure: Some(TravelMode::At(entry.departure)),
-                    departure_estimate: None,
-                    station: station_entity,
-                    service: service_entity,
-                    track: None,
-                }
-            } else {
-                TimetableEntry {
-                    arrival: TravelMode::At(entry.arrival),
-                    arrival_estimate: None,
-                    departure: if entry.arrival == entry.departure {
+                    departure: if !entry.stops && entry.arrival == entry.departure {
                         None
                     } else {
                         Some(TravelMode::At(entry.departure))

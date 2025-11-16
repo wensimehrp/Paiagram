@@ -10,7 +10,7 @@ use egui::{Color32, Ui};
 use egui_table::{CellInfo, HeaderCellInfo, Table, TableDelegate, columns::Column};
 
 const COLUMN_NAMES: &[&str] = &[
-    "Station", "Arri.", "Dept.", "Service", "Track", "Parent", "A.E.", "D.E.",
+    "Station", "Arri.", "Dept.", "Service", "Track", "Parent"
 ];
 
 pub struct TableCache<'a> {
@@ -179,21 +179,7 @@ impl<'a> TableDelegate for TableCache<'a> {
                         .unwrap_or("---"),
                 );
             }
-            6 => {
-                ui.monospace(
-                    self.arrival_estimates[i]
-                        .and_then(|v| Some(format!("{}", v)))
-                        .unwrap_or("---".into()),
-                );
-            }
-            7 => {
-                ui.monospace(
-                    self.departure_estimates[i]
-                        .and_then(|v| Some(format!("{}", v)))
-                        .unwrap_or("---".into()),
-                );
-            }
-            _ => (),
+            _ => unreachable!(),
         });
         ui.add_space(4.0);
     }
@@ -230,8 +216,6 @@ pub fn show_vehicle(
                     3 => Column::new(100.0).resizable(true),
                     4 => Column::new(100.0).resizable(true),
                     5 => Column::new(100.0).resizable(true),
-                    6 => Column::new(90.0).resizable(false),
-                    7 => Column::new(90.0).resizable(false),
                     _ => unreachable!(),
                 })
                 .collect::<Vec<_>>(),

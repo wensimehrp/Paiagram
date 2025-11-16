@@ -21,3 +21,7 @@ Transport simulation game players can use Paiagram to timetable vehicles.
 Transport Managers can use Paiagram to schedule services.
 
 Anyone can use Paiagram to kill some time :-)
+
+== Origin of the Name
+
+Paiagram is the mix of two words with different roots. The first being "排", which means to make or to organize, and its Pinyin is "pái". The second word is, of course, diagram. Combined they form the word _Paiagram_.

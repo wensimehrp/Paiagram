@@ -16,6 +16,7 @@ use bevy::ecs::{
     query::With,
     system::{In, InMut, Query},
 };
+use egui::RichText;
 
 /// Display station times in Japanese style timetable
 pub fn show_station_timetable(
@@ -46,7 +47,7 @@ pub fn show_station_timetable(
         rows[hour as usize].push((departure_estimate, entry, entity));
     }
     for row in &mut rows {
-        row.sort_by_key(|(time, _, _)| *time);
+        row.sort_by_key(|(time, _, _)| time.to_hmsd().1);
     }
     if ui.button("refresh").clicked() {
         for (_, _, schedule) in &vehicles {
@@ -60,17 +61,18 @@ pub fn show_station_timetable(
         ui.horizontal(|ui| {
             ui.label(format!("{:02}:00", hour));
             for (time, entry, parent_vehicle) in row {
-                if ui.button("ℹ").clicked() {
+                if ui
+                    .button(
+                        RichText::new({
+                            let (_, m, ..) = entry.departure_estimate.unwrap().to_hmsd();
+                            format!("{:02}", m)
+                        })
+                        .monospace(),
+                    )
+                    .clicked()
+                {
                     msg_open_tab.write(UiCommand::OpenOrFocusTab(AppTab::Vehicle(*parent_vehicle)));
                 }
-                ui.monospace({
-                    if let Some(departure_estimate) = entry.departure_estimate {
-                        let (h, m, ..) = departure_estimate.to_hmsd();
-                        format!("{:02}{:02}", h, m)
-                    } else {
-                        "----".to_string()
-                    }
-                });
             }
         });
     }
