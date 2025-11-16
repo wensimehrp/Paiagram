@@ -1,4 +1,4 @@
-use crate::basic::*;
+use crate::units::speed::Velocity;
 use bevy::prelude::*;
 use petgraph::{Undirected, graphmap};
 
@@ -20,13 +20,13 @@ pub struct Station;
 pub struct Depot;
 
 /// A track segment between two stations or nodes
-#[derive(Component, Reflect)]
+#[derive(Component)]
 #[require(Name)]
 pub struct Interval {
     /// The length of the track segment
-    pub length: TrackDistance,
+    pub length: crate::units::distance::Distance,
     /// The speed limit on the track segment, if any
-    pub speed_limit: Option<Speed>,
+    pub speed_limit: Option<Velocity>,
 }
 
 pub struct IntervalsPlugin;

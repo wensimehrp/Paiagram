@@ -1,6 +1,6 @@
 use crate::interface::UiCommand;
-use crate::vehicle_set::VehicleSet;
 use crate::vehicles::Vehicle;
+use crate::vehicles::vehicle_set::VehicleSet;
 use bevy::prelude::*;
 use egui::Id;
 use egui_ltreeview::{Action, TreeView};

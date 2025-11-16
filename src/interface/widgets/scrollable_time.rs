@@ -1,18 +1,19 @@
 use crate::{
-    basic::TimetableTime,
-    status_bar_text::SetStatusBarText,
-    vehicles::{AdjustTimetableEntry, ArrivalType, TimetableAdjustment, TimetableEntry},
+    units::time::{Duration, TimetableTime},
+    vehicles::{
+        AdjustTimetableEntry, TimetableAdjustment,
+        entries::{TimetableEntry, TravelMode},
+    },
 };
 use bevy::prelude::{Entity, MessageWriter};
 use bevy_egui::egui::{
     self, Align, Layout, Margin, Popup, PopupCloseBehavior, Sense, TextEdit, TextStyle, Ui,
     UiBuilder,
 };
-use std::borrow::Cow;
 
 pub fn time_widget(
     ui: &mut Ui,
-    arrival: ArrivalType,
+    arrival: TravelMode,
     arrival_estimate: Option<TimetableTime>,
     previous_departure_estimate: Option<TimetableTime>,
     entity: Entity,
@@ -76,9 +77,9 @@ pub fn time_widget(
         },
     );
     let (show_at, show_for, show_flexible) = match arrival {
-        ArrivalType::At(_) => (false, true, true),
-        ArrivalType::Duration(_) => (true, false, true),
-        ArrivalType::Flexible => (true, true, false),
+        TravelMode::At(_) => (false, true, true),
+        TravelMode::For(_) => (true, false, true),
+        TravelMode::Flexible => (true, true, false),
     };
     Popup::menu(&base_response.union(inner.response))
         .close_behavior(PopupCloseBehavior::CloseOnClickOutside)
@@ -92,15 +93,13 @@ pub fn time_widget(
                         if response.clicked() {
                             msg_writer.write(AdjustTimetableEntry {
                                 entity,
-                                adjustment: TimetableAdjustment::AdjustArrivalTime(TimetableTime(
-                                    dt,
-                                )),
+                                adjustment: TimetableAdjustment::AdjustArrivalTime(Duration(dt)),
                             });
                         }
                         if response.secondary_clicked() {
                             msg_writer.write(AdjustTimetableEntry {
                                 entity,
-                                adjustment: TimetableAdjustment::AdjustArrivalTime(TimetableTime(
+                                adjustment: TimetableAdjustment::AdjustArrivalTime(Duration(
                                     dt * 60,
                                 )),
                             });
@@ -124,9 +123,9 @@ pub fn time_widget(
                     entity,
                     adjustment: TimetableAdjustment::SetArrivalType(
                         if let Some(arrival_estimate) = arrival_estimate {
-                            ArrivalType::At(arrival_estimate)
+                            TravelMode::At(arrival_estimate)
                         } else {
-                            ArrivalType::At(TimetableTime(0))
+                            TravelMode::At(TimetableTime(0))
                         },
                     ),
                 });
@@ -158,9 +157,9 @@ pub fn time_widget(
                     entity,
                     adjustment: TimetableAdjustment::SetArrivalType(
                         if let Some(time_difference) = time_difference {
-                            ArrivalType::Duration(time_difference)
+                            TravelMode::For(time_difference)
                         } else {
-                            ArrivalType::Duration(TimetableTime(0))
+                            TravelMode::For(Duration(0))
                         },
                     ),
                 });
@@ -172,14 +171,14 @@ pub fn time_widget(
             {
                 msg_writer.write(AdjustTimetableEntry {
                     entity,
-                    adjustment: TimetableAdjustment::SetArrivalType(ArrivalType::Flexible),
+                    adjustment: TimetableAdjustment::SetArrivalType(TravelMode::Flexible),
                 });
                 ui.close();
             };
         });
 }
 
-fn parse_time_input(mut input: &str) -> Option<ArrivalType> {
+fn parse_time_input(mut input: &str) -> Option<TravelMode> {
     // check if the input starts with ->
     let mut is_duration = false;
     if input.starts_with("->") {
@@ -187,12 +186,12 @@ fn parse_time_input(mut input: &str) -> Option<ArrivalType> {
         input = &input[2..];
         is_duration = true;
     } else if input.starts_with(">>") {
-        return Some(ArrivalType::Flexible);
+        return Some(TravelMode::Flexible);
     }
     let time = TimetableTime::from_str(input)?;
     if is_duration {
-        Some(ArrivalType::Duration(time))
+        Some(TravelMode::For(Duration(time.0)))
     } else {
-        Some(ArrivalType::At(time))
+        Some(TravelMode::At(time))
     }
 }

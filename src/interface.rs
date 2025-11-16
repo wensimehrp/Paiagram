@@ -68,7 +68,6 @@ impl UiState {
 pub enum AppTab {
     AllNames,
     Vehicle(Entity),
-    LineTimetable(Entity),
 }
 
 /// User interface commands sent between systems
@@ -99,14 +98,6 @@ impl<'w> egui_dock::TabViewer for AppTabViewer<'w> {
                     .run_system_cached_with(tabs::vehicle::show_vehicle, (ui, *entity))
                     .unwrap();
             }
-            AppTab::LineTimetable(entity) => {
-                self.world
-                    .run_system_cached_with(
-                        tabs::line_timetable::show_line_timetable,
-                        (ui, *entity),
-                    )
-                    .unwrap();
-            }
         };
     }
 
@@ -121,23 +112,19 @@ impl<'w> egui_dock::TabViewer for AppTabViewer<'w> {
                     .map_or_else(|| "Unknown Vehicle".into(), |n| format!("{}", n));
                 format!("{}", name).into()
             }
-            AppTab::LineTimetable(_) => "Line Timetable".into(),
         }
     }
 
     fn id(&mut self, tab: &mut Self::Tab) -> egui::Id {
         match tab {
             AppTab::Vehicle(entity) => egui::Id::new(format!("VehicleTab_{:?}", entity)),
-            AppTab::LineTimetable(entity) => {
-                egui::Id::new(format!("LineTimetableTab_{:?}", entity))
-            }
             _ => egui::Id::new(self.title(tab).text()),
         }
     }
 
     fn scroll_bars(&self, tab: &Self::Tab) -> [bool; 2] {
         match tab {
-            AppTab::AllNames | AppTab::Vehicle(_) | AppTab::LineTimetable(_) => [false; 2],
+            AppTab::AllNames | AppTab::Vehicle(_) => [false; 2],
         }
     }
 

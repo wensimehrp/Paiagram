@@ -1,6 +1,8 @@
-use crate::basic::TimetableTime;
+use crate::units::time::{Duration, TimetableTime};
 use crate::vehicles::{
-    AdjustTimetableEntry, ArrivalType, DepartureType, Schedule, TimetableAdjustment, TimetableEntry,
+    AdjustTimetableEntry, TimetableAdjustment,
+    entries::{TimetableEntry, TravelMode, VehicleSchedule},
+    services::VehicleService,
 };
 use bevy::prelude::*;
 use egui::{Color32, Ui};
@@ -12,8 +14,8 @@ const COLUMN_NAMES: &[&str] = &[
 
 pub struct TableCache<'a> {
     station_names: Vec<Option<String>>,
-    arrivals: Vec<(Entity, ArrivalType)>,
-    departures: Vec<(Entity, DepartureType)>,
+    arrivals: Vec<(Entity, TravelMode)>,
+    departures: Vec<(Entity, Option<TravelMode>)>,
     arrival_estimates: Vec<Option<TimetableTime>>,
     departure_estimates: Vec<Option<TimetableTime>>,
     service_names: Vec<Option<String>>,
@@ -24,12 +26,12 @@ pub struct TableCache<'a> {
 
 impl<'a> TableCache<'a> {
     fn new(
-        vehicle_schedule: &Schedule,
+        vehicle_schedule: &VehicleSchedule,
         timetable_entries: &Query<(&TimetableEntry, &ChildOf)>,
         names: &Query<&Name>,
         msg_sender: MessageWriter<'a, AdjustTimetableEntry>,
     ) -> Self {
-        let schedule_length = vehicle_schedule.1.len();
+        let schedule_length = vehicle_schedule.entities.len();
         let mut station_names = Vec::with_capacity(schedule_length);
         let mut arrivals = Vec::with_capacity(schedule_length);
         let mut departures = Vec::with_capacity(schedule_length);
@@ -38,7 +40,7 @@ impl<'a> TableCache<'a> {
         let mut parent_names = Vec::with_capacity(schedule_length);
         let mut arrival_estimates = Vec::with_capacity(schedule_length);
         let mut departure_estimates = Vec::with_capacity(schedule_length);
-        for timetable_entry_entity in vehicle_schedule.1.iter() {
+        for timetable_entry_entity in vehicle_schedule.entities.iter() {
             let Ok((entry, parent)) = timetable_entries.get(*timetable_entry_entity) else {
                 continue;
             };
@@ -124,12 +126,18 @@ impl<'a> TableDelegate for TableCache<'a> {
                 );
             }
             2 => {
-                if ui.monospace(format!("{}", self.departures[i].1)).clicked() {
+                if ui
+                    .monospace(match self.departures[i].1 {
+                        Some(v) => format!("{}", v),
+                        None => "..".to_string(),
+                    })
+                    .clicked()
+                {
                     self.msg_sender.write(AdjustTimetableEntry {
                         entity: self.arrivals[i].0,
-                        adjustment: TimetableAdjustment::SetDepartureType(DepartureType::Duration(
-                            TimetableTime(100),
-                        )),
+                        adjustment: TimetableAdjustment::SetDepartureType(Some(TravelMode::For(
+                            Duration(100),
+                        ))),
                     });
                 };
             }
@@ -179,7 +187,7 @@ impl<'a> TableDelegate for TableCache<'a> {
 
 pub fn show_vehicle(
     (InMut(ui), In(entity)): (InMut<egui::Ui>, In<Entity>),
-    schedules: Query<&Schedule>,
+    schedules: Query<&VehicleSchedule>,
     timetable_entries: Query<(&TimetableEntry, &ChildOf)>,
     names: Query<&Name>,
     msg_sender: MessageWriter<AdjustTimetableEntry>,
@@ -191,7 +199,7 @@ pub fn show_vehicle(
     let mut current_table_cache =
         TableCache::new(vehicle_schedule, &timetable_entries, &names, msg_sender);
     Table::new()
-        .num_rows(vehicle_schedule.1.len() as u64)
+        .num_rows(vehicle_schedule.entities.len() as u64)
         .columns(
             (0..COLUMN_NAMES.len())
                 .map(|v| match v {

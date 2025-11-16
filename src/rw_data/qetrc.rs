@@ -1,7 +1,10 @@
-use crate::basic::*;
 use crate::intervals::*;
-use crate::lines::*;
-use crate::vehicle_set::VehicleSet;
+// use crate::lines::*;
+use crate::units::distance::Distance;
+use crate::units::time::{Duration, TimetableTime};
+use crate::vehicles::entries::{TimetableEntry, TravelMode, VehicleSchedule};
+use crate::vehicles::services::VehicleService;
+use crate::vehicles::vehicle_set::VehicleSet;
 use crate::vehicles::*;
 use bevy::platform::collections::HashMap;
 use serde::Deserialize;
@@ -97,7 +100,7 @@ struct QETRCService {
 }
 
 impl QETRCService {
-    fn shift_time(&mut self, time: TimetableTime) {
+    fn shift_time(&mut self, time: Duration) {
         self.timetable.iter_mut().for_each(|entry| {
             entry.arrival += time;
             entry.departure += time;
@@ -139,7 +142,7 @@ impl TryFrom<RawQETRCRoot> for QETRCRoot {
                         && current_first.arrival < last.departure
                     {
                         // shift by 24 hours
-                        service.shift_time(TimetableTime(86400));
+                        service.shift_time(Duration(86400));
                     }
                     vehicle_services.push(service);
                     last_entry = vehicle_services.last().and_then(|s| s.timetable.last());
@@ -317,7 +320,7 @@ fn create_vehicle(
     let mut timetable_entries = Vec::new();
     for service in vehicle.services {
         let service_entity = commands
-            .spawn((Service { class: None }, Name::new(service.name)))
+            .spawn((VehicleService { class: None }, Name::new(service.name)))
             .id();
         commands.entity(vehicle_entity).add_child(service_entity);
         let service_entries = create_timetable_entries(
@@ -329,12 +332,10 @@ fn create_vehicle(
         );
         timetable_entries.extend(service_entries);
     }
-    commands
-        .entity(vehicle_entity)
-        .insert(crate::vehicles::Schedule(
-            ScheduleStart::default(),
-            timetable_entries,
-        ));
+    commands.entity(vehicle_entity).insert(VehicleSchedule {
+        entities: timetable_entries,
+        ..Default::default()
+    });
     vehicle_entity
 }
 
@@ -347,7 +348,7 @@ fn create_vehicle_from_service(
         .spawn((Vehicle, Name::new(service.name.clone())))
         .id();
     let service_entity = commands
-        .spawn((Service { class: None }, Name::new(service.name)))
+        .spawn((VehicleService { class: None }, Name::new(service.name)))
         .id();
     commands.entity(vehicle_entity).add_child(service_entity);
     let timetable_entries = create_timetable_entries(
@@ -357,12 +358,10 @@ fn create_vehicle_from_service(
         vehicle_entity,
         Some(service_entity),
     );
-    commands
-        .entity(vehicle_entity)
-        .insert(crate::vehicles::Schedule(
-            ScheduleStart::default(),
-            timetable_entries,
-        ));
+    commands.entity(vehicle_entity).insert(VehicleSchedule {
+        entities: timetable_entries,
+        ..Default::default()
+    });
     vehicle_entity
 }
 
@@ -382,12 +381,12 @@ fn create_timetable_entries(
             .spawn(if i == 0 {
                 TimetableEntry {
                     arrival: if entry.arrival == entry.departure {
-                        ArrivalType::Flexible
+                        TravelMode::Flexible
                     } else {
-                        ArrivalType::At(entry.arrival)
+                        TravelMode::At(entry.arrival)
                     },
                     arrival_estimate: None,
-                    departure: DepartureType::At(entry.departure),
+                    departure: Some(TravelMode::At(entry.departure)),
                     departure_estimate: None,
                     station: station_entity,
                     service: service_entity,
@@ -395,12 +394,12 @@ fn create_timetable_entries(
                 }
             } else {
                 TimetableEntry {
-                    arrival: ArrivalType::At(entry.arrival),
+                    arrival: TravelMode::At(entry.arrival),
                     arrival_estimate: None,
                     departure: if entry.arrival == entry.departure {
-                        DepartureType::NonStop
+                        None
                     } else {
-                        DepartureType::At(entry.departure)
+                        Some(TravelMode::At(entry.departure))
                     },
                     departure_estimate: None,
                     station: station_entity,
@@ -421,13 +420,13 @@ fn create_line_entities(
     stations: &mut std::collections::HashMap<String, Entity>,
     graph_map: &mut IntervalGraphType,
 ) {
-    let mut intervals: DisplayedLineType = Vec::with_capacity(line.stations.len());
+    // let mut intervals: DisplayedLineType = Vec::with_capacity(line.stations.len());
     let Some(first_station) = line.stations.first() else {
-        commands.spawn((DisplayedLine(intervals), Name::new(line.name)));
+        // commands.spawn((DisplayedLine(intervals), Name::new(line.name)));
         return;
     };
     let first_entity = get_or_create_station(commands, stations, first_station);
-    intervals.push((first_entity, CanvasDistance::from_mm(0.0, 0.0)));
+    //intervals.push((first_entity, CanvasDistance::from_mm(0.0, 0.0)));
     let mut prev_station = first_station;
     let mut prev_entity = first_entity;
     for station in line.stations.iter().skip(1) {
@@ -436,18 +435,18 @@ fn create_line_entities(
         if !graph_map.contains_edge(prev_entity, next_entity) {
             let interval_entity = commands
                 .spawn(crate::intervals::Interval {
-                    length: TrackDistance::from_km(distance_delta),
+                    length: Distance::from_km(distance_delta),
                     speed_limit: None,
                 })
                 .id();
             graph_map.add_edge(prev_entity, next_entity, interval_entity);
         }
-        intervals.push((next_entity, CanvasDistance::from_mm(distance_delta, 1.0)));
+        // intervals.push((next_entity, CanvasDistance::from_mm(distance_delta, 1.0)));
         prev_station = station;
         prev_entity = next_entity;
     }
 
-    commands.spawn((DisplayedLine(intervals), Name::new(line.name)));
+    // commands.spawn((DisplayedLine(intervals), Name::new(line.name)));
 }
 
 fn get_or_create_station(

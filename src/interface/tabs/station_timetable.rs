@@ -1,9 +1,11 @@
 use crate::{
-    basic::TimetableTime,
     interface::UiCommand,
     intervals::{Depot, Station},
-    vehicle_set::VehicleSet,
-    vehicles::{DepartureType, Schedule, TimetableEntry, Vehicle},
+    vehicles::{
+        Vehicle,
+        entries::{TimetableEntry, TravelMode, VehicleSchedule},
+        vehicle_set::VehicleSet,
+    },
 };
 use bevy::ecs::{
     entity::Entity,
@@ -19,7 +21,7 @@ pub fn show_station_timetable(
     (InMut(ui), In((vehicle_set, station))): (InMut<egui::Ui>, In<(Entity, Entity)>),
     station_names: Query<(&Name, Option<&Depot>), With<Station>>,
     vehicle_sets: Query<&Children, With<VehicleSet>>,
-    vehicles: Query<(Entity, &Name, &Schedule), With<Vehicle>>,
+    vehicles: Query<(Entity, &Name, &VehicleSchedule), With<Vehicle>>,
     timetable_entries: Query<(&TimetableEntry, &ChildOf)>,
     mut msg_open_tab: MessageWriter<UiCommand>,
 ) {
@@ -27,10 +29,12 @@ pub fn show_station_timetable(
     let stopping_vehicles = timetable_entries
         .iter()
         .filter_map(|(entry, parent_vehicle)| {
-            if entry.station == station && !matches!(entry.departure, DepartureType::NonStop) {
+            if entry.station == station && !matches!(entry.departure, None) {
                 Some((entry, parent_vehicle.0))
             } else {
                 None
             }
         });
+    let columns: Vec<(&TimetableEntry, Entity)> = Vec::with_capacity(24);
+    for veh in stopping_vehicles {}
 }

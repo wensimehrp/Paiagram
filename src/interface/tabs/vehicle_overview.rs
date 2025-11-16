@@ -64,26 +64,24 @@ impl DeferredTableRenderer<VehicleOverviewDataSource> for VehicleOverviewRendere
 
 pub fn show_vehicle_overview(
     InMut(ui): InMut<egui::Ui>,
-    vehicles: Query<(Entity, &Name, &crate::vehicles::Schedule, &Children), With<Vehicle>>,
-    services: Query<&Service>,
+    vehicles: Query<
+        (
+            Entity,
+            &Name,
+            &crate::vehicles::entries::VehicleSchedule,
+            &Children,
+        ),
+        With<Vehicle>,
+    >,
+    services: Query<&crate::vehicles::services::VehicleService>,
     mut msg_ui: MessageWriter<UiCommand>,
-    displayed_lines: Query<(Entity, &Name), With<crate::lines::DisplayedLine>>,
 ) {
-    for line in displayed_lines.iter() {
-        let (entity, name) = line;
-        if ui.button(format!("{}", name)).clicked() {
-            msg_ui.write(UiCommand::OpenOrFocusVehicleTab(AppTab::LineTimetable(
-                entity,
-            )));
-        }
-    }
-
     let rows: Vec<VehicleOverviewRow> = vehicles
         .iter()
         .map(|(entity, name, schedule, children)| VehicleOverviewRow {
             vehicle: entity,
             name: name.as_str().to_owned(),
-            entry_count: schedule.1.len(),
+            entry_count: schedule.entities.len(),
             service_count: {
                 let mut count = 0;
                 for child in children.iter() {

@@ -33,7 +33,6 @@ fn clear_resources(
     mut commands: Commands,
     mut reader: MessageReader<ModifyData>,
     vehicles: Query<Entity, With<crate::vehicles::Vehicle>>,
-    displayed_lines: Query<Entity, With<crate::lines::DisplayedLine>>,
     intervals: Query<Entity, With<crate::intervals::Interval>>,
     stations: Query<Entity, With<crate::intervals::Station>>,
 ) {
@@ -48,9 +47,6 @@ fn clear_resources(
     }
     for vehicle in vehicles.iter() {
         commands.entity(vehicle).despawn_children().despawn();
-    }
-    for line in displayed_lines.iter() {
-        commands.entity(line).despawn_children().despawn();
     }
     for interval in intervals.iter() {
         commands.entity(interval).despawn_children().despawn();
