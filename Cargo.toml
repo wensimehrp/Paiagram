@@ -19,8 +19,10 @@ bevy = { version = "0.17.2", default-features = false, features = [
     "x11",
 ] }
 bevy_egui = "0.38.0"
-egui_extras = "0.33.0"
 egui_dock = "0.18.0"
+catppuccin-egui = { version = "5.7.0", default-features = false, features = [
+    "egui33",
+] }
 petgraph = "0.8.3"
 derive_more = { version = "2.0.1", features = ["full"] }
 serde_json = "1.0.145"
@@ -36,11 +38,9 @@ chrono = "0.4.42"
 clap = { version = "4.5.51", features = ["derive"] }
 egui_taffy = "0.10.0"
 bevy_framepace = "0.20.0"
-indexmap = "2.12.0"
-egui_deferred_table = "0.1.6"
 instant = { version = "0.1.13", features = ["wasm-bindgen"] }
 rayon = "1.11.0"
-egui = "0.33.0"
+egui = "0.33.2"
 smallvec = "1.15.1"
 either = "1.15.0"
 egui_ltreeview = "0.6.0"
@@ -49,9 +49,6 @@ nonmax = "0.5.5"
 egui_table = "0.5.0"
 slotmap = "1.0.7"
 slab = "0.4.11"
-
-[patch.crates-io]
-egui_deferred_table = { path = "vendor/egui_deferred_table" }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.3.*", features = ["wasm_js"] }

@@ -5,6 +5,7 @@ mod widgets;
 
 use bevy::{ecs::system::SystemState, prelude::*};
 use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass, egui};
+use egui::{CornerRadius, Margin};
 use egui_dock::{DockArea, DockState};
 use std::{collections::VecDeque, sync::Arc};
 
@@ -46,7 +47,7 @@ fn modify_dock_state(mut dock_state: ResMut<UiState>, mut msg_reader: MessageRea
 impl UiState {
     fn new() -> Self {
         Self {
-            dock_state: DockState::new(vec![AppTab::AllNames]),
+            dock_state: DockState::new(vec![]),
             status_bar_text: "Ready".into(),
         }
     }
@@ -66,7 +67,6 @@ impl UiState {
 /// An application tab
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub enum AppTab {
-    AllNames,
     Vehicle(Entity),
     StationTimetable(Entity, Entity),
 }
@@ -89,11 +89,6 @@ impl<'w> egui_dock::TabViewer for AppTabViewer<'w> {
 
     fn ui(&mut self, ui: &mut egui::Ui, tab: &mut Self::Tab) {
         match tab {
-            AppTab::AllNames => {
-                self.world
-                    .run_system_cached_with(tabs::vehicle_overview::show_vehicle_overview, ui)
-                    .unwrap();
-            }
             AppTab::Vehicle(entity) => {
                 self.world
                     .run_system_cached_with(tabs::vehicle::show_vehicle, (ui, *entity))
@@ -112,7 +107,6 @@ impl<'w> egui_dock::TabViewer for AppTabViewer<'w> {
 
     fn title(&mut self, tab: &mut Self::Tab) -> egui::WidgetText {
         match tab {
-            AppTab::AllNames => "All Names".into(),
             AppTab::Vehicle(entity) => {
                 // query the vehicle name from the world
                 let name = self
@@ -135,19 +129,17 @@ impl<'w> egui_dock::TabViewer for AppTabViewer<'w> {
     fn id(&mut self, tab: &mut Self::Tab) -> egui::Id {
         match tab {
             AppTab::Vehicle(entity) => egui::Id::new(format!("VehicleTab_{:?}", entity)),
-            AppTab::StationTimetable(vehicle_set, station_entity) => {
-                egui::Id::new(format!(
-                    "StationTimetableTab_{:?}_{:?}",
-                    vehicle_set, station_entity
-                ))
-            }
+            AppTab::StationTimetable(vehicle_set, station_entity) => egui::Id::new(format!(
+                "StationTimetableTab_{:?}_{:?}",
+                vehicle_set, station_entity
+            )),
             _ => egui::Id::new(self.title(tab).text()),
         }
     }
 
     fn scroll_bars(&self, tab: &Self::Tab) -> [bool; 2] {
         match tab {
-            AppTab::AllNames | AppTab::Vehicle(_) => [false; 2],
+            AppTab::Vehicle(_) => [false; 2],
             AppTab::StationTimetable(_, _) => [true; 2],
         }
     }
@@ -174,9 +166,7 @@ fn show_ui(
     let mut ctx = ctx.get_mut(world);
     let ctx = &ctx.ctx_mut().unwrap().clone();
     if !*initialized {
-        ctx.options_mut(|options| {
-            options.max_passes = std::num::NonZeroUsize::new(2).unwrap();
-        });
+        catppuccin_egui::set_theme(&ctx, catppuccin_egui::FRAPPE);
         ctx.style_mut(|style| {
             style.spacing.window_margin = egui::Margin::same(2);
         });
@@ -235,7 +225,15 @@ fn show_ui(
                     y += spacing;
                 }
                 let mut tab_viewer = AppTabViewer { world: world };
-                DockArea::new(&mut ui_state.dock_state).show_inside(ui, &mut tab_viewer);
+                let mut style = egui_dock::Style::from_egui(ui.style());
+                style.tab.tab_body.inner_margin = Margin::same(0);
+                style.tab.tab_body.corner_radius = CornerRadius::ZERO;
+                style.tab.tab_body.stroke.width = 0.0;
+                style.tab.hline_below_active_tab_name = true;
+                style.tab_bar.corner_radius = CornerRadius::ZERO;
+                DockArea::new(&mut ui_state.dock_state)
+                    .style(style)
+                    .show_inside(ui, &mut tab_viewer);
             });
     });
     *counter = counter.wrapping_add(1);
