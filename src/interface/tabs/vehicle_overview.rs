@@ -140,7 +140,7 @@ pub fn show_vehicle_overview(
     for action in actions {
         if let Action::CellClicked(cell_index) = action {
             if let Some(row) = data_source.row(cell_index.row) {
-                msg_ui.write(UiCommand::OpenOrFocusVehicleTab(AppTab::Vehicle(
+                msg_ui.write(UiCommand::OpenOrFocusTab(AppTab::Vehicle(
                     row.vehicle,
                 )));
             }

@@ -33,7 +33,7 @@ struct UiState {
 fn modify_dock_state(mut dock_state: ResMut<UiState>, mut msg_reader: MessageReader<UiCommand>) {
     for msg in msg_reader.read() {
         match msg {
-            UiCommand::OpenOrFocusVehicleTab(tab) => {
+            UiCommand::OpenOrFocusTab(tab) => {
                 dock_state.open_or_focus_tab(tab.clone());
             }
             UiCommand::SetStatusBarText(text) => {
@@ -68,12 +68,13 @@ impl UiState {
 pub enum AppTab {
     AllNames,
     Vehicle(Entity),
+    StationTimetable(Entity, Entity),
 }
 
 /// User interface commands sent between systems
 #[derive(Message)]
 pub enum UiCommand {
-    OpenOrFocusVehicleTab(AppTab),
+    OpenOrFocusTab(AppTab),
     SetStatusBarText(String),
 }
 
@@ -98,6 +99,14 @@ impl<'w> egui_dock::TabViewer for AppTabViewer<'w> {
                     .run_system_cached_with(tabs::vehicle::show_vehicle, (ui, *entity))
                     .unwrap();
             }
+            AppTab::StationTimetable(vehicle_set, station_entity) => {
+                self.world
+                    .run_system_cached_with(
+                        tabs::station_timetable::show_station_timetable,
+                        (ui, (*vehicle_set, *station_entity)),
+                    )
+                    .unwrap();
+            }
         };
     }
 
@@ -112,12 +121,26 @@ impl<'w> egui_dock::TabViewer for AppTabViewer<'w> {
                     .map_or_else(|| "Unknown Vehicle".into(), |n| format!("{}", n));
                 format!("{}", name).into()
             }
+            AppTab::StationTimetable(_, station_entity) => {
+                // query the station name from the world
+                let name = self
+                    .world
+                    .get::<Name>(*station_entity)
+                    .map_or_else(|| "Unknown Station".into(), |n| format!("{}", n));
+                format!("Station Timetable - {}", name).into()
+            }
         }
     }
 
     fn id(&mut self, tab: &mut Self::Tab) -> egui::Id {
         match tab {
             AppTab::Vehicle(entity) => egui::Id::new(format!("VehicleTab_{:?}", entity)),
+            AppTab::StationTimetable(vehicle_set, station_entity) => {
+                egui::Id::new(format!(
+                    "StationTimetableTab_{:?}_{:?}",
+                    vehicle_set, station_entity
+                ))
+            }
             _ => egui::Id::new(self.title(tab).text()),
         }
     }
@@ -125,6 +148,7 @@ impl<'w> egui_dock::TabViewer for AppTabViewer<'w> {
     fn scroll_bars(&self, tab: &Self::Tab) -> [bool; 2] {
         match tab {
             AppTab::AllNames | AppTab::Vehicle(_) => [false; 2],
+            AppTab::StationTimetable(_, _) => [true; 2],
         }
     }
 

@@ -1,3 +1,4 @@
+use crate::interface::UiCommand;
 use crate::units::time::{Duration, TimetableTime};
 use crate::vehicles::{
     AdjustTimetableEntry, TimetableAdjustment,
@@ -13,7 +14,7 @@ const COLUMN_NAMES: &[&str] = &[
 ];
 
 pub struct TableCache<'a> {
-    station_names: Vec<Option<String>>,
+    station_names: Vec<Option<(String, Entity)>>,
     arrivals: Vec<(Entity, TravelMode)>,
     departures: Vec<(Entity, Option<TravelMode>)>,
     arrival_estimates: Vec<Option<TimetableTime>>,
@@ -22,14 +23,18 @@ pub struct TableCache<'a> {
     track_names: Vec<Option<String>>,
     parent_names: Vec<Option<String>>,
     msg_sender: MessageWriter<'a, AdjustTimetableEntry>,
+    msg_open_ui: MessageWriter<'a, UiCommand>,
+    vehicle_set: Entity,
 }
 
 impl<'a> TableCache<'a> {
     fn new(
         vehicle_schedule: &VehicleSchedule,
         timetable_entries: &Query<(&TimetableEntry, &ChildOf)>,
-        names: &Query<&Name>,
+        names: &Query<(Entity, &Name)>,
         msg_sender: MessageWriter<'a, AdjustTimetableEntry>,
+        msg_open_ui: MessageWriter<'a, UiCommand>,
+        vehicle_set: Entity,
     ) -> Self {
         let schedule_length = vehicle_schedule.entities.len();
         let mut station_names = Vec::with_capacity(schedule_length);
@@ -46,15 +51,15 @@ impl<'a> TableCache<'a> {
             };
             let station_name = names
                 .get(entry.station)
-                .and_then(|s| Ok(s.to_string()))
+                .and_then(|(e, s)| Ok((s.to_string(), e)))
                 .ok();
-            let parent_name = names.get(parent.0).and_then(|s| Ok(s.to_string())).ok();
+            let parent_name = names.get(parent.0).and_then(|s| Ok(s.1.to_string())).ok();
             let service_name = entry
                 .service
-                .and_then(|e| names.get(e).and_then(|s| Ok(s.to_string())).ok());
+                .and_then(|e| names.get(e).and_then(|s| Ok(s.1.to_string())).ok());
             let track_name = entry
                 .track
-                .and_then(|e| names.get(e).and_then(|s| Ok(s.to_string())).ok());
+                .and_then(|e| names.get(e).and_then(|s| Ok(s.1.to_string())).ok());
             let arrival = entry.arrival;
             let departure = entry.departure;
             let arrival_estimate = entry.arrival_estimate;
@@ -78,6 +83,8 @@ impl<'a> TableCache<'a> {
             arrival_estimates,
             departure_estimates,
             msg_sender,
+            msg_open_ui,
+            vehicle_set,
         }
     }
 }
@@ -100,12 +107,19 @@ impl<'a> TableDelegate for TableCache<'a> {
                     info!("123");
                 }
                 if ui.button("ℹ").clicked() {
-                    info!("456");
+                    if let Some((_, station_entity)) = &self.station_names[i] {
+                        self.msg_open_ui.write(UiCommand::OpenOrFocusTab(
+                            crate::interface::AppTab::StationTimetable(
+                                self.vehicle_set,
+                                *station_entity,
+                            ),
+                        ));
+                    }
                 }
                 ui.label(
                     self.station_names[i]
                         .as_ref()
-                        .and_then(|v| Some(v.as_str()))
+                        .and_then(|v| Some(v.0.as_str()))
                         .unwrap_or("---"),
                 );
             }
@@ -187,17 +201,24 @@ impl<'a> TableDelegate for TableCache<'a> {
 
 pub fn show_vehicle(
     (InMut(ui), In(entity)): (InMut<egui::Ui>, In<Entity>),
-    schedules: Query<&VehicleSchedule>,
+    schedules: Query<(&VehicleSchedule, &ChildOf)>,
     timetable_entries: Query<(&TimetableEntry, &ChildOf)>,
-    names: Query<&Name>,
+    names: Query<(Entity, &Name)>,
     msg_sender: MessageWriter<AdjustTimetableEntry>,
+    msg_open_ui: MessageWriter<UiCommand>,
 ) {
-    let Ok(vehicle_schedule) = schedules.get(entity) else {
+    let Ok((vehicle_schedule, parent)) = schedules.get(entity) else {
         ui.label("The vehicle does not exist.");
         return;
     };
-    let mut current_table_cache =
-        TableCache::new(vehicle_schedule, &timetable_entries, &names, msg_sender);
+    let mut current_table_cache = TableCache::new(
+        vehicle_schedule,
+        &timetable_entries,
+        &names,
+        msg_sender,
+        msg_open_ui,
+        parent.0,
+    );
     Table::new()
         .num_rows(vehicle_schedule.entities.len() as u64)
         .columns(

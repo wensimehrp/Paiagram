@@ -37,7 +37,7 @@ pub fn show_tree_view(
                 for item in entries.selected {
                     match item {
                         TreeViewItem::Vehicle(entity) => {
-                            msg_open_tab.write(UiCommand::OpenOrFocusVehicleTab(
+                            msg_open_tab.write(UiCommand::OpenOrFocusTab(
                                 crate::interface::AppTab::Vehicle(entity),
                             ));
                         }
