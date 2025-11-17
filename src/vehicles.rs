@@ -33,7 +33,6 @@ fn calculate_estimates(
     parents: Populated<&ChildOf>,
     schedules: Populated<&entries::VehicleSchedule>,
     graph: Res<Graph>,
-    names: Populated<&Name>,
 ) {
     fn clear_estimates(
         entries: &mut Populated<&mut entries::TimetableEntry>,
@@ -139,7 +138,6 @@ fn calculate_estimates(
                     stack.push((*timetable_entry_entity, None, None));
                 }
             };
-            drop(tte);
             let Some((previous_time_and_station, time_offset)) = unwind_params.take() else {
                 continue;
             };
@@ -147,12 +145,10 @@ fn calculate_estimates(
                 continue;
             }
             let Some((previous_time, mut previous_station)) = previous_time_and_station else {
-                info!("0 {:?}", stack);
                 clear_estimates(&mut entries, &mut stack);
                 continue;
             };
             let Some((mut current_time, current_station)) = stable_time_and_station else {
-                info!("1 {:?}", stack);
                 clear_estimates(&mut entries, &mut stack);
                 continue;
             };
@@ -160,7 +156,6 @@ fn calculate_estimates(
             let mut total_time = current_time - previous_time;
             for (timetable_entry_entity, arr_dur, dep_dur) in stack.iter() {
                 let Ok(tte) = entries.get(*timetable_entry_entity) else {
-                    info!("2 {:?}", stack);
                     clear_estimates(&mut entries, &mut stack);
                     continue 'iter_timetable;
                 };
@@ -172,20 +167,11 @@ fn calculate_estimates(
                             if let Ok(interval) = intervals.get(*w) {
                                 Some(interval.length)
                             } else {
-                                info!("3 {:?}", stack);
                                 clear_estimates(&mut entries, &mut stack);
                                 continue 'iter_timetable;
                             }
                         }
                         None => {
-                            info!("4 {:?}", stack);
-                            info!(
-                                "{:?} {:?} {:?} {:?}",
-                                previous_station,
-                                names.get(previous_station),
-                                tte.station,
-                                names.get(tte.station)
-                            );
                             clear_estimates(&mut entries, &mut stack);
                             continue 'iter_timetable;
                         }
@@ -206,13 +192,11 @@ fn calculate_estimates(
                         if let Ok(interval) = intervals.get(*w) {
                             Some(interval.length)
                         } else {
-                            info!("5 {:?}", stack);
                             clear_estimates(&mut entries, &mut stack);
                             continue 'iter_timetable;
                         }
                     }
                     None => {
-                        info!("6 {:?}", stack);
                         clear_estimates(&mut entries, &mut stack);
                         continue 'iter_timetable;
                     }
@@ -253,7 +237,6 @@ fn calculate_estimates(
                 }
             }
         }
-        info!("7 {:?}", stack);
         clear_estimates(&mut entries, &mut stack);
     }
 }

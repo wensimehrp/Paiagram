@@ -9,9 +9,7 @@ use bevy::prelude::*;
 use egui::{Color32, Ui};
 use egui_table::{CellInfo, HeaderCellInfo, Table, TableDelegate, columns::Column};
 
-const COLUMN_NAMES: &[&str] = &[
-    "Station", "Arri.", "Dept.", "Service", "Track", "Parent"
-];
+const COLUMN_NAMES: &[&str] = &["Station", "Arri.", "Dept.", "Service", "Track", "Parent"];
 
 pub struct TableCache<'a> {
     station_names: Vec<Option<(String, Entity)>>,
@@ -108,11 +106,9 @@ impl<'a> TableDelegate for TableCache<'a> {
                 }
                 if ui.button("ℹ").clicked() {
                     if let Some((_, station_entity)) = &self.station_names[i] {
-                        self.msg_open_ui.write(UiCommand::OpenOrFocusTab(
-                            crate::interface::AppTab::StationTimetable(
-                                self.vehicle_set,
-                                *station_entity,
-                            ),
+                        self.msg_open_ui.write(UiCommand::OpenOrFocusStationTab(
+                            crate::interface::AppTab::StationTimetable(*station_entity),
+                            self.vehicle_set,
                         ));
                     }
                 }
