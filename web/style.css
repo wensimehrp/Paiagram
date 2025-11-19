@@ -26,7 +26,7 @@ body {
     font-family: 'Merriweather Sans Variable', Arial, Helvetica, sans-serif;
     background: #f4f4f4;
     color: #222;
-    max-width: 960px;
+    max-width: 720px;
     margin: 2rem auto;
     padding: 1.5rem;
     background: #fff;
@@ -35,42 +35,47 @@ body {
     line-height: 1.4;
 }
 
-kbd {
-    background: #eee;
-    border: 1.5px solid #ccc;
-    border-radius: 5px;
-    padding: 2px 2px;
-    font-family: monospace;
-    font-weight: bold;
-    box-shadow: inset 0 -2px 0 #bbb;
-}
-
-kbd.path {
-    border-radius: 0px;
-    border: 1.5px solid #9c8851;
-    box-shadow: inset 0 -2px 0 #806f3a;
-    background: #edcd74;
-}
-
 table {
     border-collapse: collapse;
 }
 
 th,
+
 td {
     border: 1.5px solid #bbb;
     text-align: left;
     padding: 0.2rem;
 }
 
-a {
-    color: #0066cc;
+a.link-card {
+    display: block;
+    padding: 1rem 1.25rem;
+    border-radius: 8px;
+    background: #ffffff;
+    border: 1px solid #d4dae7;
     text-decoration: none;
+    color: inherit;
+    margin-bottom: 1rem;
+    transition: border-color 0.1s ease-in-out;
 }
 
-a:hover {
-    text-decoration: underline;
+a.link-card:hover,
+
+a.link-card:focus-visible {
+    border-color: #5f8cff;
+    outline: none;
 }
+
+a.link-card span {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+}
+
+a.link-card small {
+    color: #4b5468;
+}
+
 
 @media (max-width: 720px) {
     body {
@@ -86,19 +91,15 @@ a:hover {
         color: #ddd;
         border: 1.5px solid #333;
     }
-    kbd {
-        background: #333;
-        border: 1.5px solid #555;
-        box-shadow: inset 0 -2px 0 #000;
-        color: #eee;
+    a.link-card {
+        background: #2a2a2a;
+        border: 1.5px solid #444c5c;
     }
-    kbd.path {
-        border: 1.5px solid #bfae6f;
-        box-shadow: inset 0 -2px 0 #7f6e3a;
-        background: #665c34;
-        color: #fff;
+    a.link-card:hover,
+    a.link-card:focus-visible {
+        border-color: #5f8cff;
     }
-    a {
-        color: #3399ff;
+    a.link-card small {
+        color: #888;
     }
 }
