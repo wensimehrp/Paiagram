@@ -1,4 +1,4 @@
-use crate::interface::UiCommand;
+use crate::interface::{AppTab, UiCommand};
 use crate::units::time::{Duration, TimetableTime};
 use crate::vehicles::{
     AdjustTimetableEntry, TimetableAdjustment,
@@ -11,15 +11,17 @@ use egui_table::{CellInfo, HeaderCellInfo, Table, TableDelegate, columns::Column
 
 const COLUMN_NAMES: &[&str] = &["Station", "Arri.", "Dept.", "Service", "Track", "Parent"];
 
-pub struct TableCache<'a> {
-    station_names: Vec<Option<(String, Entity)>>,
-    arrivals: Vec<(Entity, TravelMode)>,
-    departures: Vec<(Entity, Option<TravelMode>)>,
-    arrival_estimates: Vec<Option<TimetableTime>>,
-    departure_estimates: Vec<Option<TimetableTime>>,
-    service_names: Vec<Option<String>>,
-    track_names: Vec<Option<String>>,
-    parent_names: Vec<Option<String>>,
+struct TimetableInfo<'a> {
+    station_name: Option<&'a str>,
+    service_name: Option<&'a str>,
+    track_name: Option<&'a str>,
+    parent_name: Option<&'a str>,
+    entry: &'a TimetableEntry,
+}
+
+struct TableCache<'a> {
+    entries: Vec<TimetableInfo<'a>>,
+    timetable_entities: &'a [Entity],
     msg_sender: MessageWriter<'a, AdjustTimetableEntry>,
     msg_open_ui: MessageWriter<'a, UiCommand>,
     vehicle_set: Entity,
@@ -27,62 +29,56 @@ pub struct TableCache<'a> {
 
 impl<'a> TableCache<'a> {
     fn new(
-        vehicle_schedule: &VehicleSchedule,
-        timetable_entries: &Query<(&TimetableEntry, &ChildOf)>,
-        names: &Query<(Entity, &Name)>,
+        vehicle_schedule: &'a VehicleSchedule,
+        timetable_entries: &'a Query<(&TimetableEntry, &ChildOf)>,
+        names: &'a Query<(Entity, &Name)>,
         msg_sender: MessageWriter<'a, AdjustTimetableEntry>,
         msg_open_ui: MessageWriter<'a, UiCommand>,
         vehicle_set: Entity,
     ) -> Self {
         let schedule_length = vehicle_schedule.entities.len();
-        let mut station_names = Vec::with_capacity(schedule_length);
-        let mut arrivals = Vec::with_capacity(schedule_length);
-        let mut departures = Vec::with_capacity(schedule_length);
-        let mut service_names = Vec::with_capacity(schedule_length);
-        let mut track_names = Vec::with_capacity(schedule_length);
-        let mut parent_names = Vec::with_capacity(schedule_length);
-        let mut arrival_estimates = Vec::with_capacity(schedule_length);
-        let mut departure_estimates = Vec::with_capacity(schedule_length);
+        let mut entries = Vec::with_capacity(schedule_length);
         for timetable_entry_entity in vehicle_schedule.entities.iter() {
             let Ok((entry, parent)) = timetable_entries.get(*timetable_entry_entity) else {
                 continue;
             };
             let station_name = names
                 .get(entry.station)
-                .and_then(|(e, s)| Ok((s.to_string(), e)))
-                .ok();
-            let parent_name = names.get(parent.0).and_then(|s| Ok(s.1.to_string())).ok();
-            let service_name = entry
-                .service
-                .and_then(|e| names.get(e).and_then(|s| Ok(s.1.to_string())).ok());
-            let track_name = entry
-                .track
-                .and_then(|e| names.get(e).and_then(|s| Ok(s.1.to_string())).ok());
-            let arrival = entry.arrival;
-            let departure = entry.departure;
-            let arrival_estimate = entry.arrival_estimate;
-            let departure_estimate = entry.departure_estimate;
-            station_names.push(station_name);
-            arrivals.push((*timetable_entry_entity, arrival));
-            departures.push((*timetable_entry_entity, departure));
-            service_names.push(service_name);
-            track_names.push(track_name);
-            parent_names.push(parent_name);
-            arrival_estimates.push(arrival_estimate);
-            departure_estimates.push(departure_estimate);
+                .ok()
+                .and_then(|(_, name)| Some(name.as_str()));
+            let service_name = match entry.service {
+                Some(service_entity) => names
+                    .get(service_entity)
+                    .ok()
+                    .and_then(|(_, name)| Some(name.as_str())),
+                None => None,
+            };
+            let track_name = match entry.track {
+                Some(track_entity) => names
+                    .get(track_entity)
+                    .ok()
+                    .and_then(|(_, name)| Some(name.as_str())),
+                None => None,
+            };
+            let parent_name = names
+                .get(parent.0)
+                .ok()
+                .and_then(|(_, name)| Some(name.as_str()));
+            let info = TimetableInfo {
+                station_name,
+                service_name,
+                track_name,
+                parent_name,
+                entry,
+            };
+            entries.push(info);
         }
         Self {
-            station_names,
-            arrivals,
-            departures,
-            service_names,
-            track_names,
-            parent_names,
-            arrival_estimates,
-            departure_estimates,
+            entries,
             msg_sender,
             msg_open_ui,
             vehicle_set,
+            timetable_entities: &vehicle_schedule.entities,
         }
     }
 }
@@ -98,53 +94,45 @@ impl<'a> TableDelegate for TableCache<'a> {
         let i = cell.row_nr as usize;
         ui.add_space(4.0);
         ui.style_mut().spacing.item_spacing.x = 4.0;
-        if ui.rect_contains_pointer(ui.max_rect().expand2(ui.style().spacing.item_spacing)) {}
         egui::Frame::new().show(ui, |ui| match cell.col_nr {
             0 => {
                 if ui.button("☰").clicked() {
                     info!("123");
                 }
                 if ui.button("ℹ").clicked() {
-                    if let Some((_, station_entity)) = &self.station_names[i] {
-                        self.msg_open_ui.write(UiCommand::OpenOrFocusStationTab(
-                            crate::interface::AppTab::StationTimetable(*station_entity),
-                            self.vehicle_set,
-                        ));
-                    }
+                    self.msg_open_ui
+                        .write(UiCommand::OpenOrFocusTab(AppTab::StationTimetable(
+                            self.entries[i].entry.station,
+                        )));
                 }
-                ui.label(
-                    self.station_names[i]
-                        .as_ref()
-                        .and_then(|v| Some(v.0.as_str()))
-                        .unwrap_or("---"),
-                );
+                ui.label(self.entries[i].station_name.unwrap_or("---"));
             }
             1 => {
                 use crate::interface::widgets::scrollable_time::time_widget;
                 time_widget(
                     ui,
-                    self.arrivals[i].1,
-                    self.arrival_estimates[i],
+                    self.entries[i].entry.arrival,
+                    self.entries[i].entry.arrival_estimate,
                     if i == 0 {
                         None
                     } else {
-                        self.departure_estimates[i - 1]
+                        self.entries[i - 1].entry.departure_estimate
                     },
-                    self.arrivals[i].0,
+                    self.timetable_entities[i],
                     &mut None,
                     &mut self.msg_sender,
                 );
             }
             2 => {
                 if ui
-                    .monospace(match self.departures[i].1 {
+                    .monospace(match self.entries[i].entry.departure {
                         Some(v) => format!("{}", v),
                         None => "..".to_string(),
                     })
                     .clicked()
                 {
                     self.msg_sender.write(AdjustTimetableEntry {
-                        entity: self.arrivals[i].0,
+                        entity: self.timetable_entities[i],
                         adjustment: TimetableAdjustment::SetDepartureType(Some(TravelMode::For(
                             Duration(100),
                         ))),
@@ -152,28 +140,13 @@ impl<'a> TableDelegate for TableCache<'a> {
                 };
             }
             3 => {
-                ui.label(
-                    self.service_names[i]
-                        .as_ref()
-                        .and_then(|v| Some(v.as_str()))
-                        .unwrap_or("---"),
-                );
+                ui.label(self.entries[i].service_name.unwrap_or("---"));
             }
             4 => {
-                ui.label(
-                    self.track_names[i]
-                        .as_ref()
-                        .and_then(|v| Some(v.as_str()))
-                        .unwrap_or("---"),
-                );
+                ui.label(self.entries[i].track_name.unwrap_or("---"));
             }
             5 => {
-                ui.label(
-                    self.parent_names[i]
-                        .as_ref()
-                        .and_then(|v| Some(v.as_str()))
-                        .unwrap_or("---"),
-                );
+                ui.label(self.entries[i].parent_name.unwrap_or("---"));
             }
             _ => unreachable!(),
         });
@@ -186,13 +159,21 @@ pub fn show_vehicle(
     schedules: Query<(&VehicleSchedule, &ChildOf)>,
     timetable_entries: Query<(&TimetableEntry, &ChildOf)>,
     names: Query<(Entity, &Name)>,
-    msg_sender: MessageWriter<AdjustTimetableEntry>,
+    mut msg_sender: MessageWriter<AdjustTimetableEntry>,
     msg_open_ui: MessageWriter<UiCommand>,
 ) {
     let Ok((vehicle_schedule, parent)) = schedules.get(entity) else {
         ui.label("The vehicle does not exist.");
         return;
     };
+    if ui.button("Refresh").clicked() {
+        for schedule in schedules.iter() {
+            msg_sender.write(AdjustTimetableEntry {
+                entity: schedule.0.entities[0],
+                adjustment: TimetableAdjustment::PassThrough,
+            });
+        }
+    }
     let mut current_table_cache = TableCache::new(
         vehicle_schedule,
         &timetable_entries,

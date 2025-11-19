@@ -133,10 +133,9 @@ impl<'w> egui_dock::TabViewer for AppTabViewer<'w> {
     fn id(&mut self, tab: &mut Self::Tab) -> egui::Id {
         match tab {
             AppTab::Vehicle(entity) => egui::Id::new(format!("VehicleTab_{:?}", entity)),
-            AppTab::StationTimetable(station_entity) => egui::Id::new(format!(
-                "StationTimetableTab_{:?}",
-                station_entity
-            )),
+            AppTab::StationTimetable(station_entity) => {
+                egui::Id::new(format!("StationTimetableTab_{:?}", station_entity))
+            }
             _ => egui::Id::new(self.title(tab).text()),
         }
     }
@@ -172,6 +171,7 @@ fn show_ui(
     if !*initialized {
         ctx.style_mut(|style| {
             style.spacing.window_margin = egui::Margin::same(2);
+            style.interaction.selectable_labels = false;
         });
         apply_custom_fonts(ctx);
         *initialized = true;

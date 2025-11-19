@@ -1,13 +1,7 @@
-// pub mod oudiasecond;
+pub mod oudiasecond;
 pub mod qetrc;
 
 use bevy::prelude::*;
-
-// puppet mod for oudiasecond
-pub mod oudiasecond {
-    use bevy::prelude::*;
-    pub fn load_oud2(mut commands: Commands) {}
-}
 
 pub struct RwDataPlugin;
 

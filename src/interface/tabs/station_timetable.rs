@@ -21,36 +21,61 @@ use bevy::{
     },
     log::info,
 };
-use egui::RichText;
+use egui::{Button, Frame, Label, Rect, RichText, Sense, Separator, UiBuilder, Widget, vec2};
 use egui_table::{Column, Table, TableDelegate};
 
 struct TableCache<'a> {
     msg_open_ui: MessageWriter<'a, UiCommand>,
-    times: Vec<Vec<(String, String, TimetableTime, Entity)>>,
+    times: &'a [Vec<(&'a str, &'a str, TimetableTime, Entity)>],
 }
 
 impl TableDelegate for TableCache<'_> {
     fn default_row_height(&self) -> f32 {
-        20.0
+        60.0 + 6.0
     }
-    fn header_cell_ui(&mut self, ui: &mut egui::Ui, cell: &egui_table::HeaderCellInfo) {
-        ui.label(["Time", "Details"][cell.group_index]);
-    }
+    fn header_cell_ui(&mut self, ui: &mut egui::Ui, cell: &egui_table::HeaderCellInfo) {}
     fn cell_ui(&mut self, ui: &mut egui::Ui, cell: &egui_table::CellInfo) {
         let i = cell.row_nr as usize;
         match cell.col_nr {
             0 => {
-                ui.monospace(format!("{:02}:00", i));
+                ui.style_mut().spacing.item_spacing.x = 0.0;
+                ui.set_width(ui.available_width() - 1.0);
+                ui.centered_and_justified(|ui| {
+                    ui.label(format!("{:02}", i));
+                });
+                ui.add(Separator::default().spacing(0.0).vertical());
             }
             1 => {
                 let entries = &self.times[i];
-                for (terminal_name, class, time, entry_entity) in entries {
-                    if ui
-                        .button(RichText::new(format!("{:02}", time.to_hmsd().1)).monospace())
-                        .clicked()
-                    {
+                ui.style_mut().spacing.item_spacing.x = 0.0;
+                for (station_name, service_name, time, entity) in entries {
+                    ui.add_space(6.0);
+                    let (rect, resp) = ui.allocate_exact_size(vec2(40.0, 60.0), Sense::click());
+                    let response = ui
+                        .scope_builder(
+                            UiBuilder::new().sense(Sense::click()).max_rect(rect),
+                            |ui| {
+                                let response = ui.response();
+                                let visuals = ui.style().interact(&response);
+                                let mut stroke = visuals.bg_stroke;
+                                stroke.width = 1.5;
+                                Frame::canvas(ui.style())
+                                    .fill(visuals.bg_fill.gamma_multiply(0.5))
+                                    .stroke(stroke)
+                                    .show(ui, |ui| {
+                                        ui.set_width(ui.available_width());
+                                        ui.vertical_centered_justified(|ui| {
+                                            ui.label(*service_name);
+                                            ui.label(time.to_hmsd().1.to_string());
+                                            ui.label(*station_name);
+                                        });
+                                    });
+                            },
+                        )
+                        .response;
+                    if response.clicked() {
                         self.msg_open_ui
-                            .write(UiCommand::OpenOrFocusTab(AppTab::Vehicle(*entry_entity)));
+                            .write(UiCommand::OpenOrFocusTab(AppTab::Vehicle(*entity)));
                     }
                 }
             }
@@ -69,12 +94,10 @@ pub struct SelectedLineCache {
 /// Display station times in Japanese style timetable
 pub fn show_station_timetable(
     (InMut(ui), In(station)): (InMut<egui::Ui>, In<Entity>),
-    station_names: Query<(&Name, Option<&Depot>), With<Station>>,
     vehicle_sets: Query<(Entity, &Children, &Name), With<VehicleSet>>,
     vehicles: Query<(Entity, &Name, &VehicleSchedule), With<Vehicle>>,
     timetable_entries: Query<(&TimetableEntry, &ChildOf)>,
-    mut msg_passthrough: MessageWriter<AdjustTimetableEntry>,
-    mut msg_open_ui: MessageWriter<UiCommand>,
+    msg_open_ui: MessageWriter<UiCommand>,
     mut selected_line_cache: Local<SelectedLineCache>,
 ) {
     let mut selected_line_info: Option<Entity> = selected_line_cache.vehicle_set;
@@ -96,22 +119,11 @@ pub fn show_station_timetable(
                 }
             }
         });
-    if ui.button("Refresh").clicked() {
-        for vehicle in vehicles {
-            let Some(entity) = vehicle.2.entities.get(0) else {
-                continue;
-            };
-            msg_passthrough.write(AdjustTimetableEntry {
-                entity: *entity,
-                adjustment: TimetableAdjustment::PassThrough,
-            });
-        }
-    }
     if selected_line_info.is_none() {
         ui.label("No vehicle set selected.");
         return;
     }
-    let mut times: Vec<Vec<(String, String, TimetableTime, Entity)>> = vec![Vec::new(); 24];
+    let mut times: Vec<Vec<(&str, &str, TimetableTime, Entity)>> = vec![Vec::new(); 24];
     for entry in selected_line_cache
         .children
         .iter()
@@ -128,18 +140,22 @@ pub fn show_station_timetable(
         };
         let (hour, ..) = departure_time.to_hmsd();
         let index = hour.rem_euclid(24) as usize;
-        times[index].push((String::new(), String::new(), departure_time, parent.0))
+        times[index].push(("北京西", "快车", departure_time, parent.0))
     }
     for time in &mut times {
         time.sort_by_key(|k| k.2.to_hmsd().1);
     }
     let mut table_cache = TableCache {
         msg_open_ui: msg_open_ui,
-        times,
+        times: &times,
     };
     Table::new()
         .num_rows(24u64)
-        .columns(vec![Column::new(100.0).resizable(true); 2])
+        .headers(vec![])
+        .columns(vec![
+            Column::new(30.0).resizable(false),
+            Column::new(500.0).resizable(true),
+        ])
         .num_sticky_cols(1)
         .show(ui, &mut table_cache);
 }
