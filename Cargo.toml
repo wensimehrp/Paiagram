@@ -27,7 +27,7 @@ petgraph = "0.8.3"
 derive_more = { version = "2.0.1", features = ["full"] }
 serde_json = "1.0.145"
 serde = "1.0.228"
-bevy_camera = "0.17.2"
+bevy_camera = "0.17.3"
 rand = "0.9.2"
 ib-matcher = { version = "0.4.0", features = ["pinyin", "romaji"] }
 rfd = "0.15.4"

@@ -6,7 +6,7 @@ use crate::vehicles::{
     services::VehicleService,
 };
 use bevy::prelude::*;
-use egui::{Color32, Ui};
+use egui::{Color32, Label, Ui};
 use egui_table::{CellInfo, HeaderCellInfo, Table, TableDelegate, columns::Column};
 
 const COLUMN_NAMES: &[&str] = &["Station", "Arri.", "Dept.", "Service", "Track", "Parent"];

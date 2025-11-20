@@ -72,6 +72,7 @@ impl UiState {
 pub enum AppTab {
     Vehicle(Entity),
     StationTimetable(Entity),
+    Diagram(Entity),
 }
 
 /// User interface commands sent between systems
@@ -106,6 +107,14 @@ impl<'w> egui_dock::TabViewer for AppTabViewer<'w> {
                     )
                     .unwrap();
             }
+            AppTab::Diagram(displayed_line_entity) => {
+                self.world
+                    .run_system_cached_with(
+                        tabs::diagram::show_diagram,
+                        (ui, *displayed_line_entity),
+                    )
+                    .unwrap();
+            }
         };
     }
 
@@ -127,6 +136,7 @@ impl<'w> egui_dock::TabViewer for AppTabViewer<'w> {
                     .map_or_else(|| "Unknown Station".into(), |n| format!("{}", n));
                 format!("Station Timetable - {}", name).into()
             }
+            AppTab::Diagram(displayed_line_entity) => "Diagram".into(),
         }
     }
 
@@ -136,6 +146,7 @@ impl<'w> egui_dock::TabViewer for AppTabViewer<'w> {
             AppTab::StationTimetable(station_entity) => {
                 egui::Id::new(format!("StationTimetableTab_{:?}", station_entity))
             }
+            AppTab::Diagram(entity) => egui::Id::new(format!("DiagramTab_{:?}", entity)),
             _ => egui::Id::new(self.title(tab).text()),
         }
     }
@@ -144,6 +155,7 @@ impl<'w> egui_dock::TabViewer for AppTabViewer<'w> {
         match tab {
             AppTab::Vehicle(_) => [false; 2],
             AppTab::StationTimetable(_) => [true; 2],
+            AppTab::Diagram(_) => [false; 2],
         }
     }
 
@@ -173,6 +185,7 @@ fn show_ui(
             style.spacing.window_margin = egui::Margin::same(2);
             style.interaction.selectable_labels = false;
         });
+        ctx.set_visuals(egui::Visuals::light());
         apply_custom_fonts(ctx);
         *initialized = true;
     }

@@ -1,5 +1,6 @@
 use crate::units::time::{Duration, TimetableTime};
 use bevy::prelude::*;
+use smallvec::SmallVec;
 
 #[derive(Debug, Clone, Copy)]
 pub enum TravelMode {
@@ -50,4 +51,40 @@ pub struct VehicleSchedule {
     pub repeat: Option<Duration>,
     pub times: Vec<Duration>,
     pub entities: Vec<Entity>,
+    pub service_entities: Vec<(Entity, SmallVec<[std::ops::Range<usize>; 1]>)>,
+}
+
+impl VehicleSchedule {
+    pub fn get_service_entries(&self, service: Entity) -> Option<Vec<&[Entity]>> {
+        let i = self
+            .service_entities
+            .binary_search_by_key(&service, |(e, _)| *e);
+        let Ok(i) = i else { return None };
+        let (_, entries) = &self.service_entities[i];
+        let mut ret = Vec::with_capacity(entries.len());
+        for entry in entries {
+            ret.push(&self.entities[entry.clone()]);
+        }
+        Some(ret)
+    }
+    pub fn get_service_first_entry(&self, service: Entity) -> Option<Entity> {
+        let i = self
+            .service_entities
+            .binary_search_by_key(&service, |(e, _)| *e);
+        let Ok(i) = i else { return None };
+        return self.service_entities[i]
+            .1
+            .first()
+            .and_then(|e| Some(self.entities[e.start]));
+    }
+    pub fn get_service_last_entry(&self, service: Entity) -> Option<Entity> {
+        let i = self
+            .service_entities
+            .binary_search_by_key(&service, |(e, _)| *e);
+        let Ok(i) = i else { return None };
+        return self.service_entities[i]
+            .1
+            .last()
+            .and_then(|e| Some(self.entities[e.end.saturating_sub(1)]));
+    }
 }

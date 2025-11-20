@@ -1,4 +1,6 @@
 use crate::intervals::*;
+use crate::lines::{DisplayedLine, DisplayedLineType};
+use crate::units::canvas::CanvasLength;
 // use crate::lines::*;
 use crate::units::distance::Distance;
 use crate::units::time::{Duration, TimetableTime};
@@ -414,13 +416,13 @@ fn create_line_entities(
     stations: &mut std::collections::HashMap<String, Entity>,
     graph_map: &mut IntervalGraphType,
 ) {
-    // let mut intervals: DisplayedLineType = Vec::with_capacity(line.stations.len());
+    let mut intervals: DisplayedLineType = Vec::with_capacity(line.stations.len());
     let Some(first_station) = line.stations.first() else {
-        // commands.spawn((DisplayedLine(intervals), Name::new(line.name)));
+        commands.spawn((DisplayedLine(intervals), Name::new(line.name)));
         return;
     };
     let first_entity = get_or_create_station(commands, stations, first_station);
-    //intervals.push((first_entity, CanvasDistance::from_mm(0.0, 0.0)));
+    intervals.push((first_entity, CanvasLength(0.0)));
     let mut prev_station = first_station;
     let mut prev_entity = first_entity;
     for station in line.stations.iter().skip(1) {
@@ -435,12 +437,12 @@ fn create_line_entities(
                 .id();
             graph_map.add_edge(prev_entity, next_entity, interval_entity);
         }
-        // intervals.push((next_entity, CanvasDistance::from_mm(distance_delta, 1.0)));
+        intervals.push((next_entity, CanvasLength(distance_delta)));
         prev_station = station;
         prev_entity = next_entity;
     }
 
-    // commands.spawn((DisplayedLine(intervals), Name::new(line.name)));
+    commands.spawn((DisplayedLine(intervals), Name::new(line.name)));
 }
 
 fn get_or_create_station(

@@ -1,8 +1,10 @@
 use crate::intervals::{self, Graph};
 use crate::units::distance::Distance;
 use crate::units::time::{Duration, TimetableTime};
+use crate::vehicles::entries::TimetableEntry;
 use bevy::prelude::*;
 use entries::TravelMode;
+use smallvec::{SmallVec, smallvec};
 pub mod entries;
 pub mod services;
 pub mod vehicle_set;
@@ -19,16 +21,79 @@ impl Plugin for VehiclesPlugin {
             .add_message::<AdjustVehicle>()
             .add_systems(
                 FixedUpdate,
-                (adjust_timetable_entry, calculate_estimates)
+                (
+                    adjust_timetable_entry,
+                    calculate_estimates,
+                    populate_services,
+                )
                     .chain()
                     .run_if(on_message::<AdjustTimetableEntry>),
             );
     }
 }
 
+fn populate_services(
+    mut msg_reader: MessageReader<AdjustTimetableEntry>,
+    mut schedules: Populated<&mut entries::VehicleSchedule>,
+    entries: Populated<(&TimetableEntry, &ChildOf)>,
+) {
+    for msg in msg_reader.read() {
+        let AdjustTimetableEntry { entity, .. } = msg;
+        let Ok((_, parent)) = entries.get(*entity) else {
+            continue;
+        };
+        let Ok(mut schedule) = schedules.get_mut(parent.0) else {
+            continue;
+        };
+        let mut pool: Vec<(Entity, SmallVec<[std::ops::Range<usize>; 1]>)> = Vec::new();
+        let mut start: usize = 0;
+        let mut previous_service: Option<Entity> = None;
+        for (idx, entry_entity) in schedule.entities.iter().enumerate() {
+            let Ok((entry, _)) = entries.get(*entry_entity) else {
+                start = idx;
+                continue;
+            };
+            let Some(current_service) = entry.service else {
+                start = idx;
+                continue;
+            };
+
+            if let Some(prev) = previous_service {
+                if prev != current_service {
+                    match pool.binary_search_by_key(&prev, |(e, _)| *e) {
+                        Ok(j) => {
+                            pool[j].1.push(start..idx);
+                        }
+                        Err(j) => {
+                            pool.insert(j, (prev, smallvec![start..idx]));
+                        }
+                    }
+                    start = idx;
+                    previous_service = Some(current_service);
+                }
+            } else {
+                previous_service = Some(current_service);
+                start = idx;
+            }
+        }
+        if let Some(prev) = previous_service {
+            let idx = schedule.entities.len();
+            match pool.binary_search_by_key(&prev, |(e, _)| *e) {
+                Ok(j) => {
+                    pool[j].1.push(start..idx);
+                }
+                Err(j) => {
+                    pool.insert(j, (prev, smallvec![start..idx]));
+                }
+            }
+        }
+        schedule.service_entities = pool;
+    }
+}
+
 fn calculate_estimates(
     mut msg_reader: MessageReader<AdjustTimetableEntry>,
-    mut entries: Populated<&mut entries::TimetableEntry>,
+    mut entries: Populated<&mut TimetableEntry>,
     intervals: Populated<&intervals::Interval>,
     parents: Populated<&ChildOf>,
     schedules: Populated<&entries::VehicleSchedule>,

@@ -1,6 +1,7 @@
-use crate::interface::UiCommand;
+use crate::interface::AppTab;
 use crate::vehicles::Vehicle;
 use crate::vehicles::vehicle_set::VehicleSet;
+use crate::{interface::UiCommand, lines::DisplayedLine};
 use bevy::prelude::*;
 use egui::Id;
 use egui_ltreeview::{Action, TreeView};
@@ -14,9 +15,17 @@ enum TreeViewItem {
 pub fn show_tree_view(
     InMut(ui): InMut<egui::Ui>,
     vehicle_sets: Query<(Entity, &Name, &Children), With<VehicleSet>>,
+    displayed_lines: Query<(Entity, &Name), With<DisplayedLine>>,
     vehicles: Query<(Entity, &Name), With<Vehicle>>,
     mut msg_open_tab: MessageWriter<UiCommand>,
 ) {
+    ui.horizontal(|ui| {
+        for (entity, name) in displayed_lines {
+            if ui.button(name.as_str()).clicked() {
+                msg_open_tab.write(UiCommand::OpenOrFocusTab(AppTab::Diagram(entity)));
+            }
+        }
+    });
     let (response, actions) = TreeView::new(Id::new("tree view")).show(ui, |builder| {
         for (set_entity, set_name, children) in vehicle_sets {
             builder.dir(TreeViewItem::VehicleSet(set_entity), set_name.to_string());

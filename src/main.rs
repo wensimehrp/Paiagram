@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 mod interface;
 mod intervals;
-// mod lines;
+mod lines;
 mod rw_data;
 mod search;
 mod settings;
