@@ -111,16 +111,33 @@ impl VehicleSchedule {
         &self,
         range: std::ops::Range<TimetableTime>,
         query: Query<&TimetableEntry>,
-    ) -> Vec<(TimetableTime, Vec<&TimetableEntry>)> {
+    ) -> Option<Vec<(TimetableTime, Vec<&TimetableEntry>)>> {
         // collect first
-        let timetable_entries = self.entities.iter().filter_map(|e| {
-            let Ok(entry) = query.get(*e) else {
-                return None
-            };
-            Some(entry)
-        }).collect::<Vec<_>>();
+        let timetable_entries = self
+            .entities
+            .iter()
+            .filter_map(|e| {
+                let Ok(entry) = query.get(*e) else {
+                    return None;
+                };
+                Some(entry)
+            })
+            .collect::<Vec<_>>();
         // deal with negative time first
-
-        Vec::new()
+        let earliest = timetable_entries.iter().find_map(|e| e.arrival_estimate);
+        let latest = timetable_entries
+            .iter()
+            .rev()
+            .find_map(|e| e.departure_estimate);
+        let (Some(earliest), Some(latest)) = (earliest, latest) else {
+            return None;
+        };
+        let duration = latest - earliest;
+        let start = if self.repeat.is_some() {
+            range.start - duration
+        } else {
+            range.start
+        };
+        Some(Vec::new())
     }
 }
