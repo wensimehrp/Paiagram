@@ -10,27 +10,49 @@ use egui::{
     emath, vec2,
 };
 
+pub struct PageSettings {
+    lines: Vec<Vec<Pos2>>,
+    stroke: Stroke,
+    view_offset: Vec2,
+}
+
+impl Default for PageSettings {
+    fn default() -> Self {
+        Self {
+            lines: Vec::new(),
+            stroke: Stroke {
+                width: 1.0,
+                color: Color32::BLACK,
+            },
+            view_offset: Vec2::default(),
+        }
+    }
+}
+
 pub fn show_diagram(
     (InMut(ui), In(displayed_line_entity)): (InMut<egui::Ui>, In<Entity>),
     mut displayed_lines: Populated<&mut DisplayedLine>,
     vehicles: Populated<(Entity, &Name, &VehicleSchedule)>,
     timetable_entries: Query<&TimetableEntry>,
     station_names: Query<&Name, With<Station>>,
-    mut lines: Local<Vec<Vec<Pos2>>>,
-    mut stroke: Local<Stroke>,
-    mut view_offset: Local<Vec2>,
+    mut page_settings: Local<Vec<(Entity, PageSettings)>>,
+    // required for animations
+    time: Res<Time>,
 ) {
     let Ok(displayed_line) = displayed_lines.get(displayed_line_entity) else {
         ui.centered_and_justified(|ui| ui.heading("Diagram not found"));
         return;
     };
+    let (_, page_setting) =
+        match page_settings.binary_search_by_key(&displayed_line_entity, |(e, ps)| *e) {
+            Ok(idx) => &mut page_settings[idx],
+            Err(idx) => {
+                page_settings.insert(idx, (displayed_line_entity, PageSettings::default()));
+                &mut page_settings[idx]
+            }
+        };
     ui.horizontal(|ui| {
-        ui.label("Stroke:");
-        ui.add(&mut *stroke);
-        ui.separator();
-        if ui.button("Clear Painting").clicked() {
-            lines.clear();
-        }
+        ui.add(&mut page_setting.stroke);
     });
     ui.style_mut().visuals.menu_corner_radius = CornerRadius::ZERO;
     ui.style_mut().visuals.window_stroke.width = 0.0;
@@ -38,12 +60,12 @@ pub fn show_diagram(
         let (mut response, painter) =
             ui.allocate_painter(ui.available_size_before_wrap(), Sense::click_and_drag());
 
-        *view_offset -= response.drag_delta();
+        page_setting.view_offset -= response.drag_delta();
         let vlines = (0..=24).map(|t| {
             egui::Shape::vline(
-                response.rect.left() + 100.0 * t as f32 - view_offset.x,
+                response.rect.left() + 100.0 * t as f32 - page_setting.view_offset.x,
                 response.rect.top()..=response.rect.bottom(),
-                *stroke,
+                page_setting.stroke,
             )
         });
         painter.extend(vlines);
@@ -54,8 +76,8 @@ pub fn show_diagram(
             heights.push((l.0, current_height));
             egui::Shape::hline(
                 response.rect.left()..=response.rect.right(),
-                current_height - view_offset.y,
-                *stroke,
+                current_height - page_setting.view_offset.y,
+                page_setting.stroke,
             )
         });
         painter.extend(station_lines);
@@ -72,15 +94,15 @@ pub fn show_diagram(
                 })
             {
                 let Some((_, h)) = heights.iter().find(|(e, _)| *e == s) else {
-                    painter.line(points.drain(..).collect(), *stroke);
+                    painter.line(points.drain(..).collect(), page_setting.stroke);
                     continue;
                 };
                 points.push(Pos2::new(
-                    a.0 as f32 / 36f32 - view_offset.x,
-                    *h - view_offset.y,
+                    a.0 as f32 / 36f32 - page_setting.view_offset.x,
+                    *h - page_setting.view_offset.y,
                 ));
             }
-            painter.line(points, *stroke);
+            painter.line(points, page_setting.stroke);
         }
         let font_id = egui::FontId::default();
         let text_color = ui.visuals().text_color();
@@ -96,7 +118,7 @@ pub fn show_diagram(
             let rect = Rect::from_min_size(
                 Pos2::new(
                     response.rect.left(),
-                    h - view_offset.y - galley.size().y / 2.0 - 2.0,
+                    h - page_setting.view_offset.y - galley.size().y / 2.0 - 2.0,
                 ),
                 galley.size() + vec2(8.0, 4.0),
             );
@@ -105,8 +127,12 @@ pub fn show_diagram(
             painter.galley(rect.min + vec2(4.0, 2.0), galley, text_color);
         }
         for i in 0..=24 {
-            let center_pos = response.rect.min + vec2(100.0 * i as f32 - view_offset.x, 5.0);
             let galley = painter.layout_no_wrap(i.to_string(), font_id.clone(), text_color);
+            let center_pos = response.rect.min
+                + vec2(
+                    100.0 * i as f32 - page_setting.view_offset.x,
+                    galley.size().y / 2.0 + 2.0,
+                );
             let rect = Rect::from_center_size(center_pos, galley.size() + vec2(8.0, 4.0));
 
             painter.rect_filled(rect, CornerRadius::same(2), bg_color);
