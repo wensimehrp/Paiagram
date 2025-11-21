@@ -67,10 +67,12 @@ pub struct VehicleSchedule {
     /// How frequent would the schedule repeat. A value of `None` indicates that the schedule would not repeat.
     pub repeat: Option<Duration>,
     /// When would the vehicle depart. The departure times are relative to the start of the schedule.
+    /// This should always be sorted
     pub times: Vec<Duration>,
     /// The timetable entities the schedule holds.
     pub entities: Vec<Entity>,
     /// Service entities indices. This piece of data is calculated during runtime.
+    /// This should always be sorted by Entity
     pub service_entities: Vec<(Entity, SmallVec<[std::ops::Range<usize>; 1]>)>,
 }
 
@@ -107,37 +109,43 @@ impl VehicleSchedule {
             .last()
             .and_then(|e| Some(self.entities[e.end.saturating_sub(1)]));
     }
-    pub fn get_entries_range(
+    pub fn get_entries_range<'a>(
         &self,
         range: std::ops::Range<TimetableTime>,
-        query: Query<&TimetableEntry>,
-    ) -> Option<Vec<(TimetableTime, Vec<&TimetableEntry>)>> {
-        // collect first
+        query: &'a Query<&TimetableEntry>,
+    ) -> Vec<&'a TimetableEntry> {
         let timetable_entries = self
             .entities
             .iter()
-            .filter_map(|e| {
-                let Ok(entry) = query.get(*e) else {
-                    return None;
-                };
-                Some(entry)
-            })
+            .filter_map(|e| query.get(*e).ok())
             .collect::<Vec<_>>();
-        // deal with negative time first
-        let earliest = timetable_entries.iter().find_map(|e| e.arrival_estimate);
-        let latest = timetable_entries
-            .iter()
-            .rev()
-            .find_map(|e| e.departure_estimate);
-        let (Some(earliest), Some(latest)) = (earliest, latest) else {
-            return None;
-        };
-        let duration = latest - earliest;
-        let start = if self.repeat.is_some() {
-            range.start - duration
-        } else {
-            range.start
-        };
-        Some(Vec::new())
+        return timetable_entries;
+        // // collect first
+        // let timetable_entries = self
+        //     .entities
+        //     .iter()
+        //     .filter_map(|e| {
+        //         let Ok(entry) = query.get(*e) else {
+        //             return None;
+        //         };
+        //         Some(entry)
+        //     })
+        //     .collect::<Vec<_>>();
+        // let entry_first_arrival = timetable_entries.iter().find_map(|e| e.arrival_estimate)?;
+        // let entry_last_departure = timetable_entries
+        //     .iter()
+        //     .rev()
+        //     .find_map(|e| e.departure_estimate)?;
+        // let schedule_first_start = *self.times.first()?;
+        // let schedule_last_start = *self.times.last()?;
+        // // When the timetable actually starts
+        // let real_start: TimetableTime =
+        //     self.start + schedule_first_start + (entry_first_arrival - TimetableTime(0));
+        // let starting_point = if let Some(repeat) = self.repeat {
+        //     range.start - repeat * (range.start - real_start).0.div_euclid(repeat.0)
+        // } else {
+        //     real_start
+        // };
+        // None
     }
 }

@@ -6,7 +6,7 @@ use crate::vehicles::{
     services::VehicleService,
 };
 use bevy::prelude::*;
-use egui::{Color32, Label, Ui};
+use egui::{Color32, Label, Sense, Separator, Stroke, Ui, Vec2};
 use egui_table::{CellInfo, HeaderCellInfo, Table, TableDelegate, columns::Column};
 
 const COLUMN_NAMES: &[&str] = &["Station", "Arri.", "Dept.", "Service", "Track", "Parent"];
@@ -166,6 +166,17 @@ pub fn show_vehicle(
         ui.label("The vehicle does not exist.");
         return;
     };
+    let stroke_width = 16.0;
+    let (rect, response) =
+        ui.allocate_at_least(Vec2::new(ui.available_width(), stroke_width), Sense::hover());
+    let painter = ui.painter();
+    let stroke = Stroke {
+        width: stroke_width,
+        color: Color32::LIGHT_RED,
+    };
+    if ui.is_rect_visible(response.rect) {
+        painter.hline(rect.left()..=rect.right(), rect.center().y, stroke);
+    }
     if ui.button("Refresh").clicked() {
         for schedule in schedules.iter() {
             msg_sender.write(AdjustTimetableEntry {

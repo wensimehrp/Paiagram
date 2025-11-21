@@ -33,7 +33,7 @@ struct TableCache<'a> {
 
 impl TableDelegate for TableCache<'_> {
     fn default_row_height(&self) -> f32 {
-        let mut height = 20.0 + 6.0;
+        let mut height = 20.0 + 7.0;
         if self.page_settings.show_service_name {
             height += 20.0;
         }
