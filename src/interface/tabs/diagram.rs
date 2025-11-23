@@ -7,14 +7,15 @@ use crate::{
 };
 use bevy::prelude::*;
 use egui::{
-    Color32, Context, CornerRadius, Frame, Painter, Pos2, Rect, Sense, Stroke, Ui, Vec2, Window,
-    emath, vec2,
+    Color32, Context, CornerRadius, Frame, Painter, Pos2, Rect, Sense, Slider, Stroke, Ui, Vec2,
+    Window, emath, vec2,
 };
 
 pub struct DiagramPageCache {
     lines: Vec<Vec<Pos2>>,
     stroke: Stroke,
     view_offset: Vec2,
+    length_per_hour: f32,
 }
 
 impl Default for DiagramPageCache {
@@ -26,6 +27,7 @@ impl Default for DiagramPageCache {
                 color: Color32::BLACK,
             },
             view_offset: Vec2::default(),
+            length_per_hour: 100.0,
         }
     }
 }
@@ -48,6 +50,7 @@ pub fn show_diagram(
         page_cache.get_mut_or_insert_with(displayed_line_entity, DiagramPageCache::default);
     ui.horizontal(|ui| {
         ui.add(&mut page_cache.stroke);
+        ui.add(Slider::new(&mut page_cache.length_per_hour, 10.0..=1000.0))
     });
     ui.style_mut().visuals.menu_corner_radius = CornerRadius::ZERO;
     ui.style_mut().visuals.window_stroke.width = 0.0;
@@ -65,13 +68,19 @@ pub fn show_diagram(
             page_cache.view_offset.x += (target - page_cache.view_offset.x) * t;
             ui.ctx().request_repaint();
         }
-        for t in 0..=((response.rect.right() - response.rect.left()) / 100.0) as i32 + 1 {
+        for t in 0..=((response.rect.right() - response.rect.left()) / page_cache.length_per_hour)
+            as i32
+            + 1
+        {
             painter.vline(
-                response.rect.left() + 100.0 * t as f32 - page_cache.view_offset.x % 100.0,
+                response.rect.left() + page_cache.length_per_hour * t as f32
+                    - page_cache.view_offset.x % page_cache.length_per_hour,
                 response.rect.top()..=response.rect.bottom(),
                 page_cache.stroke,
             );
         }
+        // the amount of stations visible must be very small, so we sort by the height instead
+        // the visible range is always a small portion of the entire stuff
         let mut current_height = response.rect.top();
         let mut heights: Vec<(Entity, f32)> = Vec::new();
         let station_lines = displayed_line.0.iter().map(|l| {
@@ -84,7 +93,58 @@ pub fn show_diagram(
             )
         });
         painter.extend(station_lines);
-        for (entity, name, schedule) in vehicles {}
+        for (entity, name, schedule) in vehicles {
+            let range = TimetableTime(
+                ((page_cache.view_offset.x) / page_cache.length_per_hour * 3600.0) as i32,
+            )
+                ..TimetableTime(
+                    ((page_cache.view_offset.x + response.rect.right() - response.rect.left())
+                        / page_cache.length_per_hour
+                        * 3600.0) as i32,
+                );
+            let Some(schedules) = schedule.get_entries_range(range.clone(), &timetable_entries)
+            else {
+                continue;
+            };
+            for (initial_offset, schedule) in schedules {
+                let mut points = Vec::new();
+                let mut previous_index: Option<usize> = None;
+                for (entry, entry_entity) in schedule {
+                    let ax = (entry.arrival_estimate.unwrap() - range.start + initial_offset).0
+                        as f32
+                        / 3600.0
+                        * page_cache.length_per_hour
+                        + response.rect.left();
+                    let dx = (entry.departure_estimate.unwrap() - range.start + initial_offset).0
+                        as f32
+                        / 3600.0
+                        * page_cache.length_per_hour
+                        + response.rect.left();
+                    let Some(y_idx) = heights
+                        .iter()
+                        .position(|(s, _)| if *s == entry.station { true } else { false })
+                    else {
+                        continue;
+                    };
+                    let y= heights[y_idx].1;
+                    if let Some(p_idx) = previous_index && p_idx.abs_diff(y_idx) > 1 {
+                        painter.line(points.drain(..).collect(), page_cache.stroke);
+                    }
+                    previous_index = Some(y_idx);
+                    points.extend_from_slice(&[
+                        Pos2 {
+                            x: ax,
+                            y: y - page_cache.view_offset.y,
+                        },
+                        Pos2 {
+                            x: dx,
+                            y: y - page_cache.view_offset.y,
+                        },
+                    ])
+                }
+                painter.line(points, page_cache.stroke);
+            }
+        }
         let font_id = egui::FontId::default();
         let text_color = ui.visuals().text_color();
         let bg_color = ui.visuals().window_fill;
@@ -107,20 +167,19 @@ pub fn show_diagram(
             painter.rect_filled(rect, CornerRadius::same(2), bg_color);
             painter.galley(rect.min + vec2(4.0, 2.0), galley, text_color);
         }
-        let time_range = {
-            let time_min = (page_cache.view_offset.x / 100.0) as i32;
-            let time_max = (response.rect.right() / 100.0) as i32 + time_min;
-            time_min..=time_max
-        };
-        for offset in 0..=((response.rect.right() - response.rect.left()) / 100.0) as i32 + 1 {
-            let i = ((page_cache.view_offset.x) / 100.0) as i32 + offset;
+        for offset in 0..=((response.rect.right() - response.rect.left())
+            / page_cache.length_per_hour) as i32
+            + 1
+        {
+            let i = ((page_cache.view_offset.x) / page_cache.length_per_hour) as i32 + offset;
             if i < 0 {
                 continue;
             }
             let galley = painter.layout_no_wrap(i.to_string(), font_id.clone(), text_color);
             let center_pos = response.rect.min
                 + vec2(
-                    100.0 * offset as f32 - page_cache.view_offset.x % 100.0,
+                    page_cache.length_per_hour * offset as f32
+                        - page_cache.view_offset.x % page_cache.length_per_hour,
                     galley.size().y / 2.0 + 2.0,
                 );
             let rect = Rect::from_center_size(center_pos, galley.size() + vec2(8.0, 4.0));

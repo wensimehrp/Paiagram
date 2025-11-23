@@ -60,7 +60,7 @@ pub struct TimetableEntry {
 }
 
 /// A vehicle's schedule and departure pattern
-#[derive(Debug, Component, Default)]
+#[derive(Debug, Component)]
 pub struct VehicleSchedule {
     /// When would the schedule start.
     pub start: TimetableTime,
@@ -68,12 +68,24 @@ pub struct VehicleSchedule {
     pub repeat: Option<Duration>,
     /// When would the vehicle depart. The departure times are relative to the start of the schedule.
     /// This should always be sorted
-    pub times: Vec<Duration>,
+    pub departures: Vec<Duration>,
     /// The timetable entities the schedule holds.
     pub entities: Vec<Entity>,
     /// Service entities indices. This piece of data is calculated during runtime.
     /// This should always be sorted by Entity
     pub service_entities: Vec<(Entity, SmallVec<[std::ops::Range<usize>; 1]>)>,
+}
+
+impl Default for VehicleSchedule {
+    fn default() -> Self {
+        Self {
+            start: TimetableTime(0),
+            repeat: None,
+            departures: vec![Duration(0)],
+            entities: Vec::new(),
+            service_entities: Vec::new()
+        }
+    }
 }
 
 impl VehicleSchedule {
@@ -119,6 +131,42 @@ impl VehicleSchedule {
             .iter()
             .filter_map(|e| query.get(*e).ok().map(|t| (t, *e)))
             .collect::<Vec<_>>();
+        let schedule_start = timetable_entries
+            .iter()
+            .find_map(|(et, _)| et.arrival_estimate)?;
+        let schedule_end = timetable_entries
+            .iter()
+            .rev()
+            .find_map(|(et, _)| et.departure_estimate)?;
+        let mut ret = Vec::new();
+        let Some(repeat) = self.repeat else {
+            // does not repeat
+            for departure in self.departures.iter().copied() {
+                let first_index = timetable_entries.iter().position(|(et, _)| {
+                    let Some(ae) = et.arrival_estimate else {
+                        return false;
+                    };
+                    let real_time = self.start + departure + (ae - TimetableTime(0));
+                    real_time > range.start
+                });
+                let last_index = timetable_entries.iter().rposition(|(et, _)| {
+                    let Some(de) = et.departure_estimate else {
+                        return false;
+                    };
+                    let real_time = self.start + departure + (de - TimetableTime(0));
+                    real_time < range.end
+                });
+                let (Some(mut first_index), Some(mut last_index)) = (first_index, last_index)
+                else {
+                    continue;
+                };
+                first_index = first_index.saturating_sub(1);
+                last_index = (last_index + 1).min(timetable_entries.len() - 1);
+                let v = &timetable_entries[first_index..=last_index];
+                ret.push((self.start + departure, v.to_vec()))
+            }
+            return Some(ret);
+        };
         return None;
     }
 }

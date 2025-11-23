@@ -5,7 +5,7 @@ pub mod vehicle;
 
 use bevy::ecs::entity::Entity;
 
-/// The page cache. Lot's of reads, few writes, good locality, fast executions.
+/// The page cache. Lots of r/w, few insertions, good locality, fast executions.
 #[derive(Default, Debug)]
 pub struct PageCache<T> {
     keys: Vec<Entity>,
