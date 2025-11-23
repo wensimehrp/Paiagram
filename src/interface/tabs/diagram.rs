@@ -1,3 +1,4 @@
+use super::PageCache;
 use crate::{
     intervals::Station,
     lines::DisplayedLine,
@@ -10,13 +11,13 @@ use egui::{
     emath, vec2,
 };
 
-pub struct PageSettings {
+pub struct DiagramPageCache {
     lines: Vec<Vec<Pos2>>,
     stroke: Stroke,
     view_offset: Vec2,
 }
 
-impl Default for PageSettings {
+impl Default for DiagramPageCache {
     fn default() -> Self {
         Self {
             lines: Vec::new(),
@@ -35,7 +36,7 @@ pub fn show_diagram(
     vehicles: Populated<(Entity, &Name, &VehicleSchedule)>,
     timetable_entries: Query<&TimetableEntry>,
     station_names: Query<&Name, With<Station>>,
-    mut page_settings: Local<Vec<(Entity, PageSettings)>>,
+    mut page_cache: Local<PageCache<DiagramPageCache>>,
     // required for animations
     time: Res<Time>,
 ) {
@@ -43,16 +44,10 @@ pub fn show_diagram(
         ui.centered_and_justified(|ui| ui.heading("Diagram not found"));
         return;
     };
-    let (_, page_setting) =
-        match page_settings.binary_search_by_key(&displayed_line_entity, |(e, ps)| *e) {
-            Ok(idx) => &mut page_settings[idx],
-            Err(idx) => {
-                page_settings.insert(idx, (displayed_line_entity, PageSettings::default()));
-                &mut page_settings[idx]
-            }
-        };
+    let page_cache =
+        page_cache.get_mut_or_insert_with(displayed_line_entity, DiagramPageCache::default);
     ui.horizontal(|ui| {
-        ui.add(&mut page_setting.stroke);
+        ui.add(&mut page_cache.stroke);
     });
     ui.style_mut().visuals.menu_corner_radius = CornerRadius::ZERO;
     ui.style_mut().visuals.window_stroke.width = 0.0;
@@ -60,15 +55,23 @@ pub fn show_diagram(
         let (mut response, painter) =
             ui.allocate_painter(ui.available_size_before_wrap(), Sense::click_and_drag());
 
-        page_setting.view_offset -= response.drag_delta();
-        let vlines = (0..=24).map(|t| {
-            egui::Shape::vline(
-                response.rect.left() + 100.0 * t as f32 - page_setting.view_offset.x,
+        page_cache.view_offset -= response.drag_delta();
+        page_cache.view_offset.y = page_cache.view_offset.y.clamp(-10.0, f32::MAX);
+        page_cache.view_offset.x = page_cache.view_offset.x.clamp(-1000.0, f32::MAX);
+        if page_cache.view_offset.x < -100.0 && response.total_drag_delta().is_none() {
+            let target = -100.0;
+            let speed = 8.0;
+            let t = (1.0 - (-speed * time.delta_secs()).exp()).clamp(0.0, 1.0);
+            page_cache.view_offset.x += (target - page_cache.view_offset.x) * t;
+            ui.ctx().request_repaint();
+        }
+        for t in 0..=((response.rect.right() - response.rect.left()) / 100.0) as i32 + 1 {
+            painter.vline(
+                response.rect.left() + 100.0 * t as f32 - page_cache.view_offset.x % 100.0,
                 response.rect.top()..=response.rect.bottom(),
-                page_setting.stroke,
-            )
-        });
-        painter.extend(vlines);
+                page_cache.stroke,
+            );
+        }
         let mut current_height = response.rect.top();
         let mut heights: Vec<(Entity, f32)> = Vec::new();
         let station_lines = displayed_line.0.iter().map(|l| {
@@ -76,34 +79,12 @@ pub fn show_diagram(
             heights.push((l.0, current_height));
             egui::Shape::hline(
                 response.rect.left()..=response.rect.right(),
-                current_height - page_setting.view_offset.y,
-                page_setting.stroke,
+                current_height - page_cache.view_offset.y,
+                page_cache.stroke,
             )
         });
         painter.extend(station_lines);
-        for (entity, name, schedule) in vehicles {
-            let mut points = Vec::new();
-            for (a, d, s) in schedule
-                .get_entries_range(TimetableTime(0)..TimetableTime(1), &timetable_entries)
-                .iter()
-                .filter_map(|e| {
-                    let (Some(a), Some(d)) = (e.arrival_estimate, e.departure_estimate) else {
-                        return None;
-                    };
-                    Some((a, d, e.station))
-                })
-            {
-                let Some((_, h)) = heights.iter().find(|(e, _)| *e == s) else {
-                    painter.line(points.drain(..).collect(), page_setting.stroke);
-                    continue;
-                };
-                points.push(Pos2::new(
-                    a.0 as f32 / 36f32 - page_setting.view_offset.x,
-                    *h - page_setting.view_offset.y,
-                ));
-            }
-            painter.line(points, page_setting.stroke);
-        }
+        for (entity, name, schedule) in vehicles {}
         let font_id = egui::FontId::default();
         let text_color = ui.visuals().text_color();
         let bg_color = ui.visuals().window_fill;
@@ -118,7 +99,7 @@ pub fn show_diagram(
             let rect = Rect::from_min_size(
                 Pos2::new(
                     response.rect.left(),
-                    h - page_setting.view_offset.y - galley.size().y / 2.0 - 2.0,
+                    h - page_cache.view_offset.y - galley.size().y / 2.0 - 2.0,
                 ),
                 galley.size() + vec2(8.0, 4.0),
             );
@@ -126,11 +107,20 @@ pub fn show_diagram(
             painter.rect_filled(rect, CornerRadius::same(2), bg_color);
             painter.galley(rect.min + vec2(4.0, 2.0), galley, text_color);
         }
-        for i in 0..=24 {
+        let time_range = {
+            let time_min = (page_cache.view_offset.x / 100.0) as i32;
+            let time_max = (response.rect.right() / 100.0) as i32 + time_min;
+            time_min..=time_max
+        };
+        for offset in 0..=((response.rect.right() - response.rect.left()) / 100.0) as i32 + 1 {
+            let i = ((page_cache.view_offset.x) / 100.0) as i32 + offset;
+            if i < 0 {
+                continue;
+            }
             let galley = painter.layout_no_wrap(i.to_string(), font_id.clone(), text_color);
             let center_pos = response.rect.min
                 + vec2(
-                    100.0 * i as f32 - page_setting.view_offset.x,
+                    100.0 * offset as f32 - page_cache.view_offset.x % 100.0,
                     galley.size().y / 2.0 + 2.0,
                 );
             let rect = Rect::from_center_size(center_pos, galley.size() + vec2(8.0, 4.0));

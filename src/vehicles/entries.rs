@@ -113,39 +113,12 @@ impl VehicleSchedule {
         &self,
         range: std::ops::Range<TimetableTime>,
         query: &'a Query<&TimetableEntry>,
-    ) -> Vec<&'a TimetableEntry> {
+    ) -> Option<Vec<(TimetableTime, Vec<(&'a TimetableEntry, Entity)>)>> {
         let timetable_entries = self
             .entities
             .iter()
-            .filter_map(|e| query.get(*e).ok())
+            .filter_map(|e| query.get(*e).ok().map(|t| (t, *e)))
             .collect::<Vec<_>>();
-        return timetable_entries;
-        // // collect first
-        // let timetable_entries = self
-        //     .entities
-        //     .iter()
-        //     .filter_map(|e| {
-        //         let Ok(entry) = query.get(*e) else {
-        //             return None;
-        //         };
-        //         Some(entry)
-        //     })
-        //     .collect::<Vec<_>>();
-        // let entry_first_arrival = timetable_entries.iter().find_map(|e| e.arrival_estimate)?;
-        // let entry_last_departure = timetable_entries
-        //     .iter()
-        //     .rev()
-        //     .find_map(|e| e.departure_estimate)?;
-        // let schedule_first_start = *self.times.first()?;
-        // let schedule_last_start = *self.times.last()?;
-        // // When the timetable actually starts
-        // let real_start: TimetableTime =
-        //     self.start + schedule_first_start + (entry_first_arrival - TimetableTime(0));
-        // let starting_point = if let Some(repeat) = self.repeat {
-        //     range.start - repeat * (range.start - real_start).0.div_euclid(repeat.0)
-        // } else {
-        //     real_start
-        // };
-        // None
+        return None;
     }
 }
