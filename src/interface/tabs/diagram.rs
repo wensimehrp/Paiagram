@@ -76,7 +76,7 @@ pub fn show_diagram(
         page_cache.get_mut_or_insert_with(displayed_line_entity, DiagramPageCache::default);
     ui.horizontal(|ui| {
         ui.add(&mut page_cache.stroke);
-        ui.add(Slider::new(&mut page_cache.length_per_hour, 10.0..=1000.0))
+        ui.add(Slider::new(&mut page_cache.length_per_hour, 20.0..=5000.0))
     });
     ui.style_mut().visuals.menu_corner_radius = CornerRadius::ZERO;
     ui.style_mut().visuals.window_stroke.width = 0.0;
@@ -113,6 +113,8 @@ pub fn show_diagram(
         page_cache.view_offset -= response.drag_delta();
         // capture inputs
         ui.input(|i| {
+            page_cache.length_per_hour *= i.zoom_delta();
+            page_cache.view_offset.x *= i.zoom_delta();
             page_cache.view_offset -= i.translation_delta();
         });
         page_cache.view_offset.y = page_cache.view_offset.y.clamp(
@@ -129,6 +131,7 @@ pub fn show_diagram(
                 .max(-30.0),
             },
         );
+        page_cache.length_per_hour = page_cache.length_per_hour.clamp(20.0, 5000.0);
         page_cache.view_offset.x = page_cache.view_offset.x.clamp(-1000.0, f32::MAX);
         if page_cache.view_offset.x < -100.0 && response.total_drag_delta().is_none() {
             let target = -100.0;

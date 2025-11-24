@@ -4,10 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-bevy = { version = "0.17.2", default-features = false, features = [
+bevy = { version = "0.17.3", default-features = false, features = [
     "bevy_core_pipeline",
     "bevy_render",
-    # "bevy_ui",
     "bevy_window",
     "bevy_winit",
     "bevy_log",
