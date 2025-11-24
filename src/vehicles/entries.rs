@@ -137,7 +137,18 @@ impl VehicleSchedule {
         let repeats_iter = match self.repeat {
             None => Either::Left(std::iter::once(self.start)),
             Some(duration) => {
-                let start = self.start + duration * (range.start - self.start).0.div_euclid(duration.0);
+                let start = self.start
+                    + duration * {
+                        let main = (range.start - self.start).0.div_euclid(duration.0);
+                        let last_dep = *self.departures.last()?
+                            + timetable_entries
+                                .iter()
+                                .rev()
+                                .find_map(|(et, _)| et.departure_estimate)?
+                                .as_duration();
+                        let sub = last_dep.0.div_euclid(duration.0);
+                        main - sub
+                    };
                 Either::Right(std::iter::successors(Some(start), move |t| {
                     let time = *t + duration;
                     if time > range.end {
