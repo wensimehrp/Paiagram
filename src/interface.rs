@@ -259,7 +259,7 @@ fn show_ui(
         frame_history.pop_front();
     }
     if *counter == 0 {
-        debug!(
+        info!(
             "UI frame took {:?} on average. Min {:?}, Max {:?}",
             {
                 let total: f64 = frame_history.iter().sum();

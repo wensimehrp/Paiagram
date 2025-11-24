@@ -17,6 +17,24 @@ pub struct DiagramPageCache {
     view_offset: Vec2,
     length_per_hour: f32,
     heights: Option<Vec<(Entity, f32)>>,
+    vehicle_entities: Option<Vec<Entity>>,
+}
+
+impl DiagramPageCache {
+    fn get_visible_stations(&self, range: std::ops::Range<f32>) -> &[(Entity, f32)] {
+        let Some(heights) = &self.heights else {
+            return &[];
+        };
+        let first_visible = heights.iter().position(|(_, h)| *h > range.start);
+        let last_visible = heights.iter().rposition(|(_, h)| *h < range.end);
+        if let (Some(mut first_visible), Some(mut last_visible)) = (first_visible, last_visible) {
+            first_visible = first_visible.saturating_sub(1);
+            last_visible = (last_visible + 1).min(heights.len() - 1);
+            &heights[first_visible..=last_visible]
+        } else {
+            &[]
+        }
+    }
 }
 
 impl Default for DiagramPageCache {
@@ -30,6 +48,7 @@ impl Default for DiagramPageCache {
             view_offset: Vec2::default(),
             length_per_hour: 100.0,
             heights: None,
+            vehicle_entities: None,
         }
     }
 }
@@ -57,6 +76,32 @@ pub fn show_diagram(
     ui.style_mut().visuals.menu_corner_radius = CornerRadius::ZERO;
     ui.style_mut().visuals.window_stroke.width = 0.0;
     Frame::canvas(ui.style()).show(ui, |ui| {
+        let available_vehicles = match &page_cache.vehicle_entities {
+            Some(v) => v,
+            None => {
+                let mut new_vehicles = Vec::new();
+                for (vehicle_ent, _, s) in vehicles.iter() {
+                    for vehicle_entry in s
+                        .entities
+                        .iter()
+                        .map(|ent| timetable_entries.get(*ent).ok())
+                    {
+                        if let Some(entry) = vehicle_entry
+                            && displayed_line
+                                .0
+                                .iter()
+                                .find(|(station_ent, _)| *station_ent == entry.station)
+                                .is_some()
+                        {
+                            new_vehicles.push(vehicle_ent);
+                            break;
+                        }
+                    }
+                }
+                page_cache.vehicle_entities = Some(new_vehicles);
+                page_cache.vehicle_entities.as_ref().unwrap()
+            }
+        };
         let (mut response, painter) =
             ui.allocate_painter(ui.available_size_before_wrap(), Sense::click_and_drag());
 
@@ -81,47 +126,31 @@ pub fn show_diagram(
                 page_cache.stroke,
             );
         }
-        // the amount of stations visible must be very small, so we sort by the height instead
-        // the visible range is always a small portion of the entire stuff
-        // the heights. This is always sorted by heights, which is the second parameter
-        let heights = match &page_cache.heights {
-            None => {
-                let mut heights = Vec::with_capacity(displayed_line.0.len());
-                let mut current_height = response.rect.top();
-                for (s, l) in displayed_line.0.iter() {
-                    current_height += l.0.abs() * 3.0;
-                    heights.push((*s, current_height))
-                }
-                page_cache.heights = Some(heights);
-                &page_cache.heights.as_ref().unwrap()
+        if page_cache.heights.is_none() {
+            let mut heights = Vec::with_capacity(displayed_line.0.len());
+            let mut current_height = response.rect.top();
+            for (s, l) in displayed_line.0.iter() {
+                current_height += l.0.abs() * 3.0;
+                heights.push((*s, current_height))
             }
-            Some(h) => h,
+            page_cache.heights = Some(heights);
         };
-        let visible_stations: &[(Entity, f32)] = {
-            let first_visible = heights
-                .iter()
-                .position(|(_, h)| *h > page_cache.view_offset.y + response.rect.top());
-            let last_visible = heights
-                .iter()
-                .rposition(|(_, h)| *h < page_cache.view_offset.y + response.rect.bottom());
-            if let (Some(mut first_visible), Some(mut last_visible)) = (first_visible, last_visible)
-            {
-                first_visible = first_visible.saturating_sub(1);
-                last_visible = (last_visible + 1).min(heights.len() - 1);
-                &heights[first_visible..=last_visible]
-            } else {
-                &[]
-            }
-        };
-        for (entity, name, schedule) in vehicles {
-            let range = TimetableTime(
-                ((page_cache.view_offset.x) / page_cache.length_per_hour * 3600.0) as i32,
-            )
-                ..TimetableTime(
-                    ((page_cache.view_offset.x + response.rect.right() - response.rect.left())
-                        / page_cache.length_per_hour
-                        * 3600.0) as i32,
-                );
+        let visible_stations: &[(Entity, f32)] = page_cache.get_visible_stations(
+            (page_cache.view_offset.y + response.rect.top())
+                ..(page_cache.view_offset.y + response.rect.bottom()),
+        );
+        let range = TimetableTime(
+            ((page_cache.view_offset.x) / page_cache.length_per_hour * 3600.0) as i32,
+        )
+            ..TimetableTime(
+                ((page_cache.view_offset.x + response.rect.right() - response.rect.left())
+                    / page_cache.length_per_hour
+                    * 3600.0) as i32,
+            );
+        for (entity, name, schedule) in available_vehicles
+            .iter()
+            .filter_map(|ent| vehicles.get(*ent).ok())
+        {
             let Some(schedules) = schedule.get_entries_range(range.clone(), &timetable_entries)
             else {
                 continue;

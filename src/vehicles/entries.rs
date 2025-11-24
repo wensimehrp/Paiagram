@@ -137,7 +137,7 @@ impl VehicleSchedule {
         let repeats_iter = match self.repeat {
             None => Either::Left(std::iter::once(self.start)),
             Some(duration) => {
-                let start = self.start - Duration(86400);
+                let start = self.start + duration * (range.start - self.start).0.div_euclid(duration.0);
                 Either::Right(std::iter::successors(Some(start), move |t| {
                     let time = *t + duration;
                     if time > range.end {
