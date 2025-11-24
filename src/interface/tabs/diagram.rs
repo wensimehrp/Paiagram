@@ -18,6 +18,9 @@ pub struct DiagramPageCache {
     length_per_hour: f32,
     heights: Option<Vec<(Entity, f32)>>,
     vehicle_entities: Option<Vec<Entity>>,
+    // trackpad, mobile inputs, and scroll wheel
+    zoom: Vec2,
+    last_interact_time: f64,
 }
 
 impl DiagramPageCache {
@@ -49,6 +52,8 @@ impl Default for DiagramPageCache {
             length_per_hour: 100.0,
             heights: None,
             vehicle_entities: None,
+            last_interact_time: 0.0,
+            zoom: vec2(1.0, 1.0),
         }
     }
 }
@@ -106,7 +111,24 @@ pub fn show_diagram(
             ui.allocate_painter(ui.available_size_before_wrap(), Sense::click_and_drag());
 
         page_cache.view_offset -= response.drag_delta();
-        page_cache.view_offset.y = page_cache.view_offset.y.clamp(-10.0, f32::MAX);
+        // capture inputs
+        ui.input(|i| {
+            page_cache.view_offset -= i.translation_delta();
+        });
+        page_cache.view_offset.y = page_cache.view_offset.y.clamp(
+            -30.0,
+            match page_cache.heights.as_ref() {
+                None => -30.0,
+                Some(v) => {
+                    if let Some((_, h)) = v.last() {
+                        h - response.rect.bottom() + 30.0
+                    } else {
+                        -30.0
+                    }
+                }
+                .max(-30.0),
+            },
+        );
         page_cache.view_offset.x = page_cache.view_offset.x.clamp(-1000.0, f32::MAX);
         if page_cache.view_offset.x < -100.0 && response.total_drag_delta().is_none() {
             let target = -100.0;
@@ -210,20 +232,29 @@ pub fn show_diagram(
             Some((name.as_str(), h))
         }) {
             let galley = painter.layout_no_wrap(name.to_string(), font_id.clone(), text_color);
+            let height = h - page_cache.view_offset.y;
             let rect = Rect::from_min_size(
-                Pos2::new(
-                    response.rect.left(),
-                    h - page_cache.view_offset.y - galley.size().y / 2.0 - 2.0,
-                ),
+                Pos2::new(response.rect.left(), height - galley.size().y / 2.0 - 2.0),
                 galley.size() + vec2(8.0, 4.0),
             );
-            painter.hline(
-                response.rect.left()..=response.rect.right(),
-                h - page_cache.view_offset.y,
-                page_cache.stroke,
-            );
+            let galley_size = galley.size();
             painter.rect_filled(rect, CornerRadius::same(2), bg_color);
             painter.galley(rect.min + vec2(4.0, 2.0), galley, text_color);
+            painter.line(
+                vec![
+                    Pos2::new(response.rect.left(), height + galley_size.y / 2.0 + 2.0),
+                    Pos2::new(
+                        response.rect.left() + galley_size.x + 8.0,
+                        height + galley_size.y / 2.0 + 2.0,
+                    ),
+                    Pos2::new(
+                        response.rect.left() + galley_size.x + galley_size.y / 2.0 + 2.0 + 8.0,
+                        height,
+                    ),
+                    Pos2::new(response.rect.right(), height),
+                ],
+                page_cache.stroke,
+            );
         }
         for offset in 0..=((response.rect.right() - response.rect.left())
             / page_cache.length_per_hour) as i32

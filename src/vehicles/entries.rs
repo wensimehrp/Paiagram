@@ -58,6 +58,8 @@ pub struct TimetableEntry {
     pub service: Option<Entity>,
     /// The track/platform/dock/berth etc. at the station.
     pub track: Option<Entity>,
+    /// if this is implicitly generated,
+    pub implicit: bool,
 }
 
 /// A vehicle's schedule and departure pattern

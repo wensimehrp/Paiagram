@@ -401,6 +401,7 @@ fn create_timetable_entries(
                     station: station_entity,
                     service: service_entity,
                     track: None,
+                    implicit: false,
                 }
             })
             .id();
