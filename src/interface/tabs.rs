@@ -3,22 +3,26 @@ pub mod station_timetable;
 pub mod tree_view;
 pub mod vehicle;
 
-use bevy::ecs::entity::Entity;
-
 /// The page cache. Lots of r/w, few insertions, good locality, fast executions.
-#[derive(Default, Debug)]
-pub struct PageCache<T> {
-    keys: Vec<Entity>,
-    vals: Vec<T>,
+#[derive(Debug)]
+pub struct PageCache<K, V>
+where
+    K: PartialEq + Ord,
+{
+    keys: Vec<K>,
+    vals: Vec<V>,
 }
 
 const LINEAR_THRESHOLD: usize = 64;
 
-impl<T> PageCache<T> {
+impl<K, V> PageCache<K, V>
+where
+    K: PartialEq + Ord,
+{
     /// Get the page cache or insert with a custom value.
-    pub fn get_mut_or_insert_with<F>(&mut self, query_key: Entity, make_val: F) -> &mut T
+    pub fn get_mut_or_insert_with<F>(&mut self, query_key: K, make_val: F) -> &mut V
     where
-        F: FnOnce() -> T,
+        F: FnOnce() -> V,
     {
         if self.keys.len() < LINEAR_THRESHOLD
             && let Some(idx) = self.keys.iter().position(|e| *e == query_key)
@@ -33,5 +37,17 @@ impl<T> PageCache<T> {
                 return &mut self.vals[idx];
             }
         };
+    }
+}
+
+impl<K, V> Default for PageCache<K, V>
+where
+    K: PartialEq + Ord,
+{
+    fn default() -> Self {
+        Self {
+            keys: Vec::new(),
+            vals: Vec::new(),
+        }
     }
 }

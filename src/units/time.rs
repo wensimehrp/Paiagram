@@ -6,6 +6,10 @@ pub struct TimetableTime(pub i32);
 
 impl TimetableTime {
     #[inline]
+    pub fn as_duration(self) -> Duration {
+        Duration(self.0)
+    }
+    #[inline]
     pub fn from_hms<T: Into<i32>>(h: T, m: T, s: T) -> Self {
         TimetableTime(h.into() * 3600 + m.into() * 60 + s.into())
     }
@@ -121,7 +125,7 @@ impl ops::SubAssign<Duration> for TimetableTime {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, Copy)]
+#[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Duration(pub i32);
 
 impl Duration {

@@ -1,5 +1,6 @@
 use crate::units::time::{Duration, TimetableTime};
 use bevy::prelude::*;
+use either::Either;
 use smallvec::SmallVec;
 
 /// How the vehicle travels from/to the station.
@@ -68,6 +69,7 @@ pub struct VehicleSchedule {
     pub repeat: Option<Duration>,
     /// When would the vehicle depart. The departure times are relative to the start of the schedule.
     /// This should always be sorted
+    /// In this case, this stores the departure time relative to the starting time.
     pub departures: Vec<Duration>,
     /// The timetable entities the schedule holds.
     pub entities: Vec<Entity>,
@@ -80,10 +82,10 @@ impl Default for VehicleSchedule {
     fn default() -> Self {
         Self {
             start: TimetableTime(0),
-            repeat: None,
+            repeat: Some(Duration(86400)),
             departures: vec![Duration(0)],
             entities: Vec::new(),
-            service_entities: Vec::new()
+            service_entities: Vec::new(),
         }
     }
 }
@@ -131,42 +133,43 @@ impl VehicleSchedule {
             .iter()
             .filter_map(|e| query.get(*e).ok().map(|t| (t, *e)))
             .collect::<Vec<_>>();
-        let schedule_start = timetable_entries
-            .iter()
-            .find_map(|(et, _)| et.arrival_estimate)?;
-        let schedule_end = timetable_entries
-            .iter()
-            .rev()
-            .find_map(|(et, _)| et.departure_estimate)?;
-        let mut ret = Vec::new();
-        let Some(repeat) = self.repeat else {
-            // does not repeat
+        let mut ret = Vec::with_capacity(timetable_entries.len());
+        let repeats_iter = match self.repeat {
+            None => Either::Left(std::iter::once(self.start)),
+            Some(duration) => {
+                let start = self.start - Duration(86400);
+                Either::Right(std::iter::successors(Some(start), move |t| {
+                    let time = *t + duration;
+                    if time > range.end {
+                        return None;
+                    }
+                    Some(time)
+                }))
+            }
+        };
+        for base_time in repeats_iter {
             for departure in self.departures.iter().copied() {
-                let first_index = timetable_entries.iter().position(|(et, _)| {
+                let start_index = timetable_entries.iter().position(|(et, _)| {
                     let Some(ae) = et.arrival_estimate else {
                         return false;
                     };
-                    let real_time = self.start + departure + (ae - TimetableTime(0));
-                    real_time > range.start
+                    departure + base_time + ae.as_duration() > range.start
                 });
-                let last_index = timetable_entries.iter().rposition(|(et, _)| {
+                let end_index = timetable_entries.iter().rposition(|(et, _)| {
                     let Some(de) = et.departure_estimate else {
                         return false;
                     };
-                    let real_time = self.start + departure + (de - TimetableTime(0));
-                    real_time < range.end
+                    departure + base_time + de.as_duration() < range.end
                 });
-                let (Some(mut first_index), Some(mut last_index)) = (first_index, last_index)
-                else {
+                let (Some(mut si), Some(mut ei)) = (start_index, end_index) else {
                     continue;
                 };
-                first_index = first_index.saturating_sub(1);
-                last_index = (last_index + 1).min(timetable_entries.len() - 1);
-                let v = &timetable_entries[first_index..=last_index];
-                ret.push((self.start + departure, v.to_vec()))
+                si = si.saturating_sub(1);
+                ei = (ei + 1).min(timetable_entries.len() - 1);
+                let v = &timetable_entries[si..=ei];
+                ret.push((departure + base_time, v.to_vec()))
             }
-            return Some(ret);
-        };
-        return None;
+        }
+        Some(ret)
     }
 }

@@ -16,6 +16,7 @@ pub struct DiagramPageCache {
     stroke: Stroke,
     view_offset: Vec2,
     length_per_hour: f32,
+    heights: Option<Vec<(Entity, f32)>>,
 }
 
 impl Default for DiagramPageCache {
@@ -28,6 +29,7 @@ impl Default for DiagramPageCache {
             },
             view_offset: Vec2::default(),
             length_per_hour: 100.0,
+            heights: None,
         }
     }
 }
@@ -38,11 +40,11 @@ pub fn show_diagram(
     vehicles: Populated<(Entity, &Name, &VehicleSchedule)>,
     timetable_entries: Query<&TimetableEntry>,
     station_names: Query<&Name, With<Station>>,
-    mut page_cache: Local<PageCache<DiagramPageCache>>,
+    mut page_cache: Local<PageCache<Entity, DiagramPageCache>>,
     // required for animations
     time: Res<Time>,
 ) {
-    let Ok(displayed_line) = displayed_lines.get(displayed_line_entity) else {
+    let Ok(mut displayed_line) = displayed_lines.get_mut(displayed_line_entity) else {
         ui.centered_and_justified(|ui| ui.heading("Diagram not found"));
         return;
     };
@@ -81,18 +83,36 @@ pub fn show_diagram(
         }
         // the amount of stations visible must be very small, so we sort by the height instead
         // the visible range is always a small portion of the entire stuff
-        let mut current_height = response.rect.top();
-        let mut heights: Vec<(Entity, f32)> = Vec::new();
-        let station_lines = displayed_line.0.iter().map(|l| {
-            current_height += l.1.0.log2().max(1.0) * 15f32;
-            heights.push((l.0, current_height));
-            egui::Shape::hline(
-                response.rect.left()..=response.rect.right(),
-                current_height - page_cache.view_offset.y,
-                page_cache.stroke,
-            )
-        });
-        painter.extend(station_lines);
+        // the heights. This is always sorted by heights, which is the second parameter
+        let heights = match &page_cache.heights {
+            None => {
+                let mut heights = Vec::with_capacity(displayed_line.0.len());
+                let mut current_height = response.rect.top();
+                for (s, l) in displayed_line.0.iter() {
+                    current_height += l.0.abs() * 3.0;
+                    heights.push((*s, current_height))
+                }
+                page_cache.heights = Some(heights);
+                &page_cache.heights.as_ref().unwrap()
+            }
+            Some(h) => h,
+        };
+        let visible_stations: &[(Entity, f32)] = {
+            let first_visible = heights
+                .iter()
+                .position(|(_, h)| *h > page_cache.view_offset.y + response.rect.top());
+            let last_visible = heights
+                .iter()
+                .rposition(|(_, h)| *h < page_cache.view_offset.y + response.rect.bottom());
+            if let (Some(mut first_visible), Some(mut last_visible)) = (first_visible, last_visible)
+            {
+                first_visible = first_visible.saturating_sub(1);
+                last_visible = (last_visible + 1).min(heights.len() - 1);
+                &heights[first_visible..=last_visible]
+            } else {
+                &[]
+            }
+        };
         for (entity, name, schedule) in vehicles {
             let range = TimetableTime(
                 ((page_cache.view_offset.x) / page_cache.length_per_hour * 3600.0) as i32,
@@ -110,24 +130,30 @@ pub fn show_diagram(
                 let mut points = Vec::new();
                 let mut previous_index: Option<usize> = None;
                 for (entry, entry_entity) in schedule {
-                    let ax = (entry.arrival_estimate.unwrap() - range.start + initial_offset).0
-                        as f32
-                        / 3600.0
-                        * page_cache.length_per_hour
-                        + response.rect.left();
-                    let dx = (entry.departure_estimate.unwrap() - range.start + initial_offset).0
-                        as f32
-                        / 3600.0
-                        * page_cache.length_per_hour
-                        + response.rect.left();
-                    let Some(y_idx) = heights
+                    let ax = if let Some(ae) = entry.arrival_estimate {
+                        (ae - range.start + initial_offset).0 as f32 / 3600.0
+                            * page_cache.length_per_hour
+                            + response.rect.left()
+                    } else {
+                        continue;
+                    };
+                    let dx = if let Some(de) = entry.departure_estimate {
+                        (de - range.start + initial_offset).0 as f32 / 3600.0
+                            * page_cache.length_per_hour
+                            + response.rect.left()
+                    } else {
+                        continue;
+                    };
+                    let Some(y_idx) = visible_stations
                         .iter()
                         .position(|(s, _)| if *s == entry.station { true } else { false })
                     else {
                         continue;
                     };
-                    let y= heights[y_idx].1;
-                    if let Some(p_idx) = previous_index && p_idx.abs_diff(y_idx) > 1 {
+                    let y = visible_stations[y_idx].1;
+                    if let Some(p_idx) = previous_index
+                        && p_idx.abs_diff(y_idx) > 1
+                    {
                         painter.line(points.drain(..).collect(), page_cache.stroke);
                     }
                     previous_index = Some(y_idx);
@@ -148,8 +174,7 @@ pub fn show_diagram(
         let font_id = egui::FontId::default();
         let text_color = ui.visuals().text_color();
         let bg_color = ui.visuals().window_fill;
-
-        for (name, h) in heights.iter().filter_map(|(s, h)| {
+        for (name, h) in visible_stations.iter().filter_map(|(s, h)| {
             let Ok(name) = station_names.get(*s) else {
                 return None;
             };
@@ -163,7 +188,11 @@ pub fn show_diagram(
                 ),
                 galley.size() + vec2(8.0, 4.0),
             );
-
+            painter.hline(
+                response.rect.left()..=response.rect.right(),
+                h - page_cache.view_offset.y,
+                page_cache.stroke,
+            );
             painter.rect_filled(rect, CornerRadius::same(2), bg_color);
             painter.galley(rect.min + vec2(4.0, 2.0), galley, text_color);
         }
