@@ -179,8 +179,11 @@ pub fn show_vehicle(
     }
     if ui.button("Refresh").clicked() {
         for schedule in schedules.iter() {
+            let Some(entity) = schedule.0.entities.get(0) else {
+                continue;
+            };
             msg_sender.write(AdjustTimetableEntry {
-                entity: schedule.0.entities[0],
+                entity: *entity,
                 adjustment: TimetableAdjustment::PassThrough,
             });
         }

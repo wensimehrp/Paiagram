@@ -1,5 +1,7 @@
 use crate::rw_data::ModifyData;
+use bevy::ecs::system::{Local, Query, Single};
 use bevy::ecs::{message::MessageWriter, system::InMut};
+use bevy::window::Window;
 use egui::{Id, Modal, OpenUrl, Popup};
 use rfd::AsyncFileDialog;
 use std::collections::VecDeque;
@@ -67,6 +69,8 @@ async fn pick_file_contents(
 pub fn show_about(
     (InMut(ui), InMut(modal_open)): (InMut<egui::Ui>, InMut<bool>),
     mut msg_read_file: MessageWriter<ModifyData>,
+    mut window: Single<&mut Window>,
+    mut fullscreened: Local<bool>,
 ) {
     let queue = shared_queue();
     let pending: Vec<_> = {
@@ -133,6 +137,16 @@ pub fn show_about(
                 *modal_open = true;
             };
         });
+        if ui.button("Go Fullscreen").clicked() {
+            if *fullscreened {
+                window.mode = bevy::window::WindowMode::Windowed;
+            } else {
+                window.mode = bevy::window::WindowMode::BorderlessFullscreen(
+                    bevy::window::MonitorSelection::Primary,
+                );
+            }
+            *fullscreened = !*fullscreened;
+        }
     });
     if *modal_open {
         let modal = Modal::new(Id::new("Modal B")).show(ui.ctx(), |ui| {
