@@ -45,6 +45,7 @@ fn main() {
             search::SearchPlugin,
             settings::SettingsPlugin,
             vehicles::VehiclesPlugin,
+            lines::LinesPlugin,
         ))
         .run();
 }

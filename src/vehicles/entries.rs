@@ -93,6 +93,14 @@ impl Default for VehicleSchedule {
 }
 
 impl VehicleSchedule {
+    pub fn into_entries<'a>(
+        &self,
+        query: &'a Query<&TimetableEntry>,
+    ) -> impl Iterator<Item = (&'a TimetableEntry, Entity)> {
+        self.entities
+            .iter()
+            .filter_map(|e| query.get(*e).ok().map(|r| (r, *e)))
+    }
     pub fn get_service_entries(&self, service: Entity) -> Option<Vec<&[Entity]>> {
         let i = self
             .service_entities

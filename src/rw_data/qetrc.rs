@@ -419,11 +419,17 @@ fn create_line_entities(
 ) {
     let mut intervals: DisplayedLineType = Vec::with_capacity(line.stations.len());
     let Some(first_station) = line.stations.first() else {
-        commands.spawn((DisplayedLine(intervals), Name::new(line.name)));
+        commands.spawn((
+            DisplayedLine {
+                stations: intervals,
+                children: None,
+            },
+            Name::new(line.name),
+        ));
         return;
     };
     let first_entity = get_or_create_station(commands, stations, first_station);
-    intervals.push((first_entity, CanvasLength(0.0)));
+    intervals.push((first_entity, 0.0));
     let mut prev_station = first_station;
     let mut prev_entity = first_entity;
     for station in line.stations.iter().skip(1) {
@@ -438,12 +444,18 @@ fn create_line_entities(
                 .id();
             graph_map.add_edge(prev_entity, next_entity, interval_entity);
         }
-        intervals.push((next_entity, CanvasLength(distance_delta)));
+        intervals.push((next_entity, distance_delta));
         prev_station = station;
         prev_entity = next_entity;
     }
 
-    commands.spawn((DisplayedLine(intervals), Name::new(line.name)));
+    commands.spawn((
+        DisplayedLine {
+            stations: intervals,
+            children: None,
+        },
+        Name::new(line.name),
+    ));
 }
 
 fn get_or_create_station(

@@ -7,19 +7,19 @@ use crate::{
 };
 use bevy::prelude::*;
 use egui::{
-    Color32, Context, CornerRadius, Frame, Painter, Pos2, Rect, Sense, Slider, Stroke, Ui, Vec2,
-    Window, emath, vec2,
+    Color32, CornerRadius, Frame, Painter, Pos2, Rect, Sense, Stroke, Ui, Vec2,
+    emath::{self, RectTransform},
+    vec2,
 };
 
 pub struct DiagramPageCache {
     lines: Vec<Vec<Pos2>>,
     stroke: Stroke,
     view_offset: Vec2,
-    length_per_hour: f32,
     heights: Option<Vec<(Entity, f32)>>,
-    vehicle_entities: Option<Vec<Entity>>,
     // trackpad, mobile inputs, and scroll wheel
     zoom: Vec2,
+    is_log: bool,
     last_interact_time: f64,
 }
 
@@ -49,10 +49,9 @@ impl Default for DiagramPageCache {
                 color: Color32::BLACK,
             },
             view_offset: Vec2::default(),
-            length_per_hour: 100.0,
             heights: None,
-            vehicle_entities: None,
             last_interact_time: 0.0,
+            is_log: true,
             zoom: vec2(1.0, 1.0),
         }
     }
@@ -72,213 +71,144 @@ pub fn show_diagram(
         ui.centered_and_justified(|ui| ui.heading("Diagram not found"));
         return;
     };
-    let page_cache =
-        page_cache.get_mut_or_insert_with(displayed_line_entity, DiagramPageCache::default);
+    let pc = page_cache.get_mut_or_insert_with(displayed_line_entity, DiagramPageCache::default);
     ui.horizontal(|ui| {
-        ui.add(&mut page_cache.stroke);
-        ui.add(Slider::new(&mut page_cache.length_per_hour, 20.0..=5000.0))
+        ui.add(&mut pc.stroke);
     });
     ui.style_mut().visuals.menu_corner_radius = CornerRadius::ZERO;
     ui.style_mut().visuals.window_stroke.width = 0.0;
+    if pc.heights.is_none() {
+        let mut current_height = 0.0;
+        let mut heights = Vec::new();
+        for (station, distance) in &displayed_line.stations {
+            current_height += distance.abs().log2().max(1.0) * 15f32;
+            heights.push((*station, current_height))
+        }
+        pc.heights = Some(heights);
+    }
     Frame::canvas(ui.style()).show(ui, |ui| {
-        let available_vehicles = match &page_cache.vehicle_entities {
-            Some(v) => v,
-            None => {
-                let mut new_vehicles = Vec::new();
-                for (vehicle_ent, _, s) in vehicles.iter() {
-                    for vehicle_entry in s
-                        .entities
-                        .iter()
-                        .map(|ent| timetable_entries.get(*ent).ok())
-                    {
-                        if let Some(entry) = vehicle_entry
-                            && displayed_line
-                                .0
-                                .iter()
-                                .find(|(station_ent, _)| *station_ent == entry.station)
-                                .is_some()
-                        {
-                            new_vehicles.push(vehicle_ent);
-                            break;
-                        }
-                    }
-                }
-                page_cache.vehicle_entities = Some(new_vehicles);
-                page_cache.vehicle_entities.as_ref().unwrap()
-            }
-        };
-        let (mut response, painter) =
+        let (mut response, mut painter) =
             ui.allocate_painter(ui.available_size_before_wrap(), Sense::click_and_drag());
+        // Compute world rect visible on the canvas using pc.view_offset and pc.zoom.
+        // pc.view_offset is the world position at the top-left of the canvas.
+        let world_size = response.rect.size() / pc.zoom;
+        let world_rect =
+            Rect::from_min_size(Pos2::new(pc.view_offset.x, pc.view_offset.y), world_size);
+        // Build transforms between world and screen coordinates. Use them to draw
+        // everything consistently in world space so zoom & pan keep items aligned.
+        let world_to_screen = emath::RectTransform::from_to(world_rect, response.rect);
+        let screen_to_world = world_to_screen.inverse();
+        let visible_stations = pc.get_visible_stations(world_rect.top()..world_rect.bottom());
+        draw_station_lines(
+            &mut painter,
+            &pc,
+            &world_rect,
+            &world_to_screen,
+            ui,
+            visible_stations,
+        );
+        draw_time_lines(&mut painter, &pc, &world_rect, &world_to_screen, ui);
 
-        page_cache.view_offset -= response.drag_delta();
-        // capture inputs
-        ui.input(|i| {
-            page_cache.length_per_hour *= i.zoom_delta();
-            page_cache.view_offset.x *= i.zoom_delta();
-            page_cache.view_offset -= i.translation_delta();
+        if let Some(children) = &displayed_line.children {
+            for (entity, name, schedule) in children.iter().filter_map(|e| vehicles.get(*e).ok()) {
+                let Some(visible_sets) = schedule.get_entries_range(
+                    TimetableTime((world_rect.left() * 36.0) as i32)
+                        ..TimetableTime((world_rect.right() * 36.0) as i32),
+                    &timetable_entries,
+                ) else {
+                    continue;
+                };
+                for (initial_offset, set) in visible_sets {
+                    let mut to_draw = Vec::with_capacity(set.len());
+                    for (entry, timetable_entity) in set {
+                        let (Some(ae), Some(de)) =
+                            (entry.arrival_estimate, entry.departure_estimate)
+                        else {
+                            painter.line(to_draw.drain(..).collect(), pc.stroke);
+                            continue;
+                        };
+                        let Some((_, h)) =
+                            visible_stations.iter().find(|(s, _)| *s == entry.station)
+                        else {
+                            painter.line(to_draw.drain(..).collect(), pc.stroke);
+                            continue;
+                        };
+                        let start = world_to_screen
+                            * Pos2::new((initial_offset.0 + ae.0) as f32 / 36.0, *h);
+                        let end = world_to_screen
+                            * Pos2::new((initial_offset.0 + de.0) as f32 / 36.0, *h);
+                        to_draw.push(start);
+                        to_draw.push(end);
+                    }
+                    painter.line(to_draw, pc.stroke);
+                }
+            }
+        }
+
+        ui.input(|input| {
+            // Zooming: keep the world point under the cursor pinned to the same
+            // screen position. Convert the cursor pos into world coords to
+            // compute a new view_offset after applying the zoom delta.
+            let delta = input.zoom_delta_2d();
+            if let Some(pos) = input.pointer.hover_pos() {
+                let world_pos_before = (screen_to_world * pos).to_vec2();
+
+                let new_zoom = pc.zoom * delta;
+                // clamp to reasonable bounds to avoid division by zero or extreme zoom
+                pc.zoom.x = new_zoom.x.clamp(0.025, 128.0);
+                pc.zoom.y = new_zoom.y.clamp(0.025, 128.0);
+
+                let new_world_size = response.rect.size() / pc.zoom;
+                let screen_t = (pos - response.rect.min) / response.rect.size();
+                // make view_offset such that world_pos_before remains at 'pos'
+                pc.view_offset = world_pos_before - screen_t * new_world_size;
+            }
+            // Panning: translation_delta is in screen pixels; convert to world by
+            // dividing by zoom. If zoom is per-axis, handle component-wise.
+            let t_delta = input.translation_delta();
+            if t_delta != Vec2::ZERO {
+                pc.view_offset -= t_delta / pc.zoom;
+            }
         });
-        page_cache.view_offset.y = page_cache.view_offset.y.clamp(
-            -30.0,
-            match page_cache.heights.as_ref() {
-                None => -30.0,
-                Some(v) => {
-                    if let Some((_, h)) = v.last() {
-                        h - response.rect.bottom() + 30.0
-                    } else {
-                        -30.0
-                    }
-                }
-                .max(-30.0),
-            },
-        );
-        page_cache.length_per_hour = page_cache.length_per_hour.clamp(20.0, 5000.0);
-        page_cache.view_offset.x = page_cache.view_offset.x.clamp(-1000.0, f32::MAX);
-        if page_cache.view_offset.x < -100.0 && response.total_drag_delta().is_none() {
-            let target = -100.0;
-            let speed = 8.0;
-            let t = (1.0 - (-speed * time.delta_secs()).exp()).clamp(0.0, 1.0);
-            page_cache.view_offset.x += (target - page_cache.view_offset.x) * t;
-            ui.ctx().request_repaint();
-        }
-        for t in 0..=((response.rect.right() - response.rect.left()) / page_cache.length_per_hour)
-            as i32
-            + 1
-        {
-            painter.vline(
-                response.rect.left() + page_cache.length_per_hour * t as f32
-                    - page_cache.view_offset.x % page_cache.length_per_hour,
-                response.rect.top()..=response.rect.bottom(),
-                page_cache.stroke,
-            );
-        }
-        if page_cache.heights.is_none() {
-            let mut heights = Vec::with_capacity(displayed_line.0.len());
-            let mut current_height = response.rect.top();
-            for (s, l) in displayed_line.0.iter() {
-                current_height += l.0.abs() * 3.0;
-                heights.push((*s, current_height))
-            }
-            page_cache.heights = Some(heights);
-        };
-        let visible_stations: &[(Entity, f32)] = page_cache.get_visible_stations(
-            (page_cache.view_offset.y + response.rect.top())
-                ..(page_cache.view_offset.y + response.rect.bottom()),
-        );
-        let range = TimetableTime(
-            ((page_cache.view_offset.x) / page_cache.length_per_hour * 3600.0) as i32,
-        )
-            ..TimetableTime(
-                ((page_cache.view_offset.x + response.rect.right() - response.rect.left())
-                    / page_cache.length_per_hour
-                    * 3600.0) as i32,
-            );
-        for (entity, name, schedule) in available_vehicles
-            .iter()
-            .filter_map(|ent| vehicles.get(*ent).ok())
-        {
-            let Some(schedules) = schedule.get_entries_range(range.clone(), &timetable_entries)
-            else {
-                continue;
-            };
-            for (initial_offset, schedule) in schedules {
-                let mut points = Vec::new();
-                let mut previous_index: Option<usize> = None;
-                for (entry, entry_entity) in schedule {
-                    let ax = if let Some(ae) = entry.arrival_estimate {
-                        (ae - range.start + initial_offset).0 as f32 / 3600.0
-                            * page_cache.length_per_hour
-                            + response.rect.left()
-                    } else {
-                        continue;
-                    };
-                    let dx = if let Some(de) = entry.departure_estimate {
-                        (de - range.start + initial_offset).0 as f32 / 3600.0
-                            * page_cache.length_per_hour
-                            + response.rect.left()
-                    } else {
-                        continue;
-                    };
-                    let Some(y_idx) = visible_stations
-                        .iter()
-                        .position(|(s, _)| if *s == entry.station { true } else { false })
-                    else {
-                        continue;
-                    };
-                    let y = visible_stations[y_idx].1;
-                    if let Some(p_idx) = previous_index
-                        && p_idx.abs_diff(y_idx) > 1
-                    {
-                        painter.line(points.drain(..).collect(), page_cache.stroke);
-                    }
-                    previous_index = Some(y_idx);
-                    points.extend_from_slice(&[
-                        Pos2 {
-                            x: ax,
-                            y: y - page_cache.view_offset.y,
-                        },
-                        Pos2 {
-                            x: dx,
-                            y: y - page_cache.view_offset.y,
-                        },
-                    ])
-                }
-                painter.line(points, page_cache.stroke);
-            }
-        }
-        let font_id = egui::FontId::default();
-        let text_color = ui.visuals().text_color();
-        let bg_color = ui.visuals().window_fill;
-        for (name, h) in visible_stations.iter().filter_map(|(s, h)| {
-            let Ok(name) = station_names.get(*s) else {
-                return None;
-            };
-            Some((name.as_str(), h))
-        }) {
-            let galley = painter.layout_no_wrap(name.to_string(), font_id.clone(), text_color);
-            let height = h - page_cache.view_offset.y;
-            let rect = Rect::from_min_size(
-                Pos2::new(response.rect.left(), height - galley.size().y / 2.0 - 2.0),
-                galley.size() + vec2(8.0, 4.0),
-            );
-            let galley_size = galley.size();
-            painter.rect_filled(rect, CornerRadius::same(2), bg_color);
-            painter.galley(rect.min + vec2(4.0, 2.0), galley, text_color);
-            painter.line(
-                vec![
-                    Pos2::new(response.rect.left(), height + galley_size.y / 2.0 + 2.0),
-                    Pos2::new(
-                        response.rect.left() + galley_size.x + 8.0,
-                        height + galley_size.y / 2.0 + 2.0,
-                    ),
-                    Pos2::new(
-                        response.rect.left() + galley_size.x + galley_size.y / 2.0 + 2.0 + 8.0,
-                        height,
-                    ),
-                    Pos2::new(response.rect.right(), height),
-                ],
-                page_cache.stroke,
-            );
-        }
-        for offset in 0..=((response.rect.right() - response.rect.left())
-            / page_cache.length_per_hour) as i32
-            + 1
-        {
-            let i = ((page_cache.view_offset.x) / page_cache.length_per_hour) as i32 + offset;
-            if i < 0 {
-                continue;
-            }
-            let galley = painter.layout_no_wrap(i.to_string(), font_id.clone(), text_color);
-            let center_pos = response.rect.min
-                + vec2(
-                    page_cache.length_per_hour * offset as f32
-                        - page_cache.view_offset.x % page_cache.length_per_hour,
-                    galley.size().y / 2.0 + 2.0,
-                );
-            let rect = Rect::from_center_size(center_pos, galley.size() + vec2(8.0, 4.0));
-
-            painter.rect_filled(rect, CornerRadius::same(2), bg_color);
-            painter.galley(rect.center() - galley.size() / 2.0, galley, text_color);
-        }
-        response
     });
+}
+
+fn draw_station_lines(
+    painter: &mut Painter,
+    pc: &DiagramPageCache,
+    world_rect: &Rect,
+    to_screen: &RectTransform,
+    ui: &Ui,
+    to_draw: &[(Entity, f32)],
+) {
+    let ppp = ui.pixels_per_point();
+    for (station, height) in to_draw {
+        let world_y = *height;
+        let mut left = to_screen * Pos2::new(world_rect.left(), world_y);
+        let mut right = to_screen * Pos2::new(world_rect.right(), world_y);
+        pc.stroke.round_center_to_pixel(ppp, &mut left.x);
+        pc.stroke.round_center_to_pixel(ppp, &mut right.x);
+        painter.line(vec![left, right], pc.stroke);
+    }
+}
+
+fn draw_time_lines(
+    painter: &mut Painter,
+    pc: &DiagramPageCache,
+    world_rect: &Rect,
+    to_screen: &RectTransform,
+    ui: &Ui,
+) {
+    let grid_world = Vec2::splat(100.0);
+    let x_start = (world_rect.left() / grid_world.x).floor() as i32 - 1;
+    let x_end = (world_rect.right() / grid_world.x).ceil() as i32 + 1;
+    let ppp = ui.pixels_per_point();
+    for i in x_start..=x_end {
+        let world_x = i as f32 * grid_world.x;
+        let mut top = to_screen * Pos2::new(world_x, world_rect.top());
+        let mut bot = to_screen * Pos2::new(world_x, world_rect.bottom());
+        pc.stroke.round_center_to_pixel(ppp, &mut top.x);
+        pc.stroke.round_center_to_pixel(ppp, &mut bot.x);
+        painter.line(vec![top, bot], pc.stroke);
+    }
 }
