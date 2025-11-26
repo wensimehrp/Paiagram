@@ -12,6 +12,9 @@ use egui::{
     vec2,
 };
 
+// Time and time-canvas related constants
+const SECONDS_PER_WORLD_UNIT: f32 = 36.0; // world units -> seconds
+
 pub struct DiagramPageCache {
     lines: Vec<Vec<Pos2>>,
     stroke: Stroke,
@@ -99,6 +102,10 @@ pub fn show_diagram(
         let world_to_screen = emath::RectTransform::from_to(world_rect, response.rect);
         let screen_to_world = world_to_screen.inverse();
         let visible_stations = pc.get_visible_stations(world_rect.top()..world_rect.bottom());
+        let visible_time_range = TimetableTime((world_rect.left() * SECONDS_PER_WORLD_UNIT) as i32)
+            ..TimetableTime((world_rect.right() * SECONDS_PER_WORLD_UNIT) as i32);
+        let sec_per_pt =
+            (visible_time_range.end - visible_time_range.start).0 as f32 / response.rect.width();
         draw_station_lines(
             &mut painter,
             &pc,
@@ -107,15 +114,20 @@ pub fn show_diagram(
             ui,
             visible_stations,
         );
-        draw_time_lines(&mut painter, &pc, &world_rect, &world_to_screen, ui);
-
+        draw_time_lines(
+            &mut painter,
+            &pc,
+            &world_rect,
+            &world_to_screen,
+            ui,
+            sec_per_pt,
+            SECONDS_PER_WORLD_UNIT,
+        );
         if let Some(children) = &displayed_line.children {
             for (entity, name, schedule) in children.iter().filter_map(|e| vehicles.get(*e).ok()) {
-                let Some(visible_sets) = schedule.get_entries_range(
-                    TimetableTime((world_rect.left() * 36.0) as i32)
-                        ..TimetableTime((world_rect.right() * 36.0) as i32),
-                    &timetable_entries,
-                ) else {
+                let Some(visible_sets) =
+                    schedule.get_entries_range(visible_time_range.clone(), &timetable_entries)
+                else {
                     continue;
                 };
                 for (initial_offset, set) in visible_sets {
@@ -134,9 +146,15 @@ pub fn show_diagram(
                             continue;
                         };
                         let start = world_to_screen
-                            * Pos2::new((initial_offset.0 + ae.0) as f32 / 36.0, *h);
+                            * Pos2::new(
+                                (initial_offset.0 + ae.0) as f32 / SECONDS_PER_WORLD_UNIT,
+                                *h,
+                            );
                         let end = world_to_screen
-                            * Pos2::new((initial_offset.0 + de.0) as f32 / 36.0, *h);
+                            * Pos2::new(
+                                (initial_offset.0 + de.0) as f32 / SECONDS_PER_WORLD_UNIT,
+                                *h,
+                            );
                         to_draw.push(start);
                         to_draw.push(end);
                     }
@@ -145,31 +163,25 @@ pub fn show_diagram(
             }
         }
 
+        let mut zoom_delta: Vec2 = Vec2::default();
+        let mut translation_delta: Vec2 = Vec2::default();
         ui.input(|input| {
-            // Zooming: keep the world point under the cursor pinned to the same
-            // screen position. Convert the cursor pos into world coords to
-            // compute a new view_offset after applying the zoom delta.
-            let delta = input.zoom_delta_2d();
-            if let Some(pos) = input.pointer.hover_pos() {
-                let world_pos_before = (screen_to_world * pos).to_vec2();
-
-                let new_zoom = pc.zoom * delta;
-                // clamp to reasonable bounds to avoid division by zero or extreme zoom
-                pc.zoom.x = new_zoom.x.clamp(0.025, 128.0);
-                pc.zoom.y = new_zoom.y.clamp(0.025, 128.0);
-
-                let new_world_size = response.rect.size() / pc.zoom;
-                let screen_t = (pos - response.rect.min) / response.rect.size();
-                // make view_offset such that world_pos_before remains at 'pos'
-                pc.view_offset = world_pos_before - screen_t * new_world_size;
-            }
-            // Panning: translation_delta is in screen pixels; convert to world by
-            // dividing by zoom. If zoom is per-axis, handle component-wise.
-            let t_delta = input.translation_delta();
-            if t_delta != Vec2::ZERO {
-                pc.view_offset -= t_delta / pc.zoom;
-            }
+            zoom_delta = input.zoom_delta_2d();
+            translation_delta = input.translation_delta();
         });
+        if let Some(pos) = response.hover_pos() {
+            let world_pos_before = (screen_to_world * pos).to_vec2();
+            let new_zoom = pc.zoom * zoom_delta;
+            pc.zoom.x = new_zoom.x.clamp(0.025, 1024.0);
+            pc.zoom.y = new_zoom.y.clamp(0.025, 1024.0);
+            let new_world_size = response.rect.size() / pc.zoom;
+            let screen_t = (pos - response.rect.min) / response.rect.size();
+            pc.view_offset = world_pos_before - screen_t * new_world_size;
+        }
+        pc.view_offset -= translation_delta / pc.zoom;
+        pc.view_offset -= response.drag_delta() / pc.zoom;
+        pc.view_offset.x = pc.view_offset.x.clamp(-100000.0, 10000.0);
+        pc.view_offset.y = pc.view_offset.y.clamp(-200.0, 10000.0);
     });
 }
 
@@ -192,23 +204,60 @@ fn draw_station_lines(
     }
 }
 
-fn draw_time_lines(
+pub fn draw_time_lines(
     painter: &mut Painter,
     pc: &DiagramPageCache,
     world_rect: &Rect,
     to_screen: &RectTransform,
     ui: &Ui,
+    spp: f32,
+    seconds_per_world_unit: f32,
 ) {
-    let grid_world = Vec2::splat(100.0);
-    let x_start = (world_rect.left() / grid_world.x).floor() as i32 - 1;
-    let x_end = (world_rect.right() / grid_world.x).ceil() as i32 + 1;
+    const MIN_SPACING_PX: f32 = 48.0;
+    const MAX_SPACING_PX: f32 = 256.0;
+    const TIME_SIZES: &[(f32, std::ops::Range<f32>)] = &[
+        // (size_in_seconds, min_spp .. max_spp)
+        (3600.0 * 24.0, (3600.0 * 24.0) / MAX_SPACING_PX..f32::MAX),
+        (
+            3600.0 * 4.0,
+            (3600.0 * 4.0) / MAX_SPACING_PX..(3600.0 * 4.0) / MIN_SPACING_PX,
+        ),
+        (3600.0, 3600.0 / MAX_SPACING_PX..3600.0 / MIN_SPACING_PX),
+        (1800.0, 1800.0 / MAX_SPACING_PX..2100.0 / MIN_SPACING_PX),
+        (0600.0, 0600.0 / MAX_SPACING_PX..1200.0 / MIN_SPACING_PX),
+        (0300.0, 0300.0 / MAX_SPACING_PX..0450.0 / MIN_SPACING_PX),
+        (0060.0, 0060.0 / MAX_SPACING_PX..0180.0 / MIN_SPACING_PX),
+        (0030.0, 0030.0 / MAX_SPACING_PX..0045.0 / MIN_SPACING_PX),
+        (0010.0, 0010.0 / MAX_SPACING_PX..0020.0 / MIN_SPACING_PX),
+        (0001.0, 0001.0 / MAX_SPACING_PX..0005.0 / MIN_SPACING_PX),
+    ];
+
+    // --- Drawing Logic ---
+
     let ppp = ui.pixels_per_point();
-    for i in x_start..=x_end {
-        let world_x = i as f32 * grid_world.x;
-        let mut top = to_screen * Pos2::new(world_x, world_rect.top());
-        let mut bot = to_screen * Pos2::new(world_x, world_rect.bottom());
-        pc.stroke.round_center_to_pixel(ppp, &mut top.x);
-        pc.stroke.round_center_to_pixel(ppp, &mut bot.x);
-        painter.line(vec![top, bot], pc.stroke);
+
+    // Iterate over all time sizes that are visible at the current zoom (spp)
+    for (size_in_seconds, spp_range) in TIME_SIZES.iter().filter(|(_, range)| range.end > spp) {
+        let world_length = size_in_seconds / seconds_per_world_unit;
+        let x_start = (world_rect.left() / world_length) as i32;
+        let x_end = (world_rect.right() / world_length) as i32;
+        if x_start - x_end == 0 {
+            continue;
+        }
+        let normalized =
+            1.0 - ((spp - spp_range.start) / (spp_range.end - spp_range.start)).clamp(0.0, 1.0);
+        if normalized < 0.02 {
+            continue;
+        }
+        let mut stroke = pc.stroke;
+        stroke.color = stroke.color.gamma_multiply(normalized);
+        for x_idx in x_start..=x_end {
+            let world_x = x_idx as f32 * world_length;
+            let mut top = to_screen * Pos2::new(world_x, world_rect.top());
+            let mut bot = to_screen * Pos2::new(world_x, world_rect.bottom());
+            stroke.round_center_to_pixel(ppp, &mut top.x);
+            stroke.round_center_to_pixel(ppp, &mut bot.x);
+            painter.line_segment([top, bot], stroke);
+        }
     }
 }
