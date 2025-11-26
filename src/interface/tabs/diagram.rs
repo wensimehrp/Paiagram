@@ -172,8 +172,8 @@ pub fn show_diagram(
         if let Some(pos) = response.hover_pos() {
             let world_pos_before = (screen_to_world * pos).to_vec2();
             let new_zoom = pc.zoom * zoom_delta;
-            pc.zoom.x = new_zoom.x.clamp(0.025, 1024.0);
-            pc.zoom.y = new_zoom.y.clamp(0.025, 1024.0);
+            pc.zoom.x = new_zoom.x.clamp(0.025, 2048.0);
+            pc.zoom.y = new_zoom.y.clamp(0.025, 2048.0);
             let new_world_size = response.rect.size() / pc.zoom;
             let screen_t = (pos - response.rect.min) / response.rect.size();
             pc.view_offset = world_pos_before - screen_t * new_world_size;
@@ -204,6 +204,7 @@ fn draw_station_lines(
     }
 }
 
+/// Draw vertical time lines and labels
 pub fn draw_time_lines(
     painter: &mut Painter,
     pc: &DiagramPageCache,
@@ -215,32 +216,76 @@ pub fn draw_time_lines(
 ) {
     const MIN_SPACING_PX: f32 = 48.0;
     const MAX_SPACING_PX: f32 = 256.0;
-    const TIME_SIZES: &[(f32, std::ops::Range<f32>)] = &[
+    let time_sizes: &[(
+        i32,
+        std::ops::Range<f32>,
+        Box<dyn Fn(TimetableTime) -> String>,
+    )] = &[
         // (size_in_seconds, min_spp .. max_spp)
-        (3600.0 * 24.0, (3600.0 * 24.0) / MAX_SPACING_PX..f32::MAX),
         (
-            3600.0 * 4.0,
-            (3600.0 * 4.0) / MAX_SPACING_PX..(3600.0 * 4.0) / MIN_SPACING_PX,
+            3600 * 24,
+            (3600.0 * 24.0) / MAX_SPACING_PX..f32::MAX,
+            Box::new(|t| format!("{}", t)),
         ),
-        (3600.0, 3600.0 / MAX_SPACING_PX..3600.0 / MIN_SPACING_PX),
-        (1800.0, 1800.0 / MAX_SPACING_PX..2100.0 / MIN_SPACING_PX),
-        (0600.0, 0600.0 / MAX_SPACING_PX..1200.0 / MIN_SPACING_PX),
-        (0300.0, 0300.0 / MAX_SPACING_PX..0450.0 / MIN_SPACING_PX),
-        (0060.0, 0060.0 / MAX_SPACING_PX..0180.0 / MIN_SPACING_PX),
-        (0030.0, 0030.0 / MAX_SPACING_PX..0045.0 / MIN_SPACING_PX),
-        (0010.0, 0010.0 / MAX_SPACING_PX..0020.0 / MIN_SPACING_PX),
-        (0001.0, 0001.0 / MAX_SPACING_PX..0005.0 / MIN_SPACING_PX),
+        (
+            3600 * 4,
+            (3600.0 * 4.0) / MAX_SPACING_PX..(3600.0 * 14.0) / MIN_SPACING_PX,
+            Box::new(|t| format!("{:02}:{:02}", t.to_hmsd().0, t.to_hmsd().1)),
+        ),
+        (
+            3600,
+            3600.0 / MAX_SPACING_PX..(3600.0 * 2.5) / MIN_SPACING_PX,
+            Box::new(|t| format!("{:02}:{:02}", t.to_hmsd().0, t.to_hmsd().1)),
+        ),
+        (
+            1800,
+            1800.0 / MAX_SPACING_PX..2100.0 / MIN_SPACING_PX,
+            Box::new(|t| format!("{:02}:{:02}", t.to_hmsd().0, t.to_hmsd().1)),
+        ),
+        (
+            0600,
+            0600.0 / MAX_SPACING_PX..1200.0 / MIN_SPACING_PX,
+            Box::new(|t| format!("{:02}:{:02}", t.to_hmsd().0, t.to_hmsd().1)),
+        ),
+        (
+            0300,
+            0300.0 / MAX_SPACING_PX..0450.0 / MIN_SPACING_PX,
+            Box::new(|t| format!("{:02}:{:02}", t.to_hmsd().0, t.to_hmsd().1)),
+        ),
+        (
+            0060,
+            0060.0 / MAX_SPACING_PX..0180.0 / MIN_SPACING_PX,
+            Box::new(|t| format!("{:02}:{:02}", t.to_hmsd().0, t.to_hmsd().1)),
+        ),
+        (
+            0030,
+            0030.0 / MAX_SPACING_PX..0045.0 / MIN_SPACING_PX,
+            Box::new(|t| format!("{:02}", t.to_hmsd().2)),
+        ),
+        (
+            0010,
+            0010.0 / MAX_SPACING_PX..0020.0 / MIN_SPACING_PX,
+            Box::new(|t| format!("{:02}", t.to_hmsd().2)),
+        ),
+        (
+            0001,
+            0001.0 / MAX_SPACING_PX..0005.0 / MIN_SPACING_PX,
+            Box::new(|t| format!("{}", t.to_hmsd().2 % 10)),
+        ),
     ];
 
     // --- Drawing Logic ---
 
     let ppp = ui.pixels_per_point();
+    let mut drawn = Vec::new();
 
     // Iterate over all time sizes that are visible at the current zoom (spp)
-    for (size_in_seconds, spp_range) in TIME_SIZES.iter().filter(|(_, range)| range.end > spp) {
-        let world_length = size_in_seconds / seconds_per_world_unit;
+    for (size_in_seconds, spp_range, format_fn) in
+        time_sizes.iter().filter(|(_, range, _)| range.end > spp)
+    {
+        let world_length = *size_in_seconds as f32 / seconds_per_world_unit;
         let x_start = (world_rect.left() / world_length) as i32;
-        let x_end = (world_rect.right() / world_length) as i32;
+        let x_end = (world_rect.right() / world_length) as i32 + 1;
         if x_start - x_end == 0 {
             continue;
         }
@@ -253,11 +298,32 @@ pub fn draw_time_lines(
         stroke.color = stroke.color.gamma_multiply(normalized);
         for x_idx in x_start..=x_end {
             let world_x = x_idx as f32 * world_length;
+            let current_time = size_in_seconds * x_idx;
+            if drawn.contains(&current_time) {
+                continue;
+            }
             let mut top = to_screen * Pos2::new(world_x, world_rect.top());
             let mut bot = to_screen * Pos2::new(world_x, world_rect.bottom());
             stroke.round_center_to_pixel(ppp, &mut top.x);
             stroke.round_center_to_pixel(ppp, &mut bot.x);
+            // draw the label
+            let label = painter.layout_no_wrap(
+                format_fn(TimetableTime(current_time)),
+                egui::FontId::default(),
+                pc.stroke.color.gamma_multiply(normalized * normalized * normalized),
+            );
+            painter.galley(
+                top - Vec2::new(label.size().x / 2.0, 0.0),
+                label.clone(),
+                Color32::BLACK,
+            );
+            painter.galley(
+                bot + Vec2::new(label.size().x / 2.0, 0.0),
+                label,
+                Color32::BLACK,
+            );
             painter.line_segment([top, bot], stroke);
+            drawn.push(current_time);
         }
     }
 }
