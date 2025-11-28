@@ -422,7 +422,7 @@ fn create_line_entities(
         commands.spawn((
             DisplayedLine {
                 stations: intervals,
-                children: None,
+                ..Default::default()
             },
             Name::new(line.name),
         ));
@@ -452,7 +452,7 @@ fn create_line_entities(
     commands.spawn((
         DisplayedLine {
             stations: intervals,
-            children: None,
+            ..Default::default()
         },
         Name::new(line.name),
     ));

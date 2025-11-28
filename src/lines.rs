@@ -15,12 +15,21 @@ pub type DisplayedLineType = Vec<(Entity, f32)>;
 
 pub type RulerLineType = Vec<(Entity, TimetableTime)>;
 
+#[derive(Debug, Default)]
+pub enum ScaleMode {
+    Linear,
+    #[default]
+    Logarithmic,
+    Uniform,
+}
+
 /// An imaginary (railway) line on the canvas, consisting of multiple segments.
-#[derive(Component, Debug)]
+#[derive(Component, Debug, Default)]
 #[require(Name)]
 pub struct DisplayedLine {
     pub stations: Vec<(Entity, f32)>,
     pub children: Option<Vec<Entity>>,
+    pub scale_mode: ScaleMode,
 }
 
 #[derive(Component, Debug)]
