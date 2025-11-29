@@ -190,6 +190,7 @@ pub fn show_diagram(
                 366.0 * 86400.0 / SECONDS_PER_WORLD_UNIT - response.rect.width() / pc.zoom.x,
             );
             // SAFETY: heights is guaranteed to be initialized
+            const TOP_BOTTOM_PADDING: f32 = 30.0;
             let max_height = pc
                 .heights
                 .as_ref()
@@ -197,15 +198,17 @@ pub fn show_diagram(
                 .last()
                 .map(|(_, h)| *h)
                 .unwrap_or(0.0);
-            pc.view_offset.y =
-                if response.rect.height() / pc.zoom.y > (max_height + 200.0 / pc.zoom.y) {
-                    (-response.rect.height() / pc.zoom.y + max_height) / 2.0
-                } else {
-                    pc.view_offset.y.clamp(
-                        -100.0 / pc.zoom.y,
-                        max_height - response.rect.height() / pc.zoom.y + 100.0 / pc.zoom.y,
-                    )
-                }
+            pc.view_offset.y = if response.rect.height() / pc.zoom.y
+                > (max_height + TOP_BOTTOM_PADDING * 2.0 / pc.zoom.y)
+            {
+                (-response.rect.height() / pc.zoom.y + max_height) / 2.0
+            } else {
+                pc.view_offset.y.clamp(
+                    -TOP_BOTTOM_PADDING / pc.zoom.y,
+                    max_height - response.rect.height() / pc.zoom.y
+                        + TOP_BOTTOM_PADDING / pc.zoom.y,
+                )
+            }
         });
 }
 
