@@ -7,23 +7,23 @@ use crate::{
 };
 use bevy::prelude::*;
 use egui::{
-    Color32, CornerRadius, Frame, Margin, Painter, Pos2, Rect, Sense, Stroke, Ui, Vec2,
+    Color32, CornerRadius, FontId, Frame, Margin, Painter, Pos2, Rect, Sense, Stroke, Ui, Vec2,
     emath::{self, RectTransform},
     vec2,
 };
 
 // Time and time-canvas related constants
-const SECONDS_PER_WORLD_UNIT: f32 = 36.0; // world units -> seconds
+const SECONDS_PER_WORLD_UNIT: f64 = 1.0; // world units -> seconds
+const TICKS_PER_SECOND: i64 = 100;
+const TICKS_PER_WORLD_UNIT: f64 = SECONDS_PER_WORLD_UNIT * TICKS_PER_SECOND as f64;
 
 pub struct DiagramPageCache {
-    lines: Vec<Vec<Pos2>>,
     stroke: Stroke,
-    view_offset: Vec2,
+    tick_offset: i64,
+    vertical_offset: f32,
     heights: Option<Vec<(Entity, f32)>>,
     // trackpad, mobile inputs, and scroll wheel
     zoom: Vec2,
-    is_log: bool,
-    last_interact_time: f64,
 }
 
 impl DiagramPageCache {
@@ -46,16 +46,14 @@ impl DiagramPageCache {
 impl Default for DiagramPageCache {
     fn default() -> Self {
         Self {
-            lines: Vec::new(),
+            tick_offset: 0,
+            vertical_offset: 0.0,
             stroke: Stroke {
                 width: 1.0,
                 color: Color32::BLACK,
             },
-            view_offset: Vec2::default(),
             heights: None,
-            last_interact_time: 0.0,
-            is_log: true,
-            zoom: vec2(1.0, 1.0),
+            zoom: vec2(0.0005, 1.0),
         }
     }
 }
@@ -63,12 +61,11 @@ impl Default for DiagramPageCache {
 pub fn show_diagram(
     (InMut(ui), In(displayed_line_entity)): (InMut<egui::Ui>, In<Entity>),
     mut displayed_lines: Populated<&mut DisplayedLine>,
-    vehicles: Populated<(Entity, &Name, &VehicleSchedule)>,
-    timetable_entries: Query<&TimetableEntry>,
-    station_names: Query<&Name, With<Station>>,
+    // vehicles: Populated<(Entity, &Name, &VehicleSchedule)>,
+    // timetable_entries: Query<&TimetableEntry>,
+    // station_names: Query<&Name, With<Station>>,
     mut page_cache: Local<PageCache<Entity, DiagramPageCache>>,
     // required for animations
-    time: Res<Time>,
 ) {
     let Ok(mut displayed_line) = displayed_lines.get_mut(displayed_line_entity) else {
         ui.centered_and_justified(|ui| ui.heading("Diagram not found"));
@@ -94,80 +91,21 @@ pub fn show_diagram(
         .show(ui, |ui| {
             let (mut response, mut painter) =
                 ui.allocate_painter(ui.available_size_before_wrap(), Sense::click_and_drag());
-            // Compute world rect visible on the canvas using pc.view_offset and pc.zoom.
-            // pc.view_offset is the world position at the top-left of the canvas.
-            let world_size = response.rect.size() / pc.zoom;
-            let world_rect =
-                Rect::from_min_size(Pos2::new(pc.view_offset.x, pc.view_offset.y), world_size);
-            // Build transforms between world and screen coordinates. Use them to draw
-            // everything consistently in world space so zoom & pan keep items aligned.
-            let world_to_screen = emath::RectTransform::from_to(world_rect, response.rect);
-            let screen_to_world = world_to_screen.inverse();
-            let visible_stations = pc.get_visible_stations(world_rect.top()..world_rect.bottom());
-            let visible_time_range =
-                TimetableTime((world_rect.left() * SECONDS_PER_WORLD_UNIT) as i32)
-                    ..TimetableTime((world_rect.right() * SECONDS_PER_WORLD_UNIT) as i32);
-            let sec_per_pt = (visible_time_range.end - visible_time_range.start).0 as f32
-                / response.rect.width();
-            draw_station_lines(
-                &mut painter,
-                &pc,
-                &world_rect,
-                &world_to_screen,
-                ui,
-                visible_stations,
-            );
+            let vertical_visible =
+                pc.vertical_offset..response.rect.height() / pc.zoom.y + pc.vertical_offset;
+            let horizontal_visible = pc.tick_offset
+                ..pc.tick_offset + (response.rect.width() as f64 / pc.zoom.x as f64) as i64;
+            let ticks_per_screen_unit = (horizontal_visible.end - horizontal_visible.start) as f64
+                / response.rect.width() as f64;
             draw_time_lines(
-                &mut painter,
                 &pc,
-                &world_rect,
-                &world_to_screen,
-                ui,
-                sec_per_pt,
-                SECONDS_PER_WORLD_UNIT,
+                &mut painter,
+                &response.rect,
+                ticks_per_screen_unit,
+                &horizontal_visible,
+                ui.pixels_per_point(),
             );
-            if let Some(children) = &displayed_line.children {
-                for (entity, name, schedule) in
-                    children.iter().filter_map(|e| vehicles.get(*e).ok())
-                {
-                    let Some(visible_sets) =
-                        schedule.get_entries_range(visible_time_range.clone(), &timetable_entries)
-                    else {
-                        continue;
-                    };
-                    for (initial_offset, set) in visible_sets {
-                        let mut to_draw = Vec::with_capacity(set.len());
-                        for (entry, timetable_entity) in set {
-                            let (Some(ae), Some(de)) =
-                                (entry.arrival_estimate, entry.departure_estimate)
-                            else {
-                                painter.line(to_draw.drain(..).collect(), pc.stroke);
-                                continue;
-                            };
-                            let Some((_, h)) =
-                                visible_stations.iter().find(|(s, _)| *s == entry.station)
-                            else {
-                                painter.line(to_draw.drain(..).collect(), pc.stroke);
-                                continue;
-                            };
-                            let start = world_to_screen
-                                * Pos2::new(
-                                    (initial_offset.0 + ae.0) as f32 / SECONDS_PER_WORLD_UNIT,
-                                    *h,
-                                );
-                            let end = world_to_screen
-                                * Pos2::new(
-                                    (initial_offset.0 + de.0) as f32 / SECONDS_PER_WORLD_UNIT,
-                                    *h,
-                                );
-                            to_draw.push(start);
-                            to_draw.push(end);
-                        }
-                        painter.line(to_draw, pc.stroke);
-                    }
-                }
-            }
-
+            // capture movements
             let mut zoom_delta: Vec2 = Vec2::default();
             let mut translation_delta: Vec2 = Vec2::default();
             ui.input(|input| {
@@ -175,197 +113,111 @@ pub fn show_diagram(
                 translation_delta = input.translation_delta();
             });
             if let Some(pos) = response.hover_pos() {
-                let world_pos_before = (screen_to_world * pos).to_vec2();
-                let new_zoom = pc.zoom * zoom_delta;
-                pc.zoom.x = new_zoom.x.clamp(0.05, 2048.0);
-                pc.zoom.y = new_zoom.y.clamp(0.025, 2048.0);
-                let new_world_size = response.rect.size() / pc.zoom;
-                let screen_t = (pos - response.rect.min) / response.rect.size();
-                pc.view_offset = world_pos_before - screen_t * new_world_size;
+                let old_zoom = pc.zoom;
+                let mut new_zoom = pc.zoom * zoom_delta;
+                new_zoom.x = new_zoom.x.clamp(0.00001, 0.4);
+                new_zoom.y = new_zoom.y.clamp(0.025, 2048.0);
+                let rel_pos = (pos - response.rect.min) / response.rect.size();
+                let world_width_before = response.rect.width() as f64 / old_zoom.x as f64;
+                let world_width_after = response.rect.width() as f64 / new_zoom.x as f64;
+                let world_pos_before_x =
+                    pc.tick_offset as f64 + rel_pos.x as f64 * world_width_before;
+                let new_tick_offset =
+                    (world_pos_before_x - rel_pos.x as f64 * world_width_after).round() as i64;
+                pc.zoom = new_zoom;
+                pc.tick_offset = new_tick_offset;
             }
-            pc.view_offset -= translation_delta / pc.zoom;
-            pc.view_offset -= response.drag_delta() / pc.zoom;
-            // TODO: extend the view range from 7 days to 366 days, or near infinite scrolling
-            // This should be done by:
-            // - eliminating floating point algebra
-            // - using integers as offsets, specifically, 1/20 of a second and 1/10 of a metre
-            //   for horizontal and vertical offsets, respectively
-            // as of now 7 days is way more than useful, and can already represent lots of stuff
-            const MAX_VIEW_DAYS: f32 = 7.0;
-            // Simplify horizontal bounds clamping by using the already computed world_size.x
-            // World extents in 'world units' for +/- MAX_VIEW_DAYS days
-            let max_world_extent = MAX_VIEW_DAYS * 86400.0 / SECONDS_PER_WORLD_UNIT;
-            let min_world = -max_world_extent;
-            // Right bound is the maximum extent minus the canvas width (in world units)
-            let right_bound = (max_world_extent - world_size.x).max(min_world);
-            pc.view_offset.x = pc.view_offset.x.clamp(min_world, right_bound);
-            // SAFETY: heights is guaranteed to be initialized
-            const TOP_BOTTOM_PADDING: f32 = 30.0;
-            let max_height = pc
-                .heights
-                .as_ref()
-                .unwrap()
-                .last()
-                .map(|(_, h)| *h)
-                .unwrap_or(0.0);
-            pc.view_offset.y = if response.rect.height() / pc.zoom.y
-                > (max_height + TOP_BOTTOM_PADDING * 2.0 / pc.zoom.y)
-            {
-                (-response.rect.height() / pc.zoom.y + max_height) / 2.0
-            } else {
-                pc.view_offset.y.clamp(
-                    -TOP_BOTTOM_PADDING / pc.zoom.y,
-                    max_height - response.rect.height() / pc.zoom.y
-                        + TOP_BOTTOM_PADDING / pc.zoom.y,
-                )
-            }
+            pc.tick_offset -= (ticks_per_screen_unit
+                * (response.drag_delta().x + translation_delta.x) as f64)
+                as i64;
+            info!(?pc.tick_offset, ?pc.zoom.x);
         });
 }
 
 fn draw_station_lines(
     painter: &mut Painter,
     pc: &DiagramPageCache,
-    world_rect: &Rect,
-    to_screen: &RectTransform,
-    ui: &Ui,
+    screen_rect: &Rect,
     to_draw: &[(Entity, f32)],
 ) {
-    let ppp = ui.pixels_per_point();
-    for (station, height) in to_draw {
-        let world_y = *height;
-        let mut left = to_screen * Pos2::new(world_rect.left(), world_y);
-        let mut right = to_screen * Pos2::new(world_rect.right(), world_y);
-        pc.stroke.round_center_to_pixel(ppp, &mut left.y);
-        right.y = left.y;
-        painter.line(vec![left, right], pc.stroke);
-    }
+}
+
+fn ticks_to_screen_x(
+    ticks: i64,
+    screen_rect: &Rect,
+    ticks_per_screen_unit: f64,
+    offset_ticks: i64,
+) -> f32 {
+    let base = (ticks - offset_ticks) as f64 / ticks_per_screen_unit;
+    screen_rect.left() + base as f32
 }
 
 /// Draw vertical time lines and labels
 pub fn draw_time_lines(
-    painter: &mut Painter,
     pc: &DiagramPageCache,
-    world_rect: &Rect,
-    to_screen: &RectTransform,
-    ui: &Ui,
-    spp: f32,
-    seconds_per_world_unit: f32,
+    painter: &mut Painter,
+    screen_rect: &Rect,
+    ticks_per_screen_unit: f64,
+    visible_ticks: &std::ops::Range<i64>,
+    pixels_per_point: f32,
 ) {
-    const MIN_SPACING_PX: f32 = 48.0;
-    const MAX_SPACING_PX: f32 = 256.0;
-    const ELEMENT_DISPLAY_THRESHOLD: f32 = 0.08;
-    let time_sizes: &[(
-        i32,
-        std::ops::Range<f32>,
-        Box<dyn Fn(TimetableTime) -> String>,
-    )] = &[
-        // (size_in_seconds, min_spp .. max_spp)
-        (
-            3600 * 24,
-            (3600.0 * 24.0) / MAX_SPACING_PX..f32::MAX,
-            Box::new(|t| format!("{}", t)),
-        ),
-        (
-            3600 * 4,
-            (3600.0 * 4.0) / MAX_SPACING_PX..(3600.0 * 14.0) / MIN_SPACING_PX,
-            Box::new(|t| format!("{:02}:{:02}", t.to_hmsd().0, t.to_hmsd().1)),
-        ),
-        (
-            3600,
-            3600.0 / MAX_SPACING_PX..(3600.0 * 2.5) / MIN_SPACING_PX,
-            Box::new(|t| format!("{:02}:{:02}", t.to_hmsd().0, t.to_hmsd().1)),
-        ),
-        (
-            1800,
-            1800.0 / MAX_SPACING_PX..2100.0 / MIN_SPACING_PX,
-            Box::new(|t| format!("{:02}:{:02}", t.to_hmsd().0, t.to_hmsd().1)),
-        ),
-        (
-            0600,
-            0600.0 / MAX_SPACING_PX..1200.0 / MIN_SPACING_PX,
-            Box::new(|t| format!("{:02}:{:02}", t.to_hmsd().0, t.to_hmsd().1)),
-        ),
-        (
-            0300,
-            0300.0 / MAX_SPACING_PX..0450.0 / MIN_SPACING_PX,
-            Box::new(|t| format!("{:02}:{:02}", t.to_hmsd().0, t.to_hmsd().1)),
-        ),
-        (
-            0060,
-            0060.0 / MAX_SPACING_PX..0180.0 / MIN_SPACING_PX,
-            Box::new(|t| format!("{:02}:{:02}", t.to_hmsd().0, t.to_hmsd().1)),
-        ),
-        (
-            0030,
-            0030.0 / MAX_SPACING_PX..0045.0 / MIN_SPACING_PX,
-            Box::new(|t| format!("{:02}", t.to_hmsd().2)),
-        ),
-        (
-            0010,
-            0010.0 / MAX_SPACING_PX..0020.0 / MIN_SPACING_PX,
-            Box::new(|t| format!("{:02}", t.to_hmsd().2)),
-        ),
-        (
-            0001,
-            0001.0 / MAX_SPACING_PX..0005.0 / MIN_SPACING_PX,
-            Box::new(|t| format!("{}", t.to_hmsd().2 % 10)),
-        ),
+    const MAX_SCREEN_WIDTH: f64 = 64.0;
+    const MIN_SCREEN_WIDTH: f64 = 32.0;
+    const SIZES: &[i64] = &[
+        TICKS_PER_SECOND * 1,            // 1 second
+        TICKS_PER_SECOND * 10,           // 10 seconds
+        TICKS_PER_SECOND * 30,           // 30 seconds
+        TICKS_PER_SECOND * 60,           // 1 minute
+        TICKS_PER_SECOND * 60 * 5,       // 5 minutes
+        TICKS_PER_SECOND * 60 * 10,      // 10 minutes
+        TICKS_PER_SECOND * 60 * 30,      // 30 minutes
+        TICKS_PER_SECOND * 60 * 60,      // 1 hour
+        TICKS_PER_SECOND * 60 * 60 * 4,  // 4 hours
+        TICKS_PER_SECOND * 60 * 60 * 24, // 1 day
     ];
+    let mut drawn: Vec<i64> = Vec::with_capacity(30);
 
-    // --- Drawing Logic ---
-
-    let ppp = ui.pixels_per_point();
-    let mut drawn = Vec::new();
-
-    // Iterate over all time sizes that are visible at the current zoom (spp)
-    for (size_in_seconds, spp_range, format_fn) in
-        time_sizes.iter().filter(|(_, range, _)| range.end > spp)
-    {
-        let world_length = *size_in_seconds as f32 / seconds_per_world_unit;
-        let x_start = (world_rect.left() / world_length) as i32;
-        let x_end = (world_rect.right() / world_length) as i32 + 1;
-        if x_start - x_end == 0 {
+    // align the first tick to a spacing boundary that is <= visible start.
+    let first_visible_position = SIZES
+        .iter()
+        .position(|s| *s as f64 / ticks_per_screen_unit * 1.5 > MIN_SCREEN_WIDTH)
+        .unwrap_or(0);
+    let visible = &SIZES[first_visible_position..];
+    info!(?visible);
+    for (i, spacing) in visible.iter().enumerate().rev() {
+        let first = visible_ticks.start - visible_ticks.start.rem_euclid(*spacing) - spacing;
+        let mut tick = first;
+        let strength = (((*spacing as f64 / ticks_per_screen_unit * 1.5) - MIN_SCREEN_WIDTH)
+            / (MAX_SCREEN_WIDTH - MIN_SCREEN_WIDTH))
+            .clamp(0.0, 1.0);
+        if strength < 0.1 {
             continue;
         }
-        let line_strength =
-            1.0 - ((spp - spp_range.start) / (spp_range.end - spp_range.start)).clamp(0.0, 1.0);
-        if line_strength < ELEMENT_DISPLAY_THRESHOLD {
-            continue;
-        }
-        let text_strength = line_strength.powi(5);
         let mut stroke = pc.stroke;
-        let text_color = stroke.color.gamma_multiply(text_strength);
-        stroke.color = stroke.color.gamma_multiply(line_strength);
-        for x_idx in x_start..=x_end {
-            let world_x = x_idx as f32 * world_length;
-            let current_time = size_in_seconds * x_idx;
-            if drawn.contains(&current_time) {
+        stroke.color = stroke.color.gamma_multiply(strength as f32);
+        while tick <= visible_ticks.end {
+            tick += *spacing;
+            if drawn.contains(&tick) {
                 continue;
             }
-            let mut top = to_screen * Pos2::new(world_x, world_rect.top());
-            let mut bot = to_screen * Pos2::new(world_x, world_rect.bottom());
-            stroke.round_center_to_pixel(ppp, &mut top.x);
-            bot.x = top.x;
-            // draw the label
-            if text_strength >= ELEMENT_DISPLAY_THRESHOLD {
-                let label = painter.layout_no_wrap(
-                    format_fn(TimetableTime(current_time)),
-                    egui::FontId::monospace(13.0),
-                    text_color,
-                );
-                painter.galley(
-                    top - Vec2::new(label.size().x / 2.0, 0.0),
-                    label.clone(),
-                    Color32::BLACK,
-                );
-                painter.galley(
-                    bot + Vec2::new(label.size().x / 2.0, 0.0),
-                    label,
-                    Color32::BLACK,
-                );
-            }
-            painter.line_segment([top, bot], stroke);
-            drawn.push(current_time);
+            let mut x = ticks_to_screen_x(tick, screen_rect, ticks_per_screen_unit, pc.tick_offset);
+            stroke.round_center_to_pixel(pixels_per_point, &mut x);
+            painter.vline(x, screen_rect.top()..=screen_rect.bottom(), stroke);
+            drawn.push(tick);
+            let time = TimetableTime((tick / 100) as i32);
+            let text = match i + first_visible_position {
+                0..=2 => time.to_hmsd().2.to_string(),
+                _ => time.to_string(),
+            };
+            let label = painter.layout_no_wrap(text, FontId::monospace(13.0), stroke.color);
+            painter.galley(
+                Pos2 {
+                    x: x - label.size().x / 2.0,
+                    y: screen_rect.top() + label.size().y / 2.0,
+                },
+                label,
+                stroke.color,
+            );
         }
     }
 }
