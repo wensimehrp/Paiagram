@@ -177,7 +177,7 @@ pub fn show_diagram(
             if let Some(pos) = response.hover_pos() {
                 let world_pos_before = (screen_to_world * pos).to_vec2();
                 let new_zoom = pc.zoom * zoom_delta;
-                pc.zoom.x = new_zoom.x.clamp(0.025, 2048.0);
+                pc.zoom.x = new_zoom.x.clamp(0.05, 2048.0);
                 pc.zoom.y = new_zoom.y.clamp(0.025, 2048.0);
                 let new_world_size = response.rect.size() / pc.zoom;
                 let screen_t = (pos - response.rect.min) / response.rect.size();
@@ -185,10 +185,20 @@ pub fn show_diagram(
             }
             pc.view_offset -= translation_delta / pc.zoom;
             pc.view_offset -= response.drag_delta() / pc.zoom;
-            pc.view_offset.x = pc.view_offset.x.clamp(
-                -366.0 * 86400.0 / SECONDS_PER_WORLD_UNIT,
-                366.0 * 86400.0 / SECONDS_PER_WORLD_UNIT - response.rect.width() / pc.zoom.x,
-            );
+            // TODO: extend the view range from 7 days to 366 days, or near infinite scrolling
+            // This should be done by:
+            // - eliminating floating point algebra
+            // - using integers as offsets, specifically, 1/20 of a second and 1/10 of a metre
+            //   for horizontal and vertical offsets, respectively
+            // as of now 7 days is way more than useful, and can already represent lots of stuff
+            const MAX_VIEW_DAYS: f32 = 7.0;
+            // Simplify horizontal bounds clamping by using the already computed world_size.x
+            // World extents in 'world units' for +/- MAX_VIEW_DAYS days
+            let max_world_extent = MAX_VIEW_DAYS * 86400.0 / SECONDS_PER_WORLD_UNIT;
+            let min_world = -max_world_extent;
+            // Right bound is the maximum extent minus the canvas width (in world units)
+            let right_bound = (max_world_extent - world_size.x).max(min_world);
+            pc.view_offset.x = pc.view_offset.x.clamp(min_world, right_bound);
             // SAFETY: heights is guaranteed to be initialized
             const TOP_BOTTOM_PADDING: f32 = 30.0;
             let max_height = pc
