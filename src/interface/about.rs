@@ -70,7 +70,6 @@ pub fn show_about(
     (InMut(ui), InMut(modal_open)): (InMut<egui::Ui>, InMut<bool>),
     mut msg_read_file: MessageWriter<ModifyData>,
     mut window: Single<&mut Window>,
-    mut fullscreened: Local<bool>,
 ) {
     let queue = shared_queue();
     let pending: Vec<_> = {
@@ -138,14 +137,14 @@ pub fn show_about(
             };
         });
         if ui.button("Go Fullscreen").clicked() {
-            if *fullscreened {
-                window.mode = bevy::window::WindowMode::Windowed;
-            } else {
-                window.mode = bevy::window::WindowMode::BorderlessFullscreen(
+            window.mode = match window.mode {
+                bevy::window::WindowMode::BorderlessFullscreen(_) => {
+                    bevy::window::WindowMode::Windowed
+                }
+                _ => bevy::window::WindowMode::BorderlessFullscreen(
                     bevy::window::MonitorSelection::Primary,
-                );
+                ),
             }
-            *fullscreened = !*fullscreened;
         }
     });
     if *modal_open {
