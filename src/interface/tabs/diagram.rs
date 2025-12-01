@@ -81,8 +81,6 @@ pub fn show_diagram(
         return;
     };
     let pc = page_cache.get_mut_or_insert_with(displayed_line_entity, DiagramPageCache::default);
-    pc.background_acc_time += time.delta_secs();
-    pc.interaction_acc_time += time.delta_secs();
     ui.horizontal(|ui| {
         ui.add(&mut pc.stroke);
     });
@@ -219,9 +217,6 @@ pub fn show_diagram(
                             let dy = pos.y - py;
                             // range is 5.0
                             if dx * dx + dy * dy < 49.0 {
-                                if pc.selected_line.is_none() {
-                                    pc.background_acc_time = 0.0;
-                                }
                                 if let Some(selected_line) = pc.selected_line
                                     && selected_line == *vehicle_entity
                                 {
@@ -252,20 +247,27 @@ pub fn show_diagram(
                     painter.line(line, stroke);
                 }
             }
-            if let Some((lines, mut stroke, vehicle_entity)) = selected {
-                // draw something that covers the entire canvas
-                let background_strength = 1.0
-                    - (2.0 * (pc.background_acc_time / LINE_ANIMATION_TIME).min(1.0) - 2.0).powi(2)
-                        / 4.0;
-                let line_strength = 1.0
-                    - (2.0 * (pc.interaction_acc_time / LINE_ANIMATION_TIME).min(1.0) - 2.0)
-                        .powi(2)
-                        / 4.0;
+            if selected.is_none() {
+                pc.background_acc_time -= time.delta_secs();
+            } else {
+                pc.background_acc_time += time.delta_secs();
+            }
+            pc.interaction_acc_time += time.delta_secs();
+            pc.background_acc_time = pc.background_acc_time.clamp(0.0, LINE_ANIMATION_TIME);
+            pc.interaction_acc_time = pc.interaction_acc_time.clamp(0.0, LINE_ANIMATION_TIME);
+            // draw something that covers the entire canvas
+            let background_strength =
+                1.0 - ((pc.background_acc_time / LINE_ANIMATION_TIME) - 1.0).powi(2);
+            if background_strength > 0.1 {
                 painter.rect_filled(
                     response.rect,
                     CornerRadius::ZERO,
                     Color32::from_additive_luminance((background_strength * 180.0) as u8),
                 );
+            }
+            if let Some((lines, mut stroke, vehicle_entity)) = selected {
+                let line_strength =
+                    1.0 - ((pc.interaction_acc_time / LINE_ANIMATION_TIME) - 1.0).powi(2);
                 let signal_stroke: Stroke = Stroke {
                     width: 1.0 + line_strength,
                     color: Color32::ORANGE,
