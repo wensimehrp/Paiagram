@@ -1,3 +1,5 @@
+use core::f32;
+
 use super::PageCache;
 use crate::{
     intervals::Station,
@@ -17,10 +19,12 @@ use egui::{
 const SECONDS_PER_WORLD_UNIT: f64 = 1.0; // world units -> seconds
 const TICKS_PER_SECOND: i64 = 100;
 const TICKS_PER_WORLD_UNIT: f64 = SECONDS_PER_WORLD_UNIT * TICKS_PER_SECOND as f64;
+const LINE_ANIMATION_TIME: f32 = 0.2; // 0.2 seconds
 
 pub struct DiagramPageCache {
-    active_lines: Vec<(Vec<Vec<Pos2>>, Stroke)>,
     selected_line: Option<Entity>,
+    background_acc_time: f32,
+    interaction_acc_time: f32,
     stroke: Stroke,
     tick_offset: i64,
     vertical_offset: f32,
@@ -48,7 +52,8 @@ impl DiagramPageCache {
 impl Default for DiagramPageCache {
     fn default() -> Self {
         Self {
-            active_lines: Vec::new(),
+            background_acc_time: 0.0,
+            interaction_acc_time: 0.0,
             selected_line: None,
             tick_offset: 0,
             vertical_offset: 0.0,
@@ -69,12 +74,15 @@ pub fn show_diagram(
     timetable_entries: Query<&TimetableEntry>,
     station_names: Query<&Name, With<Station>>,
     mut page_cache: Local<PageCache<Entity, DiagramPageCache>>,
+    time: Res<Time>,
 ) {
     let Ok(mut displayed_line) = displayed_lines.get_mut(displayed_line_entity) else {
         ui.centered_and_justified(|ui| ui.heading("Diagram not found"));
         return;
     };
     let pc = page_cache.get_mut_or_insert_with(displayed_line_entity, DiagramPageCache::default);
+    pc.background_acc_time += time.delta_secs();
+    pc.interaction_acc_time += time.delta_secs();
     ui.horizontal(|ui| {
         ui.add(&mut pc.stroke);
     });
@@ -131,20 +139,20 @@ pub fn show_diagram(
                     ) else {
                         continue;
                     };
-                    let mut all_to_draw = Vec::new();
+                    let mut global_group = Vec::new();
                     for (initial_offset, set) in visible_sets {
                         let mut current_group = (Vec::new(), Vec::new());
                         for (entry, timetable_entity) in set {
                             let (Some(ae), Some(de)) =
                                 (entry.arrival_estimate, entry.departure_estimate)
                             else {
-                                all_to_draw.push(std::mem::take(&mut current_group));
+                                global_group.push(std::mem::take(&mut current_group));
                                 continue;
                             };
                             let Some((_, h)) =
                                 visible_stations.iter().find(|(s, _)| *s == entry.station)
                             else {
-                                all_to_draw.push(std::mem::take(&mut current_group));
+                                global_group.push(std::mem::take(&mut current_group));
                                 continue;
                             };
                             let mut draw_height =
@@ -172,9 +180,9 @@ pub fn show_diagram(
                             current_group.1.push(ae);
                             current_group.1.push(de);
                         }
-                        all_to_draw.push(current_group);
+                        global_group.push(current_group);
                     }
-                    active_lines.push((all_to_draw, pc.stroke, vehicle_entity));
+                    active_lines.push((global_group, pc.stroke, vehicle_entity));
                 }
             }
             if response.clicked()
@@ -211,7 +219,16 @@ pub fn show_diagram(
                             let dy = pos.y - py;
                             // range is 5.0
                             if dx * dx + dy * dy < 49.0 {
-                                pc.selected_line = Some(*vehicle_entity);
+                                if pc.selected_line.is_none() {
+                                    pc.background_acc_time = 0.0;
+                                }
+                                if let Some(selected_line) = pc.selected_line
+                                    && selected_line == *vehicle_entity
+                                {
+                                } else {
+                                    pc.interaction_acc_time = 0.0;
+                                    pc.selected_line = Some(*vehicle_entity);
+                                }
                                 found = true;
                                 break 'check_selected;
                             }
@@ -236,28 +253,41 @@ pub fn show_diagram(
                 }
             }
             if let Some((lines, mut stroke, vehicle_entity)) = selected {
-                const SIGNAL_STROKE: Stroke = Stroke {
-                    width: 2.0,
+                // draw something that covers the entire canvas
+                let background_strength = 1.0
+                    - (2.0 * (pc.background_acc_time / LINE_ANIMATION_TIME).min(1.0) - 2.0).powi(2)
+                        / 4.0;
+                let line_strength = 1.0
+                    - (2.0 * (pc.interaction_acc_time / LINE_ANIMATION_TIME).min(1.0) - 2.0)
+                        .powi(2)
+                        / 4.0;
+                painter.rect_filled(
+                    response.rect,
+                    CornerRadius::ZERO,
+                    Color32::from_additive_luminance((background_strength * 180.0) as u8),
+                );
+                let signal_stroke: Stroke = Stroke {
+                    width: 1.0 + line_strength,
                     color: Color32::ORANGE,
                 };
-                stroke.width *= 4.0;
+                stroke.width = line_strength * 3.0 * stroke.width + stroke.width;
                 for (line, entries) in lines {
                     for idx in 0..line.len().saturating_sub(1) {
                         let mut curr_pos = line[idx];
                         let mut next_pos = line[idx + 1];
                         curr_pos.y += 5.0;
                         next_pos.y += 5.0;
-                        SIGNAL_STROKE.round_center_to_pixel(ui.pixels_per_point(), &mut curr_pos.x);
-                        SIGNAL_STROKE.round_center_to_pixel(ui.pixels_per_point(), &mut curr_pos.y);
-                        SIGNAL_STROKE.round_center_to_pixel(ui.pixels_per_point(), &mut next_pos.x);
-                        SIGNAL_STROKE.round_center_to_pixel(ui.pixels_per_point(), &mut next_pos.y);
+                        signal_stroke.round_center_to_pixel(ui.pixels_per_point(), &mut curr_pos.x);
+                        signal_stroke.round_center_to_pixel(ui.pixels_per_point(), &mut curr_pos.y);
+                        signal_stroke.round_center_to_pixel(ui.pixels_per_point(), &mut next_pos.x);
+                        signal_stroke.round_center_to_pixel(ui.pixels_per_point(), &mut next_pos.y);
                         let duration = entries[idx + 1] - entries[idx];
                         let points = if next_pos.y <= curr_pos.y {
                             vec![curr_pos, Pos2::new(next_pos.x, curr_pos.y), next_pos]
                         } else {
                             vec![curr_pos, Pos2::new(curr_pos.x, next_pos.y), next_pos]
                         };
-                        painter.add(Shape::dashed_line(&points, SIGNAL_STROKE, 6.0, 3.0));
+                        painter.add(Shape::dashed_line(&points, signal_stroke, 6.0, 3.0));
                         if duration == Duration(0) {
                             continue;
                         }
