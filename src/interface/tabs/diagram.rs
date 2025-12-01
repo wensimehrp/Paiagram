@@ -2,14 +2,15 @@ use super::PageCache;
 use crate::{
     intervals::Station,
     lines::DisplayedLine,
-    units::time::TimetableTime,
+    units::time::{Duration, TimetableTime},
     vehicles::entries::{TimetableEntry, VehicleSchedule},
 };
 use bevy::prelude::*;
 use egui::{
-    Color32, CornerRadius, FontId, Frame, Margin, Painter, Pos2, Rect, Sense, Stroke, Ui, Vec2,
+    Color32, CornerRadius, FontId, Frame, Margin, Painter, Pos2, Rect, Sense, Shape, Stroke, Ui,
+    Vec2,
     emath::{self, RectTransform},
-    vec2,
+    response, vec2,
 };
 
 // Time and time-canvas related constants
@@ -18,6 +19,8 @@ const TICKS_PER_SECOND: i64 = 100;
 const TICKS_PER_WORLD_UNIT: f64 = SECONDS_PER_WORLD_UNIT * TICKS_PER_SECOND as f64;
 
 pub struct DiagramPageCache {
+    active_lines: Vec<(Vec<Vec<Pos2>>, Stroke)>,
+    selected_line: Option<Entity>,
     stroke: Stroke,
     tick_offset: i64,
     vertical_offset: f32,
@@ -45,6 +48,8 @@ impl DiagramPageCache {
 impl Default for DiagramPageCache {
     fn default() -> Self {
         Self {
+            active_lines: Vec::new(),
+            selected_line: None,
             tick_offset: 0,
             vertical_offset: 0.0,
             stroke: Stroke {
@@ -114,8 +119,9 @@ pub fn show_diagram(
                 &horizontal_visible,
                 ui.pixels_per_point(),
             );
+            let mut active_lines = Vec::new();
             if let Some(children) = displayed_line.children.as_ref() {
-                for (entity, name, schedule) in
+                for (vehicle_entity, name, schedule) in
                     children.iter().filter_map(|e| vehicles.get(*e).ok())
                 {
                     let Some(visible_sets) = schedule.get_entries_range(
@@ -126,18 +132,19 @@ pub fn show_diagram(
                         continue;
                     };
                     for (initial_offset, set) in visible_sets {
-                        let mut to_draw = Vec::with_capacity(set.len());
+                        let mut all_to_draw = Vec::new();
+                        let mut current_group = (Vec::new(), Vec::new());
                         for (entry, timetable_entity) in set {
                             let (Some(ae), Some(de)) =
                                 (entry.arrival_estimate, entry.departure_estimate)
                             else {
-                                painter.line(to_draw.drain(..).collect(), pc.stroke);
+                                all_to_draw.push(std::mem::take(&mut current_group));
                                 continue;
                             };
                             let Some((_, h)) =
                                 visible_stations.iter().find(|(s, _)| *s == entry.station)
                             else {
-                                painter.line(to_draw.drain(..).collect(), pc.stroke);
+                                all_to_draw.push(std::mem::take(&mut current_group));
                                 continue;
                             };
                             let mut draw_height =
@@ -160,11 +167,107 @@ pub fn show_diagram(
                                 ),
                                 y: draw_height,
                             };
-                            to_draw.push(start);
-                            to_draw.push(end);
+                            current_group.0.push(start);
+                            current_group.0.push(end);
+                            current_group.1.push(ae);
+                            current_group.1.push(de);
                         }
-                        painter.line(to_draw, pc.stroke);
+                        all_to_draw.push(current_group);
+                        active_lines.push((all_to_draw, pc.stroke, vehicle_entity));
                     }
+                }
+            }
+            if response.clicked()
+                && let Some(pos) = response.interact_pointer_pos()
+            {
+                let mut found = false;
+                'check_selected: for (lines, _, vehicle_entity) in active_lines.iter() {
+                    for (line, entries) in lines {
+                        for w in line.windows(2) {
+                            let [curr, next] = w else {
+                                continue;
+                            };
+                            let a = pos.x - curr.x;
+                            let b = pos.y - curr.y;
+                            let c = next.x - curr.x;
+                            let d = next.y - curr.y;
+                            let dot = a * c + b * d;
+                            let len_sq = c * c + d * d;
+                            if len_sq == 0.0 {
+                                continue;
+                            }
+                            let t = (dot / len_sq).clamp(0.0, 1.0);
+                            let px = curr.x + t * c;
+                            let py = curr.y + t * d;
+                            let dx = pos.x - px;
+                            let dy = pos.y - py;
+                            // range is 5.0
+                            if dx * dx + dy * dy < 25.0 {
+                                pc.selected_line = Some(*vehicle_entity);
+                                found = true;
+                                break 'check_selected;
+                            }
+                        }
+                    }
+                }
+                if !found {
+                    pc.selected_line = None;
+                }
+            }
+            for (lines, mut stroke, vehicle_entity) in active_lines {
+                const SIGNAL_STROKE: Stroke = Stroke {
+                    width: 2.0,
+                    color: Color32::ORANGE,
+                };
+                if let Some(selected_entity) = pc.selected_line
+                    && selected_entity == vehicle_entity
+                {
+                    stroke.width *= 5.0;
+                    for (line, entries) in lines.iter() {
+                        for idx in 0..line.len().saturating_sub(2) {
+                            let mut curr_pos = line[idx];
+                            let mut next_pos = line[idx + 1];
+                            curr_pos.y += 5.0;
+                            next_pos.y += 5.0;
+                            SIGNAL_STROKE
+                                .round_center_to_pixel(ui.pixels_per_point(), &mut curr_pos.x);
+                            SIGNAL_STROKE
+                                .round_center_to_pixel(ui.pixels_per_point(), &mut curr_pos.y);
+                            SIGNAL_STROKE
+                                .round_center_to_pixel(ui.pixels_per_point(), &mut next_pos.x);
+                            SIGNAL_STROKE
+                                .round_center_to_pixel(ui.pixels_per_point(), &mut next_pos.y);
+                            let duration = entries[idx + 1] - entries[idx];
+                            let points = if next_pos.y <= curr_pos.y {
+                                vec![curr_pos, Pos2::new(next_pos.x, curr_pos.y), next_pos]
+                            } else {
+                                vec![curr_pos, Pos2::new(curr_pos.x, next_pos.y), next_pos]
+                            };
+                            painter.add(Shape::dashed_line(&points, SIGNAL_STROKE, 6.0, 3.0));
+                            if duration == Duration(0) {
+                                continue;
+                            }
+                            let duration_text = painter.layout_no_wrap(
+                                {
+                                    let time = duration.to_hms();
+                                    format!("{}:{:02}", time.0 * 60 + time.1, time.2)
+                                },
+                                egui::FontId::monospace(15.0),
+                                Color32::ORANGE,
+                            );
+                            painter.galley(
+                                Pos2 {
+                                    x: (curr_pos.x + next_pos.x - duration_text.size().x) / 2.0,
+                                    y: curr_pos.y.max(next_pos.y) + 1.0,
+                                },
+                                duration_text,
+                                Color32::ORANGE,
+                            );
+                        }
+                    }
+                };
+                for (line, _) in lines {
+                    painter.line(line, stroke);
                 }
             }
             // capture movements
@@ -312,6 +415,7 @@ fn draw_time_lines(
             let time = TimetableTime((tick / 100) as i32);
             let text = match i + first_visible_position {
                 0..=2 => time.to_hmsd().2.to_string(),
+                3..=8 => format!("{}:{:02}", time.to_hmsd().0, time.to_hmsd().1),
                 _ => time.to_string(),
             };
             let label = painter.layout_no_wrap(text, FontId::monospace(13.0), current_stroke.color);
