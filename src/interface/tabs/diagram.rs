@@ -131,8 +131,8 @@ pub fn show_diagram(
                     ) else {
                         continue;
                     };
+                    let mut all_to_draw = Vec::new();
                     for (initial_offset, set) in visible_sets {
-                        let mut all_to_draw = Vec::new();
                         let mut current_group = (Vec::new(), Vec::new());
                         for (entry, timetable_entity) in set {
                             let (Some(ae), Some(de)) =
@@ -173,8 +173,8 @@ pub fn show_diagram(
                             current_group.1.push(de);
                         }
                         all_to_draw.push(current_group);
-                        active_lines.push((all_to_draw, pc.stroke, vehicle_entity));
                     }
+                    active_lines.push((all_to_draw, pc.stroke, vehicle_entity));
                 }
             }
             if response.clicked()
@@ -183,6 +183,14 @@ pub fn show_diagram(
                 let mut found = false;
                 'check_selected: for (lines, _, vehicle_entity) in active_lines.iter() {
                     for (line, entries) in lines {
+                        let (Some(first), Some(last)) = (line.first(), line.last()) else {
+                            continue;
+                        };
+                        // only perform an x-range check
+                        if !(first.x - 7.0..=last.x + 7.0).contains(&pos.x) {
+                            continue;
+                        }
+                        // don't perform the y range check since there could be multiple y values on the curve
                         for w in line.windows(2) {
                             let [curr, next] = w else {
                                 continue;
@@ -214,59 +222,62 @@ pub fn show_diagram(
                     pc.selected_line = None;
                 }
             }
-            for (lines, mut stroke, vehicle_entity) in active_lines {
+            let mut selected: Option<(Vec<(Vec<Pos2>, Vec<TimetableTime>)>, Stroke, Entity)> = None;
+            for (lines, stroke, vehicle_entity) in active_lines {
+                if selected.is_none()
+                    && let Some(selected_entity) = pc.selected_line
+                    && selected_entity == vehicle_entity
+                {
+                    selected = Some((lines, stroke, vehicle_entity));
+                    continue;
+                };
+                for (line, _) in lines {
+                    painter.line(line, stroke);
+                }
+            }
+            if let Some((lines, mut stroke, vehicle_entity)) = selected {
                 const SIGNAL_STROKE: Stroke = Stroke {
                     width: 2.0,
                     color: Color32::ORANGE,
                 };
-                if let Some(selected_entity) = pc.selected_line
-                    && selected_entity == vehicle_entity
-                {
-                    stroke.width *= 5.0;
-                    for (line, entries) in lines.iter() {
-                        for idx in 0..line.len().saturating_sub(2) {
-                            let mut curr_pos = line[idx];
-                            let mut next_pos = line[idx + 1];
-                            curr_pos.y += 5.0;
-                            next_pos.y += 5.0;
-                            SIGNAL_STROKE
-                                .round_center_to_pixel(ui.pixels_per_point(), &mut curr_pos.x);
-                            SIGNAL_STROKE
-                                .round_center_to_pixel(ui.pixels_per_point(), &mut curr_pos.y);
-                            SIGNAL_STROKE
-                                .round_center_to_pixel(ui.pixels_per_point(), &mut next_pos.x);
-                            SIGNAL_STROKE
-                                .round_center_to_pixel(ui.pixels_per_point(), &mut next_pos.y);
-                            let duration = entries[idx + 1] - entries[idx];
-                            let points = if next_pos.y <= curr_pos.y {
-                                vec![curr_pos, Pos2::new(next_pos.x, curr_pos.y), next_pos]
-                            } else {
-                                vec![curr_pos, Pos2::new(curr_pos.x, next_pos.y), next_pos]
-                            };
-                            painter.add(Shape::dashed_line(&points, SIGNAL_STROKE, 6.0, 3.0));
-                            if duration == Duration(0) {
-                                continue;
-                            }
-                            let duration_text = painter.layout_no_wrap(
-                                {
-                                    let time = duration.to_hms();
-                                    format!("{}:{:02}", time.0 * 60 + time.1, time.2)
-                                },
-                                egui::FontId::monospace(15.0),
-                                Color32::ORANGE,
-                            );
-                            painter.galley(
-                                Pos2 {
-                                    x: (curr_pos.x + next_pos.x - duration_text.size().x) / 2.0,
-                                    y: curr_pos.y.max(next_pos.y) + 1.0,
-                                },
-                                duration_text,
-                                Color32::ORANGE,
-                            );
+                stroke.width *= 4.0;
+                for (line, entries) in lines {
+                    for idx in 0..line.len().saturating_sub(1) {
+                        let mut curr_pos = line[idx];
+                        let mut next_pos = line[idx + 1];
+                        curr_pos.y += 5.0;
+                        next_pos.y += 5.0;
+                        SIGNAL_STROKE.round_center_to_pixel(ui.pixels_per_point(), &mut curr_pos.x);
+                        SIGNAL_STROKE.round_center_to_pixel(ui.pixels_per_point(), &mut curr_pos.y);
+                        SIGNAL_STROKE.round_center_to_pixel(ui.pixels_per_point(), &mut next_pos.x);
+                        SIGNAL_STROKE.round_center_to_pixel(ui.pixels_per_point(), &mut next_pos.y);
+                        let duration = entries[idx + 1] - entries[idx];
+                        let points = if next_pos.y <= curr_pos.y {
+                            vec![curr_pos, Pos2::new(next_pos.x, curr_pos.y), next_pos]
+                        } else {
+                            vec![curr_pos, Pos2::new(curr_pos.x, next_pos.y), next_pos]
+                        };
+                        painter.add(Shape::dashed_line(&points, SIGNAL_STROKE, 6.0, 3.0));
+                        if duration == Duration(0) {
+                            continue;
                         }
+                        let duration_text = painter.layout_no_wrap(
+                            {
+                                let time = duration.to_hms();
+                                format!("{}:{:02}", time.0 * 60 + time.1, time.2)
+                            },
+                            egui::FontId::monospace(15.0),
+                            Color32::ORANGE,
+                        );
+                        painter.galley(
+                            Pos2 {
+                                x: (curr_pos.x + next_pos.x - duration_text.size().x) / 2.0,
+                                y: curr_pos.y.max(next_pos.y) + 1.0,
+                            },
+                            duration_text,
+                            Color32::ORANGE,
+                        );
                     }
-                };
-                for (line, _) in lines {
                     painter.line(line, stroke);
                 }
             }
