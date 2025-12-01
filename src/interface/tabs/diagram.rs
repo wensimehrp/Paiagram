@@ -202,7 +202,7 @@ pub fn show_diagram(
                             let dx = pos.x - px;
                             let dy = pos.y - py;
                             // range is 5.0
-                            if dx * dx + dy * dy < 25.0 {
+                            if dx * dx + dy * dy < 49.0 {
                                 pc.selected_line = Some(*vehicle_entity);
                                 found = true;
                                 break 'check_selected;
