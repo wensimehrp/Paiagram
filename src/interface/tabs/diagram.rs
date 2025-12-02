@@ -28,6 +28,7 @@ pub struct DiagramPageCache {
     selected_line: Option<Entity>,
     background_acc_time: f32,
     interaction_acc_time: f32,
+    previous_total_drag_delta: Option<f32>,
     stroke: Stroke,
     tick_offset: i64,
     vertical_offset: f32,
@@ -58,6 +59,7 @@ impl Default for DiagramPageCache {
         Self {
             background_acc_time: 0.0,
             interaction_acc_time: 0.0,
+            previous_total_drag_delta: None,
             selected_line: None,
             tick_offset: 0,
             vertical_offset: 0.0,
@@ -195,38 +197,38 @@ pub fn show_diagram(
                 let mut found = false;
                 'check_selected: for (lines, _, vehicle_entity) in active_lines.iter() {
                     for line in lines {
-                        let (Some(first), Some(last)) = (line.first(), line.last()) else {
-                            continue;
-                        };
-                        for w in line.windows(2) {
-                            let [(curr, ..), (next, ..)] = w else {
-                                continue;
-                            };
-                            let a = pos.x - curr.x;
-                            let b = pos.y - curr.y;
-                            let c = next.x - curr.x;
-                            let d = next.y - curr.y;
-                            let dot = a * c + b * d;
-                            let len_sq = c * c + d * d;
-                            if len_sq == 0.0 {
-                                continue;
-                            }
-                            let t = (dot / len_sq).clamp(0.0, 1.0);
-                            let px = curr.x + t * c;
-                            let py = curr.y + t * d;
-                            let dx = pos.x - px;
-                            let dy = pos.y - py;
-                            // range is 5.0
-                            if dx * dx + dy * dy < 49.0 {
-                                if let Some(selected_line) = pc.selected_line
-                                    && selected_line == *vehicle_entity
-                                {
-                                } else {
-                                    pc.interaction_acc_time = 0.0;
-                                    pc.selected_line = Some(*vehicle_entity);
+                        let mut points = line
+                            .iter()
+                            .flat_map(|(a_pos, d_pos, ..)| std::iter::once(*a_pos).chain(*d_pos));
+                        if let Some(mut curr) = points.next() {
+                            for next in points {
+                                let a = pos.x - curr.x;
+                                let b = pos.y - curr.y;
+                                let c = next.x - curr.x;
+                                let d = next.y - curr.y;
+                                let dot = a * c + b * d;
+                                let len_sq = c * c + d * d;
+                                if len_sq == 0.0 {
+                                    continue;
                                 }
-                                found = true;
-                                break 'check_selected;
+                                let t = (dot / len_sq).clamp(0.0, 1.0);
+                                let px = curr.x + t * c;
+                                let py = curr.y + t * d;
+                                let dx = pos.x - px;
+                                let dy = pos.y - py;
+                                // range is 5.0
+                                if dx * dx + dy * dy < 49.0 {
+                                    if let Some(selected_line) = pc.selected_line
+                                        && selected_line == *vehicle_entity
+                                    {
+                                    } else {
+                                        pc.interaction_acc_time = 0.0;
+                                        pc.selected_line = Some(*vehicle_entity);
+                                    }
+                                    found = true;
+                                    break 'check_selected;
+                                }
+                                curr = next;
                             }
                         }
                     }
@@ -338,12 +340,12 @@ pub fn show_diagram(
                     }
                     painter.line(line_vec, stroke);
                     for (arrival_pos, departure_pos, entry, entry_entity) in line {
-                        let point_response = ui.put(
+                        let arrival_point_response = ui.put(
                             Rect::from_pos(arrival_pos).expand(
                                 if matches!(entry.arrival, TravelMode::Flexible) {
-                                    stroke.width
+                                    4.0
                                 } else {
-                                    stroke.width + 0.5
+                                    4.5
                                 },
                             ),
                             |ui: &mut Ui| {
@@ -380,19 +382,38 @@ pub fn show_diagram(
                                 .response
                             },
                         );
-                        if let Some(total_drag_delta) = point_response.total_drag_delta() {
+                        if arrival_point_response.drag_started() {
+                            pc.previous_total_drag_delta = None;
+                        }
+                        if let Some(total_drag_delta) = arrival_point_response.total_drag_delta() {
+                            let previous_drag_delta = pc.previous_total_drag_delta.unwrap_or(0.0);
                             let duration = Duration(
-                                ((point_response.drag_delta().x as f64 / pc.zoom.x as f64)
+                                ((total_drag_delta.x as f64 - previous_drag_delta as f64)
+                                    / pc.zoom.x as f64
                                     / TICKS_PER_SECOND as f64)
                                     as i32,
                             );
-                            info!(?duration);
-                            msg_timetable_entry.write(AdjustTimetableEntry {
-                                entity: entry_entity,
-                                adjustment: crate::vehicles::TimetableAdjustment::AdjustArrivalTime(
-                                    duration,
-                                ),
-                            });
+                            info!(?duration, ?previous_drag_delta);
+                            if duration.0 != 0 {
+                                info!(?duration);
+                                msg_timetable_entry.write(AdjustTimetableEntry {
+                                    entity: entry_entity,
+                                    adjustment:
+                                        crate::vehicles::TimetableAdjustment::AdjustArrivalTime(
+                                            duration,
+                                        ),
+                                });
+                                pc.previous_total_drag_delta = Some(
+                                    previous_drag_delta
+                                        + (duration.0 as f64
+                                            * TICKS_PER_SECOND as f64
+                                            * pc.zoom.x as f64)
+                                            as f32,
+                                );
+                            }
+                        }
+                        if arrival_point_response.drag_stopped() {
+                            pc.previous_total_drag_delta = None;
                         }
                     }
                 }
