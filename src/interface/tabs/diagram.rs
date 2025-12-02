@@ -5,12 +5,15 @@ use crate::{
     intervals::Station,
     lines::DisplayedLine,
     units::time::{Duration, TimetableTime},
-    vehicles::entries::{TimetableEntry, VehicleSchedule},
+    vehicles::{
+        AdjustTimetableEntry,
+        entries::{TimetableEntry, TravelMode, VehicleSchedule},
+    },
 };
 use bevy::prelude::*;
 use egui::{
     Color32, CornerRadius, FontId, Frame, Margin, Painter, Pos2, Rect, Sense, Shape, Stroke, Ui,
-    Vec2,
+    UiBuilder, Vec2,
     emath::{self, RectTransform},
     response, vec2,
 };
@@ -33,6 +36,7 @@ pub struct DiagramPageCache {
 }
 
 impl DiagramPageCache {
+    // linear search is quicker for a small data set
     fn get_visible_stations(&self, range: std::ops::Range<f32>) -> &[(Entity, f32)] {
         let Some(heights) = &self.heights else {
             return &[];
@@ -73,6 +77,7 @@ pub fn show_diagram(
     vehicles: Populated<(Entity, &Name, &VehicleSchedule)>,
     timetable_entries: Query<&TimetableEntry>,
     station_names: Query<&Name, With<Station>>,
+    mut msg_timetable_entry: MessageWriter<AdjustTimetableEntry>,
     mut page_cache: Local<PageCache<Entity, DiagramPageCache>>,
     time: Res<Time>,
 ) {
@@ -139,7 +144,8 @@ pub fn show_diagram(
                     };
                     let mut global_group = Vec::new();
                     for (initial_offset, set) in visible_sets {
-                        let mut current_group = (Vec::new(), Vec::new());
+                        let mut current_group: Vec<(Pos2, Option<Pos2>, &TimetableEntry, Entity)> =
+                            Vec::new();
                         for (entry, timetable_entity) in set {
                             let (Some(ae), Some(de)) =
                                 (entry.arrival_estimate, entry.departure_estimate)
@@ -153,9 +159,10 @@ pub fn show_diagram(
                                 global_group.push(std::mem::take(&mut current_group));
                                 continue;
                             };
-                            let mut draw_height =
+                            let mut maybe_departure = None;
+                            let draw_height =
                                 (*h - pc.vertical_offset) * pc.zoom.y + response.rect.top();
-                            let start = Pos2 {
+                            let arrival = Pos2 {
                                 x: ticks_to_screen_x(
                                     (ae.0 + initial_offset.0) as i64 * TICKS_PER_SECOND,
                                     &response.rect,
@@ -164,19 +171,18 @@ pub fn show_diagram(
                                 ),
                                 y: draw_height,
                             };
-                            let end = Pos2 {
-                                x: ticks_to_screen_x(
-                                    (de.0 + initial_offset.0) as i64 * TICKS_PER_SECOND,
-                                    &response.rect,
-                                    ticks_per_screen_unit,
-                                    pc.tick_offset,
-                                ),
-                                y: draw_height,
-                            };
-                            current_group.0.push(start);
-                            current_group.0.push(end);
-                            current_group.1.push(ae);
-                            current_group.1.push(de);
+                            if ae.0 != de.0 {
+                                maybe_departure = Some(Pos2 {
+                                    x: ticks_to_screen_x(
+                                        (de.0 + initial_offset.0) as i64 * TICKS_PER_SECOND,
+                                        &response.rect,
+                                        ticks_per_screen_unit,
+                                        pc.tick_offset,
+                                    ),
+                                    y: draw_height,
+                                });
+                            }
+                            current_group.push((arrival, maybe_departure, entry, timetable_entity))
                         }
                         global_group.push(current_group);
                     }
@@ -188,17 +194,12 @@ pub fn show_diagram(
             {
                 let mut found = false;
                 'check_selected: for (lines, _, vehicle_entity) in active_lines.iter() {
-                    for (line, entries) in lines {
+                    for line in lines {
                         let (Some(first), Some(last)) = (line.first(), line.last()) else {
                             continue;
                         };
-                        // only perform an x-range check
-                        if !(first.x - 7.0..=last.x + 7.0).contains(&pos.x) {
-                            continue;
-                        }
-                        // don't perform the y range check since there could be multiple y values on the curve
                         for w in line.windows(2) {
-                            let [curr, next] = w else {
+                            let [(curr, ..), (next, ..)] = w else {
                                 continue;
                             };
                             let a = pos.x - curr.x;
@@ -234,7 +235,7 @@ pub fn show_diagram(
                     pc.selected_line = None;
                 }
             }
-            let mut selected: Option<(Vec<(Vec<Pos2>, Vec<TimetableTime>)>, Stroke, Entity)> = None;
+            let mut selected = None;
             for (lines, stroke, vehicle_entity) in active_lines {
                 if selected.is_none()
                     && let Some(selected_entity) = pc.selected_line
@@ -243,8 +244,16 @@ pub fn show_diagram(
                     selected = Some((lines, stroke, vehicle_entity));
                     continue;
                 };
-                for (line, _) in lines {
-                    painter.line(line, stroke);
+                for line in lines {
+                    // this is a conservative estimate
+                    let mut line_vec = Vec::with_capacity(line.len());
+                    for (arrival, departure, ..) in line {
+                        line_vec.push(arrival);
+                        if let Some(departure) = departure {
+                            line_vec.push(departure);
+                        }
+                    }
+                    painter.line(line_vec, stroke);
                 }
             }
             if selected.is_none() {
@@ -273,17 +282,28 @@ pub fn show_diagram(
                     color: Color32::ORANGE,
                 };
                 stroke.width = line_strength * 3.0 * stroke.width + stroke.width;
-                for (line, entries) in lines {
+                for line in lines {
+                    let mut line_vec = Vec::with_capacity(line.len());
                     for idx in 0..line.len().saturating_sub(1) {
-                        let mut curr_pos = line[idx];
-                        let mut next_pos = line[idx + 1];
+                        let (arrival_pos, departure_pos, entry, _) = line[idx];
+                        let (next_arrival_pos, _, next_entry, _) = line[idx + 1];
+                        line_vec.push(arrival_pos);
+                        let mut curr_pos: Pos2;
+                        let mut next_pos = next_arrival_pos;
+                        if let Some(departure_pos) = departure_pos {
+                            line_vec.push(departure_pos);
+                            curr_pos = departure_pos;
+                        } else {
+                            curr_pos = arrival_pos;
+                        }
                         curr_pos.y += 5.0;
                         next_pos.y += 5.0;
                         signal_stroke.round_center_to_pixel(ui.pixels_per_point(), &mut curr_pos.x);
                         signal_stroke.round_center_to_pixel(ui.pixels_per_point(), &mut curr_pos.y);
                         signal_stroke.round_center_to_pixel(ui.pixels_per_point(), &mut next_pos.x);
                         signal_stroke.round_center_to_pixel(ui.pixels_per_point(), &mut next_pos.y);
-                        let duration = entries[idx + 1] - entries[idx];
+                        let duration = next_entry.arrival_estimate.unwrap()
+                            - entry.departure_estimate.unwrap();
                         let points = if next_pos.y <= curr_pos.y {
                             vec![curr_pos, Pos2::new(next_pos.x, curr_pos.y), next_pos]
                         } else {
@@ -310,7 +330,71 @@ pub fn show_diagram(
                             Color32::ORANGE,
                         );
                     }
-                    painter.line(line, stroke);
+                    if let Some(last_pos) = line.last() {
+                        line_vec.push(last_pos.0);
+                        if let Some(departure) = last_pos.1 {
+                            line_vec.push(departure)
+                        }
+                    }
+                    painter.line(line_vec, stroke);
+                    for (arrival_pos, departure_pos, entry, entry_entity) in line {
+                        let point_response = ui.put(
+                            Rect::from_pos(arrival_pos).expand(
+                                if matches!(entry.arrival, TravelMode::Flexible) {
+                                    stroke.width
+                                } else {
+                                    stroke.width + 0.5
+                                },
+                            ),
+                            |ui: &mut Ui| {
+                                // create a new rect
+                                let (rect, resp) = ui.allocate_exact_size(
+                                    ui.available_size(),
+                                    Sense::click_and_drag(),
+                                );
+                                ui.scope_builder(
+                                    UiBuilder::new().sense(resp.sense).max_rect(rect),
+                                    |ui| {
+                                        ui.set_min_size(ui.available_size());
+                                        let response = ui.response();
+                                        let fill = if matches!(entry.arrival, TravelMode::Flexible)
+                                        {
+                                            stroke.color
+                                        } else if response.hovered() {
+                                            Color32::GRAY
+                                        } else {
+                                            Color32::WHITE
+                                        };
+                                        let stroke = Stroke {
+                                            width: 2.0,
+                                            color: stroke.color,
+                                        };
+                                        Frame::canvas(ui.style()).fill(fill).stroke(stroke).show(
+                                            ui,
+                                            |ui| {
+                                                ui.set_min_size(ui.available_size());
+                                            },
+                                        );
+                                    },
+                                )
+                                .response
+                            },
+                        );
+                        if let Some(total_drag_delta) = point_response.total_drag_delta() {
+                            let duration = Duration(
+                                ((point_response.drag_delta().x as f64 / pc.zoom.x as f64)
+                                    / TICKS_PER_SECOND as f64)
+                                    as i32,
+                            );
+                            info!(?duration);
+                            msg_timetable_entry.write(AdjustTimetableEntry {
+                                entity: entry_entity,
+                                adjustment: crate::vehicles::TimetableAdjustment::AdjustArrivalTime(
+                                    duration,
+                                ),
+                            });
+                        }
+                    }
                 }
             }
             // capture movements
