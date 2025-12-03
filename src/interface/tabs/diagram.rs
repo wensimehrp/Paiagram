@@ -2,6 +2,7 @@ use core::f32;
 
 use super::PageCache;
 use crate::{
+    interface::widgets::timetable_popup,
     intervals::Station,
     lines::DisplayedLine,
     units::time::{Duration, TimetableTime},
@@ -12,8 +13,8 @@ use crate::{
 };
 use bevy::{math::NormedVectorSpace, prelude::*};
 use egui::{
-    Color32, CornerRadius, FontId, Frame, Margin, Painter, Pos2, Rect, Response, Sense, Shape,
-    Stroke, Ui, UiBuilder, Vec2, emath, response, vec2,
+    Color32, CornerRadius, FontId, Frame, Margin, Painter, Popup, Pos2, Rect, Response, Sense,
+    Shape, Stroke, Ui, UiBuilder, Vec2, emath, response, vec2,
 };
 
 // Time and time-canvas related constants
@@ -456,26 +457,36 @@ fn draw_selection_overlay(
         }
         painter.line(line_vec, stroke);
 
-        for (arrival_pos, departure_pos, entry, entry_entity) in segment {
-            let arrival_point_response = ui.put(
-                Rect::from_pos(*arrival_pos).expand(
-                    if matches!(entry.arrival, TravelMode::Flexible) {
-                        4.0
-                    } else {
-                        4.5
-                    },
-                ),
-                |ui: &mut Ui| {
-                    let (rect, resp) = ui.allocate_exact_size(
-                        ui.available_size(),
-                        if matches!(entry.arrival, TravelMode::Flexible) {
-                            Sense::click()
-                        } else {
-                            Sense::click_and_drag()
-                        },
-                    );
+        let mut previous_entry: Option<(Pos2, Option<Pos2>, &TimetableEntry, Entity)> = None;
+        for fragment in segment.iter().cloned() {
+            let (mut arrival_pos, maybe_departure_pos, entry, entry_entity) = fragment;
+            const HANDLE_SIZE: f32 = 4.5 + 4.5;
+            let departure_pos: Pos2;
+            if let Some(unwrapped_pos) = maybe_departure_pos {
+                if (arrival_pos.x - unwrapped_pos.x).abs() < HANDLE_SIZE {
+                    let midpoint_x = (arrival_pos.x + unwrapped_pos.x) / 2.0;
+                    arrival_pos.x = midpoint_x - HANDLE_SIZE / 2.0;
+                    let mut pos = unwrapped_pos;
+                    pos.x = midpoint_x + HANDLE_SIZE / 2.0;
+                    departure_pos = pos;
+                } else {
+                    departure_pos = unwrapped_pos;
+                }
+            } else {
+                arrival_pos.x -= HANDLE_SIZE / 2.0;
+                let mut pos = arrival_pos;
+                pos.x += HANDLE_SIZE;
+                departure_pos = pos;
+            };
+            let arrival_point_response =
+                ui.put(Rect::from_pos(arrival_pos).expand(5.2), |ui: &mut Ui| {
+                    let (rect, resp) =
+                        ui.allocate_exact_size(ui.available_size(), Sense::click_and_drag());
                     ui.scope_builder(
-                        UiBuilder::new().sense(resp.sense).max_rect(rect),
+                        UiBuilder::new()
+                            .sense(resp.sense)
+                            .max_rect(rect)
+                            .id(entry_entity.to_bits() as u128 | (line_index as u128) << 64),
                         // .id((entry_entity.to_bits() as u128) | ((line_index as u128) << 64)),
                         |ui| {
                             ui.set_min_size(ui.available_size());
@@ -494,14 +505,14 @@ fn draw_selection_overlay(
                             Frame::canvas(ui.style())
                                 .fill(fill)
                                 .stroke(handle_stroke)
+                                .corner_radius(CornerRadius::same(255))
                                 .show(ui, |ui| {
                                     ui.set_min_size(ui.available_size());
                                 });
                         },
                     )
                     .response
-                },
-            );
+                });
 
             if arrival_point_response.drag_started() {
                 state.previous_total_drag_delta = None;
@@ -515,7 +526,7 @@ fn draw_selection_overlay(
                 );
                 if duration != Duration(0) {
                     timetable_adjustment_writer.write(AdjustTimetableEntry {
-                        entity: *entry_entity,
+                        entity: entry_entity,
                         adjustment: crate::vehicles::TimetableAdjustment::AdjustArrivalTime(
                             duration,
                         ),
@@ -531,73 +542,21 @@ fn draw_selection_overlay(
                 state.previous_total_drag_delta = None;
             }
 
-            let Some(mut departure_pos) = *departure_pos else {
-                let mut adjusted_pos = *arrival_pos;
-                adjusted_pos.x += 15.0;
-                let Some(mouse_pos) = ui.input(|state| state.pointer.hover_pos()) else {
-                    continue;
-                };
-                let len_sq = adjusted_pos.distance_sq(mouse_pos);
-                const THRESHOLD_SQ: f32 = 30.0 * 30.0;
-                if len_sq > THRESHOLD_SQ {
-                    continue;
-                };
-                let strength = len_sq / THRESHOLD_SQ;
-                let arrival_point_response =
-                    ui.put(Rect::from_pos(adjusted_pos).expand(4.5), |ui: &mut Ui| {
-                        let (rect, resp) =
-                            ui.allocate_exact_size(ui.available_size(), Sense::click());
-                        ui.scope_builder(UiBuilder::new().sense(resp.sense).max_rect(rect), |ui| {
-                            ui.set_min_size(ui.available_size());
-                            let response = ui.response();
-                            let fill = if response.hovered() {
-                                Color32::GRAY
-                            } else {
-                                Color32::WHITE.linear_multiply(1.0 - strength)
-                            };
-                            let handle_stroke = Stroke {
-                                width: 2.0,
-                                color: stroke.color.linear_multiply(1.0 - strength),
-                            };
-                            Frame::canvas(ui.style())
-                                .fill(fill)
-                                .stroke(handle_stroke)
-                                .show(ui, |ui| {
-                                    ui.set_min_size(ui.available_size());
-                                });
-                        })
-                        .response
-                    });
-                if arrival_point_response.clicked() {
-                    info!("clicked!");
-                    timetable_adjustment_writer.write(AdjustTimetableEntry {
-                        entity: *entry_entity,
-                        adjustment: crate::vehicles::TimetableAdjustment::SetDepartureType(Some(
-                            TravelMode::For(Duration(60)),
-                        )),
-                    });
-                }
-                continue;
-            };
+            Popup::menu(&arrival_point_response)
+                .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+                .show(|ui| {
+                    timetable_popup::popup(
+                        entry_entity,
+                        entry,
+                        previous_entry.map(|e| e.2),
+                        timetable_adjustment_writer,
+                        ui,
+                        true,
+                    );
+                });
 
-            // checks if departure pos overlaps arrival pos
-            // if so, shift the departure pos
-            if departure_pos.x - 8.0 < arrival_pos.x {
-                departure_pos.x += 8.0
-            }
-
-            let departure_point_response = ui.put(
-                Rect::from_pos(departure_pos).expand(
-                    if matches!(
-                        entry.departure.unwrap_or(TravelMode::Flexible),
-                        TravelMode::Flexible
-                    ) {
-                        4.0
-                    } else {
-                        4.5
-                    },
-                ),
-                |ui: &mut Ui| {
+            let departure_point_response =
+                ui.put(Rect::from_pos(departure_pos).expand(4.5), |ui: &mut Ui| {
                     let (rect, resp) = ui.allocate_exact_size(
                         ui.available_size(),
                         if matches!(
@@ -640,8 +599,7 @@ fn draw_selection_overlay(
                         },
                     )
                     .response
-                },
-            );
+                });
 
             if departure_point_response.drag_started() {
                 state.previous_total_drag_delta = None;
@@ -655,7 +613,7 @@ fn draw_selection_overlay(
                 );
                 if duration != Duration(0) {
                     timetable_adjustment_writer.write(AdjustTimetableEntry {
-                        entity: *entry_entity,
+                        entity: entry_entity,
                         adjustment: crate::vehicles::TimetableAdjustment::AdjustDepartureTime(
                             duration,
                         ),
@@ -670,6 +628,19 @@ fn draw_selection_overlay(
             if departure_point_response.drag_stopped() {
                 state.previous_total_drag_delta = None;
             }
+            Popup::menu(&departure_point_response)
+                .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+                .show(|ui| {
+                    timetable_popup::popup(
+                        entry_entity,
+                        entry,
+                        previous_entry.map(|e| e.2),
+                        timetable_adjustment_writer,
+                        ui,
+                        false,
+                    );
+                });
+            previous_entry = Some(fragment);
         }
     }
 }
