@@ -12,9 +12,10 @@ use crate::{
 };
 use bevy::prelude::*;
 use egui::{
-    Color32, CornerRadius, FontId, Frame, Margin, Painter, Pos2, Rect, Sense, Shape, Stroke, Ui,
-    UiBuilder, Vec2,
+    Color32, CornerRadius, FontId, Frame, Margin, Painter, Popup, Pos2, Rect, Sense, Shape, Stroke,
+    Ui, UiBuilder, Vec2,
     emath::{self, RectTransform},
+    epaint::QuadraticBezierShape,
     response, vec2,
 };
 
@@ -88,9 +89,6 @@ pub fn show_diagram(
         return;
     };
     let pc = page_cache.get_mut_or_insert_with(displayed_line_entity, DiagramPageCache::default);
-    ui.horizontal(|ui| {
-        ui.add(&mut pc.stroke);
-    });
     ui.style_mut().visuals.menu_corner_radius = CornerRadius::ZERO;
     ui.style_mut().visuals.window_stroke.width = 0.0;
     if pc.heights.is_none() {
@@ -247,15 +245,11 @@ pub fn show_diagram(
                     continue;
                 };
                 for line in lines {
-                    // this is a conservative estimate
-                    let mut line_vec = Vec::with_capacity(line.len());
-                    for (arrival, departure, ..) in line {
-                        line_vec.push(arrival);
-                        if let Some(departure) = departure {
-                            line_vec.push(departure);
-                        }
-                    }
-                    painter.line(line_vec, stroke);
+                    let points = line
+                        .into_iter()
+                        .flat_map(|(a, d, ..)| std::iter::once(a).chain(d))
+                        .collect::<Vec<_>>();
+                    painter.line(points, stroke);
                 }
             }
             if selected.is_none() {
@@ -284,7 +278,7 @@ pub fn show_diagram(
                     color: Color32::ORANGE,
                 };
                 stroke.width = line_strength * 3.0 * stroke.width + stroke.width;
-                for line in lines {
+                for (line_index, line) in lines.into_iter().enumerate() {
                     let mut line_vec = Vec::with_capacity(line.len());
                     for idx in 0..line.len().saturating_sub(1) {
                         let (arrival_pos, departure_pos, entry, _) = line[idx];
@@ -352,10 +346,18 @@ pub fn show_diagram(
                                 // create a new rect
                                 let (rect, resp) = ui.allocate_exact_size(
                                     ui.available_size(),
-                                    Sense::click_and_drag(),
+                                    if matches!(entry.arrival, TravelMode::Flexible) {
+                                        Sense::click()
+                                    } else {
+                                        Sense::click_and_drag()
+                                    },
                                 );
                                 ui.scope_builder(
-                                    UiBuilder::new().sense(resp.sense).max_rect(rect),
+                                    UiBuilder::new()
+                                        .sense(resp.sense)
+                                        .max_rect(rect)
+                                        .id(entry_entity.to_bits() as u128
+                                            | (line_index as u128) << 64),
                                     |ui| {
                                         ui.set_min_size(ui.available_size());
                                         let response = ui.response();
@@ -393,9 +395,7 @@ pub fn show_diagram(
                                     / TICKS_PER_SECOND as f64)
                                     as i32,
                             );
-                            info!(?duration, ?previous_drag_delta);
-                            if duration.0 != 0 {
-                                info!(?duration);
+                            if duration != Duration(0) {
                                 msg_timetable_entry.write(AdjustTimetableEntry {
                                     entity: entry_entity,
                                     adjustment:

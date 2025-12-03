@@ -178,7 +178,6 @@ fn calculate_estimates(
                     }
                 }
                 (TravelMode::For(ad), TravelMode::Flexible) => {
-                    info!(?stable_time_and_station);
                     if stack.is_empty()
                         && let Some((stable_time, _)) = stable_time_and_station
                     {
@@ -278,7 +277,6 @@ fn calculate_estimates(
                 total_time -= dur;
             }
             let velocity = Distance(total_distance) / total_time;
-            info!(?velocity, ?total_distance, ?total_time, ?distances);
             if let Some(dur) = time_offset {
                 current_time -= dur;
             }
