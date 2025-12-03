@@ -14,7 +14,10 @@ use crate::{
 use bevy::{math::NormedVectorSpace, prelude::*};
 use egui::{
     Color32, CornerRadius, FontId, Frame, Margin, Painter, Popup, Pos2, Rect, Response, Sense,
-    Shape, Stroke, Ui, UiBuilder, Vec2, emath, response, vec2,
+    Shape, Stroke, Ui, UiBuilder, Vec2, emath,
+    epaint::{CubicBezierShape, PathShape, QuadraticBezierShape},
+    layers::ShapeIdx,
+    response, vec2,
 };
 
 // Time and time-canvas related constants
@@ -85,7 +88,7 @@ pub fn show_diagram(
     mut displayed_lines: Populated<&mut DisplayedLine>,
     vehicles: Populated<(Entity, &Name, &VehicleSchedule)>,
     timetable_entries: Query<&TimetableEntry>,
-    _station_names: Query<&Name, With<Station>>,
+    station_names: Query<&Name, With<Station>>,
     mut timetable_adjustment_writer: MessageWriter<AdjustTimetableEntry>,
     mut page_cache: Local<PageCache<Entity, DiagramPageCache>>,
     time: Res<Time>,
@@ -151,6 +154,7 @@ pub fn show_diagram(
                 &rendered_vehicles,
                 state,
                 &mut timetable_adjustment_writer,
+                &station_names,
             );
 
             handle_navigation(ui, &response, state);
@@ -379,6 +383,7 @@ fn draw_selection_overlay(
     rendered_vehicles: &[RenderedVehicle],
     state: &mut DiagramPageCache,
     timetable_adjustment_writer: &mut MessageWriter<AdjustTimetableEntry>,
+    station_names: &Query<&Name, With<Station>>,
 ) {
     let Some(selected_entity) = state.selected_line else {
         return;
@@ -391,10 +396,6 @@ fn draw_selection_overlay(
     };
 
     let line_strength = 1.0 - ((state.interaction_acc_time / LINE_ANIMATION_TIME) - 1.0).powi(2);
-    let signal_stroke = Stroke {
-        width: 1.0 + line_strength,
-        color: Color32::ORANGE,
-    };
 
     let mut stroke = vehicle.stroke;
     stroke.width = line_strength * 3.0 * stroke.width + stroke.width;
@@ -405,6 +406,14 @@ fn draw_selection_overlay(
         for idx in 0..segment.len().saturating_sub(1) {
             let (arrival_pos, departure_pos, entry, _) = segment[idx];
             let (next_arrival_pos, _, next_entry, _) = segment[idx + 1];
+            let signal_stroke = Stroke {
+                width: 1.0 + line_strength,
+                color: if matches!(next_entry.arrival, TravelMode::For(_)) {
+                    Color32::BLUE
+                } else {
+                    Color32::ORANGE
+                },
+            };
 
             line_vec.push(arrival_pos);
             let mut curr_pos = if let Some(d_pos) = departure_pos {
@@ -431,20 +440,23 @@ fn draw_selection_overlay(
             } else {
                 vec![curr_pos, Pos2::new(curr_pos.x, next_pos.y), next_pos]
             };
-            painter.add(Shape::dashed_line(&points, signal_stroke, 6.0, 3.0));
+            painter.add(Shape::line(points, signal_stroke));
 
             if duration != Duration(0) {
                 let time = duration.to_hms();
                 let text = format!("{}:{:02}", time.0 * 60 + time.1, time.2);
-                let duration_text =
-                    painter.layout_no_wrap(text, egui::FontId::monospace(15.0), Color32::ORANGE);
+                let duration_text = painter.layout_no_wrap(
+                    text,
+                    egui::FontId::monospace(15.0),
+                    signal_stroke.color,
+                );
                 painter.galley(
                     Pos2 {
                         x: (curr_pos.x + next_pos.x - duration_text.size().x) / 2.0,
                         y: curr_pos.y.max(next_pos.y) + 1.0,
                     },
                     duration_text,
-                    Color32::ORANGE,
+                    signal_stroke.color,
                 );
             }
         }
@@ -541,19 +553,33 @@ fn draw_selection_overlay(
             if arrival_point_response.drag_stopped() {
                 state.previous_total_drag_delta = None;
             }
-
-            Popup::menu(&arrival_point_response)
-                .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
-                .show(|ui| {
-                    timetable_popup::popup(
-                        entry_entity,
-                        entry,
-                        previous_entry.map(|e| e.2),
-                        timetable_adjustment_writer,
-                        ui,
-                        true,
+            if arrival_point_response.dragged() {
+                arrival_point_response.show_tooltip_ui(|ui| {
+                    ui.label(
+                        entry
+                            .arrival_estimate
+                            .map_or("??".to_string(), |t| t.to_string()),
+                    );
+                    ui.label(
+                        station_names
+                            .get(entry.station)
+                            .map_or("??", |s| s.as_str()),
                     );
                 });
+            } else {
+                Popup::menu(&arrival_point_response)
+                    .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+                    .show(|ui| {
+                        timetable_popup::popup(
+                            entry_entity,
+                            entry,
+                            previous_entry.map(|e| e.2),
+                            timetable_adjustment_writer,
+                            ui,
+                            true,
+                        );
+                    });
+            }
 
             let departure_point_response =
                 ui.put(Rect::from_pos(departure_pos).expand(4.5), |ui: &mut Ui| {
@@ -628,19 +654,34 @@ fn draw_selection_overlay(
             if departure_point_response.drag_stopped() {
                 state.previous_total_drag_delta = None;
             }
-            Popup::menu(&departure_point_response)
-                .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
-                .show(|ui| {
-                    timetable_popup::popup(
-                        entry_entity,
-                        entry,
-                        previous_entry.map(|e| e.2),
-                        timetable_adjustment_writer,
-                        ui,
-                        false,
+            if departure_point_response.dragged() {
+                departure_point_response.show_tooltip_ui(|ui| {
+                    ui.label(
+                        entry
+                            .departure_estimate
+                            .map_or("??".to_string(), |t| t.to_string()),
+                    );
+                    ui.label(
+                        station_names
+                            .get(entry.station)
+                            .map_or("??", |s| s.as_str()),
                     );
                 });
-            previous_entry = Some(fragment);
+            } else {
+                Popup::menu(&departure_point_response)
+                    .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+                    .show(|ui| {
+                        timetable_popup::popup(
+                            entry_entity,
+                            entry,
+                            previous_entry.map(|e| e.2),
+                            timetable_adjustment_writer,
+                            ui,
+                            false,
+                        );
+                    });
+                previous_entry = Some(fragment);
+            }
         }
     }
 }
@@ -803,4 +844,23 @@ fn draw_time_lines(
             );
         }
     }
+}
+
+fn make_triangle_between(pos1: Pos2, pos2: Pos2, base_width: f32) -> Shape {
+    // pointer towards b
+    let dv = pos2 - pos1;
+    let hyp = pos2.distance(pos1);
+    let l = dv.y / hyp * base_width;
+    let h = dv.x / hyp * base_width;
+    let a = pos1
+        + Vec2 {
+            x: l / 2.0,
+            y: -h / 2.0,
+        };
+    let b = pos1
+        - Vec2 {
+            x: l / 2.0,
+            y: -h / 2.0,
+        };
+    Shape::convex_polygon(vec![pos2, b, a], Color32::BLACK, Stroke::default())
 }

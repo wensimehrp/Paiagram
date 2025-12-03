@@ -41,18 +41,18 @@ pub fn popup(
     let (show_at, show_for, show_flexible, show_bypass) = if arrival {
         match current_entry.arrival {
             TravelMode::At(_) => (false, true, true, false),
-            TravelMode::For(_) => (true, false, false, false),
+            TravelMode::For(_) => (true, false, true, false),
             TravelMode::Flexible => (true, true, false, false),
         }
     } else {
         match current_entry.departure {
             Some(TravelMode::At(_)) => (false, true, true, true),
-            Some(TravelMode::For(_)) => (true, false, false, true),
+            Some(TravelMode::For(_)) => (true, false, true, true),
             Some(TravelMode::Flexible) => (true, true, false, true),
             None => (true, true, true, false),
         }
     };
-    ui.add_enabled_ui(show_at || show_for, |ui: &mut Ui| {
+    ui.add_enabled_ui(show_at ^ show_for, |ui: &mut Ui| {
         ui.horizontal(|ui| {
             for (s, dt) in [("-10", -10), ("-1", -1), ("+1", 1), ("+10", 10)] {
                 let response =
