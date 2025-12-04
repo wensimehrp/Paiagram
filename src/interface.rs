@@ -9,6 +9,8 @@ use egui::{CornerRadius, Margin};
 use egui_dock::{DockArea, DockState};
 use std::{collections::VecDeque, sync::Arc};
 
+use crate::interface::tabs::start;
+
 /// Plugin that sets up the user interface
 pub struct InterfacePlugin;
 
@@ -50,7 +52,7 @@ fn modify_dock_state(mut dock_state: ResMut<UiState>, mut msg_reader: MessageRea
 impl UiState {
     fn new() -> Self {
         Self {
-            dock_state: DockState::new(vec![]),
+            dock_state: DockState::new(vec![AppTab::Start]),
             status_bar_text: "Ready".into(),
         }
     }
@@ -73,6 +75,7 @@ pub enum AppTab {
     Vehicle(Entity),
     StationTimetable(Entity),
     Diagram(Entity),
+    Start,
 }
 
 /// User interface commands sent between systems
@@ -115,6 +118,11 @@ impl<'w> egui_dock::TabViewer for AppTabViewer<'w> {
                     )
                     .unwrap();
             }
+            AppTab::Start => {
+                self.world
+                    .run_system_cached_with(start::display_start, ui)
+                    .unwrap();
+            }
         };
     }
 
@@ -137,6 +145,7 @@ impl<'w> egui_dock::TabViewer for AppTabViewer<'w> {
                 format!("Station Timetable - {}", name).into()
             }
             AppTab::Diagram(displayed_line_entity) => "Diagram".into(),
+            AppTab::Start => "Start".into(),
         }
     }
 
@@ -156,6 +165,7 @@ impl<'w> egui_dock::TabViewer for AppTabViewer<'w> {
             AppTab::Vehicle(_) => [false; 2],
             AppTab::StationTimetable(_) => [true; 2],
             AppTab::Diagram(_) => [false; 2],
+            AppTab::Start => [true; 2],
         }
     }
 

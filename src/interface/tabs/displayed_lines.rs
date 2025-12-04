@@ -3,7 +3,7 @@ use bevy::ecs::{name::Name, query::With, system::{InMut, Populated}};
 use crate::{intervals::Station, lines::DisplayedLine};
 
 pub fn list_displayed_lines(
-    InMut(Ui): InMut<egui::Ui>,
+    InMut(ui): InMut<egui::Ui>,
     mut displayed_lines: Populated<&mut DisplayedLine>,
     station_names: Populated<&Name, With<Station>>
 ) {
