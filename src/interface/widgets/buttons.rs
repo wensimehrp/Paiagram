@@ -72,5 +72,12 @@ pub fn dash_button_shape(
         fill_color,
         Stroke::NONE,
     ));
+    painter.line_segment(
+        [c, f],
+        Stroke {
+            width: 2.0,
+            color: fill_color,
+        },
+    );
     painter.add(Shape::closed_line(vec![a, b, c, d, e, f], stroke));
 }

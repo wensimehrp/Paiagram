@@ -1,8 +1,11 @@
 use bevy::prelude::*;
 
-use crate::vehicles::{
-    AdjustTimetableEntry,
-    entries::{TimetableEntry, VehicleSchedule},
+use crate::{
+    units::time::Duration,
+    vehicles::{
+        AdjustTimetableEntry,
+        entries::{TimetableEntry, TravelMode, VehicleSchedule},
+    },
 };
 
 pub struct TroubleShootPlugin;
@@ -33,6 +36,7 @@ pub struct EntryProblem(pub Vec<EntryProblemType>);
 pub enum EntryProblemType {
     NoEstimation,
     TravelDurationTooShort,
+    ReversedFlexibleMode,
     CollidesWithAnotherEntry(Entity),
 }
 
@@ -56,6 +60,18 @@ pub fn analyze_entry(
         let check = |problems: &mut Vec<EntryProblemType>| {
             if entry.arrival_estimate.is_none() || entry.departure_estimate.is_none() {
                 problems.push(EntryProblemType::NoEstimation)
+            }
+            if let TravelMode::For(a) = entry.arrival
+                && a <= Duration(0)
+            {
+                problems.push(EntryProblemType::TravelDurationTooShort);
+            } else if let Some(TravelMode::For(d)) = entry.departure
+                && d <= Duration(0)
+            {
+                problems.push(EntryProblemType::TravelDurationTooShort);
+            }
+            if matches!(entry.arrival, TravelMode::Flexible) && matches!(entry.departure, Some(TravelMode::At(_))) {
+                problems.push(EntryProblemType::ReversedFlexibleMode)
             }
             problems.dedup();
         };
