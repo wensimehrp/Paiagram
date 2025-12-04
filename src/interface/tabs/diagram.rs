@@ -2,7 +2,7 @@ use core::f32;
 
 use super::PageCache;
 use crate::{
-    interface::widgets::timetable_popup,
+    interface::widgets::{buttons, timetable_popup},
     intervals::Station,
     lines::DisplayedLine,
     units::time::{Duration, TimetableTime},
@@ -99,7 +99,9 @@ pub fn show_diagram(
     };
     let state = page_cache.get_mut_or_insert_with(displayed_line_entity, DiagramPageCache::default);
 
-    setup_ui_style(ui);
+    ui.style_mut().visuals.menu_corner_radius = CornerRadius::ZERO;
+    ui.style_mut().visuals.window_stroke.width = 0.0;
+
     ensure_heights(state, &displayed_line);
 
     Frame::canvas(ui.style())
@@ -159,11 +161,6 @@ pub fn show_diagram(
 
             handle_navigation(ui, &response, state);
         });
-}
-
-fn setup_ui_style(ui: &mut Ui) {
-    ui.style_mut().visuals.menu_corner_radius = CornerRadius::ZERO;
-    ui.style_mut().visuals.window_stroke.width = 0.0;
 }
 
 fn ensure_heights(state: &mut DiagramPageCache, displayed_line: &DisplayedLine) {
@@ -472,7 +469,10 @@ fn draw_selection_overlay(
         let mut previous_entry: Option<(Pos2, Option<Pos2>, &TimetableEntry, Entity)> = None;
         for fragment in segment.iter().cloned() {
             let (mut arrival_pos, maybe_departure_pos, entry, entry_entity) = fragment;
-            const HANDLE_SIZE: f32 = 4.5 + 4.5;
+            const HANDLE_SIZE: f32 = 12.0;
+            const CIRCLE_HANDLE_SIZE: f32 = 7.0;
+            const TRIANGLE_HANDLE_SIZE: f32 = 10.0;
+            const DASH_HANDLE_SIZE: f32 = 9.0;
             let departure_pos: Pos2;
             if let Some(unwrapped_pos) = maybe_departure_pos {
                 if (arrival_pos.x - unwrapped_pos.x).abs() < HANDLE_SIZE {
@@ -499,28 +499,41 @@ fn draw_selection_overlay(
                             .sense(resp.sense)
                             .max_rect(rect)
                             .id(entry_entity.to_bits() as u128 | (line_index as u128) << 64),
-                        // .id((entry_entity.to_bits() as u128) | ((line_index as u128) << 64)),
                         |ui| {
                             ui.set_min_size(ui.available_size());
                             let response = ui.response();
-                            let fill = if matches!(entry.arrival, TravelMode::Flexible) {
-                                stroke.color
-                            } else if response.hovered() {
+                            let fill = if response.hovered() {
                                 Color32::GRAY
                             } else {
                                 Color32::WHITE
                             };
                             let handle_stroke = Stroke {
-                                width: 2.0,
+                                width: 2.5,
                                 color: stroke.color,
                             };
-                            Frame::canvas(ui.style())
-                                .fill(fill)
-                                .stroke(handle_stroke)
-                                .corner_radius(CornerRadius::same(255))
-                                .show(ui, |ui| {
-                                    ui.set_min_size(ui.available_size());
-                                });
+                            match entry.arrival {
+                                TravelMode::At(_) => buttons::circle_button_shape(
+                                    painter,
+                                    arrival_pos,
+                                    CIRCLE_HANDLE_SIZE,
+                                    handle_stroke,
+                                    fill,
+                                ),
+                                TravelMode::For(_) => buttons::dash_button_shape(
+                                    painter,
+                                    arrival_pos,
+                                    DASH_HANDLE_SIZE,
+                                    handle_stroke,
+                                    fill,
+                                ),
+                                TravelMode::Flexible => buttons::triangle_button_shape(
+                                    painter,
+                                    arrival_pos,
+                                    TRIANGLE_HANDLE_SIZE,
+                                    handle_stroke,
+                                    fill,
+                                ),
+                            };
                         },
                     )
                     .response
@@ -602,26 +615,45 @@ fn draw_selection_overlay(
                         |ui| {
                             ui.set_min_size(ui.available_size());
                             let response = ui.response();
-                            let fill = if matches!(
-                                entry.departure.unwrap_or(TravelMode::Flexible),
-                                TravelMode::Flexible
-                            ) {
-                                stroke.color
-                            } else if response.hovered() {
+                            let fill = if response.hovered() {
                                 Color32::GRAY
                             } else {
                                 Color32::WHITE
                             };
                             let handle_stroke = Stroke {
-                                width: 2.0,
+                                width: 2.5,
                                 color: stroke.color,
                             };
-                            Frame::canvas(ui.style())
-                                .fill(fill)
-                                .stroke(handle_stroke)
-                                .show(ui, |ui| {
-                                    ui.set_min_size(ui.available_size());
-                                });
+                            match entry.departure {
+                                Some(TravelMode::At(_)) => buttons::circle_button_shape(
+                                    painter,
+                                    departure_pos,
+                                    CIRCLE_HANDLE_SIZE,
+                                    handle_stroke,
+                                    fill,
+                                ),
+                                Some(TravelMode::For(_)) => buttons::dash_button_shape(
+                                    painter,
+                                    departure_pos,
+                                    DASH_HANDLE_SIZE,
+                                    handle_stroke,
+                                    fill,
+                                ),
+                                Some(TravelMode::Flexible) => buttons::triangle_button_shape(
+                                    painter,
+                                    departure_pos,
+                                    TRIANGLE_HANDLE_SIZE,
+                                    handle_stroke,
+                                    fill,
+                                ),
+                                None => buttons::triangle_button_shape(
+                                    painter,
+                                    departure_pos,
+                                    TRIANGLE_HANDLE_SIZE - 1.0,
+                                    handle_stroke,
+                                    stroke.color,
+                                ),
+                            };
                         },
                     )
                     .response
@@ -844,23 +876,4 @@ fn draw_time_lines(
             );
         }
     }
-}
-
-fn make_triangle_between(pos1: Pos2, pos2: Pos2, base_width: f32) -> Shape {
-    // pointer towards b
-    let dv = pos2 - pos1;
-    let hyp = pos2.distance(pos1);
-    let l = dv.y / hyp * base_width;
-    let h = dv.x / hyp * base_width;
-    let a = pos1
-        + Vec2 {
-            x: l / 2.0,
-            y: -h / 2.0,
-        };
-    let b = pos1
-        - Vec2 {
-            x: l / 2.0,
-            y: -h / 2.0,
-        };
-    Shape::convex_polygon(vec![pos2, b, a], Color32::BLACK, Stroke::default())
 }

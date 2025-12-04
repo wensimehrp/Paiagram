@@ -6,6 +6,7 @@ mod rw_data;
 mod search;
 mod settings;
 mod status_bar_text;
+mod troubleshoot;
 mod units;
 mod vehicles;
 
@@ -28,6 +29,7 @@ fn main() {
     let app_window = Some(Window {
         title: "Paiagram Drawer".into(),
         fit_canvas_to_parent: true,
+        ime_enabled: true,
         ..default()
     });
     App::new()
@@ -46,6 +48,7 @@ fn main() {
             settings::SettingsPlugin,
             vehicles::VehiclesPlugin,
             lines::LinesPlugin,
+            troubleshoot::TroubleShootPlugin,
         ))
         .run();
 }
