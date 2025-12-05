@@ -197,14 +197,13 @@ pub fn show_vehicle(
         painter.hline(rect.left()..=rect.right(), rect.center().y, stroke);
     }
     if ui.button("Refresh").clicked() {
-        for schedule in schedules.iter() {
-            let Some(entity) = schedule.0.entities.get(0) else {
-                continue;
-            };
-            msg_sender.write(AdjustTimetableEntry {
-                entity: *entity,
-                adjustment: TimetableAdjustment::PassThrough,
-            });
+        for (schedule, _) in schedules {
+            for entity in schedule.entities.iter().cloned() {
+                msg_sender.write(AdjustTimetableEntry {
+                    entity,
+                    adjustment: TimetableAdjustment::PassThrough,
+                });
+            }
         }
     }
     let mut current_table_cache = TableCache::new(

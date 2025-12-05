@@ -2,7 +2,7 @@ use std::fmt::format;
 
 use crate::{
     interface::{AppTab, UiCommand, tabs::vehicle},
-    intervals::{Depot, Station},
+    intervals::{Depot, Station, StationCache},
     units::time::TimetableTime,
     vehicles::{
         AdjustTimetableEntry, TimetableAdjustment, Vehicle,
@@ -135,6 +135,7 @@ pub fn show_station_timetable(
     vehicle_sets: Query<(Entity, &Children, &Name), With<VehicleSet>>,
     vehicles: Query<(Entity, &Name, &VehicleSchedule), With<Vehicle>>,
     station_names: Query<&Name, With<Station>>,
+    station_caches: Query<&StationCache>,
     service_names: Query<&Name, With<VehicleService>>,
     timetable_entries: Query<(&TimetableEntry, &TimetableEntryCache, &ChildOf)>,
     msg_open_ui: MessageWriter<UiCommand>,
@@ -170,39 +171,43 @@ pub fn show_station_timetable(
         "Show terminus station",
     );
     let mut times: Vec<Vec<(&str, &str, TimetableTime, Entity)>> = vec![Vec::new(); 24];
-    for (entry, entry_cache, parent) in selected_line_cache
-        .children
-        .iter()
-        .filter_map(|c| vehicles.get(*c).ok().and_then(|v| Some(&v.2.entities)))
-        .flatten()
-        .filter_map(|e| timetable_entries.get(*e).ok())
-    {
-        if entry.departure.is_none() || entry.station != station {
-            continue;
-        };
-        let (hour, ..) = entry_cache.departure_estimate.to_hmsd();
-        let index = hour.rem_euclid(24) as usize;
-        let mut terminal_name = "---";
-        let mut service_name = "---";
-        if let Ok((_, _, schedule)) = vehicles.get(parent.0)
-            && let Some(entry_service) = entry.service
-            && let Some(last_entry_entity) = schedule.get_service_last_entry(entry_service)
-            && let Ok((last_entry, last_entry_cache, _)) = timetable_entries.get(last_entry_entity)
-            && let Ok(name) = station_names.get(last_entry.station)
+    if let Ok(station_cache) = station_caches.get(station) {
+        for (entry, entry_cache, parent) in station_cache
+            .passing_entries
+            .iter()
+            .filter_map(|e| timetable_entries.get(*e).ok())
         {
-            terminal_name = name
+            if !selected_line_cache.children.contains(&parent.0) {
+                continue;
+            }
+            if entry.departure.is_none() {
+                continue;
+            }
+            let (hour, ..) = entry_cache.departure_estimate.to_hmsd();
+            let index = hour.rem_euclid(24) as usize;
+            let mut terminal_name = "---";
+            let mut service_name = "---";
+            if let Ok((_, _, schedule)) = vehicles.get(parent.0)
+                && let Some(entry_service) = entry.service
+                && let Some(last_entry_entity) = schedule.get_service_last_entry(entry_service)
+                && let Ok((last_entry, last_entry_cache, _)) =
+                    timetable_entries.get(last_entry_entity)
+                && let Ok(name) = station_names.get(last_entry.station)
+            {
+                terminal_name = name
+            }
+            if let Some(entry_service) = entry.service
+                && let Ok(name) = service_names.get(entry_service)
+            {
+                service_name = name;
+            }
+            times[index].push((
+                terminal_name,
+                service_name,
+                entry_cache.departure_estimate,
+                parent.0,
+            ))
         }
-        if let Some(entry_service) = entry.service
-            && let Ok(name) = service_names.get(entry_service)
-        {
-            service_name = name;
-        }
-        times[index].push((
-            terminal_name,
-            service_name,
-            entry_cache.departure_estimate,
-            parent.0,
-        ))
     }
     for time in &mut times {
         time.sort_by_key(|k| k.2.to_hmsd().1);
