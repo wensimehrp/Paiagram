@@ -6,7 +6,7 @@ use crate::{
     units::time::TimetableTime,
     vehicles::{
         AdjustTimetableEntry, TimetableAdjustment, Vehicle,
-        entries::{TimetableEntry, TravelMode, VehicleSchedule},
+        entries::{TimetableEntry, TimetableEntryCache, TravelMode, VehicleSchedule},
         services::VehicleService,
         vehicle_set::VehicleSet,
     },
@@ -136,7 +136,7 @@ pub fn show_station_timetable(
     vehicles: Query<(Entity, &Name, &VehicleSchedule), With<Vehicle>>,
     station_names: Query<&Name, With<Station>>,
     service_names: Query<&Name, With<VehicleService>>,
-    timetable_entries: Query<(&TimetableEntry, &ChildOf)>,
+    timetable_entries: Query<(&TimetableEntry, &TimetableEntryCache, &ChildOf)>,
     msg_open_ui: MessageWriter<UiCommand>,
     mut page_settings: Local<PageSettings>,
     mut selected_line_cache: Local<SelectedLineCache>,
@@ -170,27 +170,24 @@ pub fn show_station_timetable(
         "Show terminus station",
     );
     let mut times: Vec<Vec<(&str, &str, TimetableTime, Entity)>> = vec![Vec::new(); 24];
-    for (entry, parent) in selected_line_cache
+    for (entry, entry_cache, parent) in selected_line_cache
         .children
         .iter()
         .filter_map(|c| vehicles.get(*c).ok().and_then(|v| Some(&v.2.entities)))
         .flatten()
         .filter_map(|e| timetable_entries.get(*e).ok())
     {
-        let Some(departure_time) = entry.departure_estimate else {
-            continue;
-        };
         if entry.departure.is_none() || entry.station != station {
             continue;
         };
-        let (hour, ..) = departure_time.to_hmsd();
+        let (hour, ..) = entry_cache.departure_estimate.to_hmsd();
         let index = hour.rem_euclid(24) as usize;
         let mut terminal_name = "---";
         let mut service_name = "---";
         if let Ok((_, _, schedule)) = vehicles.get(parent.0)
             && let Some(entry_service) = entry.service
             && let Some(last_entry_entity) = schedule.get_service_last_entry(entry_service)
-            && let Ok((last_entry, _)) = timetable_entries.get(last_entry_entity)
+            && let Ok((last_entry, last_entry_cache, _)) = timetable_entries.get(last_entry_entity)
             && let Ok(name) = station_names.get(last_entry.station)
         {
             terminal_name = name
@@ -200,7 +197,12 @@ pub fn show_station_timetable(
         {
             service_name = name;
         }
-        times[index].push((terminal_name, service_name, departure_time, parent.0))
+        times[index].push((
+            terminal_name,
+            service_name,
+            entry_cache.departure_estimate,
+            parent.0,
+        ))
     }
     for time in &mut times {
         time.sort_by_key(|k| k.2.to_hmsd().1);

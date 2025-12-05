@@ -1,7 +1,7 @@
 use crate::intervals::{self, Graph};
 use crate::units::distance::Distance;
 use crate::units::time::{Duration, TimetableTime};
-use crate::vehicles::entries::TimetableEntry;
+use crate::vehicles::entries::{TimetableEntry, TimetableEntryCache};
 use bevy::prelude::*;
 use entries::TravelMode;
 use smallvec::{SmallVec, smallvec};
@@ -92,26 +92,23 @@ fn populate_services(
 }
 
 fn calculate_estimates(
+    mut commands: Commands,
     mut msg_reader: MessageReader<AdjustTimetableEntry>,
-    mut entries: Populated<&mut TimetableEntry>,
+    entries: Populated<&TimetableEntry>,
     intervals: Populated<&intervals::Interval>,
     parents: Populated<&ChildOf>,
     schedules: Populated<&entries::VehicleSchedule>,
     graph: Res<Graph>,
 ) {
-    fn clear_estimates(
-        entries: &mut Populated<&mut entries::TimetableEntry>,
-        stack: &mut Vec<(Entity, Option<Duration>, Option<Duration>)>,
-    ) {
-        for (timetable_entry_entity, _, _) in stack.iter() {
-            let Ok(mut tte) = entries.get_mut(*timetable_entry_entity) else {
-                continue;
-            };
-            tte.arrival_estimate = None;
-            tte.departure_estimate = None;
-        }
-        stack.clear();
-    }
+    let mut clear_estimates =
+        |commands: &mut Commands, stack: &mut Vec<(Entity, Option<Duration>, Option<Duration>)>| {
+            for (timetable_entry_entity, _, _) in stack.iter() {
+                commands
+                    .entity(*timetable_entry_entity)
+                    .remove::<TimetableEntryCache>();
+            }
+            stack.clear();
+        };
     for msg in msg_reader.read() {
         let AdjustTimetableEntry { entity, .. } = msg;
         let Ok(entry) = parents.get(*entity) else {
@@ -125,7 +122,7 @@ fn calculate_estimates(
         let mut pending_time_and_station: Option<(TimetableTime, Entity)> = None;
         let mut unwind_params: Option<(Option<(TimetableTime, Entity)>, Option<Duration>)> = None;
         'iter_timetable: for timetable_entry_entity in schedule.entities.iter() {
-            let Ok(mut tte) = entries.get_mut(*timetable_entry_entity) else {
+            let Ok(tte) = entries.get(*timetable_entry_entity) else {
                 continue;
             };
             if let Some(v) = pending_time_and_station.take() {
@@ -133,34 +130,51 @@ fn calculate_estimates(
             }
             match (tte.arrival, tte.departure.unwrap_or(TravelMode::Flexible)) {
                 (TravelMode::At(at), TravelMode::At(dt)) => {
-                    tte.arrival_estimate = Some(at);
-                    tte.departure_estimate = Some(dt);
+                    commands
+                        .entity(*timetable_entry_entity)
+                        .insert(TimetableEntryCache {
+                            arrival_estimate: at,
+                            departure_estimate: dt,
+                        });
                     unwind_params = Some((stable_time_and_station, None));
                     stable_time_and_station = Some((at, tte.station));
                     pending_time_and_station = Some((dt, tte.station));
                 }
                 (TravelMode::At(at), TravelMode::For(dd)) => {
-                    tte.arrival_estimate = Some(at);
-                    tte.departure_estimate = Some(at + dd);
+                    commands
+                        .entity(*timetable_entry_entity)
+                        .insert(TimetableEntryCache {
+                            arrival_estimate: at,
+                            departure_estimate: at + dd,
+                        });
                     unwind_params = Some((stable_time_and_station, None));
                     stable_time_and_station = Some((at, tte.station));
                     pending_time_and_station = Some((at + dd, tte.station));
                 }
                 (TravelMode::At(at), TravelMode::Flexible) => {
-                    tte.arrival_estimate = Some(at);
-                    tte.departure_estimate = Some(at);
+                    commands
+                        .entity(*timetable_entry_entity)
+                        .insert(TimetableEntryCache {
+                            arrival_estimate: at,
+                            departure_estimate: at,
+                        });
                     unwind_params = Some((stable_time_and_station, None));
                     stable_time_and_station = Some((at, tte.station));
                 }
                 (TravelMode::For(ad), TravelMode::At(dt)) => {
-                    tte.departure_estimate = Some(dt);
-                    if stack.is_empty()
+                    let arrival_estimate = if stack.is_empty()
                         && let Some((stable_time, _)) = stable_time_and_station
                     {
-                        tte.arrival_estimate = Some(stable_time + ad);
+                        stable_time + ad
                     } else {
-                        tte.arrival_estimate = Some(dt);
-                    }
+                        dt
+                    };
+                    commands
+                        .entity(*timetable_entry_entity)
+                        .insert(TimetableEntryCache {
+                            arrival_estimate,
+                            departure_estimate: dt,
+                        });
                     unwind_params = Some((stable_time_and_station, Some(ad)));
                     stable_time_and_station = Some((dt, tte.station));
                 }
@@ -168,8 +182,12 @@ fn calculate_estimates(
                     if stack.is_empty()
                         && let Some((stable_time, _)) = stable_time_and_station
                     {
-                        tte.arrival_estimate = Some(stable_time + ad);
-                        tte.departure_estimate = Some(stable_time + ad + dd);
+                        commands
+                            .entity(*timetable_entry_entity)
+                            .insert(TimetableEntryCache {
+                                arrival_estimate: stable_time + ad,
+                                departure_estimate: stable_time + ad + dd,
+                            });
                         unwind_params = Some((stable_time_and_station, Some(ad)));
                         stable_time_and_station = Some((stable_time + ad, tte.station));
                         pending_time_and_station = Some((stable_time + ad + dd, tte.station));
@@ -181,8 +199,12 @@ fn calculate_estimates(
                     if stack.is_empty()
                         && let Some((stable_time, _)) = stable_time_and_station
                     {
-                        tte.arrival_estimate = Some(stable_time + ad);
-                        tte.departure_estimate = Some(stable_time + ad);
+                        commands
+                            .entity(*timetable_entry_entity)
+                            .insert(TimetableEntryCache {
+                                arrival_estimate: stable_time + ad,
+                                departure_estimate: stable_time + ad,
+                            });
                         unwind_params = Some((stable_time_and_station, Some(ad)));
                         stable_time_and_station = Some((stable_time + ad, tte.station));
                     } else {
@@ -190,8 +212,12 @@ fn calculate_estimates(
                     }
                 }
                 (TravelMode::Flexible, TravelMode::At(at)) => {
-                    tte.arrival_estimate = Some(at);
-                    tte.departure_estimate = Some(at);
+                    commands
+                        .entity(*timetable_entry_entity)
+                        .insert(TimetableEntryCache {
+                            arrival_estimate: at,
+                            departure_estimate: at,
+                        });
                     unwind_params = Some((stable_time_and_station, None));
                     stable_time_and_station = Some((at, tte.station));
                 }
@@ -209,18 +235,18 @@ fn calculate_estimates(
                 continue;
             }
             let Some((previous_time, mut previous_station)) = previous_time_and_station else {
-                clear_estimates(&mut entries, &mut stack);
+                clear_estimates(&mut commands, &mut stack);
                 continue;
             };
             let Some((mut current_time, current_station)) = stable_time_and_station else {
-                clear_estimates(&mut entries, &mut stack);
+                clear_estimates(&mut commands, &mut stack);
                 continue;
             };
             let mut distances = Vec::with_capacity(stack.len() + 1);
             let mut total_time = current_time - previous_time;
             for (timetable_entry_entity, arr_dur, dep_dur) in stack.iter() {
                 let Ok(tte) = entries.get(*timetable_entry_entity) else {
-                    clear_estimates(&mut entries, &mut stack);
+                    clear_estimates(&mut commands, &mut stack);
                     continue 'iter_timetable;
                 };
                 let interval_distance = if previous_station == tte.station || arr_dur.is_some() {
@@ -231,12 +257,12 @@ fn calculate_estimates(
                             if let Ok(interval) = intervals.get(*w) {
                                 Some(interval.length)
                             } else {
-                                clear_estimates(&mut entries, &mut stack);
+                                clear_estimates(&mut commands, &mut stack);
                                 continue 'iter_timetable;
                             }
                         }
                         None => {
-                            clear_estimates(&mut entries, &mut stack);
+                            clear_estimates(&mut commands, &mut stack);
                             continue 'iter_timetable;
                         }
                     }
@@ -256,12 +282,12 @@ fn calculate_estimates(
                         if let Ok(interval) = intervals.get(*w) {
                             Some(interval.length)
                         } else {
-                            clear_estimates(&mut entries, &mut stack);
+                            clear_estimates(&mut commands, &mut stack);
                             continue 'iter_timetable;
                         }
                     }
                     None => {
-                        clear_estimates(&mut entries, &mut stack);
+                        clear_estimates(&mut commands, &mut stack);
                         continue 'iter_timetable;
                     }
                 }
@@ -284,23 +310,26 @@ fn calculate_estimates(
             while let (Some((timetable_entry_entity, arr_dur, dep_dur)), Some(distance)) =
                 (stack.pop(), distances.pop())
             {
-                let Ok(mut tte) = entries.get_mut(timetable_entry_entity) else {
-                    continue;
-                };
                 if let Some(distance) = distance {
                     current_time -= distance / velocity;
                 }
-                tte.departure_estimate = Some(current_time);
+                let departure_estimate = current_time;
                 if let Some(dur) = dep_dur {
                     current_time = current_time - dur;
                 }
-                tte.arrival_estimate = Some(current_time);
+                let arrival_estimate = current_time;
                 if let Some(dur) = arr_dur {
                     current_time = current_time - dur;
                 }
+                commands
+                    .entity(timetable_entry_entity)
+                    .insert(TimetableEntryCache {
+                        arrival_estimate,
+                        departure_estimate,
+                    });
             }
         }
-        clear_estimates(&mut entries, &mut stack);
+        clear_estimates(&mut commands, &mut stack);
     }
 }
 

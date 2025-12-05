@@ -391,17 +391,14 @@ fn create_timetable_entries(
                     } else {
                         TravelMode::At(entry.arrival)
                     },
-                    arrival_estimate: None,
                     departure: if !entry.stops && entry.arrival == entry.departure {
                         None
                     } else {
                         Some(TravelMode::At(entry.departure))
                     },
-                    departure_estimate: None,
                     station: station_entity,
                     service: service_entity,
                     track: None,
-                    implicit: false,
                 }
             })
             .id();

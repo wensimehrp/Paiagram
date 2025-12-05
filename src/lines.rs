@@ -55,7 +55,7 @@ fn prepare_displayed_line(
         stations.sort_unstable();
         let mut children = Vec::new();
         for (vehicle_entity, vehicle) in vehicles.iter() {
-            for (entry, entity) in vehicle.into_entries(&timetable_entries) {
+            for (entry, entity) in vehicle.into_entries(|e| timetable_entries.get(e).ok()) {
                 if let Ok(_) = stations.binary_search(&entry.station) {
                     children.push(vehicle_entity);
                     break;

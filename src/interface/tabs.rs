@@ -1,10 +1,10 @@
+pub mod classes;
 pub mod diagram;
+pub mod displayed_lines;
+pub mod start;
 pub mod station_timetable;
 pub mod tree_view;
 pub mod vehicle;
-pub mod displayed_lines;
-pub mod classes;
-pub mod start;
 
 /// The page cache. Lots of r/w, few insertions, good locality, fast executions.
 #[derive(Debug)]

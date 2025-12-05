@@ -8,7 +8,7 @@ use crate::{
     units::time::{Duration, TimetableTime},
     vehicles::{
         AdjustTimetableEntry,
-        entries::{TimetableEntry, TravelMode, VehicleSchedule},
+        entries::{TimetableEntry, TimetableEntryCache, TravelMode, VehicleSchedule},
     },
 };
 use bevy::{math::NormedVectorSpace, prelude::*};
@@ -75,7 +75,12 @@ impl Default for DiagramPageCache {
     }
 }
 
-type PointData<'a> = (Pos2, Option<Pos2>, &'a TimetableEntry, Entity);
+type PointData<'a> = (
+    Pos2,
+    Option<Pos2>,
+    (&'a TimetableEntry, &'a TimetableEntryCache),
+    Entity,
+);
 
 struct RenderedVehicle<'a> {
     segments: Vec<Vec<PointData<'a>>>,
@@ -87,7 +92,7 @@ pub fn show_diagram(
     (InMut(ui), In(displayed_line_entity)): (InMut<egui::Ui>, In<Entity>),
     mut displayed_lines: Populated<&mut DisplayedLine>,
     vehicles: Populated<(Entity, &Name, &VehicleSchedule)>,
-    timetable_entries: Query<&TimetableEntry>,
+    timetable_entries: Query<(&TimetableEntry, &TimetableEntryCache)>,
     station_names: Query<&Name, With<Station>>,
     mut timetable_adjustment_writer: MessageWriter<AdjustTimetableEntry>,
     mut page_cache: Local<PageCache<Entity, DiagramPageCache>>,
@@ -138,7 +143,7 @@ pub fn show_diagram(
             let rendered_vehicles = collect_rendered_vehicles(
                 &displayed_line,
                 &vehicles,
-                &timetable_entries,
+                |e| timetable_entries.get(e).ok(),
                 visible_stations,
                 &horizontal_visible,
                 ticks_per_screen_unit,
@@ -188,16 +193,19 @@ fn calculate_visible_ranges(
     (vertical_visible, horizontal_visible, ticks_per_screen_unit)
 }
 
-fn collect_rendered_vehicles<'a>(
+fn collect_rendered_vehicles<'a, F>(
     displayed_line: &DisplayedLine,
     vehicles: &Populated<(Entity, &Name, &VehicleSchedule)>,
-    timetable_entries: &'a Query<&TimetableEntry>,
+    get_timetable_entries: F,
     visible_stations: &[(Entity, f32)],
     horizontal_visible: &std::ops::Range<i64>,
     ticks_per_screen_unit: f64,
     state: &DiagramPageCache,
     screen_rect: &Rect,
-) -> Vec<RenderedVehicle<'a>> {
+) -> Vec<RenderedVehicle<'a>>
+where
+    F: Fn(Entity) -> Option<(&'a TimetableEntry, &'a TimetableEntryCache)> + Copy + 'a,
+{
     let mut rendered_vehicles = Vec::new();
     if let Some(children) = displayed_line.children.as_ref() {
         for (vehicle_entity, _name, schedule) in
@@ -206,7 +214,7 @@ fn collect_rendered_vehicles<'a>(
             let Some(visible_sets) = schedule.get_entries_range(
                 TimetableTime((horizontal_visible.start / TICKS_PER_SECOND) as i32)
                     ..TimetableTime((horizontal_visible.end / TICKS_PER_SECOND) as i32),
-                timetable_entries,
+                get_timetable_entries,
             ) else {
                 continue;
             };
@@ -214,15 +222,7 @@ fn collect_rendered_vehicles<'a>(
             let mut segments = Vec::new();
             for (initial_offset, set) in visible_sets {
                 let mut current_segment: Vec<PointData> = Vec::new();
-                for (entry, timetable_entity) in set {
-                    let (Some(arrival_estimate), Some(departure_estimate)) =
-                        (entry.arrival_estimate, entry.departure_estimate)
-                    else {
-                        if !current_segment.is_empty() {
-                            segments.push(std::mem::take(&mut current_segment));
-                        }
-                        continue;
-                    };
+                for ((entry, entry_cache), timetable_entity) in set {
                     let Some((_, h)) = visible_stations.iter().find(|(s, _)| *s == entry.station)
                     else {
                         if !current_segment.is_empty() {
@@ -236,7 +236,8 @@ fn collect_rendered_vehicles<'a>(
 
                     let arrival_pos = Pos2 {
                         x: ticks_to_screen_x(
-                            (arrival_estimate.0 + initial_offset.0) as i64 * TICKS_PER_SECOND,
+                            (entry_cache.arrival_estimate.0 + initial_offset.0) as i64
+                                * TICKS_PER_SECOND,
                             screen_rect,
                             ticks_per_screen_unit,
                             state.tick_offset,
@@ -250,7 +251,8 @@ fn collect_rendered_vehicles<'a>(
                     {
                         departure_pos = Some(Pos2 {
                             x: ticks_to_screen_x(
-                                (departure_estimate.0 + initial_offset.0) as i64 * TICKS_PER_SECOND,
+                                (entry_cache.departure_estimate.0 + initial_offset.0) as i64
+                                    * TICKS_PER_SECOND,
                                 screen_rect,
                                 ticks_per_screen_unit,
                                 state.tick_offset,
@@ -258,7 +260,12 @@ fn collect_rendered_vehicles<'a>(
                             y: draw_height,
                         });
                     }
-                    current_segment.push((arrival_pos, departure_pos, entry, timetable_entity))
+                    current_segment.push((
+                        arrival_pos,
+                        departure_pos,
+                        (entry, entry_cache),
+                        timetable_entity,
+                    ))
                 }
                 if !current_segment.is_empty() {
                     segments.push(current_segment);
@@ -401,8 +408,8 @@ fn draw_selection_overlay(
         let mut line_vec = Vec::with_capacity(segment.len() * 2);
 
         for idx in 0..segment.len().saturating_sub(1) {
-            let (arrival_pos, departure_pos, entry, _) = segment[idx];
-            let (next_arrival_pos, _, next_entry, _) = segment[idx + 1];
+            let (arrival_pos, departure_pos, (entry, entry_cache), _) = segment[idx];
+            let (next_arrival_pos, _, (next_entry, next_entry_cache), _) = segment[idx + 1];
             let signal_stroke = Stroke {
                 width: 1.0 + line_strength,
                 color: if matches!(next_entry.arrival, TravelMode::For(_)) {
@@ -430,7 +437,7 @@ fn draw_selection_overlay(
             signal_stroke.round_center_to_pixel(ui.pixels_per_point(), &mut next_pos.x);
             signal_stroke.round_center_to_pixel(ui.pixels_per_point(), &mut next_pos.y);
 
-            let duration = next_entry.arrival_estimate.unwrap() - entry.departure_estimate.unwrap();
+            let duration = next_entry_cache.arrival_estimate - entry_cache.departure_estimate;
 
             let points = if next_pos.y <= curr_pos.y {
                 vec![curr_pos, Pos2::new(next_pos.x, curr_pos.y), next_pos]
@@ -466,9 +473,15 @@ fn draw_selection_overlay(
         }
         painter.line(line_vec, stroke);
 
-        let mut previous_entry: Option<(Pos2, Option<Pos2>, &TimetableEntry, Entity)> = None;
+        let mut previous_entry: Option<(
+            Pos2,
+            Option<Pos2>,
+            (&TimetableEntry, &TimetableEntryCache),
+            Entity,
+        )> = None;
         for fragment in segment.iter().cloned() {
-            let (mut arrival_pos, maybe_departure_pos, entry, entry_entity) = fragment;
+            let (mut arrival_pos, maybe_departure_pos, (entry, entry_cache), entry_entity) =
+                fragment;
             const HANDLE_SIZE: f32 = 12.0;
             const CIRCLE_HANDLE_SIZE: f32 = 7.0;
             const TRIANGLE_HANDLE_SIZE: f32 = 10.0;
@@ -568,11 +581,7 @@ fn draw_selection_overlay(
             }
             if arrival_point_response.dragged() {
                 arrival_point_response.show_tooltip_ui(|ui| {
-                    ui.label(
-                        entry
-                            .arrival_estimate
-                            .map_or("??".to_string(), |t| t.to_string()),
-                    );
+                    ui.label(entry_cache.arrival_estimate.to_string());
                     ui.label(
                         station_names
                             .get(entry.station)
@@ -585,8 +594,11 @@ fn draw_selection_overlay(
                     .show(|ui| {
                         timetable_popup::popup(
                             entry_entity,
-                            entry,
-                            previous_entry.map(|e| e.2),
+                            (entry, Some(entry_cache)),
+                            previous_entry.map(|e| {
+                                let e = e.2;
+                                (e.0, Some(e.1))
+                            }),
                             timetable_adjustment_writer,
                             ui,
                             true,
@@ -688,11 +700,7 @@ fn draw_selection_overlay(
             }
             if departure_point_response.dragged() {
                 departure_point_response.show_tooltip_ui(|ui| {
-                    ui.label(
-                        entry
-                            .departure_estimate
-                            .map_or("??".to_string(), |t| t.to_string()),
-                    );
+                    ui.label(entry_cache.departure_estimate.to_string());
                     ui.label(
                         station_names
                             .get(entry.station)
@@ -705,8 +713,11 @@ fn draw_selection_overlay(
                     .show(|ui| {
                         timetable_popup::popup(
                             entry_entity,
-                            entry,
-                            previous_entry.map(|e| e.2),
+                            (entry, Some(entry_cache)),
+                            previous_entry.map(|e| {
+                                let e = e.2;
+                                (e.0, Some(e.1))
+                            }),
                             timetable_adjustment_writer,
                             ui,
                             false,

@@ -1,12 +1,14 @@
+use crate::interface::widgets::timetable_popup;
 use crate::interface::{AppTab, UiCommand};
 use crate::units::time::{Duration, TimetableTime};
+use crate::vehicles::entries::TimetableEntryCache;
 use crate::vehicles::{
     AdjustTimetableEntry, TimetableAdjustment,
     entries::{TimetableEntry, TravelMode, VehicleSchedule},
     services::VehicleService,
 };
 use bevy::prelude::*;
-use egui::{Color32, Label, Sense, Separator, Stroke, Ui, Vec2};
+use egui::{Color32, Label, Popup, Sense, Separator, Stroke, Ui, Vec2};
 use egui_table::{CellInfo, HeaderCellInfo, Table, TableDelegate, columns::Column};
 
 const COLUMN_NAMES: &[&str] = &["Station", "Arri.", "Dept.", "Service", "Track", "Parent"];
@@ -17,6 +19,7 @@ struct TimetableInfo<'a> {
     track_name: Option<&'a str>,
     parent_name: Option<&'a str>,
     entry: &'a TimetableEntry,
+    entry_cache: Option<&'a TimetableEntryCache>,
 }
 
 struct TableCache<'a> {
@@ -30,7 +33,7 @@ struct TableCache<'a> {
 impl<'a> TableCache<'a> {
     fn new(
         vehicle_schedule: &'a VehicleSchedule,
-        timetable_entries: &'a Query<(&TimetableEntry, &ChildOf)>,
+        timetable_entries: &'a Query<(&TimetableEntry, Option<&TimetableEntryCache>, &ChildOf)>,
         names: &'a Query<(Entity, &Name)>,
         msg_sender: MessageWriter<'a, AdjustTimetableEntry>,
         msg_open_ui: MessageWriter<'a, UiCommand>,
@@ -39,7 +42,8 @@ impl<'a> TableCache<'a> {
         let schedule_length = vehicle_schedule.entities.len();
         let mut entries = Vec::with_capacity(schedule_length);
         for timetable_entry_entity in vehicle_schedule.entities.iter() {
-            let Ok((entry, parent)) = timetable_entries.get(*timetable_entry_entity) else {
+            let Ok((entry, entry_cache, parent)) = timetable_entries.get(*timetable_entry_entity)
+            else {
                 continue;
             };
             let station_name = names
@@ -70,6 +74,7 @@ impl<'a> TableCache<'a> {
                 track_name,
                 parent_name,
                 entry,
+                entry_cache,
             };
             entries.push(info);
         }
@@ -108,36 +113,48 @@ impl<'a> TableDelegate for TableCache<'a> {
                 ui.label(self.entries[i].station_name.unwrap_or("---"));
             }
             1 => {
-                use crate::interface::widgets::scrollable_time::time_widget;
-                time_widget(
-                    ui,
-                    self.entries[i].entry.arrival,
-                    self.entries[i].entry.arrival_estimate,
-                    if i == 0 {
-                        None
-                    } else {
-                        self.entries[i - 1].entry.departure_estimate
-                    },
-                    self.timetable_entities[i],
-                    &mut None,
-                    &mut self.msg_sender,
-                );
+                let response = ui.button(self.entries[i].entry.arrival.to_string());
+                Popup::menu(&response)
+                    .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+                    .show(|ui| {
+                        timetable_popup::popup(
+                            self.timetable_entities[i],
+                            (self.entries[i].entry, self.entries[i].entry_cache),
+                            if i == 0 {
+                                None
+                            } else {
+                                Some((self.entries[i - 1].entry, self.entries[i - 1].entry_cache))
+                            },
+                            &mut self.msg_sender,
+                            ui,
+                            true,
+                        )
+                    });
             }
             2 => {
-                if ui
-                    .monospace(match self.entries[i].entry.departure {
-                        Some(v) => format!("{}", v),
-                        None => "..".to_string(),
-                    })
-                    .clicked()
-                {
-                    self.msg_sender.write(AdjustTimetableEntry {
-                        entity: self.timetable_entities[i],
-                        adjustment: TimetableAdjustment::SetDepartureType(Some(TravelMode::For(
-                            Duration(100),
-                        ))),
+                let response = ui.button(
+                    self.entries[i]
+                        .entry
+                        .departure
+                        .map(|t| t.to_string())
+                        .unwrap_or("||".to_string()),
+                );
+                Popup::menu(&response)
+                    .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+                    .show(|ui| {
+                        timetable_popup::popup(
+                            self.timetable_entities[i],
+                            (self.entries[i].entry, self.entries[i].entry_cache),
+                            if i == 0 {
+                                None
+                            } else {
+                                Some((self.entries[i - 1].entry, self.entries[i - 1].entry_cache))
+                            },
+                            &mut self.msg_sender,
+                            ui,
+                            false,
+                        )
                     });
-                };
             }
             3 => {
                 ui.label(self.entries[i].service_name.unwrap_or("---"));
@@ -157,7 +174,7 @@ impl<'a> TableDelegate for TableCache<'a> {
 pub fn show_vehicle(
     (InMut(ui), In(entity)): (InMut<egui::Ui>, In<Entity>),
     schedules: Query<(&VehicleSchedule, &ChildOf)>,
-    timetable_entries: Query<(&TimetableEntry, &ChildOf)>,
+    timetable_entries: Query<(&TimetableEntry, Option<&TimetableEntryCache>, &ChildOf)>,
     names: Query<(Entity, &Name)>,
     mut msg_sender: MessageWriter<AdjustTimetableEntry>,
     msg_open_ui: MessageWriter<UiCommand>,
@@ -167,8 +184,10 @@ pub fn show_vehicle(
         return;
     };
     let stroke_width = 16.0;
-    let (rect, response) =
-        ui.allocate_at_least(Vec2::new(ui.available_width(), stroke_width), Sense::hover());
+    let (rect, response) = ui.allocate_at_least(
+        Vec2::new(ui.available_width(), stroke_width),
+        Sense::hover(),
+    );
     let painter = ui.painter();
     let stroke = Stroke {
         width: stroke_width,

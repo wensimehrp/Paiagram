@@ -46,20 +46,22 @@ pub struct TimetableEntry {
     pub arrival: TravelMode,
     /// How would the vehicle depart from a station. A `None` value means that the vehicle does not stop at the station.
     pub departure: Option<TravelMode>,
-    /// Estimate of the arrival time. This would be filled in during runtime. An estimate of `None` means that the
-    /// arrival time cannot be determined.
-    pub arrival_estimate: Option<TimetableTime>,
-    /// Estimate of the departure time. This would be filled in during runtime. An estimate of `None` means that the
-    /// arrival time cannot be determined.
-    pub departure_estimate: Option<TimetableTime>,
     /// The station the vehicle stops at or passes.
     pub station: Entity,
     /// The service the entry belongs to.
     pub service: Option<Entity>,
     /// The track/platform/dock/berth etc. at the station.
     pub track: Option<Entity>,
-    /// if this is implicitly generated,
-    pub implicit: bool,
+}
+
+#[derive(Debug, Component)]
+pub struct TimetableEntryCache {
+    /// Estimate of the arrival time. This would be filled in during runtime. An estimate of `None` means that the
+    /// arrival time cannot be determined.
+    pub arrival_estimate: TimetableTime,
+    /// Estimate of the departure time. This would be filled in during runtime. An estimate of `None` means that the
+    /// arrival time cannot be determined.
+    pub departure_estimate: TimetableTime,
 }
 
 /// A vehicle's schedule and departure pattern
@@ -80,6 +82,12 @@ pub struct VehicleSchedule {
     pub service_entities: Vec<(Entity, SmallVec<[std::ops::Range<usize>; 1]>)>,
 }
 
+#[derive(Debug, Component)]
+pub struct VehicleScheduleCache {
+    actual_route: Vec<Entity>,
+    service_entities: Vec<(Entity, SmallVec<[std::ops::Range<usize>; 1]>)>,
+}
+
 impl Default for VehicleSchedule {
     fn default() -> Self {
         Self {
@@ -93,13 +101,16 @@ impl Default for VehicleSchedule {
 }
 
 impl VehicleSchedule {
-    pub fn into_entries<'a>(
+    pub fn into_entries<'a, F>(
         &self,
-        query: &'a Query<&TimetableEntry>,
-    ) -> impl Iterator<Item = (&'a TimetableEntry, Entity)> {
+        mut lookup: F,
+    ) -> impl Iterator<Item = (&'a TimetableEntry, Entity)>
+    where
+        F: FnMut(Entity) -> Option<&'a TimetableEntry> + 'a,
+    {
         self.entities
             .iter()
-            .filter_map(|e| query.get(*e).ok().map(|r| (r, *e)))
+            .filter_map(move |e| lookup(*e).map(|r| (r, *e)))
     }
     pub fn get_service_entries(&self, service: Entity) -> Option<Vec<&[Entity]>> {
         let i = self
@@ -133,15 +144,23 @@ impl VehicleSchedule {
             .last()
             .and_then(|e| Some(self.entities[e.end.saturating_sub(1)]));
     }
-    pub fn get_entries_range<'a>(
+    pub fn get_entries_range<'a, F>(
         &self,
         range: std::ops::Range<TimetableTime>,
-        query: &'a Query<&TimetableEntry>,
-    ) -> Option<Vec<(TimetableTime, Vec<(&'a TimetableEntry, Entity)>)>> {
+        mut lookup: F,
+    ) -> Option<
+        Vec<(
+            TimetableTime,
+            Vec<((&'a TimetableEntry, &'a TimetableEntryCache), Entity)>,
+        )>,
+    >
+    where
+        F: FnMut(Entity) -> Option<(&'a TimetableEntry, &'a TimetableEntryCache)> + 'a,
+    {
         let timetable_entries = self
             .entities
             .iter()
-            .filter_map(|e| query.get(*e).ok().map(|t| (t, *e)))
+            .filter_map(move |e| lookup(*e).map(|t| (t, *e)))
             .collect::<Vec<_>>();
         let mut ret = Vec::with_capacity(timetable_entries.len());
         let repeats_iter = match self.repeat {
@@ -152,9 +171,8 @@ impl VehicleSchedule {
                         let main = (range.start - self.start).0.div_euclid(duration.0);
                         let last_dep = *self.departures.last()?
                             + timetable_entries
-                                .iter()
-                                .rev()
-                                .find_map(|(et, _)| et.departure_estimate)?
+                                .last()
+                                .map(|((_, tec), _)| tec.departure_estimate)?
                                 .as_duration();
                         let sub = last_dep.0.div_euclid(duration.0);
                         main - sub
@@ -170,17 +188,11 @@ impl VehicleSchedule {
         };
         for base_time in repeats_iter {
             for departure in self.departures.iter().copied() {
-                let start_index = timetable_entries.iter().position(|(et, _)| {
-                    let Some(ae) = et.arrival_estimate else {
-                        return false;
-                    };
-                    departure + base_time + ae.as_duration() > range.start
+                let start_index = timetable_entries.iter().position(|((_, tec), _)| {
+                    departure + base_time + tec.arrival_estimate.as_duration() > range.start
                 });
-                let end_index = timetable_entries.iter().rposition(|(et, _)| {
-                    let Some(de) = et.departure_estimate else {
-                        return false;
-                    };
-                    departure + base_time + de.as_duration() < range.end
+                let end_index = timetable_entries.iter().rposition(|((_, tec), _)| {
+                    departure + base_time + tec.departure_estimate.as_duration() < range.end
                 });
                 let (Some(mut si), Some(mut ei)) = (start_index, end_index) else {
                     continue;

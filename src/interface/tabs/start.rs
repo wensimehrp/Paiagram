@@ -1,6 +1,6 @@
 use bevy::{
-    ecs::{system::{InMut, Local}},
-    log::info
+    ecs::system::{InMut, Local},
+    log::info,
 };
 use egui::{Rect, Ui, UiBuilder};
 
@@ -14,10 +14,9 @@ pub fn display_start(InMut(ui): InMut<Ui>, mut widget_info: Local<Option<Rect>>)
             |ui| {
                 ui.set_max_width(600.0f32.min(ui.available_width()));
                 if !ui.is_sizing_pass() {
-                    let amnt = (ui.max_rect().height() / 2.0) - (widget_info.unwrap().height() / 2.0);
-                    ui.add_space(
-                        amnt,
-                    );
+                    let amnt =
+                        (ui.max_rect().height() / 2.0) - (widget_info.unwrap().height() / 2.0);
+                    ui.add_space(amnt);
                     info!(?amnt);
                 }
                 ui.columns(2, |columns| {

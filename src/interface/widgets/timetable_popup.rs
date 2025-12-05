@@ -5,22 +5,22 @@ use crate::{
     units::time::{Duration, TimetableTime},
     vehicles::{
         AdjustTimetableEntry, TimetableAdjustment,
-        entries::{TimetableEntry, TravelMode},
+        entries::{TimetableEntry, TimetableEntryCache, TravelMode},
     },
 };
 
 pub fn popup(
     entry_entity: Entity,
-    current_entry: &TimetableEntry,
-    previous_entry: Option<&TimetableEntry>,
+    (current_entry, current_entry_cache): (&TimetableEntry, Option<&TimetableEntryCache>),
+    previous_entry: Option<(&TimetableEntry, Option<&TimetableEntryCache>)>,
     msg_adjust_entry: &mut MessageWriter<AdjustTimetableEntry>,
     ui: &mut Ui,
     arrival: bool,
 ) {
     let dt = match (previous_entry, arrival) {
-        (Some(pe), true) => {
-            if let Some(ae) = current_entry.arrival_estimate
-                && let Some(de) = pe.departure_estimate
+        (Some((pe, pec)), true) => {
+            if let Some(ae) = current_entry_cache.map(|cec| cec.arrival_estimate)
+                && let Some(de) = pec.map(|pec| pec.departure_estimate)
             {
                 Some(ae - de)
             } else {
@@ -29,8 +29,8 @@ pub fn popup(
         }
         (None, true) => None,
         (_, false) => {
-            if let Some(de) = current_entry.departure_estimate
-                && let Some(ae) = current_entry.arrival_estimate
+            if let Some(de) = current_entry_cache.map(|cec| cec.departure_estimate)
+                && let Some(ae) = current_entry_cache.map(|cec| cec.arrival_estimate)
             {
                 Some(de - ae)
             } else {
@@ -85,9 +85,9 @@ pub fn popup(
             show_at,
             Button::new("At").right_text(RichText::monospace(
                 if arrival {
-                    current_entry.arrival_estimate
+                    current_entry_cache.map(|cec| cec.arrival_estimate)
                 } else {
-                    current_entry.departure_estimate
+                    current_entry_cache.map(|cec| cec.departure_estimate)
                 }
                 .map_or("--:--:--".into(), |t| t.to_string().into()),
             )),
@@ -98,7 +98,7 @@ pub fn popup(
             entity: entry_entity,
             adjustment: if arrival {
                 TimetableAdjustment::SetArrivalType(TravelMode::At(
-                    if let Some(ae) = current_entry.arrival_estimate {
+                    if let Some(ae) = current_entry_cache.map(|cec| cec.arrival_estimate) {
                         ae
                     } else {
                         TimetableTime(0)
@@ -106,7 +106,7 @@ pub fn popup(
                 ))
             } else {
                 TimetableAdjustment::SetDepartureType(Some(TravelMode::At(
-                    if let Some(de) = current_entry.departure_estimate {
+                    if let Some(de) = current_entry_cache.map(|cec| cec.departure_estimate) {
                         de
                     } else {
                         TimetableTime(0)

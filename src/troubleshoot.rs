@@ -4,7 +4,7 @@ use crate::{
     units::time::Duration,
     vehicles::{
         AdjustTimetableEntry,
-        entries::{TimetableEntry, TravelMode, VehicleSchedule},
+        entries::{TimetableEntry, TimetableEntryCache, TravelMode, VehicleSchedule},
     },
 };
 
@@ -50,15 +50,19 @@ pub fn analyze_schedules(
 pub fn analyze_entry(
     mut commands: Commands,
     mut msg_read_entry: MessageReader<AdjustTimetableEntry>,
-    mut entries: Query<(Option<&mut EntryProblem>, &TimetableEntry)>,
+    mut entries: Query<(
+        Option<&mut EntryProblem>,
+        &TimetableEntry,
+        Option<&TimetableEntryCache>,
+    )>,
 ) {
     for entry_entity in msg_read_entry.read().map(|msg| msg.entity) {
-        let Ok((mut existing_problem, entry)) = entries.get_mut(entry_entity) else {
+        let Ok((mut existing_problem, entry, entry_cache)) = entries.get_mut(entry_entity) else {
             continue;
         };
 
         let check = |problems: &mut Vec<EntryProblemType>| {
-            if entry.arrival_estimate.is_none() || entry.departure_estimate.is_none() {
+            if entry_cache.is_none() {
                 problems.push(EntryProblemType::NoEstimation)
             }
             if let TravelMode::For(a) = entry.arrival
@@ -70,7 +74,9 @@ pub fn analyze_entry(
             {
                 problems.push(EntryProblemType::TravelDurationTooShort);
             }
-            if matches!(entry.arrival, TravelMode::Flexible) && matches!(entry.departure, Some(TravelMode::At(_))) {
+            if matches!(entry.arrival, TravelMode::Flexible)
+                && matches!(entry.departure, Some(TravelMode::At(_)))
+            {
                 problems.push(EntryProblemType::ReversedFlexibleMode)
             }
             problems.dedup();
