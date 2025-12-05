@@ -23,13 +23,13 @@ catppuccin-egui = { version = "5.7.0", default-features = false, features = [
     "egui33",
 ] }
 petgraph = "0.8.3"
-derive_more = { version = "2.0.1", features = ["full"] }
+derive_more = { version = "2.1.0", features = ["full"] }
 serde_json = "1.0.145"
 serde = "1.0.228"
 bevy_camera = "0.17.3"
 rand = "0.9.2"
 ib-matcher = { version = "0.4.0", features = ["pinyin", "romaji"] }
-rfd = "0.15.4"
+rfd = "0.16.0"
 pest = "2.8.3"
 pest_derive = "2.8.3"
 git-version = "0.3.9"
@@ -45,7 +45,7 @@ either = "1.15.0"
 egui_ltreeview = "0.6.0"
 kdl = "6.5.0"
 nonmax = "0.5.5"
-egui_table = "0.5.0"
+egui_table = "0.6.0"
 slotmap = "1.0.7"
 slab = "0.4.11"
 
