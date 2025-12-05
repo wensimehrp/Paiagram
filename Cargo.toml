@@ -72,5 +72,9 @@ strip = true
 
 # Optimize for size in the wasm-release profile to reduce load times and bandwidth usage on web.
 [profile.wasm-release]
+# Default to release profile values.
 inherits = "release"
-opt-level = "z"
+# Optimize with size in mind (also try "z", sometimes it is better).
+# Slightly slows compile times, great improvements to file size and runtime performance.
+# Strip all debugging information from the binary to slightly reduce file size.
+strip = "debuginfo"
