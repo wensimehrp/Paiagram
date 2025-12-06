@@ -20,6 +20,7 @@ impl Plugin for TroubleShootPlugin {
 }
 
 #[derive(Component)]
+#[component(storage = "SparseSet")]
 pub struct ScheduleProblem(pub Vec<ScheduleProblemType>);
 pub enum ScheduleProblemType {
     TooShort,
@@ -31,6 +32,7 @@ pub enum ScheduleProblemType {
 }
 
 #[derive(Component)]
+#[component(storage = "SparseSet")]
 pub struct EntryProblem(pub Vec<EntryProblemType>);
 #[derive(PartialEq, Eq)]
 pub enum EntryProblemType {
@@ -53,7 +55,7 @@ pub fn analyze_entry(
     mut entries: Query<(
         Option<&mut EntryProblem>,
         &TimetableEntry,
-        Option<&TimetableEntryCache>,
+        &TimetableEntryCache,
     )>,
 ) {
     for entry_entity in msg_read_entry.read().map(|msg| msg.entity) {
@@ -62,7 +64,7 @@ pub fn analyze_entry(
         };
 
         let check = |problems: &mut Vec<EntryProblemType>| {
-            if entry_cache.is_none() {
+            if entry_cache.estimate.is_none() {
                 problems.push(EntryProblemType::NoEstimation)
             }
             if let TravelMode::For(a) = entry.arrival

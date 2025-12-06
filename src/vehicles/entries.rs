@@ -41,6 +41,7 @@ impl std::fmt::Display for TravelMode {
 
 /// An entry in the timetable
 #[derive(Debug, Component)]
+#[require(TimetableEntryCache)]
 pub struct TimetableEntry {
     /// How would the vehicle arrive at a station.
     pub arrival: TravelMode,
@@ -54,14 +55,19 @@ pub struct TimetableEntry {
     pub track: Option<Entity>,
 }
 
-#[derive(Debug, Component)]
+#[derive(Debug, Component, Default)]
 pub struct TimetableEntryCache {
+    pub estimate: Option<TimeEstimate>,
+}
+
+#[derive(Debug)]
+pub struct TimeEstimate {
     /// Estimate of the arrival time. This would be filled in during runtime. An estimate of `None` means that the
     /// arrival time cannot be determined.
-    pub arrival_estimate: TimetableTime,
+    pub arrival: TimetableTime,
     /// Estimate of the departure time. This would be filled in during runtime. An estimate of `None` means that the
-    /// arrival time cannot be determined.
-    pub departure_estimate: TimetableTime,
+    /// departure time cannot be determined.
+    pub departure: TimetableTime,
 }
 
 /// A vehicle's schedule and departure pattern
@@ -172,7 +178,8 @@ impl VehicleSchedule {
                         let last_dep = *self.departures.last()?
                             + timetable_entries
                                 .last()
-                                .map(|((_, tec), _)| tec.departure_estimate)?
+                                .map(|((_, tec), _)| tec.estimate.as_ref())??
+                                .departure
                                 .as_duration();
                         let sub = last_dep.0.div_euclid(duration.0);
                         main - sub
@@ -189,10 +196,14 @@ impl VehicleSchedule {
         for base_time in repeats_iter {
             for departure in self.departures.iter().copied() {
                 let start_index = timetable_entries.iter().position(|((_, tec), _)| {
-                    departure + base_time + tec.arrival_estimate.as_duration() > range.start
+                    tec.estimate.as_ref().map_or(false, |e| {
+                        departure + base_time + e.arrival.as_duration() > range.start
+                    })
                 });
                 let end_index = timetable_entries.iter().rposition(|((_, tec), _)| {
-                    departure + base_time + tec.departure_estimate.as_duration() < range.end
+                    tec.estimate.as_ref().map_or(false, |e| {
+                        departure + base_time + e.departure.as_duration() < range.end
+                    })
                 });
                 let (Some(mut si), Some(mut ei)) = (start_index, end_index) else {
                     continue;

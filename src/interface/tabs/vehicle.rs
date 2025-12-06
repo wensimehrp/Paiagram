@@ -19,7 +19,7 @@ struct TimetableInfo<'a> {
     track_name: Option<&'a str>,
     parent_name: Option<&'a str>,
     entry: &'a TimetableEntry,
-    entry_cache: Option<&'a TimetableEntryCache>,
+    entry_cache: &'a TimetableEntryCache,
 }
 
 struct TableCache<'a> {
@@ -33,7 +33,7 @@ struct TableCache<'a> {
 impl<'a> TableCache<'a> {
     fn new(
         vehicle_schedule: &'a VehicleSchedule,
-        timetable_entries: &'a Query<(&TimetableEntry, Option<&TimetableEntryCache>, &ChildOf)>,
+        timetable_entries: &'a Query<(&TimetableEntry, &TimetableEntryCache, &ChildOf)>,
         names: &'a Query<(Entity, &Name)>,
         msg_sender: MessageWriter<'a, AdjustTimetableEntry>,
         msg_open_ui: MessageWriter<'a, UiCommand>,
@@ -174,7 +174,7 @@ impl<'a> TableDelegate for TableCache<'a> {
 pub fn show_vehicle(
     (InMut(ui), In(entity)): (InMut<egui::Ui>, In<Entity>),
     schedules: Query<(&VehicleSchedule, &ChildOf)>,
-    timetable_entries: Query<(&TimetableEntry, Option<&TimetableEntryCache>, &ChildOf)>,
+    timetable_entries: Query<(&TimetableEntry, &TimetableEntryCache, &ChildOf)>,
     names: Query<(Entity, &Name)>,
     mut msg_sender: MessageWriter<AdjustTimetableEntry>,
     msg_open_ui: MessageWriter<UiCommand>,

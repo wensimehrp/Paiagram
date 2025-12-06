@@ -223,6 +223,12 @@ where
             for (initial_offset, set) in visible_sets {
                 let mut current_segment: Vec<PointData> = Vec::new();
                 for ((entry, entry_cache), timetable_entity) in set {
+                    let Some(estimate) = &entry_cache.estimate else {
+                        if !current_segment.is_empty() {
+                            segments.push(std::mem::take(&mut current_segment));
+                        }
+                        continue;
+                    };
                     let Some((_, h)) = visible_stations.iter().find(|(s, _)| *s == entry.station)
                     else {
                         if !current_segment.is_empty() {
@@ -236,8 +242,7 @@ where
 
                     let arrival_pos = Pos2 {
                         x: ticks_to_screen_x(
-                            (entry_cache.arrival_estimate.0 + initial_offset.0) as i64
-                                * TICKS_PER_SECOND,
+                            (estimate.arrival.0 + initial_offset.0) as i64 * TICKS_PER_SECOND,
                             screen_rect,
                             ticks_per_screen_unit,
                             state.tick_offset,
@@ -251,7 +256,7 @@ where
                     {
                         departure_pos = Some(Pos2 {
                             x: ticks_to_screen_x(
-                                (entry_cache.departure_estimate.0 + initial_offset.0) as i64
+                                (estimate.departure.0 + initial_offset.0) as i64
                                     * TICKS_PER_SECOND,
                                 screen_rect,
                                 ticks_per_screen_unit,
@@ -437,7 +442,8 @@ fn draw_selection_overlay(
             signal_stroke.round_center_to_pixel(ui.pixels_per_point(), &mut next_pos.x);
             signal_stroke.round_center_to_pixel(ui.pixels_per_point(), &mut next_pos.y);
 
-            let duration = next_entry_cache.arrival_estimate - entry_cache.departure_estimate;
+            let duration = next_entry_cache.estimate.as_ref().unwrap().arrival
+                - entry_cache.estimate.as_ref().unwrap().departure;
 
             let points = if next_pos.y <= curr_pos.y {
                 vec![curr_pos, Pos2::new(next_pos.x, curr_pos.y), next_pos]
@@ -581,7 +587,14 @@ fn draw_selection_overlay(
             }
             if arrival_point_response.dragged() {
                 arrival_point_response.show_tooltip_ui(|ui| {
-                    ui.label(entry_cache.arrival_estimate.to_string());
+                    ui.label(
+                        entry_cache
+                            .estimate
+                            .as_ref()
+                            .unwrap()
+                            .arrival
+                            .to_string(),
+                    );
                     ui.label(
                         station_names
                             .get(entry.station)
@@ -594,10 +607,10 @@ fn draw_selection_overlay(
                     .show(|ui| {
                         timetable_popup::popup(
                             entry_entity,
-                            (entry, Some(entry_cache)),
+                            (entry, entry_cache),
                             previous_entry.map(|e| {
                                 let e = e.2;
-                                (e.0, Some(e.1))
+                                (e.0, e.1)
                             }),
                             timetable_adjustment_writer,
                             ui,
@@ -700,7 +713,14 @@ fn draw_selection_overlay(
             }
             if departure_point_response.dragged() {
                 departure_point_response.show_tooltip_ui(|ui| {
-                    ui.label(entry_cache.departure_estimate.to_string());
+                    ui.label(
+                        entry_cache
+                            .estimate
+                            .as_ref()
+                            .unwrap()
+                            .departure
+                            .to_string(),
+                    );
                     ui.label(
                         station_names
                             .get(entry.station)
@@ -713,10 +733,10 @@ fn draw_selection_overlay(
                     .show(|ui| {
                         timetable_popup::popup(
                             entry_entity,
-                            (entry, Some(entry_cache)),
+                            (entry, entry_cache),
                             previous_entry.map(|e| {
                                 let e = e.2;
-                                (e.0, Some(e.1))
+                                (e.0, e.1)
                             }),
                             timetable_adjustment_writer,
                             ui,

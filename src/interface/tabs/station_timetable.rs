@@ -183,14 +183,17 @@ pub fn show_station_timetable(
             if entry.departure.is_none() {
                 continue;
             }
-            let (hour, ..) = entry_cache.departure_estimate.to_hmsd();
+            let Some(estimate) = &entry_cache.estimate else {
+                continue;
+            };
+            let (hour, ..) = estimate.departure.to_hmsd();
             let index = hour.rem_euclid(24) as usize;
             let mut terminal_name = "---";
             let mut service_name = "---";
             if let Ok((_, _, schedule)) = vehicles.get(parent.0)
                 && let Some(entry_service) = entry.service
                 && let Some(last_entry_entity) = schedule.get_service_last_entry(entry_service)
-                && let Ok((last_entry, last_entry_cache, _)) =
+                && let Ok((last_entry, _, _)) =
                     timetable_entries.get(last_entry_entity)
                 && let Ok(name) = station_names.get(last_entry.station)
             {
@@ -204,7 +207,7 @@ pub fn show_station_timetable(
             times[index].push((
                 terminal_name,
                 service_name,
-                entry_cache.departure_estimate,
+                estimate.departure,
                 parent.0,
             ))
         }

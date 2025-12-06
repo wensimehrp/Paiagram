@@ -17,7 +17,6 @@ pub fn display_start(InMut(ui): InMut<Ui>, mut widget_info: Local<Option<Rect>>)
                     let amnt =
                         (ui.max_rect().height() / 2.0) - (widget_info.unwrap().height() / 2.0);
                     ui.add_space(amnt);
-                    info!(?amnt);
                 }
                 ui.columns(2, |columns| {
                     columns[0].vertical(|ui| {
