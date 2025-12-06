@@ -128,6 +128,7 @@ pub fn show_diagram(
                 state.zoom.y,
                 visible_stations,
                 ui.pixels_per_point(),
+                |e| station_names.get(e).ok().map(|s| s.as_str()),
             );
 
             draw_time_lines(
@@ -256,8 +257,7 @@ where
                     {
                         departure_pos = Some(Pos2 {
                             x: ticks_to_screen_x(
-                                (estimate.departure.0 + initial_offset.0) as i64
-                                    * TICKS_PER_SECOND,
+                                (estimate.departure.0 + initial_offset.0) as i64 * TICKS_PER_SECOND,
                                 screen_rect,
                                 ticks_per_screen_unit,
                                 state.tick_offset,
@@ -587,14 +587,7 @@ fn draw_selection_overlay(
             }
             if arrival_point_response.dragged() {
                 arrival_point_response.show_tooltip_ui(|ui| {
-                    ui.label(
-                        entry_cache
-                            .estimate
-                            .as_ref()
-                            .unwrap()
-                            .arrival
-                            .to_string(),
-                    );
+                    ui.label(entry_cache.estimate.as_ref().unwrap().arrival.to_string());
                     ui.label(
                         station_names
                             .get(entry.station)
@@ -713,14 +706,7 @@ fn draw_selection_overlay(
             }
             if departure_point_response.dragged() {
                 departure_point_response.show_tooltip_ui(|ui| {
-                    ui.label(
-                        entry_cache
-                            .estimate
-                            .as_ref()
-                            .unwrap()
-                            .departure
-                            .to_string(),
-                    );
+                    ui.label(entry_cache.estimate.as_ref().unwrap().departure.to_string());
                     ui.label(
                         station_names
                             .get(entry.station)
@@ -807,7 +793,7 @@ fn handle_navigation(ui: &mut Ui, response: &response::Response, state: &mut Dia
     }
 }
 
-fn draw_station_lines(
+fn draw_station_lines<'a, F>(
     vertical_offset: f32,
     stroke: Stroke,
     painter: &mut Painter,
@@ -815,15 +801,34 @@ fn draw_station_lines(
     zoom: f32,
     to_draw: &[(Entity, f32)],
     pixels_per_point: f32,
-) {
+    mut get_station_name: F,
+) where
+    F: FnMut(Entity) -> Option<&'a str>,
+{
     // Guard against invalid zoom
-    for (entity, height) in to_draw {
-        let mut draw_height = (*height - vertical_offset) * zoom + screen_rect.top();
+    for (entity, height) in to_draw.iter().copied() {
+        let mut draw_height = (height - vertical_offset) * zoom + screen_rect.top();
         stroke.round_center_to_pixel(pixels_per_point, &mut draw_height);
         painter.hline(
             screen_rect.left()..=screen_rect.right(),
             draw_height,
             stroke,
+        );
+        let Some(station_name) = get_station_name(entity) else {
+            continue;
+        };
+        let layout = painter.layout_no_wrap(
+            station_name.to_string(),
+            egui::FontId::proportional(13.0),
+            Color32::BLACK,
+        );
+        painter.galley(
+            Pos2 {
+                x: screen_rect.left(),
+                y: draw_height - layout.size().y,
+            },
+            layout,
+            Color32::BLACK,
         );
     }
 }
