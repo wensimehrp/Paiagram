@@ -1,5 +1,5 @@
 use bevy::math::ops::sqrt;
-use egui::{Color32, Frame, Painter, Pos2, Response, Shape, Stroke, Style, Ui};
+use egui::{Color32, Frame, Painter, Pos2, Rect, Response, Shape, Stroke, Style, Ui};
 
 pub fn circle_button_shape(
     painter: &mut Painter,
@@ -32,6 +32,26 @@ pub fn triangle_button_shape(
         y: center.y + base / 2.0,
     };
     painter.add(Shape::convex_polygon(vec![a, b, c], fill_color, stroke));
+}
+
+pub fn double_triangle(
+    painter: &mut Painter,
+    center: Pos2,
+    base: f32,
+    stroke: Stroke,
+    fill_color: Color32,
+) {
+    triangle_button_shape(painter, center, base, stroke, fill_color);
+    triangle_button_shape(
+        painter,
+        Pos2 {
+            x: center.x + 5.0,
+            y: center.y,
+        },
+        base,
+        stroke,
+        fill_color,
+    );
 }
 
 pub fn dash_button_shape(

@@ -1,9 +1,7 @@
-use core::f32;
-
 use super::PageCache;
 use crate::{
     interface::widgets::{buttons, timetable_popup},
-    intervals::Station,
+    intervals::{Station, StationCache},
     lines::DisplayedLine,
     units::time::{Duration, TimetableTime},
     vehicles::{
@@ -11,19 +9,16 @@ use crate::{
         entries::{TimetableEntry, TimetableEntryCache, TravelMode, VehicleSchedule},
     },
 };
-use bevy::{math::NormedVectorSpace, prelude::*};
+use bevy::prelude::*;
 use egui::{
-    Color32, CornerRadius, FontId, Frame, Margin, Painter, Popup, Pos2, Rect, Response, Sense,
-    Shape, Stroke, Ui, UiBuilder, Vec2, emath,
-    epaint::{CubicBezierShape, PathShape, QuadraticBezierShape},
-    layers::ShapeIdx,
-    response, vec2,
+    Color32, CornerRadius, FontId, Frame, Margin, Painter, Popup, Pos2, Rect, Sense, Shape, Stroke,
+    Ui, UiBuilder, Vec2, response, vec2,
 };
 
 // Time and time-canvas related constants
-const SECONDS_PER_WORLD_UNIT: f64 = 1.0; // world units -> seconds
+// const SECONDS_PER_WORLD_UNIT: f64 = 1.0; // world units -> seconds
 const TICKS_PER_SECOND: i64 = 100;
-const TICKS_PER_WORLD_UNIT: f64 = SECONDS_PER_WORLD_UNIT * TICKS_PER_SECOND as f64;
+// const TICKS_PER_WORLD_UNIT: f64 = SECONDS_PER_WORLD_UNIT * TICKS_PER_SECOND as f64;
 const LINE_ANIMATION_TIME: f32 = 0.2; // 0.2 seconds
 
 pub struct DiagramPageCache {
@@ -36,6 +31,7 @@ pub struct DiagramPageCache {
     vertical_offset: f32,
     heights: Option<Vec<(Entity, f32)>>,
     zoom: Vec2,
+    vehicle_entities: Vec<Entity>,
 }
 
 impl DiagramPageCache {
@@ -71,6 +67,7 @@ impl Default for DiagramPageCache {
             },
             heights: None,
             zoom: vec2(0.0005, 1.0),
+            vehicle_entities: Vec::new(),
         }
     }
 }
@@ -90,29 +87,52 @@ struct RenderedVehicle<'a> {
 
 pub fn show_diagram(
     (InMut(ui), In(displayed_line_entity)): (InMut<egui::Ui>, In<Entity>),
-    mut displayed_lines: Populated<&mut DisplayedLine>,
-    vehicles: Populated<(Entity, &Name, &VehicleSchedule)>,
+    displayed_lines: Populated<Ref<DisplayedLine>>,
+    vehicles_query: Populated<(Entity, &Name, &VehicleSchedule)>,
+    entry_parents: Query<&ChildOf, With<TimetableEntry>>,
     timetable_entries: Query<(&TimetableEntry, &TimetableEntryCache)>,
     station_names: Query<&Name, With<Station>>,
+    station_updated: Query<&StationCache, Changed<StationCache>>,
+    station_caches: Query<&StationCache, With<Station>>,
     mut timetable_adjustment_writer: MessageWriter<AdjustTimetableEntry>,
     mut page_cache: Local<PageCache<Entity, DiagramPageCache>>,
     time: Res<Time>,
 ) {
-    let Ok(mut displayed_line) = displayed_lines.get_mut(displayed_line_entity) else {
+    let Ok(displayed_line) = displayed_lines.get(displayed_line_entity) else {
         ui.centered_and_justified(|ui| ui.heading("Diagram not found"));
         return;
     };
     let state = page_cache.get_mut_or_insert_with(displayed_line_entity, DiagramPageCache::default);
 
+    let entries_updated = displayed_line.is_changed()
+        || state.vehicle_entities.is_empty()
+        || displayed_line
+            .stations
+            .iter()
+            .copied()
+            .any(|(s, _)| station_updated.get(s).is_ok());
+
     ui.style_mut().visuals.menu_corner_radius = CornerRadius::ZERO;
     ui.style_mut().visuals.window_stroke.width = 0.0;
+
+    if entries_updated {
+        info!("Updated station cache!");
+        state.vehicle_entities = displayed_line
+            .stations
+            .iter()
+            .filter_map(|(s, _)| station_caches.get(*s).ok())
+            .flat_map(|c| c.passing_vehicles(|e| entry_parents.get(e).ok()))
+            .collect::<Vec<_>>();
+        state.vehicle_entities.sort();
+        state.vehicle_entities.dedup();
+    }
 
     ensure_heights(state, &displayed_line);
 
     Frame::canvas(ui.style())
         .inner_margin(Margin::ZERO)
         .show(ui, |ui| {
-            let (mut response, mut painter) =
+            let (response, mut painter) =
                 ui.allocate_painter(ui.available_size_before_wrap(), Sense::click_and_drag());
 
             let (vertical_visible, horizontal_visible, ticks_per_screen_unit) =
@@ -142,14 +162,14 @@ pub fn show_diagram(
             );
 
             let rendered_vehicles = collect_rendered_vehicles(
-                &displayed_line,
-                &vehicles,
                 |e| timetable_entries.get(e).ok(),
+                |e| vehicles_query.get(e).ok(),
                 visible_stations,
                 &horizontal_visible,
                 ticks_per_screen_unit,
                 state,
                 &response.rect,
+                &state.vehicle_entities,
             );
 
             handle_input_selection(&response, &rendered_vehicles, state);
@@ -194,94 +214,92 @@ fn calculate_visible_ranges(
     (vertical_visible, horizontal_visible, ticks_per_screen_unit)
 }
 
-fn collect_rendered_vehicles<'a, F>(
-    displayed_line: &DisplayedLine,
-    vehicles: &Populated<(Entity, &Name, &VehicleSchedule)>,
+fn collect_rendered_vehicles<'a, F, G>(
     get_timetable_entries: F,
+    get_vehicles: G,
     visible_stations: &[(Entity, f32)],
     horizontal_visible: &std::ops::Range<i64>,
     ticks_per_screen_unit: f64,
     state: &DiagramPageCache,
     screen_rect: &Rect,
+    vehicles: &[Entity],
 ) -> Vec<RenderedVehicle<'a>>
 where
     F: Fn(Entity) -> Option<(&'a TimetableEntry, &'a TimetableEntryCache)> + Copy + 'a,
+    G: Fn(Entity) -> Option<(Entity, &'a Name, &'a VehicleSchedule)> + 'a,
 {
     let mut rendered_vehicles = Vec::new();
-    if let Some(children) = displayed_line.children.as_ref() {
-        for (vehicle_entity, _name, schedule) in
-            children.iter().filter_map(|e| vehicles.get(*e).ok())
-        {
-            let Some(visible_sets) = schedule.get_entries_range(
-                TimetableTime((horizontal_visible.start / TICKS_PER_SECOND) as i32)
-                    ..TimetableTime((horizontal_visible.end / TICKS_PER_SECOND) as i32),
-                get_timetable_entries,
-            ) else {
-                continue;
-            };
+    for (vehicle_entity, _name, schedule) in
+        vehicles.iter().copied().filter_map(|e| get_vehicles(e))
+    {
+        let Some(visible_sets) = schedule.get_entries_range(
+            TimetableTime((horizontal_visible.start / TICKS_PER_SECOND) as i32)
+                ..TimetableTime((horizontal_visible.end / TICKS_PER_SECOND) as i32),
+            get_timetable_entries,
+        ) else {
+            continue;
+        };
 
-            let mut segments = Vec::new();
-            for (initial_offset, set) in visible_sets {
-                let mut current_segment: Vec<PointData> = Vec::new();
-                for ((entry, entry_cache), timetable_entity) in set {
-                    let Some(estimate) = &entry_cache.estimate else {
-                        if !current_segment.is_empty() {
-                            segments.push(std::mem::take(&mut current_segment));
-                        }
-                        continue;
-                    };
-                    let Some((_, h)) = visible_stations.iter().find(|(s, _)| *s == entry.station)
-                    else {
-                        if !current_segment.is_empty() {
-                            segments.push(std::mem::take(&mut current_segment));
-                        }
-                        continue;
-                    };
+        let mut segments = Vec::new();
+        for (initial_offset, set) in visible_sets {
+            let mut current_segment: Vec<PointData> = Vec::new();
+            for ((entry, entry_cache), timetable_entity) in set {
+                let Some(estimate) = &entry_cache.estimate else {
+                    if !current_segment.is_empty() {
+                        segments.push(std::mem::take(&mut current_segment));
+                    }
+                    continue;
+                };
+                let Some((_, h)) = visible_stations.iter().find(|(s, _)| *s == entry.station)
+                else {
+                    if !current_segment.is_empty() {
+                        segments.push(std::mem::take(&mut current_segment));
+                    }
+                    continue;
+                };
 
-                    let draw_height =
-                        (*h - state.vertical_offset) * state.zoom.y + screen_rect.top();
+                let draw_height = (*h - state.vertical_offset) * state.zoom.y + screen_rect.top();
 
-                    let arrival_pos = Pos2 {
+                let arrival_pos = Pos2 {
+                    x: ticks_to_screen_x(
+                        (estimate.arrival.0 + initial_offset.0) as i64 * TICKS_PER_SECOND,
+                        screen_rect,
+                        ticks_per_screen_unit,
+                        state.tick_offset,
+                    ),
+                    y: draw_height,
+                };
+
+                let mut departure_pos = None;
+                if let Some(departure_mode) = entry.departure
+                    && !matches!(departure_mode, TravelMode::Flexible)
+                {
+                    departure_pos = Some(Pos2 {
                         x: ticks_to_screen_x(
-                            (estimate.arrival.0 + initial_offset.0) as i64 * TICKS_PER_SECOND,
+                            (estimate.departure.0 + initial_offset.0) as i64 * TICKS_PER_SECOND,
                             screen_rect,
                             ticks_per_screen_unit,
                             state.tick_offset,
                         ),
                         y: draw_height,
-                    };
-
-                    let mut departure_pos = None;
-                    if let Some(departure_mode) = entry.departure
-                        && !matches!(departure_mode, TravelMode::Flexible)
-                    {
-                        departure_pos = Some(Pos2 {
-                            x: ticks_to_screen_x(
-                                (estimate.departure.0 + initial_offset.0) as i64 * TICKS_PER_SECOND,
-                                screen_rect,
-                                ticks_per_screen_unit,
-                                state.tick_offset,
-                            ),
-                            y: draw_height,
-                        });
-                    }
-                    current_segment.push((
-                        arrival_pos,
-                        departure_pos,
-                        (entry, entry_cache),
-                        timetable_entity,
-                    ))
+                    });
                 }
-                if !current_segment.is_empty() {
-                    segments.push(current_segment);
-                }
+                current_segment.push((
+                    arrival_pos,
+                    departure_pos,
+                    (entry, entry_cache),
+                    timetable_entity,
+                ))
             }
-            rendered_vehicles.push(RenderedVehicle {
-                segments,
-                stroke: state.stroke,
-                entity: vehicle_entity,
-            });
+            if !current_segment.is_empty() {
+                segments.push(current_segment);
+            }
         }
+        rendered_vehicles.push(RenderedVehicle {
+            segments,
+            stroke: state.stroke,
+            entity: vehicle_entity,
+        });
     }
     rendered_vehicles
 }
@@ -413,7 +431,7 @@ fn draw_selection_overlay(
         let mut line_vec = Vec::with_capacity(segment.len() * 2);
 
         for idx in 0..segment.len().saturating_sub(1) {
-            let (arrival_pos, departure_pos, (entry, entry_cache), _) = segment[idx];
+            let (arrival_pos, departure_pos, (_, entry_cache), _) = segment[idx];
             let (next_arrival_pos, _, (next_entry, next_entry_cache), _) = segment[idx + 1];
             let signal_stroke = Stroke {
                 width: 1.0 + line_strength,
@@ -664,12 +682,12 @@ fn draw_selection_overlay(
                                     handle_stroke,
                                     fill,
                                 ),
-                                None => buttons::triangle_button_shape(
+                                None => buttons::double_triangle(
                                     painter,
                                     departure_pos,
-                                    TRIANGLE_HANDLE_SIZE - 1.0,
+                                    DASH_HANDLE_SIZE,
                                     handle_stroke,
-                                    stroke.color,
+                                    fill,
                                 ),
                             };
                         },
@@ -771,7 +789,7 @@ fn handle_navigation(ui: &mut Ui, response: &response::Response, state: &mut Dia
     state.vertical_offset -= (response.drag_delta().y + translation_delta.y) / state.zoom.y;
     state.tick_offset = state.tick_offset.clamp(
         -366 * 86400 * TICKS_PER_SECOND,
-        366 * 86400 * TICKS_PER_SECOND,
+        10 * 86400 * TICKS_PER_SECOND - (response.rect.width() as f64 / state.zoom.x as f64) as i64,
     );
     const TOP_BOTTOM_PADDING: f32 = 30.0;
     let max_height = state

@@ -1,4 +1,5 @@
 use crate::{
+    intervals::StationCache,
     units::{canvas::CanvasLength, time::TimetableTime},
     vehicles::{
         AdjustTimetableEntry, TimetableAdjustment,
@@ -28,7 +29,6 @@ pub enum ScaleMode {
 #[require(Name)]
 pub struct DisplayedLine {
     pub stations: Vec<(Entity, f32)>,
-    pub children: Option<Vec<Entity>>,
     pub scale_mode: ScaleMode,
 }
 
@@ -39,29 +39,5 @@ pub struct RulerLine(pub RulerLineType);
 pub struct LinesPlugin;
 
 impl Plugin for LinesPlugin {
-    fn build(&self, app: &mut App) {
-        app.add_systems(FixedPostUpdate, prepare_displayed_line);
-    }
-}
-
-fn prepare_displayed_line(
-    mut lines: Populated<&mut DisplayedLine>,
-    mut msg_changed: MessageReader<AdjustTimetableEntry>,
-    timetable_entries: Query<&TimetableEntry>,
-    vehicles: Populated<(Entity, &VehicleSchedule)>,
-) {
-    for mut line in lines.iter_mut().filter(|p| p.children.is_none()) {
-        let mut stations = line.stations.iter().map(|(e, _)| *e).collect::<Vec<_>>();
-        stations.sort_unstable();
-        let mut children = Vec::new();
-        for (vehicle_entity, vehicle) in vehicles.iter() {
-            for (entry, entity) in vehicle.into_entries(|e| timetable_entries.get(e).ok()) {
-                if let Ok(_) = stations.binary_search(&entry.station) {
-                    children.push(vehicle_entity);
-                    break;
-                }
-            }
-        }
-        line.children = Some(children);
-    }
+    fn build(&self, app: &mut App) {}
 }

@@ -72,6 +72,7 @@ pub struct TimeEstimate {
 
 /// A vehicle's schedule and departure pattern
 #[derive(Debug, Component)]
+#[require(VehicleScheduleCache)]
 pub struct VehicleSchedule {
     /// When would the schedule start.
     pub start: TimetableTime,
@@ -88,10 +89,16 @@ pub struct VehicleSchedule {
     pub service_entities: Vec<(Entity, SmallVec<[std::ops::Range<usize>; 1]>)>,
 }
 
-#[derive(Debug, Component)]
+#[derive(Debug, Default, Component)]
 pub struct VehicleScheduleCache {
     actual_route: Vec<Entity>,
     service_entities: Vec<(Entity, SmallVec<[std::ops::Range<usize>; 1]>)>,
+}
+
+pub fn calculate_actual_route(
+
+) {
+
 }
 
 impl Default for VehicleSchedule {

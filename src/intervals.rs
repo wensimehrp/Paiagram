@@ -24,6 +24,23 @@ pub struct StationCache {
     pub passing_entries: Vec<Entity>,
 }
 
+impl StationCache {
+    pub fn passing_vehicles<'a, F>(&self, mut get_parent: F) -> Vec<Entity>
+    where
+        F: FnMut(Entity) -> Option<&'a ChildOf> + 'a,
+    {
+        let mut iterated = Vec::new();
+        for entry_entity in self.passing_entries.iter().copied() {
+            if let Some(parent_entity) = get_parent(entry_entity)
+                && !iterated.contains(&parent_entity.0)
+            {
+                iterated.push(parent_entity.0)
+            }
+        }
+        iterated
+    }
+}
+
 /// A depot or yard in the transportation network
 /// A depot cannot be a node in the transportation network graph. Use `Station` for that.
 #[derive(Component)]

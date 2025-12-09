@@ -1,4 +1,4 @@
-use crate::settings::Settings;
+use crate::settings::ApplicationSettings;
 use bevy::ecs::message::MessageId;
 use bevy::prelude::*;
 use ib_matcher::matcher::{IbMatcher, PinyinMatchConfig, RomajiMatchConfig};
@@ -31,7 +31,7 @@ pub enum SearchResponse {
 pub fn search(
     mut msg_reader: MessageReader<SearchCommand>,
     mut msg_writer: MessageWriter<SearchResponse>,
-    settings: Res<Settings>,
+    settings: Res<ApplicationSettings>,
 ) {
     let now = instant::Instant::now();
     for (msg, id) in msg_reader.read_with_id() {
@@ -45,7 +45,7 @@ pub fn search(
     debug!("Search completed in {:?}", now.elapsed());
 }
 
-fn build_matcher(query: &str, settings: &Settings) -> IbMatcher<'static> {
+fn build_matcher(query: &str, settings: &ApplicationSettings) -> IbMatcher<'static> {
     let now = instant::Instant::now();
     let matcher = IbMatcher::builder(query)
         .pinyin(PinyinMatchConfig::notations(
