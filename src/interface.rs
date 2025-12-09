@@ -9,7 +9,7 @@ use egui::{CornerRadius, Margin};
 use egui_dock::{DockArea, DockState};
 use std::{collections::VecDeque, sync::Arc};
 
-use crate::interface::tabs::start;
+use crate::interface::tabs::{displayed_lines, start};
 
 /// Plugin that sets up the user interface
 pub struct InterfacePlugin;
@@ -76,6 +76,7 @@ pub enum AppTab {
     StationTimetable(Entity),
     Diagram(Entity),
     Start,
+    DisplayedLines,
 }
 
 /// User interface commands sent between systems
@@ -123,6 +124,9 @@ impl<'w> egui_dock::TabViewer for AppTabViewer<'w> {
                     .run_system_cached_with(start::display_start, ui)
                     .unwrap();
             }
+            AppTab::DisplayedLines => {
+                self.world.run_system_cached_with(displayed_lines::list_displayed_lines, ui).unwrap();
+            }
         };
     }
 
@@ -146,6 +150,7 @@ impl<'w> egui_dock::TabViewer for AppTabViewer<'w> {
             }
             AppTab::Diagram(displayed_line_entity) => "Diagram".into(),
             AppTab::Start => "Start".into(),
+            AppTab::DisplayedLines => "Available Lines".into()
         }
     }
 
@@ -166,6 +171,7 @@ impl<'w> egui_dock::TabViewer for AppTabViewer<'w> {
             AppTab::StationTimetable(_) => [true; 2],
             AppTab::Diagram(_) => [false; 2],
             AppTab::Start => [true; 2],
+            AppTab::DisplayedLines => [false; 2],
         }
     }
 

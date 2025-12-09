@@ -116,7 +116,6 @@ pub fn show_diagram(
     ui.style_mut().visuals.window_stroke.width = 0.0;
 
     if entries_updated {
-        info!("Updated station cache!");
         state.vehicle_entities = displayed_line
             .stations
             .iter()
@@ -904,6 +903,7 @@ fn draw_time_lines(
         }
         let mut current_stroke = stroke;
         current_stroke.color = current_stroke.color.gamma_multiply(strength as f32);
+        current_stroke.width = 0.5;
         while tick <= visible_ticks.end {
             tick += *spacing;
             if drawn.contains(&tick) {

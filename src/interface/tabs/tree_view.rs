@@ -19,7 +19,10 @@ pub fn show_tree_view(
     vehicles: Query<(Entity, &Name), With<Vehicle>>,
     mut msg_open_tab: MessageWriter<UiCommand>,
 ) {
-    ui.horizontal(|ui| {
+    ui.vertical(|ui| {
+        if ui.button("All displayed lines").clicked() {
+            msg_open_tab.write(UiCommand::OpenOrFocusTab(AppTab::DisplayedLines));
+        }
         for (entity, name) in displayed_lines {
             if ui.button(name.as_str()).clicked() {
                 msg_open_tab.write(UiCommand::OpenOrFocusTab(AppTab::Diagram(entity)));
