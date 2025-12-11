@@ -12,7 +12,6 @@ pub mod vehicle_set;
 #[derive(Debug, Component)]
 #[require(Name, entries::VehicleSchedule)]
 pub struct Vehicle;
-
 pub struct VehiclesPlugin;
 
 impl Plugin for VehiclesPlugin {

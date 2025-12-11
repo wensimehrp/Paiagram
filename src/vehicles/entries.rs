@@ -1,4 +1,7 @@
-use crate::units::time::{Duration, TimetableTime};
+use crate::{
+    intervals::{Graph, Interval},
+    units::time::{Duration, TimetableTime},
+};
 use bevy::prelude::*;
 use either::Either;
 use smallvec::SmallVec;
@@ -89,16 +92,29 @@ pub struct VehicleSchedule {
     pub service_entities: Vec<(Entity, SmallVec<[std::ops::Range<usize>; 1]>)>,
 }
 
+#[derive(Debug)]
+pub enum ActualRouteEntry {
+    Nominal(Entity),
+    Derived(Entity),
+}
+
 #[derive(Debug, Default, Component)]
 pub struct VehicleScheduleCache {
-    actual_route: Vec<Entity>,
+    actual_route: Vec<ActualRouteEntry>,
     service_entities: Vec<(Entity, SmallVec<[std::ops::Range<usize>; 1]>)>,
 }
 
 pub fn calculate_actual_route(
-
+    mut vehicles: Query<&mut VehicleScheduleCache, With<VehicleSchedule>>,
+    graph: Res<Graph>,
+    intervals: Query<&Interval, Changed<Interval>>,
 ) {
-
+    // cases where the actual route would be recalculated:
+    // 1. new route
+    // 2. graph connection info updated. This needs to be communicated via messages since
+    //    bevy don't store a previous state
+    // 3. Interval info changed. In this case just use the old interval cache.
+    // the interval cache would be refreshed after this is run
 }
 
 impl Default for VehicleSchedule {

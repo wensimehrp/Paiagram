@@ -14,6 +14,19 @@ pub type IntervalGraphType = graphmap::GraphMap<Entity, Entity, Undirected>;
 #[derive(Resource, Default)]
 pub struct Graph(pub IntervalGraphType);
 
+#[derive(Message)]
+pub enum GraphAdjustment {
+    AddEdge(GraphAdjustmentEdgeAddition),
+    RemoveEdge(Entity),
+    AddNode(Entity),
+}
+
+pub struct GraphAdjustmentEdgeAddition {
+    from: Entity,
+    to: Entity,
+    weight: Entity,
+}
+
 /// A station or node in the transportation network
 #[derive(Component)]
 #[require(Name, StationCache)]

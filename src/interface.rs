@@ -39,9 +39,6 @@ fn modify_dock_state(mut dock_state: ResMut<UiState>, mut msg_reader: MessageRea
             UiCommand::OpenOrFocusTab(tab) => {
                 dock_state.open_or_focus_tab(tab.clone());
             }
-            UiCommand::OpenOrFocusStationTab(tab, _) => {
-                dock_state.open_or_focus_tab(tab.clone());
-            }
             UiCommand::SetStatusBarText(text) => {
                 dock_state.status_bar_text = text.clone();
             }
@@ -83,7 +80,6 @@ pub enum AppTab {
 #[derive(Message)]
 pub enum UiCommand {
     OpenOrFocusTab(AppTab),
-    OpenOrFocusStationTab(AppTab, Entity),
     SetStatusBarText(String),
 }
 

@@ -9,6 +9,7 @@ mod status_bar_text;
 mod troubleshoot;
 mod units;
 mod vehicles;
+mod colors;
 
 use clap::Parser;
 

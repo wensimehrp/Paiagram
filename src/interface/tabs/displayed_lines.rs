@@ -4,13 +4,39 @@ use bevy::ecs::{
     query::With,
     system::{InMut, Local, Populated, Query},
 };
-use egui::Ui;
+use egui::{Frame, Response, RichText, ScrollArea, Sense, Ui, UiBuilder, Vec2};
+
+const PANEL_DEFAULT_SIZE: f32 = 20.0;
 
 use crate::{
     interface::tabs::PageCache,
     intervals::{Station, StationCache},
     lines::DisplayedLine,
 };
+
+fn full_width_button(ui: &mut Ui, text: &str) -> Response {
+    let (rect, resp) = ui.allocate_exact_size(
+        Vec2 {
+            x: ui.available_width(),
+            y: 15.0,
+        },
+        Sense::click(),
+    );
+    let res = ui.scope_builder(UiBuilder::new().sense(resp.sense).max_rect(rect), |ui| {
+        let response = ui.response();
+        let visuals = ui.style().interact(&response);
+        let mut stroke = visuals.bg_stroke;
+        stroke.width = 1.5;
+        Frame::canvas(ui.style())
+            .fill(visuals.bg_fill.gamma_multiply(0.2))
+            .stroke(stroke)
+            .show(ui, |ui| {
+                ui.set_min_size(ui.available_size());
+                ui.add(egui::Label::new(text).truncate())
+            })
+    });
+    res.response
+}
 
 pub fn list_displayed_lines(
     InMut(ui): InMut<Ui>,
@@ -21,13 +47,13 @@ pub fn list_displayed_lines(
 ) {
     egui::SidePanel::left("left_panel")
         .resizable(true)
-        .min_width(20.0)
+        .min_width(PANEL_DEFAULT_SIZE)
         .show_inside(ui, |ui| {
-            if ui.button("Overview").clicked() {
+            if full_width_button(ui, "Overview").clicked() {
                 *selected_line = None;
             }
             for (line_entity, _, name) in displayed_lines.iter() {
-                if ui.button(name.as_str()).clicked() {
+                if full_width_button(ui, name.as_str()).clicked() {
                     *selected_line = Some(line_entity);
                 }
             }
@@ -44,7 +70,9 @@ pub fn list_displayed_lines(
     }
 }
 
-pub fn show_overview(ui: &mut Ui) {}
+pub fn show_overview(ui: &mut Ui) {
+    ui.heading("Overview");
+}
 
 pub fn show_line<'a, F>(
     ui: &mut Ui,
@@ -56,17 +84,19 @@ pub fn show_line<'a, F>(
 {
     egui::SidePanel::left("inner_left_panel")
         .resizable(true)
-        .min_width(20.0)
+        .min_width(PANEL_DEFAULT_SIZE)
         .show_inside(ui, |ui| {
-            for (station_entity, station_name, _) in line
-                .stations
-                .iter()
-                .filter_map(|(e, _)| get_station_info(*e))
-            {
-                if ui.button(station_name.as_str()).clicked() {
-                    *selected_station = Some(station_entity);
+            ScrollArea::vertical().show(ui, |ui| {
+                for (station_entity, station_name, _) in line
+                    .stations
+                    .iter()
+                    .filter_map(|(e, _)| get_station_info(*e))
+                {
+                    if full_width_button(ui, station_name.as_str()).clicked() {
+                        *selected_station = Some(station_entity);
+                    }
                 }
-            }
+            })
         });
     let Some(station_entity) = selected_station else {
         return;
