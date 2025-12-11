@@ -1,5 +1,5 @@
 use bevy::color::palettes::tailwind::*;
-use egui::Color32;
+use egui::{Color32, Widget};
 
 #[derive(Debug, Clone, Copy)]
 pub enum DisplayColor {
@@ -19,6 +19,15 @@ impl DisplayColor {
             Self::Predefined(p) => p.get(light),
             Self::Custom(c) => c,
         }
+    }
+}
+
+impl Widget for DisplayColor {
+    fn ui(self, ui: &mut egui::Ui) -> egui::Response {
+        let light = !ui.visuals().dark_mode;
+        let a = Color32::default();
+        ui.button("123")
+        // TODO: finish this
     }
 }
 
@@ -49,6 +58,30 @@ pub enum PredefinedColor {
 }
 
 impl PredefinedColor {
+    pub const ALL: [Self; 22] = [
+        Self::Red,
+        Self::Orange,
+        Self::Amber,
+        Self::Yellow,
+        Self::Lime,
+        Self::Green,
+        Self::Emerald,
+        Self::Teal,
+        Self::Cyan,
+        Self::Sky,
+        Self::Blue,
+        Self::Indigo,
+        Self::Violet,
+        Self::Purple,
+        Self::Fuchsia,
+        Self::Pink,
+        Self::Rose,
+        Self::Slate,
+        Self::Gray,
+        Self::Zinc,
+        Self::Neutral,
+        Self::Stone,
+    ];
     // use 700 shade if light, otherwise use 400
     // neutral is special
     pub const fn get(self, light: bool) -> Color32 {
