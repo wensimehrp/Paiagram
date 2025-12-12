@@ -5,7 +5,7 @@ mod widgets;
 
 use bevy::{ecs::system::SystemState, prelude::*};
 use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass, egui};
-use egui::{CornerRadius, Margin};
+use egui::{Color32, CornerRadius, Margin};
 use egui_dock::{DockArea, DockState};
 use std::{collections::VecDeque, sync::Arc};
 
@@ -49,7 +49,7 @@ fn modify_dock_state(mut dock_state: ResMut<UiState>, mut msg_reader: MessageRea
 impl UiState {
     fn new() -> Self {
         Self {
-            dock_state: DockState::new(vec![AppTab::Start]),
+            dock_state: DockState::new(vec![]),
             status_bar_text: "Ready".into(),
         }
     }
@@ -72,7 +72,6 @@ pub enum AppTab {
     Vehicle(Entity),
     StationTimetable(Entity),
     Diagram(Entity),
-    Start,
     DisplayedLines,
 }
 
@@ -115,13 +114,10 @@ impl<'w> egui_dock::TabViewer for AppTabViewer<'w> {
                     )
                     .unwrap();
             }
-            AppTab::Start => {
-                self.world
-                    .run_system_cached_with(start::display_start, ui)
-                    .unwrap();
-            }
             AppTab::DisplayedLines => {
-                self.world.run_system_cached_with(displayed_lines::list_displayed_lines, ui).unwrap();
+                self.world
+                    .run_system_cached_with(displayed_lines::list_displayed_lines, ui)
+                    .unwrap();
             }
         };
     }
@@ -145,8 +141,7 @@ impl<'w> egui_dock::TabViewer for AppTabViewer<'w> {
                 format!("Station Timetable - {}", name).into()
             }
             AppTab::Diagram(displayed_line_entity) => "Diagram".into(),
-            AppTab::Start => "Start".into(),
-            AppTab::DisplayedLines => "Available Lines".into()
+            AppTab::DisplayedLines => "Available Lines".into(),
         }
     }
 
@@ -166,7 +161,6 @@ impl<'w> egui_dock::TabViewer for AppTabViewer<'w> {
             AppTab::Vehicle(_) => [false; 2],
             AppTab::StationTimetable(_) => [true; 2],
             AppTab::Diagram(_) => [false; 2],
-            AppTab::Start => [true; 2],
             AppTab::DisplayedLines => [false; 2],
         }
     }
@@ -180,6 +174,25 @@ impl<'w> egui_dock::TabViewer for AppTabViewer<'w> {
     }
 }
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+enum CurrentWorkspace {
+    #[default]
+    Start,
+    Edit,
+    Publish,
+}
+
+impl CurrentWorkspace {
+    const ALL: [Self; 3] = [Self::Start, Self::Edit, Self::Publish];
+    fn name(self) -> &'static str {
+        match self {
+            Self::Start => "Start",
+            Self::Edit => "Edit",
+            Self::Publish => "Publish",
+        }
+    }
+}
+
 /// Main function to show the user interface
 fn show_ui(
     world: &mut World,
@@ -187,6 +200,7 @@ fn show_ui(
     mut initialized: Local<bool>,
     mut frame_history: Local<VecDeque<f64>>,
     mut counter: Local<u8>,
+    mut workspace: Local<CurrentWorkspace>,
     mut modal_open: Local<bool>,
 ) -> Result<()> {
     let now = instant::Instant::now();
@@ -203,66 +217,69 @@ fn show_ui(
     }
     world.resource_scope(|world, mut ui_state: Mut<UiState>| {
         egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
+            egui::ComboBox::from_label("Current workspace")
+                .selected_text(workspace.name())
+                .show_ui(ui, |ui| {
+                    for v in CurrentWorkspace::ALL {
+                        ui.selectable_value(&mut *workspace, v, v.name());
+                    }
+                });
             world
                 .run_system_cached_with(about::show_about, (ui, &mut *modal_open))
                 .unwrap();
         });
 
         egui::TopBottomPanel::bottom("status_bar").show(ctx, |ui| {
-            ui.label(&ui_state.status_bar_text);
-        });
-
-        egui::SidePanel::left("TreeView").show(ctx, |ui| {
-            egui::ScrollArea::both().show(ui, |ui| {
-                world
-                    .run_system_cached_with(tabs::tree_view::show_tree_view, ui)
-                    .unwrap();
+            ui.horizontal(|ui| {
+                ui.label(&ui_state.status_bar_text);
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.monospace(chrono::Local::now().format("%H:%M:%S").to_string());
+                });
             });
         });
 
-        egui::CentralPanel::default()
-            .frame(egui::Frame::default().inner_margin(egui::Margin::same(0)))
-            .show(ctx, |ui| {
-                let painter = ui.painter();
-                let rect = ui.max_rect();
+        match *workspace {
+            CurrentWorkspace::Start => {
+                egui::CentralPanel::default()
+                    .frame(
+                        egui::Frame::new()
+                            .inner_margin(egui::Margin::same(0))
+                            .fill(Color32::WHITE),
+                    )
+                    .show(ctx, |ui| {
+                        world.run_system_cached_with(start::display_start, ui)
+                    });
+            }
+            CurrentWorkspace::Edit => {
+                egui::SidePanel::left("TreeView").show(ctx, |ui| {
+                    egui::ScrollArea::both().show(ui, |ui| {
+                        world
+                            .run_system_cached_with(tabs::tree_view::show_tree_view, ui)
+                            .unwrap();
+                    });
+                });
 
-                let spacing = 24.0; // grid cell size
-                let stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(60, 60, 78));
-
-                // vertical lines
-                let start_x = (rect.left() / spacing).floor() * spacing;
-                let end_x = rect.right();
-                let mut x = start_x;
-                while x <= end_x {
-                    painter.line_segment(
-                        [egui::pos2(x, rect.top()), egui::pos2(x, rect.bottom())],
-                        stroke,
-                    );
-                    x += spacing;
-                }
-
-                // horizontal lines
-                let start_y = (rect.top() / spacing).floor() * spacing;
-                let end_y = rect.bottom();
-                let mut y = start_y;
-                while y <= end_y {
-                    painter.line_segment(
-                        [egui::pos2(rect.left(), y), egui::pos2(rect.right(), y)],
-                        stroke,
-                    );
-                    y += spacing;
-                }
-                let mut tab_viewer = AppTabViewer { world: world };
-                let mut style = egui_dock::Style::from_egui(ui.style());
-                style.tab.tab_body.inner_margin = Margin::same(0);
-                style.tab.tab_body.corner_radius = CornerRadius::ZERO;
-                style.tab.tab_body.stroke.width = 0.0;
-                style.tab.hline_below_active_tab_name = true;
-                style.tab_bar.corner_radius = CornerRadius::ZERO;
-                DockArea::new(&mut ui_state.dock_state)
-                    .style(style)
-                    .show_inside(ui, &mut tab_viewer);
-            });
+                egui::CentralPanel::default()
+                    .frame(egui::Frame::default().inner_margin(egui::Margin::same(0)))
+                    .show(ctx, |ui| {
+                        let mut tab_viewer = AppTabViewer { world: world };
+                        let mut style = egui_dock::Style::from_egui(ui.style());
+                        style.tab.tab_body.inner_margin = Margin::same(0);
+                        style.tab.tab_body.corner_radius = CornerRadius::ZERO;
+                        style.tab.tab_body.stroke.width = 0.0;
+                        style.tab.hline_below_active_tab_name = true;
+                        style.tab_bar.corner_radius = CornerRadius::ZERO;
+                        DockArea::new(&mut ui_state.dock_state)
+                            .style(style)
+                            .show_inside(ui, &mut tab_viewer);
+                    });
+            }
+            CurrentWorkspace::Publish => {
+                egui::CentralPanel::default()
+                    .frame(egui::Frame::default().inner_margin(egui::Margin::same(0)))
+                    .show(ctx, |ui| {});
+            }
+        }
     });
     *counter = counter.wrapping_add(1);
     // keep a frame history of 256 frames

@@ -24,9 +24,9 @@ pub fn display_start(InMut(ui): InMut<Ui>, mut widget_info: Local<Option<Rect>>)
                         ui.label("Dispatching Journeys");
                         ui.add_space(10.0);
                         ui.heading("Start");
-                        ui.label("New Diagram...");
-                        ui.label("Open Diagram...");
-                        ui.label("Import Diagram...");
+                        if ui.link("New Diagram...").clicked() {};
+                        if ui.link("Open Diagram...").clicked() {};
+                        if ui.link("Import Diagram...").clicked() {};
                         ui.add_space(10.0);
                         ui.heading("Recent");
                     });
@@ -34,9 +34,9 @@ pub fn display_start(InMut(ui): InMut<Ui>, mut widget_info: Local<Option<Rect>>)
                         ui.heading("External Resources");
                         ui.label("Looking for external resources? Checkout these groups!");
                         ui.add_space(10.0);
-                        ui.label("Matrix Chat Room");
-                        ui.label("GitHub Repository");
-                        ui.label("QQ");
+                        if ui.link("Matrix Chat Room").clicked() {};
+                        if ui.link("GitHub Repository").clicked() {};
+                        if ui.link("QQ").clicked() {};
                     });
                 });
                 if ui.is_sizing_pass() {

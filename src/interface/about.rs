@@ -2,6 +2,7 @@ use crate::rw_data::ModifyData;
 use bevy::ecs::system::{Local, Query, Single};
 use bevy::ecs::{message::MessageWriter, system::InMut};
 use bevy::window::Window;
+use egui::containers::menu::MenuConfig;
 use egui::{Id, Modal, OpenUrl, Popup};
 use rfd::AsyncFileDialog;
 use std::collections::VecDeque;
@@ -81,9 +82,8 @@ pub fn show_about(
         msg_read_file.write(message);
     }
 
-    ui.horizontal(|ui| {
-        let button = ui.button("File");
-        Popup::menu(&button).show(|ui| {
+    egui::MenuBar::new().ui(ui, |ui| {
+        ui.menu_button("File", |ui| {
             if ui.button("Read...").clicked() {
                 // TODO
             }
@@ -106,8 +106,7 @@ pub fn show_about(
                 ModifyData::LoadOuDiaSecond,
             );
         });
-        let button = ui.button("Help");
-        Popup::menu(&button).show(|ui| {
+        ui.menu_button("Help", |ui| {
             if ui.button("Check for Updates").clicked() {
                 // TODO
             }
