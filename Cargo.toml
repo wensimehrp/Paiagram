@@ -5,28 +5,17 @@ edition = "2024"
 
 [dependencies]
 bevy = { version = "0.17.3", default-features = false, features = [
-    "bevy_core_pipeline",
-    "bevy_render",
-    "bevy_window",
-    "bevy_winit",
-    "bevy_log",
-    "bevy_picking",
     "multi_threaded",
-    "wayland",
-    "web",
-    "webgl2",
-    "x11",
+    "bevy_state",
+    "std",
+    "bevy_log",
+    "bevy_color",
 ] }
-bevy_egui = "0.38.0"
 egui_dock = "0.18.0"
-catppuccin-egui = { version = "5.7.0", default-features = false, features = [
-    "egui33",
-] }
 petgraph = "0.8.3"
 derive_more = { version = "2.1.0", features = ["full"] }
 serde_json = "1.0.145"
 serde = "1.0.228"
-bevy_camera = "0.17.3"
 rand = "0.9.2"
 ib-matcher = { version = "0.4.0", features = ["pinyin", "romaji"] }
 rfd = "0.16.0"
@@ -36,18 +25,16 @@ git-version = "0.3.9"
 chrono = "0.4.42"
 clap = { version = "4.5.51", features = ["derive"] }
 egui_taffy = "0.10.0"
-bevy_framepace = "0.20.0"
 instant = { version = "0.1.13", features = ["wasm-bindgen"] }
 rayon = "1.11.0"
-egui = "0.33.2"
+eframe = { version = "0.33.3", features = ["wgpu"] }
+wgpu = { version = "*", features = ["webgpu", "webgl"] }
+egui = "0.33.3"
 smallvec = "1.15.1"
 either = "1.15.0"
 egui_ltreeview = "0.6.0"
-kdl = "6.5.0"
-nonmax = "0.5.5"
 egui_table = "0.6.0"
-slotmap = "1.0.7"
-slab = "0.4.11"
+wasm-bindgen = "0.2"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.3.*", features = ["wasm_js"] }

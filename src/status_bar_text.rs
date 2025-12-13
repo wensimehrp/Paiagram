@@ -1,6 +1,6 @@
 use crate::interface::UiCommand;
 use bevy::ecs::message::MessageWriter;
-use bevy_egui::egui::{Rect, Response, Ui};
+use egui::{Rect, Response, Ui};
 
 pub trait SetStatusBarText {
     fn set_status_bar_text(

@@ -1,11 +1,10 @@
 mod about;
-mod camera;
 mod tabs;
 mod widgets;
 
-use bevy::{ecs::system::SystemState, prelude::*};
-use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass, egui};
-use egui::{Color32, CornerRadius, Margin};
+use bevy::prelude::*;
+use chrono::Timelike;
+use egui::{self, Color32, CornerRadius, Margin};
 use egui_dock::{DockArea, DockState};
 use std::{collections::VecDeque, sync::Arc};
 
@@ -16,10 +15,7 @@ pub struct InterfacePlugin;
 
 impl Plugin for InterfacePlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(EguiPlugin::default())
-            .add_message::<UiCommand>()
-            .add_systems(Startup, camera::setup_camera)
-            .add_systems(EguiPrimaryContextPass, show_ui)
+        app.add_message::<UiCommand>()
             .add_systems(Update, modify_dock_state.run_if(on_message::<UiCommand>))
             .insert_resource(UiState::new());
     }
@@ -175,7 +171,7 @@ impl<'w> egui_dock::TabViewer for AppTabViewer<'w> {
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-enum CurrentWorkspace {
+pub enum CurrentWorkspace {
     #[default]
     Start,
     Edit,
@@ -194,53 +190,45 @@ impl CurrentWorkspace {
 }
 
 /// Main function to show the user interface
-fn show_ui(
-    world: &mut World,
-    ctx: &mut SystemState<EguiContexts>,
-    mut initialized: Local<bool>,
-    mut frame_history: Local<VecDeque<f64>>,
-    mut counter: Local<u8>,
-    mut workspace: Local<CurrentWorkspace>,
-    mut modal_open: Local<bool>,
-) -> Result<()> {
+pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> {
+    ctx.request_repaint_after(std::time::Duration::from_secs(1));
     let now = instant::Instant::now();
-    let mut ctx = ctx.get_mut(world);
-    let ctx = &ctx.ctx_mut().unwrap().clone();
-    if !*initialized {
+    if !app.initialized {
         ctx.style_mut(|style| {
             style.spacing.window_margin = egui::Margin::same(2);
             style.interaction.selectable_labels = false;
         });
         ctx.set_visuals(egui::Visuals::light());
-        apply_custom_fonts(ctx);
-        *initialized = true;
+        apply_custom_fonts(&ctx);
+        app.initialized = true;
     }
-    world.resource_scope(|world, mut ui_state: Mut<UiState>| {
-        egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
+    app.bevy_app.world_mut().resource_scope(|world, mut ui_state: Mut<UiState>| {
+        egui::TopBottomPanel::top("menu_bar").show(&ctx, |ui| {
             egui::ComboBox::from_label("Current workspace")
-                .selected_text(workspace.name())
+                .selected_text(app.workspace.name())
                 .show_ui(ui, |ui| {
                     for v in CurrentWorkspace::ALL {
-                        ui.selectable_value(&mut *workspace, v, v.name());
+                        ui.selectable_value(&mut app.workspace, v, v.name());
                     }
                 });
             world
-                .run_system_cached_with(about::show_about, (ui, &mut *modal_open))
+                .run_system_cached_with(about::show_about, (ui, &mut app.modal_open))
                 .unwrap();
         });
 
-        egui::TopBottomPanel::bottom("status_bar").show(ctx, |ui| {
+        egui::TopBottomPanel::bottom("status_bar").show(&ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.label(&ui_state.status_bar_text);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let avg_frame_time = frame_history.iter().sum::<f64>() / 256.0;
-                    ui.monospace(chrono::Local::now().format("%H:%M:%S").to_string());
+                    let avg_frame_time = app.frame_history.iter().sum::<f64>() / 256.0;
+                    let current_time = chrono::Local::now();
+                    ui.monospace(current_time.format("%H:%M:%S").to_string());
                     ui.monospace(format!("FPS: {:.0}", 1.0 / avg_frame_time));
                 });
             });
         });
 
-        match *workspace {
+        match app.workspace {
             CurrentWorkspace::Start => {
                 egui::CentralPanel::default()
                     .frame(
@@ -248,12 +236,12 @@ fn show_ui(
                             .inner_margin(egui::Margin::same(0))
                             .fill(Color32::WHITE),
                     )
-                    .show(ctx, |ui| {
+                    .show(&ctx, |ui| {
                         world.run_system_cached_with(start::display_start, ui)
                     });
             }
             CurrentWorkspace::Edit => {
-                egui::SidePanel::left("TreeView").show(ctx, |ui| {
+                egui::SidePanel::left("TreeView").show(&ctx, |ui| {
                     egui::ScrollArea::both().show(ui, |ui| {
                         world
                             .run_system_cached_with(tabs::tree_view::show_tree_view, ui)
@@ -263,7 +251,7 @@ fn show_ui(
 
                 egui::CentralPanel::default()
                     .frame(egui::Frame::default().inner_margin(egui::Margin::same(0)))
-                    .show(ctx, |ui| {
+                    .show(&ctx, |ui| {
                         let mut tab_viewer = AppTabViewer { world: world };
                         let mut style = egui_dock::Style::from_egui(ui.style());
                         style.tab.tab_body.inner_margin = Margin::same(0);
@@ -279,29 +267,29 @@ fn show_ui(
             CurrentWorkspace::Publish => {
                 egui::CentralPanel::default()
                     .frame(egui::Frame::default().inner_margin(egui::Margin::same(0)))
-                    .show(ctx, |ui| {});
+                    .show(&ctx, |ui| {});
             }
         }
     });
-    *counter = counter.wrapping_add(1);
+    app.counter = app.counter.wrapping_add(1);
     // keep a frame history of 256 frames
-    frame_history.push_back(now.elapsed().as_secs_f64());
-    if frame_history.len() > 256 {
-        frame_history.pop_front();
+    app.frame_history.push_back(now.elapsed().as_secs_f64());
+    if app.frame_history.len() > 256 {
+        app.frame_history.pop_front();
     }
-    if *counter == 0 {
+    if app.counter == 0 {
         info!(
             "UI frame took {:?} on average. Min {:?}, Max {:?}",
             {
-                let total: f64 = frame_history.iter().sum();
-                instant::Duration::from_secs_f64(total / (frame_history.len() as f64))
+                let total: f64 = app.frame_history.iter().sum();
+                instant::Duration::from_secs_f64(total / (app.frame_history.len() as f64))
             },
             {
-                let min = frame_history.iter().cloned().fold(f64::INFINITY, f64::min);
+                let min = app.frame_history.iter().cloned().fold(f64::INFINITY, f64::min);
                 instant::Duration::from_secs_f64(min)
             },
             {
-                let max = frame_history
+                let max = app.frame_history
                     .iter()
                     .cloned()
                     .fold(f64::NEG_INFINITY, f64::max);

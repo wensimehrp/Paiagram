@@ -1,5 +1,3 @@
-use std::fmt::format;
-
 use crate::{
     interface::{AppTab, UiCommand, tabs::vehicle},
     intervals::{Depot, Station, StationCache},

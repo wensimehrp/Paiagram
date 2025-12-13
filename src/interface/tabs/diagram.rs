@@ -173,7 +173,7 @@ pub fn show_diagram(
 
             handle_input_selection(&response, &rendered_vehicles, state);
 
-            draw_vehicles(&mut painter, &rendered_vehicles, state, &time);
+            draw_vehicles(&mut painter, &rendered_vehicles, state, &time, ui.ctx());
 
             draw_selection_overlay(
                 ui,
@@ -362,6 +362,7 @@ fn draw_vehicles(
     rendered_vehicles: &[RenderedVehicle],
     state: &mut DiagramPageCache,
     time: &Res<Time>,
+    ctx: &egui::Context,
 ) {
     let mut selected_vehicle = None;
 
@@ -391,7 +392,7 @@ fn draw_vehicles(
     state.interaction_acc_time += time.delta_secs();
     state.background_acc_time = state.background_acc_time.clamp(0.0, LINE_ANIMATION_TIME);
     state.interaction_acc_time = state.interaction_acc_time.clamp(0.0, LINE_ANIMATION_TIME);
-
+    ctx.request_repaint();
     let background_strength =
         1.0 - ((state.background_acc_time / LINE_ANIMATION_TIME) - 1.0).powi(2);
     if background_strength > 0.1 {

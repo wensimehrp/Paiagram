@@ -1,9 +1,7 @@
 use crate::rw_data::ModifyData;
-use bevy::ecs::system::{Local, Query, Single};
+use bevy::ecs::system::Single;
 use bevy::ecs::{message::MessageWriter, system::InMut};
-use bevy::window::Window;
-use egui::containers::menu::MenuConfig;
-use egui::{Id, Modal, OpenUrl, Popup};
+use egui::{Id, Modal, OpenUrl};
 use rfd::AsyncFileDialog;
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -70,7 +68,6 @@ async fn pick_file_contents(
 pub fn show_about(
     (InMut(ui), InMut(modal_open)): (InMut<egui::Ui>, InMut<bool>),
     mut msg_read_file: MessageWriter<ModifyData>,
-    mut window: Single<&mut Window>,
 ) {
     let queue = shared_queue();
     let pending: Vec<_> = {
@@ -135,16 +132,6 @@ pub fn show_about(
                 *modal_open = true;
             };
         });
-        if ui.button("Go Fullscreen").clicked() {
-            window.mode = match window.mode {
-                bevy::window::WindowMode::BorderlessFullscreen(_) => {
-                    bevy::window::WindowMode::Windowed
-                }
-                _ => bevy::window::WindowMode::BorderlessFullscreen(
-                    bevy::window::MonitorSelection::Primary,
-                ),
-            }
-        }
     });
     if *modal_open {
         let modal = Modal::new(Id::new("Modal B")).show(ui.ctx(), |ui| {
@@ -155,7 +142,7 @@ pub fn show_about(
             ui.label("Paiagram is a free and open-source application licensed under the AGPL v3.0 license.");
             ui.separator();
             egui::ScrollArea::vertical().show(ui, |ui| {
-                ui.set_width(ui.available_width());
+                ui.set_width(ui.available_width().max(0.0));
                 ui.monospace(include_str!("../../LICENSE.md"));
             });
         });
