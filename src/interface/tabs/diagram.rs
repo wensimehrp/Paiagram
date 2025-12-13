@@ -1,4 +1,5 @@
 use super::PageCache;
+use crate::colors;
 use crate::{
     interface::widgets::{buttons, timetable_popup},
     intervals::{Station, StationCache},
@@ -129,6 +130,7 @@ pub fn show_diagram(
     ensure_heights(state, &displayed_line);
 
     Frame::canvas(ui.style())
+        .fill(ui.visuals().panel_fill)
         .inner_margin(Margin::ZERO)
         .show(ui, |ui| {
             let (response, mut painter) =
@@ -399,7 +401,7 @@ fn draw_vehicles(
         painter.rect_filled(
             painter.clip_rect(),
             CornerRadius::ZERO,
-            Color32::from_additive_luminance((background_strength * 180.0) as u8),
+            Color32::from_additive_luminance((background_strength * 120.0) as u8),
         );
     }
 }
@@ -789,7 +791,7 @@ fn handle_navigation(ui: &mut Ui, response: &response::Response, state: &mut Dia
     state.vertical_offset -= (response.drag_delta().y + translation_delta.y) / state.zoom.y;
     state.tick_offset = state.tick_offset.clamp(
         -366 * 86400 * TICKS_PER_SECOND,
-        10 * 86400 * TICKS_PER_SECOND - (response.rect.width() as f64 / state.zoom.x as f64) as i64,
+        366 * 86400 * TICKS_PER_SECOND - (response.rect.width() as f64 / state.zoom.x as f64) as i64,
     );
     const TOP_BOTTOM_PADDING: f32 = 30.0;
     let max_height = state
