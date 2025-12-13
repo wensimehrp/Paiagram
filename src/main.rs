@@ -54,10 +54,10 @@ impl PaiagramApp {
 
 impl eframe::App for PaiagramApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.bevy_app.update();
         if let Err(e) = interface::show_ui(self, ctx) {
             error!("UI Error: {:?}", e);
         }
+        self.bevy_app.update();
     }
 }
 
