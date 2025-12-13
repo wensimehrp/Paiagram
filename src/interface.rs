@@ -198,79 +198,91 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
             style.spacing.window_margin = egui::Margin::same(2);
             style.interaction.selectable_labels = false;
         });
-        ctx.set_visuals(egui::Visuals::light());
         apply_custom_fonts(&ctx);
         app.initialized = true;
     }
-    app.bevy_app.world_mut().resource_scope(|world, mut ui_state: Mut<UiState>| {
-        egui::TopBottomPanel::top("menu_bar").show(&ctx, |ui| {
-            egui::ComboBox::from_label("Current workspace")
-                .selected_text(app.workspace.name())
-                .show_ui(ui, |ui| {
-                    for v in CurrentWorkspace::ALL {
-                        ui.selectable_value(&mut app.workspace, v, v.name());
-                    }
-                });
-            world
-                .run_system_cached_with(about::show_about, (ui, &mut app.modal_open))
-                .unwrap();
-        });
+    app.bevy_app
+        .world_mut()
+        .resource_scope(|world, mut ui_state: Mut<UiState>| {
+            egui::TopBottomPanel::top("menu_bar").show(&ctx, |ui| {
+                ui.horizontal(|ui| {
+                    egui::ComboBox::from_label("Current workspace")
+                        .selected_text(app.workspace.name())
+                        .show_ui(ui, |ui| {
+                            for v in CurrentWorkspace::ALL {
+                                ui.selectable_value(&mut app.workspace, v, v.name());
+                            }
+                        });
+                    ui.checkbox(&mut app.is_dark_mode, "Dark Mode")
+                        .changed()
+                        .then(|| {
+                            if app.is_dark_mode {
+                                ctx.set_theme(egui::Theme::Dark);
+                            } else {
+                                ctx.set_theme(egui::Theme::Light);
+                            }
+                        });
+                    world
+                        .run_system_cached_with(about::show_about, (ui, &mut app.modal_open))
+                        .unwrap();
+                })
+            });
 
-        egui::TopBottomPanel::bottom("status_bar").show(&ctx, |ui| {
-            ui.horizontal(|ui| {
-                ui.label(&ui_state.status_bar_text);
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let avg_frame_time = app.frame_history.iter().sum::<f64>() / 16.0;
-                    let current_time = chrono::Local::now();
-                    ui.monospace(current_time.format("%H:%M:%S").to_string());
-                    ui.monospace(format!("FPS: {:.0}", 1.0 / avg_frame_time));
+            egui::TopBottomPanel::bottom("status_bar").show(&ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(&ui_state.status_bar_text);
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let avg_frame_time = app.frame_history.iter().sum::<f64>() / 16.0;
+                        let current_time = chrono::Local::now();
+                        ui.monospace(current_time.format("%H:%M:%S").to_string());
+                        ui.monospace(format!("FPS: {:.0}", 1.0 / avg_frame_time));
+                    });
                 });
             });
+
+            match app.workspace {
+                CurrentWorkspace::Start => {
+                    egui::CentralPanel::default()
+                        .frame(
+                            egui::Frame::new()
+                                .inner_margin(egui::Margin::same(0))
+                                .fill(ctx.theme().default_visuals().panel_fill),
+                        )
+                        .show(&ctx, |ui| {
+                            world.run_system_cached_with(start::display_start, ui)
+                        });
+                }
+                CurrentWorkspace::Edit => {
+                    egui::SidePanel::left("TreeView").show(&ctx, |ui| {
+                        egui::ScrollArea::both().show(ui, |ui| {
+                            world
+                                .run_system_cached_with(tabs::tree_view::show_tree_view, ui)
+                                .unwrap();
+                        });
+                    });
+
+                    egui::CentralPanel::default()
+                        .frame(egui::Frame::default().inner_margin(egui::Margin::same(0)))
+                        .show(&ctx, |ui| {
+                            let mut tab_viewer = AppTabViewer { world: world };
+                            let mut style = egui_dock::Style::from_egui(ui.style());
+                            style.tab.tab_body.inner_margin = Margin::same(0);
+                            style.tab.tab_body.corner_radius = CornerRadius::ZERO;
+                            style.tab.tab_body.stroke.width = 0.0;
+                            style.tab.hline_below_active_tab_name = true;
+                            style.tab_bar.corner_radius = CornerRadius::ZERO;
+                            DockArea::new(&mut ui_state.dock_state)
+                                .style(style)
+                                .show_inside(ui, &mut tab_viewer);
+                        });
+                }
+                CurrentWorkspace::Publish => {
+                    egui::CentralPanel::default()
+                        .frame(egui::Frame::default().inner_margin(egui::Margin::same(0)))
+                        .show(&ctx, |ui| {});
+                }
+            }
         });
-
-        match app.workspace {
-            CurrentWorkspace::Start => {
-                egui::CentralPanel::default()
-                    .frame(
-                        egui::Frame::new()
-                            .inner_margin(egui::Margin::same(0))
-                            .fill(Color32::WHITE),
-                    )
-                    .show(&ctx, |ui| {
-                        world.run_system_cached_with(start::display_start, ui)
-                    });
-            }
-            CurrentWorkspace::Edit => {
-                egui::SidePanel::left("TreeView").show(&ctx, |ui| {
-                    egui::ScrollArea::both().show(ui, |ui| {
-                        world
-                            .run_system_cached_with(tabs::tree_view::show_tree_view, ui)
-                            .unwrap();
-                    });
-                });
-
-                egui::CentralPanel::default()
-                    .frame(egui::Frame::default().inner_margin(egui::Margin::same(0)))
-                    .show(&ctx, |ui| {
-                        let mut tab_viewer = AppTabViewer { world: world };
-                        let mut style = egui_dock::Style::from_egui(ui.style());
-                        style.tab.tab_body.inner_margin = Margin::same(0);
-                        style.tab.tab_body.corner_radius = CornerRadius::ZERO;
-                        style.tab.tab_body.stroke.width = 0.0;
-                        style.tab.hline_below_active_tab_name = true;
-                        style.tab_bar.corner_radius = CornerRadius::ZERO;
-                        DockArea::new(&mut ui_state.dock_state)
-                            .style(style)
-                            .show_inside(ui, &mut tab_viewer);
-                    });
-            }
-            CurrentWorkspace::Publish => {
-                egui::CentralPanel::default()
-                    .frame(egui::Frame::default().inner_margin(egui::Margin::same(0)))
-                    .show(&ctx, |ui| {});
-            }
-        }
-    });
     app.frame_history.push_back(now.elapsed().as_secs_f64());
     if app.frame_history.len() > 16 {
         app.frame_history.pop_front();

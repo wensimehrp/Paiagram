@@ -105,6 +105,8 @@ pub fn show_diagram(
     };
     let state = page_cache.get_mut_or_insert_with(displayed_line_entity, DiagramPageCache::default);
 
+    state.stroke.color = ui.visuals().text_color();
+
     let entries_updated = displayed_line.is_changed()
         || state.vehicle_entities.is_empty()
         || displayed_line
@@ -130,7 +132,11 @@ pub fn show_diagram(
     ensure_heights(state, &displayed_line);
 
     Frame::canvas(ui.style())
-        .fill(ui.visuals().panel_fill)
+        .fill(if ui.visuals().dark_mode {
+            Color32::BLACK
+        } else {
+            Color32::WHITE
+        })
         .inner_margin(Margin::ZERO)
         .show(ui, |ui| {
             let (response, mut painter) =
@@ -149,6 +155,7 @@ pub fn show_diagram(
                 state.zoom.y,
                 visible_stations,
                 ui.pixels_per_point(),
+                ui.visuals().text_color(),
                 |e| station_names.get(e).ok().map(|s| s.as_str()),
             );
 
@@ -397,11 +404,14 @@ fn draw_vehicles(
     ctx.request_repaint();
     let background_strength = state.background_acc_time / LINE_ANIMATION_TIME;
     if background_strength > 0.1 {
-        painter.rect_filled(
-            painter.clip_rect(),
-            CornerRadius::ZERO,
-            Color32::from_white_alpha((background_strength * 180.0) as u8),
-        );
+        painter.rect_filled(painter.clip_rect(), CornerRadius::ZERO, {
+            let amt = (background_strength * 180.0) as u8;
+            if ctx.theme().default_visuals().dark_mode {
+                Color32::from_black_alpha(amt)
+            } else {
+                Color32::from_white_alpha(amt)
+            }
+        });
     }
 }
 
@@ -821,6 +831,7 @@ fn draw_station_lines<'a, F>(
     zoom: f32,
     to_draw: &[(Entity, f32)],
     pixels_per_point: f32,
+    text_color: Color32,
     mut get_station_name: F,
 ) where
     F: FnMut(Entity) -> Option<&'a str>,
@@ -840,7 +851,7 @@ fn draw_station_lines<'a, F>(
         let layout = painter.layout_no_wrap(
             station_name.to_string(),
             egui::FontId::proportional(13.0),
-            Color32::BLACK,
+            text_color,
         );
         painter.galley(
             Pos2 {
@@ -848,7 +859,7 @@ fn draw_station_lines<'a, F>(
                 y: draw_height - layout.size().y,
             },
             layout,
-            Color32::BLACK,
+            text_color,
         );
     }
 }

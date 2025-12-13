@@ -16,6 +16,7 @@ mod vehicles;
 
 struct PaiagramApp {
     bevy_app: App,
+    is_dark_mode: bool,
     initialized: bool,
     frame_history: VecDeque<f64>,
     counter: u8,
@@ -43,6 +44,7 @@ impl PaiagramApp {
         app.add_systems(Startup, handle_args);
         Self {
             bevy_app: app,
+            is_dark_mode: true,
             initialized: false,
             frame_history: VecDeque::with_capacity(17),
             counter: 0,
