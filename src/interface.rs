@@ -220,7 +220,7 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
             ui.horizontal(|ui| {
                 ui.label(&ui_state.status_bar_text);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let avg_frame_time = app.frame_history.iter().sum::<f64>() / 256.0;
+                    let avg_frame_time = app.frame_history.iter().sum::<f64>() / 16.0;
                     let current_time = chrono::Local::now();
                     ui.monospace(current_time.format("%H:%M:%S").to_string());
                     ui.monospace(format!("FPS: {:.0}", 1.0 / avg_frame_time));
@@ -271,31 +271,9 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
             }
         }
     });
-    app.counter = app.counter.wrapping_add(1);
-    // keep a frame history of 256 frames
     app.frame_history.push_back(now.elapsed().as_secs_f64());
-    if app.frame_history.len() > 256 {
+    if app.frame_history.len() > 16 {
         app.frame_history.pop_front();
-    }
-    if app.counter == 0 {
-        info!(
-            "UI frame took {:?} on average. Min {:?}, Max {:?}",
-            {
-                let total: f64 = app.frame_history.iter().sum();
-                instant::Duration::from_secs_f64(total / (app.frame_history.len() as f64))
-            },
-            {
-                let min = app.frame_history.iter().cloned().fold(f64::INFINITY, f64::min);
-                instant::Duration::from_secs_f64(min)
-            },
-            {
-                let max = app.frame_history
-                    .iter()
-                    .cloned()
-                    .fold(f64::NEG_INFINITY, f64::max);
-                instant::Duration::from_secs_f64(max)
-            }
-        );
     }
     Ok(())
 }

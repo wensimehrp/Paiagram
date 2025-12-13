@@ -395,13 +395,12 @@ fn draw_vehicles(
     state.background_acc_time = state.background_acc_time.clamp(0.0, LINE_ANIMATION_TIME);
     state.interaction_acc_time = state.interaction_acc_time.clamp(0.0, LINE_ANIMATION_TIME);
     ctx.request_repaint();
-    let background_strength =
-        1.0 - ((state.background_acc_time / LINE_ANIMATION_TIME) - 1.0).powi(2);
+    let background_strength = state.background_acc_time / LINE_ANIMATION_TIME;
     if background_strength > 0.1 {
         painter.rect_filled(
             painter.clip_rect(),
             CornerRadius::ZERO,
-            Color32::from_additive_luminance((background_strength * 120.0) as u8),
+            Color32::from_white_alpha((background_strength * 180.0) as u8),
         );
     }
 }
@@ -791,7 +790,8 @@ fn handle_navigation(ui: &mut Ui, response: &response::Response, state: &mut Dia
     state.vertical_offset -= (response.drag_delta().y + translation_delta.y) / state.zoom.y;
     state.tick_offset = state.tick_offset.clamp(
         -366 * 86400 * TICKS_PER_SECOND,
-        366 * 86400 * TICKS_PER_SECOND - (response.rect.width() as f64 / state.zoom.x as f64) as i64,
+        366 * 86400 * TICKS_PER_SECOND
+            - (response.rect.width() as f64 / state.zoom.x as f64) as i64,
     );
     const TOP_BOTTOM_PADDING: f32 = 30.0;
     let max_height = state

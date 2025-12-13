@@ -44,7 +44,7 @@ impl PaiagramApp {
         Self {
             bevy_app: app,
             initialized: false,
-            frame_history: VecDeque::with_capacity(256),
+            frame_history: VecDeque::with_capacity(17),
             counter: 0,
             workspace: interface::CurrentWorkspace::default(),
             modal_open: false,
