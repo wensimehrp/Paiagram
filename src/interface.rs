@@ -233,7 +233,9 @@ fn show_ui(
             ui.horizontal(|ui| {
                 ui.label(&ui_state.status_bar_text);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let avg_frame_time = frame_history.iter().sum::<f64>() / 256.0;
                     ui.monospace(chrono::Local::now().format("%H:%M:%S").to_string());
+                    ui.monospace(format!("FPS: {:.0}", 1.0 / avg_frame_time));
                 });
             });
         });
