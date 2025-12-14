@@ -2,11 +2,11 @@ mod about;
 mod tabs;
 mod widgets;
 
+use crate::colors;
 use bevy::prelude::*;
-use chrono::Timelike;
-use egui::{self, Color32, CornerRadius, Margin};
+use egui::{self, CornerRadius, Margin};
 use egui_dock::{DockArea, DockState};
-use std::{collections::VecDeque, sync::Arc};
+use std::sync::Arc;
 
 use crate::interface::tabs::{displayed_lines, start};
 
@@ -228,17 +228,18 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
                 })
             });
 
-            egui::TopBottomPanel::bottom("status_bar").show(&ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label(&ui_state.status_bar_text);
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let avg_frame_time = app.frame_history.iter().sum::<f64>() / 16.0;
-                        let current_time = chrono::Local::now();
-                        ui.monospace(current_time.format("%H:%M:%S").to_string());
-                        ui.monospace(format!("FPS: {:.0}", 1.0 / avg_frame_time));
+            egui::TopBottomPanel::bottom("status_bar")
+                .show(&ctx, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(&ui_state.status_bar_text);
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            let avg_frame_time = app.frame_history.iter().sum::<f64>() / 16.0;
+                            let current_time = chrono::Local::now();
+                            ui.monospace(current_time.format("%H:%M:%S").to_string());
+                            ui.monospace(format!("FPS: {:.0}", 1.0 / avg_frame_time));
+                        });
                     });
                 });
-            });
 
             match app.workspace {
                 CurrentWorkspace::Start => {

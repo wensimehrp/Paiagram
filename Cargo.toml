@@ -28,7 +28,7 @@ egui_taffy = "0.10.0"
 instant = { version = "0.1.13", features = ["wasm-bindgen"] }
 rayon = "1.11.0"
 eframe = "0.33.3"
-egui = "0.33.3"
+egui = { version = "0.33.3", default-features = false, features = ["rayon"] }
 smallvec = "1.15.1"
 either = "1.15.0"
 egui_ltreeview = "0.6.0"
