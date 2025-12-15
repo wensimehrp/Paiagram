@@ -8,6 +8,7 @@
     <meta name="authors" content="Jeremy Gao">
   </head>
   <body>
+    <p>You can also see the <a href="./index.pdf">PDF version</a>.</p>
     <link rel="stylesheet" href="style.css">
     <nav role="doc-toc">
       <h2>Contents</h2>
@@ -16,6 +17,7 @@
           <div><a href="#wip-1"><span class="prefix">1.</span> Introduction</a></div>
           <ol style="list-style-type: none">
             <li><a href="#wip-2"><span class="prefix">1.1.</span> Who Can Use? Use For What?</a></li>
+            <li><a href="#loc-1"><span class="prefix">1.2.</span> Origin of the Name</a></li>
           </ol>
         </li>
         <li>
@@ -50,33 +52,33 @@
         <li>
           <div><a href="#wip-24"><span class="prefix">4.</span> Importing Foreign Files</a></div>
           <ol style="list-style-type: none">
-            <li><a href="#loc-1"><span class="prefix">4.1.</span> qETRC</a></li>
-            <li><a href="#loc-2"><span class="prefix">4.2.</span> OuDiaSecond</a></li>
-            <li><a href="#loc-3"><span class="prefix">4.3.</span> OpenTTD JGRPP Orders Exports</a></li>
+            <li><a href="#loc-2"><span class="prefix">4.1.</span> qETRC</a></li>
+            <li><a href="#loc-3"><span class="prefix">4.2.</span> OuDiaSecond</a></li>
+            <li><a href="#loc-4"><span class="prefix">4.3.</span> OpenTTD JGRPP Orders Exports</a></li>
           </ol>
         </li>
         <li>
-          <div><a href="#loc-4"><span class="prefix">5.</span> Saving and Exporting</a></div>
+          <div><a href="#loc-5"><span class="prefix">5.</span> Saving and Exporting</a></div>
           <ol style="list-style-type: none">
-            <li><a href="#loc-5"><span class="prefix">5.1.</span> Saving as <code>.paiagram</code></a></li>
-            <li><a href="#loc-6"><span class="prefix">5.2.</span> Exporting to <code>.csv</code></a></li>
+            <li><a href="#loc-6"><span class="prefix">5.1.</span> Saving as <code>.paiagram</code></a></li>
+            <li><a href="#loc-7"><span class="prefix">5.2.</span> Exporting to <code>.csv</code></a></li>
             <li><a href="#dot"><span class="prefix">5.3.</span> Exporting to <code>.dot</code></a></li>
-            <li><a href="#loc-7"><span class="prefix">5.4.</span> Exporting to Typst code</a></li>
-            <li><a href="#loc-8"><span class="prefix">5.5.</span> Exporting to JGRPP Orders</a></li>
+            <li><a href="#loc-8"><span class="prefix">5.4.</span> Exporting to Typst code</a></li>
+            <li><a href="#loc-9"><span class="prefix">5.5.</span> Exporting to JGRPP Orders</a></li>
           </ol>
         </li>
         <li><a href="#wip-25"><span class="prefix">6.</span> Coming from qETRC/pyETRC</a></li>
-        <li><a href="#loc-9"><span class="prefix">7.</span> Coming from OuDiaSecond</a></li>
+        <li><a href="#loc-10"><span class="prefix">7.</span> Coming from OuDiaSecond</a></li>
         <li>
-          <div><a href="#loc-10"><span class="prefix">8.</span> Building Paiagram</a></div>
+          <div><a href="#loc-11"><span class="prefix">8.</span> Building Paiagram</a></div>
           <ol style="list-style-type: none">
-            <li><a href="#loc-11"><span class="prefix">8.1.</span> Compiling</a></li>
-            <li><a href="#loc-12"><span class="prefix">8.2.</span> Dependencies</a></li>
-            <li><a href="#loc-13"><span class="prefix">8.3.</span> Translating</a></li>
+            <li><a href="#loc-12"><span class="prefix">8.1.</span> Compiling</a></li>
+            <li><a href="#loc-13"><span class="prefix">8.2.</span> Dependencies</a></li>
+            <li><a href="#loc-14"><span class="prefix">8.3.</span> Translating</a></li>
           </ol>
         </li>
-        <li><a href="#loc-14"><span class="prefix">9.</span> External Resources</a></li>
-        <li><a href="#loc-15"><span class="prefix">10.</span> Credits</a></li>
+        <li><a href="#loc-15"><span class="prefix">9.</span> External Resources</a></li>
+        <li><a href="#loc-16"><span class="prefix">10.</span> Credits</a></li>
       </ol>
     </nav>
     <h2>Before Reading</h2>
@@ -103,6 +105,8 @@
     <p>Transport simulation game players can use Paiagram to timetable vehicles.</p>
     <p>Transport Managers can use Paiagram to schedule services.</p>
     <p>Anyone can use Paiagram to kill some time :-)</p>
+    <h3 id="loc-1">1.2. Origin of the Name</h3>
+    <p>Paiagram is the mix of two words with different roots. The first being “排”, which means to make or to organize, and its Pinyin is “pái”. The second word is, of course, diagram. Combined they form the word <em>Paiagram</em>.</p>
     <h2 id="wip-3">2. Getting Started</h2>
     <p>You can download Paiagram from <a href="https://github.com/wensimerhp/paiagram/releases">Github releases</a> or <a href="https://wensimehrp.github.io/Paiagram">try it online</a>. The online version’s performance would be worse compared to native versions, but the difference is usually acceptable. You can also download the webpage and run it locally in your browser.</p>
     <h3 id="wip-4">2.1. The Model</h3>
@@ -290,9 +294,9 @@
       <li>OuDiaSecond</li>
     </ul>
     <p>Data specific to one application, e.g. window placement settings in OuDiaSecond, will not be respected.</p>
-    <h3 id="loc-1">4.1. qETRC</h3>
+    <h3 id="loc-2">4.1. qETRC</h3>
     <p>Importing qETRC data is straightforward: import and it should just work. Train classes, services, trains (交路), stations, and station intervals are all handled correctly in Paiagram.</p>
-    <h3 id="loc-2">4.2. OuDiaSecond</h3>
+    <h3 id="loc-3">4.2. OuDiaSecond</h3>
     <p>OuDiaSecond’s internal structure is very different, and it misses some basic features in Paiagram.</p>
     <ul>
       <li>
@@ -308,13 +312,13 @@
         <p>Most services should work fine.</p>
       </li>
     </ul>
-    <h3 id="loc-3">4.3. OpenTTD JGRPP Orders Exports</h3>
+    <h3 id="loc-4">4.3. OpenTTD JGRPP Orders Exports</h3>
     <p>Importing JGRPP orders exports is fairly limited, since it could contain <em>conditional</em> orders that cannot be known by Paiagram. The only condition Paiagram understands and can adapt from the export is the time.</p>
-    <h2 id="loc-4">5. Saving and Exporting</h2>
+    <h2 id="loc-5">5. Saving and Exporting</h2>
     <p>Paiagram supports saving and exporting to various formats</p>
-    <h3 id="loc-5">5.1. Saving as <code>.paiagram</code></h3>
+    <h3 id="loc-6">5.1. Saving as <code>.paiagram</code></h3>
     <p>The <code>.paiagram</code> format is the default saving format for Paiagram.</p>
-    <h3 id="loc-6">5.2. Exporting to <code>.csv</code></h3>
+    <h3 id="loc-7">5.2. Exporting to <code>.csv</code></h3>
     <p>You can export single vehicles, single services, stations info, and interval info as <code>.csv</code> files. You cannot export the entire graph as a <code>.csv</code> file. For information on exporting graphs, see <a href="#dot">Section 5.3</a>.</p>
     <p>Subjects that can be exported:</p>
     <ul>
@@ -342,9 +346,9 @@
     </ul>
     <h3 id="dot">5.3. Exporting to <code>.dot</code></h3>
     <p>Graphs can be exported to GraphViz <code>.dot</code> files.</p>
-    <h3 id="loc-7">5.4. Exporting to Typst code</h3>
+    <h3 id="loc-8">5.4. Exporting to Typst code</h3>
     <p>You can export diagrams to Typst code, which can be then further processed and rendered via the Typst program.</p>
-    <h3 id="loc-8">5.5. Exporting to JGRPP Orders</h3>
+    <h3 id="loc-9">5.5. Exporting to JGRPP Orders</h3>
     <h4>5.5.1. Notes and Tags</h4>
     <p>Notes attached to a timetable entry would be translated to labels in JGRPP. You can also specify the colour by adding a <code>&lt;colour>:(content)</code> prefix. For example:</p>
     <ul>
@@ -356,21 +360,21 @@
     <p>JGRPP features scheduled dispatch, a way to specify when a vehicle would depart from a station. Scheduled dispatch slots could optionally have a tag. If they do have a tag, their</p>
     <h2 id="wip-25">6. Coming from qETRC/pyETRC</h2>
     <p>You may be overwhelmed with the number of arrival and departure types in Paiagram compared to qETRC/pyETRC.</p>
-    <h2 id="loc-9">7. Coming from OuDiaSecond</h2>
-    <h2 id="loc-10">8. Building Paiagram</h2>
-    <h3 id="loc-11">8.1. Compiling</h3>
+    <h2 id="loc-10">7. Coming from OuDiaSecond</h2>
+    <h2 id="loc-11">8. Building Paiagram</h2>
+    <h3 id="loc-12">8.1. Compiling</h3>
     <p>Paiagram is built using Rust. If you’re from NixOS, you can skip the next chapter!</p>
-    <h3 id="loc-12">8.2. Dependencies</h3>
+    <h3 id="loc-13">8.2. Dependencies</h3>
     <p>Paiagram requires the following dependencies:</p>
     <ul>
       <li>Rust toolchain (1.80 or later)</li>
     </ul>
-    <h3 id="loc-13">8.3. Translating</h3>
+    <h3 id="loc-14">8.3. Translating</h3>
     <p>Paiagram uses the <a href="https://projectfluent.org/">Fluent</a> standard for translatons. You can submit pull requests for translations on GitHub.</p>
     <p>Please be in mind that this is a community project, so please try to avoid submitting unreviewed machine or LLM based translation.</p>
-    <h2 id="loc-14">9. External Resources</h2>
+    <h2 id="loc-15">9. External Resources</h2>
     <p>There aren’t many external resources for Paiagram yet.</p>
-    <h2 id="loc-15">10. Credits</h2>
+    <h2 id="loc-16">10. Credits</h2>
     <ul>
       <li>Developer: Jeremy Gao</li>
       <li>Documentation: Jeremy Gao</li>

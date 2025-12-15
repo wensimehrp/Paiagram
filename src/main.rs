@@ -18,8 +18,7 @@ struct PaiagramApp {
     bevy_app: App,
     is_dark_mode: bool,
     initialized: bool,
-    frame_history: VecDeque<f64>,
-    counter: u8,
+    frame_times: egui::util::History<f32>,
     workspace: interface::CurrentWorkspace,
     modal_open: bool,
 }
@@ -42,20 +41,35 @@ impl PaiagramApp {
         let args = Cli::parse();
         app.insert_resource(args);
         app.add_systems(Startup, handle_args);
+        let max_age: f32 = 1.0;
+        let max_len = (max_age * 300.0).round() as usize;
         Self {
             bevy_app: app,
             is_dark_mode: true,
+            frame_times: egui::util::History::new(0..max_len, max_age),
             initialized: false,
-            frame_history: VecDeque::with_capacity(17),
-            counter: 0,
             workspace: interface::CurrentWorkspace::default(),
             modal_open: false,
         }
     }
+    pub fn on_new_frame(&mut self, now: f64, previous_frame_time: Option<f32>) {
+        let previous_frame_time = previous_frame_time.unwrap_or_default();
+        if let Some(latest) = self.frame_times.latest_mut() {
+            *latest = previous_frame_time; // rewrite history now that we know
+        }
+        self.frame_times.add(now, previous_frame_time); // projected
+    }
+    pub fn mean_frame_time(&self) -> f32 {
+        self.frame_times.average().unwrap_or_default()
+    }
+    pub fn fps(&self) -> f32 {
+        1.0 / self.frame_times.mean_time_interval().unwrap_or_default()
+    }
 }
 
 impl eframe::App for PaiagramApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        self.on_new_frame(ctx.input(|i| i.time), frame.info().cpu_usage);
         if let Err(e) = interface::show_ui(self, ctx) {
             error!("UI Error: {:?}", e);
         }
@@ -99,7 +113,7 @@ fn handle_args(cli: Res<Cli>, mut msg: MessageWriter<rw_data::ModifyData>, mut c
     commands.remove_resource::<Cli>();
 }
 
-#[cfg(not(target_arch="wasm32"))]
+#[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result<()> {
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -115,10 +129,10 @@ fn main() -> eframe::Result<()> {
     )
 }
 
-#[cfg(target_arch="wasm32")]
+#[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
-#[cfg(target_arch="wasm32")]
+#[cfg(target_arch = "wasm32")]
 #[derive(Clone)]
 #[wasm_bindgen]
 pub struct WebHandle {
@@ -128,8 +142,8 @@ pub struct WebHandle {
 // When compiling to web using trunk:
 #[cfg(target_arch = "wasm32")]
 fn main() {
-    use eframe::web_sys;
     use eframe::wasm_bindgen::JsCast as _;
+    use eframe::web_sys;
 
     let web_options = eframe::WebOptions::default();
 
@@ -150,13 +164,23 @@ fn main() {
             canvas.set_id("paiagram_canvas");
 
             // Set styles to ensure full screen and correct rendering
-            canvas.set_attribute("style", "display: block; width: 100%; height: 100%;").ok();
+            canvas
+                .set_attribute("style", "display: block; width: 100%; height: 100%;")
+                .ok();
 
             let body = document.body().expect("Failed to get document body");
-            body.set_attribute("style", "margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;").ok();
+            body.set_attribute(
+                "style",
+                "margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;",
+            )
+            .ok();
 
             let html = document.document_element().expect("No document element");
-            html.set_attribute("style", "margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;").ok();
+            html.set_attribute(
+                "style",
+                "margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;",
+            )
+            .ok();
 
             body.append_child(&canvas).expect("Failed to append canvas");
             canvas

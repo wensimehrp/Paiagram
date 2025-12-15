@@ -31,48 +31,24 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Download Sarasa fonts
-        run: |
-          wget https://github.com/be5invis/Sarasa-Gothic/releases/download/v1.0.33/SarasaUiSC-TTF-1.0.33.7z
-          7z x SarasaUiSC-TTF-1.0.33.7z -oassets/fonts
-          wget https://github.com/be5invis/Sarasa-Gothic/releases/download/v1.0.33/SarasaTermSC-TTF-1.0.33.7z
-          7z x SarasaTermSC-TTF-1.0.33.7z -oassets/fonts
+        run: nix develop .#default --command just get-fonts
 
       - name: Compile project documentation (build check)
-        run: nix develop .#default --command cargo doc --workspace --no-deps --release
+        run: nix develop .#default --command just doc-check
 
       - name: Build WASM binary
-        run: |
-          nix develop .#default --command bash -lc '
-            cargo build --release --target wasm32-unknown-unknown
-            wasm-bindgen \
-              --out-dir wasm-out \
-              --out-name paiagram \
-              --target web \
-              target/wasm32-unknown-unknown/release/paiagram.wasm
-          '
+        run: nix develop .#default --command just build-wasm
 
       - name: Build HTML and PDF documentation
-        run: |
-          nix develop .#default --command bash -lc '
-            typst c docs/index.typ --features html -f html --root .
-            typst c docs/index.typ --features html -f pdf --root .
-          '
+        run: nix develop .#default --command just build-docs
 
       - name: Prepare Pages artifact
-        run: |
-          NIGHTLY_ROOT="web/nightly"
-          API_DOCS_DIR="${NIGHTLY_ROOT}/api-docs"
-          DOCS_DIR="${NIGHTLY_ROOT}/docs"
-          mkdir -p "${API_DOCS_DIR}" "${NIGHTLY_ROOT}" "${DOCS_DIR}"
-          cp -r target/doc/* "${API_DOCS_DIR}/"
-          cp wasm-out/* "${NIGHTLY_ROOT}/"
-          cp docs/index.* "${DOCS_DIR}/"
-          cp docs/style.css "${DOCS_DIR}/"
+        run: nix develop .#default --command just prepare-pages
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v4
         with:
-          path: web
+          path: web-out
 
       - name: Deploy to GitHub Pages
         id: deploy

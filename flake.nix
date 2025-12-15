@@ -38,6 +38,10 @@
               pkg-config
               wasm-bindgen-cli_0_2_104
               typst
+              just
+              wget
+              p7zip
+              binaryen
             ]
             ++ lib.optionals (lib.strings.hasInfix "linux" system) [
               # for Linux

@@ -36,10 +36,70 @@
     <div class="fallback" id="loading">Loading Paiagram Nightly Web Build…</div>
     <script type="module">
         import init from "./paiagram.js";
-        init().then(() => {
+
+        const WASM_URL = new URL("./paiagram_bg.wasm", import.meta.url);
+        const CACHE_NAME = "paiagram-wasm-cache";
+
+        async function fetchWithCache() {
+            let cache;
+            try {
+                cache = await caches.open(CACHE_NAME);
+            } catch {
+                // Cache API not supported or failed
+            }
+
+            let cachedResponse;
+            if (cache) {
+                cachedResponse = await cache.match(WASM_URL);
+            }
+
+            if (cachedResponse) {
+                // Serve from cache immediately
+                init(cachedResponse.clone())
+                    .then(() => removeLoading())
+                    .catch((e) => {
+                        console.error("Cached WASM failed to load", e);
+                        // Fallback to network
+                        return fetchAndInit(cache);
+                    });
+
+                // Update cache in background
+                fetchAndUpdateCache(cache);
+            } else {
+                // No cache, fetch from network
+                await fetchAndInit(cache);
+            }
+        }
+
+        async function fetchAndInit(cache) {
+            const response = await fetch(WASM_URL);
+            if (cache && response.ok) {
+                cache.put(WASM_URL, response.clone());
+            }
+            await init(response);
+            removeLoading();
+        }
+
+        async function fetchAndUpdateCache(cache) {
+            if (!cache) return;
+            try {
+                const response = await fetch(WASM_URL);
+                if (response.ok) {
+                    await cache.put(WASM_URL, response);
+                    console.log("WASM cache updated in background");
+                }
+            } catch (e) {
+                console.warn("Failed to update WASM cache", e);
+            }
+        }
+
+        function removeLoading() {
             const loading = document.getElementById("loading");
             if (loading) loading.remove();
-        });
+        }
+
+        fetchWithCache();
+
         window.addEventListener("beforeunload", (event) => {
             event.preventDefault();
             event.returnValue = "";

@@ -193,8 +193,9 @@ impl CurrentWorkspace {
 
 /// Main function to show the user interface
 pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> {
-    ctx.request_repaint_after(std::time::Duration::from_secs(1));
-    let now = instant::Instant::now();
+    // Limit the frame rate to ~60 FPS to avoid saturating the main thread in the browser
+    // if VSync is not active or the refresh rate is very high.
+    ctx.request_repaint_after(std::time::Duration::from_millis(500));
     if !app.initialized {
         ctx.style_mut(|style| {
             style.spacing.window_margin = egui::Margin::same(2);
@@ -203,6 +204,8 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
         apply_custom_fonts(&ctx);
         app.initialized = true;
     }
+    let fps = app.fps();
+    let frame_time = app.mean_frame_time();
     app.bevy_app
         .world_mut()
         .resource_scope(|world, mut ui_state: Mut<UiState>| {
@@ -239,10 +242,10 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
                     ui.horizontal(|ui| {
                         ui.label(&world.resource::<StatusBarState>().tooltip);
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            let avg_frame_time = app.frame_history.iter().sum::<f64>() / 16.0;
                             let current_time = chrono::Local::now();
                             ui.monospace(current_time.format("%H:%M:%S").to_string());
-                            ui.monospace(format!("FPS: {:.0}", 1.0 / avg_frame_time));
+                            ui.monospace(format!("FPS: {:>5.1}", fps));
+                            ui.monospace(format!("{:>5.2} ms/f", 1e3 * frame_time));
                         });
                     });
                 });
@@ -318,10 +321,6 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
                 }
             }
         });
-    app.frame_history.push_back(now.elapsed().as_secs_f64());
-    if app.frame_history.len() > 16 {
-        app.frame_history.pop_front();
-    }
     Ok(())
 }
 
