@@ -207,29 +207,27 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
     app.bevy_app
         .world_mut()
         .resource_scope(|world, mut ui_state: Mut<UiState>| {
-            egui::TopBottomPanel::top("menu_bar").show(&ctx, |ui| {
-                ui.horizontal(|ui| {
-                    egui::ComboBox::from_label("Current workspace")
-                        .selected_text(app.workspace.name())
-                        .show_ui(ui, |ui| {
-                            for v in CurrentWorkspace::ALL {
-                                ui.selectable_value(&mut app.workspace, v, v.name());
-                            }
-                        });
-                    ui.checkbox(&mut app.is_dark_mode, "Dark Mode")
-                        .changed()
-                        .then(|| {
-                            if app.is_dark_mode {
-                                ctx.set_theme(egui::Theme::Dark);
-                            } else {
-                                ctx.set_theme(egui::Theme::Light);
-                            }
-                        });
-                    world
-                        .run_system_cached_with(about::show_about, (ui, &mut app.modal_open))
-                        .unwrap();
-                })
-            });
+            egui::TopBottomPanel::top("menu_bar")
+                .frame(Frame::side_top_panel(&ctx.style()))
+                .show(&ctx, |ui| {
+                    ui.horizontal(|ui| {
+                        for v in CurrentWorkspace::ALL {
+                            ui.selectable_value(&mut app.workspace, v, v.name());
+                        }
+                        ui.checkbox(&mut app.is_dark_mode, "Dark Mode")
+                            .changed()
+                            .then(|| {
+                                if app.is_dark_mode {
+                                    ctx.set_theme(egui::Theme::Dark);
+                                } else {
+                                    ctx.set_theme(egui::Theme::Light);
+                                }
+                            });
+                        world
+                            .run_system_cached_with(about::show_about, (ui, &mut app.modal_open))
+                            .unwrap();
+                    })
+                });
 
             egui::TopBottomPanel::bottom("status_bar")
                 .frame(
