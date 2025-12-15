@@ -857,14 +857,11 @@ fn draw_station_lines<'a, F>(
             egui::FontId::proportional(13.0),
             text_color,
         );
-        painter.galley(
-            Pos2 {
-                x: screen_rect.left(),
-                y: draw_height - layout.size().y,
-            },
-            layout,
-            text_color,
-        );
+        let layout_pos = Pos2 {
+            x: screen_rect.left(),
+            y: draw_height - layout.size().y,
+        };
+        painter.galley(layout_pos, layout, text_color);
     }
 }
 

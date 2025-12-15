@@ -20,7 +20,8 @@ impl Plugin for InterfacePlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<UiCommand>()
             .add_systems(Update, modify_dock_state.run_if(on_message::<UiCommand>))
-            .insert_resource(UiState::new());
+            .insert_resource(UiState::new())
+            .insert_resource(StatusBarState::default());
     }
 }
 
@@ -28,7 +29,11 @@ impl Plugin for InterfacePlugin {
 #[derive(Resource)]
 struct UiState {
     dock_state: DockState<AppTab>,
-    status_bar_text: String,
+}
+
+#[derive(Default, Resource)]
+struct StatusBarState {
+    tooltip: String,
 }
 
 /// Modify the dock state based on UI commands
@@ -38,9 +43,6 @@ fn modify_dock_state(mut dock_state: ResMut<UiState>, mut msg_reader: MessageRea
             UiCommand::OpenOrFocusTab(tab) => {
                 dock_state.open_or_focus_tab(tab.clone());
             }
-            UiCommand::SetStatusBarText(text) => {
-                dock_state.status_bar_text = text.clone();
-            }
         }
     }
 }
@@ -49,7 +51,6 @@ impl UiState {
     fn new() -> Self {
         Self {
             dock_state: DockState::new(vec![]),
-            status_bar_text: "Ready".into(),
         }
     }
     /// Open a tab if it is not already open, or focus it if it is
@@ -78,7 +79,6 @@ pub enum AppTab {
 #[derive(Message)]
 pub enum UiCommand {
     OpenOrFocusTab(AppTab),
-    SetStatusBarText(String),
 }
 
 /// A viewer for application tabs. This struct holds a single mutable reference to the world,
@@ -167,8 +167,7 @@ impl<'w> egui_dock::TabViewer for AppTabViewer<'w> {
     fn on_tab_button(&mut self, tab: &mut Self::Tab, response: &egui::Response) {
         let title = self.title(tab).text().to_string();
         if response.hovered() {
-            self.world
-                .write_message(UiCommand::SetStatusBarText(format!("🖳 {}", title)));
+            self.world.resource_mut::<StatusBarState>().tooltip = format!("🖳 {}", title);
         }
     }
 }
@@ -229,6 +228,7 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
                     })
                 });
 
+            // TODO: make the bottom status bar a separate system
             egui::TopBottomPanel::bottom("status_bar")
                 .frame(
                     Frame::side_top_panel(&ctx.style())
@@ -237,7 +237,7 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
                 .show(&ctx, |ui| {
                     ui.visuals_mut().override_text_color = Some(Color32::from_gray(200));
                     ui.horizontal(|ui| {
-                        ui.label(&ui_state.status_bar_text);
+                        ui.label(&world.resource::<StatusBarState>().tooltip);
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             let avg_frame_time = app.frame_history.iter().sum::<f64>() / 16.0;
                             let current_time = chrono::Local::now();
