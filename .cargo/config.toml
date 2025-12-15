@@ -3,7 +3,12 @@ linker = "clang"
 rustflags = ["-C", "link-arg=-fuse-ld=mold"]
 
 [target.wasm32-unknown-unknown]
-rustflags = ["--cfg", "getrandom_backend=\"wasm_js\""]
+rustflags = [
+    "--cfg",
+    "getrandom_backend=\"wasm_js\"",
+    "-C",
+    "target-feature=+simd128",
+]
 runner = "/home/jeremyg/.cargo/bin/wasm-server-runner"
 
 [doc.extern-map.regular]
