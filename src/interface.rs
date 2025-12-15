@@ -244,7 +244,7 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             let current_time = chrono::Local::now();
                             ui.monospace(current_time.format("%H:%M:%S").to_string());
-                            ui.monospace(format!("FPS: {:>5.1}", fps));
+                            ui.monospace(format!("eFPS: {:>6.1}", 1.0 / frame_time));
                             ui.monospace(format!("{:>5.2} ms/f", 1e3 * frame_time));
                         });
                     });
