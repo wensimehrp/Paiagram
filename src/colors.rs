@@ -1,4 +1,4 @@
-use bevy::color::palettes::tailwind::*;
+use bevy::color::{Srgba, palettes::tailwind::*};
 use egui::{Color32, Widget};
 
 #[derive(Debug, Clone, Copy)]
@@ -132,11 +132,15 @@ impl PredefinedColor {
             (Self::Stone, true)     => STONE_700,
             (Self::Stone, false)    => STONE_400,
         };
-        Color32::from_rgba_unmultiplied_const(
-            (c.red * 256.0) as u8,
-            (c.green * 256.0) as u8,
-            (c.blue * 256.0) as u8,
-            (c.alpha * 256.0) as u8,
-        )
+        translate_srgba_to_color32(c)
     }
+}
+
+pub const fn translate_srgba_to_color32(c: Srgba) -> Color32 {
+    Color32::from_rgba_unmultiplied_const(
+        (c.red * 256.0) as u8,
+        (c.green * 256.0) as u8,
+        (c.blue * 256.0) as u8,
+        (c.alpha * 256.0) as u8,
+    )
 }

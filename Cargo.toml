@@ -34,6 +34,7 @@ either = "1.15.0"
 egui_ltreeview = "0.6.0"
 egui_table = "0.6.0"
 wasm-bindgen = "0.2"
+fluent = "0.17.0"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.3.*", features = ["wasm_js"] }

@@ -3,8 +3,11 @@ mod tabs;
 mod widgets;
 
 use crate::colors;
-use bevy::prelude::*;
-use egui::{self, CornerRadius, Margin};
+use bevy::{
+    color::palettes::tailwind::{EMERALD_800, GRAY_900},
+    prelude::*,
+};
+use egui::{self, Color32, CornerRadius, Frame, Margin, Stroke};
 use egui_dock::{DockArea, DockState};
 use std::sync::Arc;
 
@@ -136,7 +139,7 @@ impl<'w> egui_dock::TabViewer for AppTabViewer<'w> {
                     .map_or_else(|| "Unknown Station".into(), |n| format!("{}", n));
                 format!("Station Timetable - {}", name).into()
             }
-            AppTab::Diagram(displayed_line_entity) => "Diagram".into(),
+            AppTab::Diagram(_) => "Diagram".into(),
             AppTab::DisplayedLines => "Available Lines".into(),
         }
     }
@@ -229,7 +232,12 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
             });
 
             egui::TopBottomPanel::bottom("status_bar")
+                .frame(
+                    Frame::side_top_panel(&ctx.style())
+                        .fill(colors::translate_srgba_to_color32(EMERALD_800)),
+                )
                 .show(&ctx, |ui| {
+                    ui.visuals_mut().override_text_color = Some(Color32::from_gray(200));
                     ui.horizontal(|ui| {
                         ui.label(&ui_state.status_bar_text);
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -263,8 +271,34 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
                     });
 
                     egui::CentralPanel::default()
-                        .frame(egui::Frame::default().inner_margin(egui::Margin::same(0)))
+                        .frame(egui::Frame::central_panel(&ctx.style()).inner_margin(Margin::ZERO))
                         .show(&ctx, |ui| {
+                            let painter = ui.painter();
+                            let max_rect = ui.max_rect();
+                            painter.rect_filled(
+                                max_rect,
+                                CornerRadius::ZERO,
+                                colors::translate_srgba_to_color32(GRAY_900),
+                            );
+                            const LINE_SPACING: f32 = 24.0;
+                            const LINE_STROKE: Stroke = Stroke {
+                                color: Color32::from_additive_luminance(30),
+                                width: 1.0,
+                            };
+                            for xi in 0..=(ui.available_size().x / LINE_SPACING) as usize {
+                                painter.vline(
+                                    xi as f32 * LINE_SPACING + max_rect.min.x,
+                                    max_rect.min.y..=max_rect.max.y,
+                                    LINE_STROKE,
+                                );
+                            }
+                            for yi in 0..=(ui.available_size().y / LINE_SPACING) as usize {
+                                painter.hline(
+                                    max_rect.min.x..=max_rect.max.x,
+                                    yi as f32 * LINE_SPACING + max_rect.min.y,
+                                    LINE_STROKE,
+                                );
+                            }
                             let mut tab_viewer = AppTabViewer { world: world };
                             let mut style = egui_dock::Style::from_egui(ui.style());
                             style.tab.tab_body.inner_margin = Margin::same(0);
@@ -279,8 +313,10 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
                 }
                 CurrentWorkspace::Publish => {
                     egui::CentralPanel::default()
-                        .frame(egui::Frame::default().inner_margin(egui::Margin::same(0)))
-                        .show(&ctx, |ui| {});
+                        .frame(egui::Frame::central_panel(&ctx.style()))
+                        .show(&ctx, |ui| {
+                            ui.centered_and_justified(|ui| ui.heading("Under Construction..."))
+                        });
                 }
             }
         });

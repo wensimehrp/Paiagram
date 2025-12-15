@@ -401,7 +401,11 @@ fn draw_vehicles(
     state.interaction_acc_time += time.delta_secs();
     state.background_acc_time = state.background_acc_time.clamp(0.0, LINE_ANIMATION_TIME);
     state.interaction_acc_time = state.interaction_acc_time.clamp(0.0, LINE_ANIMATION_TIME);
-    ctx.request_repaint();
+    if (f32::EPSILON..LINE_ANIMATION_TIME).contains(&state.background_acc_time)
+        || (f32::EPSILON..LINE_ANIMATION_TIME).contains(&state.interaction_acc_time)
+    {
+        ctx.request_repaint();
+    }
     let background_strength = state.background_acc_time / LINE_ANIMATION_TIME;
     if background_strength > 0.1 {
         painter.rect_filled(painter.clip_rect(), CornerRadius::ZERO, {
