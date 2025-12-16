@@ -404,7 +404,7 @@ fn draw_vehicles(
     if (f32::EPSILON..LINE_ANIMATION_TIME).contains(&state.background_acc_time)
         || (f32::EPSILON..LINE_ANIMATION_TIME).contains(&state.interaction_acc_time)
     {
-        ctx.request_repaint_after(std::time::Duration::from_millis(16));
+        ctx.request_repaint();
     }
     let background_strength = state.background_acc_time / LINE_ANIMATION_TIME;
     if background_strength > 0.1 {

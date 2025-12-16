@@ -165,9 +165,12 @@ impl<'w> egui_dock::TabViewer for AppTabViewer<'w> {
     }
 
     fn on_tab_button(&mut self, tab: &mut Self::Tab, response: &egui::Response) {
-        let title = self.title(tab).text().to_string();
         if response.hovered() {
-            self.world.resource_mut::<StatusBarState>().tooltip = format!("🖳 {}", title);
+            let widget_text = self.title(tab);
+            let s = &mut self.world.resource_mut::<StatusBarState>().tooltip;
+            s.clear();
+            s.push_str("🖳 ");
+            s.push_str(widget_text.text());
         }
     }
 }
@@ -193,9 +196,8 @@ impl CurrentWorkspace {
 
 /// Main function to show the user interface
 pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> {
-    // Limit the frame rate to ~60 FPS to avoid saturating the main thread in the browser
-    // if VSync is not active or the refresh rate is very high.
-    ctx.request_repaint_after(std::time::Duration::from_millis(500));
+    // ctx.request_repaint_after(std::time::Duration::from_millis(500));
+    ctx.request_repaint();
     if !app.initialized {
         ctx.style_mut(|style| {
             style.spacing.window_margin = egui::Margin::same(2);
