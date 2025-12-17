@@ -4,7 +4,7 @@ mod widgets;
 
 use crate::colors;
 use bevy::{
-    color::palettes::tailwind::{EMERALD_800, GRAY_900},
+    color::palettes::tailwind::{EMERALD_600, EMERALD_700, EMERALD_800, EMERALD_900, GRAY_900},
     prelude::*,
 };
 use egui::{self, Color32, CornerRadius, Frame, Margin, Stroke};
@@ -19,9 +19,9 @@ pub struct InterfacePlugin;
 impl Plugin for InterfacePlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<UiCommand>()
-            .add_systems(Update, modify_dock_state.run_if(on_message::<UiCommand>))
             .insert_resource(UiState::new())
-            .insert_resource(StatusBarState::default());
+            .insert_resource(StatusBarState::default())
+            .add_systems(Update, modify_dock_state.run_if(on_message::<UiCommand>));
     }
 }
 
@@ -93,30 +93,36 @@ impl<'w> egui_dock::TabViewer for AppTabViewer<'w> {
     fn ui(&mut self, ui: &mut egui::Ui, tab: &mut Self::Tab) {
         match tab {
             AppTab::Vehicle(entity) => {
-                self.world
+                if let Err(e) = self
+                    .world
                     .run_system_cached_with(tabs::vehicle::show_vehicle, (ui, *entity))
-                    .unwrap();
+                {
+                    error!("UI Error: {}", e)
+                }
             }
             AppTab::StationTimetable(station_entity) => {
-                self.world
-                    .run_system_cached_with(
-                        tabs::station_timetable::show_station_timetable,
-                        (ui, *station_entity),
-                    )
-                    .unwrap();
+                if let Err(e) = self.world.run_system_cached_with(
+                    tabs::station_timetable::show_station_timetable,
+                    (ui, *station_entity),
+                ) {
+                    error!("UI Error: {}", e)
+                }
             }
             AppTab::Diagram(displayed_line_entity) => {
-                self.world
-                    .run_system_cached_with(
-                        tabs::diagram::show_diagram,
-                        (ui, *displayed_line_entity),
-                    )
-                    .unwrap();
+                if let Err(e) = self.world.run_system_cached_with(
+                    tabs::diagram::show_diagram,
+                    (ui, *displayed_line_entity),
+                ) {
+                    error!("UI Error: {}", e)
+                }
             }
             AppTab::DisplayedLines => {
-                self.world
-                    .run_system_cached_with(displayed_lines::list_displayed_lines, ui)
-                    .unwrap();
+                if let Err(e) = self
+                    .world
+                    .run_system_cached_with(displayed_lines::show_displayed_lines, ui)
+                {
+                    error!("UI Error: {}", e)
+                }
             }
         };
     }
@@ -196,8 +202,7 @@ impl CurrentWorkspace {
 
 /// Main function to show the user interface
 pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> {
-    // ctx.request_repaint_after(std::time::Duration::from_millis(500));
-    ctx.request_repaint();
+    ctx.request_repaint_after(std::time::Duration::from_millis(500));
     if !app.initialized {
         ctx.style_mut(|style| {
             style.spacing.window_margin = egui::Margin::same(2);
@@ -233,6 +238,12 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
                     })
                 });
 
+            let old_bg_stroke_color = ctx.style().visuals.widgets.noninteractive.bg_stroke.color;
+
+            ctx.style_mut(|s| {
+                s.visuals.widgets.noninteractive.bg_stroke.color =
+                    colors::translate_srgba_to_color32(EMERALD_700)
+            });
             // TODO: make the bottom status bar a separate system
             egui::TopBottomPanel::bottom("status_bar")
                 .frame(
@@ -252,6 +263,10 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
                     });
                 });
 
+            ctx.style_mut(|s| {
+                s.visuals.widgets.noninteractive.bg_stroke.color = old_bg_stroke_color
+            });
+
             match app.workspace {
                 CurrentWorkspace::Start => {
                     egui::CentralPanel::default()
@@ -261,7 +276,7 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
                                 .fill(ctx.theme().default_visuals().panel_fill),
                         )
                         .show(&ctx, |ui| {
-                            world.run_system_cached_with(start::display_start, ui)
+                            world.run_system_cached_with(start::show_start, ui)
                         });
                 }
                 CurrentWorkspace::Edit => {

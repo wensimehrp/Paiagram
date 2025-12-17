@@ -38,7 +38,7 @@ fn full_width_button(ui: &mut Ui, text: &str) -> Response {
     res.response
 }
 
-pub fn list_displayed_lines(
+pub fn show_displayed_lines(
     InMut(ui): InMut<Ui>,
     mut displayed_lines: Query<(Entity, &mut DisplayedLine, &Name)>,
     station_names: Query<(Entity, &Name, &StationCache), With<Station>>,

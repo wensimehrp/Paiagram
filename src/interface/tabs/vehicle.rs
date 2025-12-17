@@ -1,7 +1,7 @@
 use crate::interface::widgets::timetable_popup;
 use crate::interface::{AppTab, UiCommand};
 use crate::units::time::{Duration, TimetableTime};
-use crate::vehicles::entries::TimetableEntryCache;
+use crate::vehicles::entries::{ActualRouteEntry, TimetableEntryCache, VehicleScheduleCache};
 use crate::vehicles::{
     AdjustTimetableEntry, TimetableAdjustment,
     entries::{TimetableEntry, TravelMode, VehicleSchedule},
@@ -24,7 +24,7 @@ struct TimetableInfo<'a> {
 
 struct TableCache<'a> {
     entries: Vec<TimetableInfo<'a>>,
-    timetable_entities: &'a [Entity],
+    timetable_entities: Option<&'a [ActualRouteEntry]>,
     msg_sender: MessageWriter<'a, AdjustTimetableEntry>,
     msg_open_ui: MessageWriter<'a, UiCommand>,
     vehicle_set: Entity,
@@ -32,17 +32,21 @@ struct TableCache<'a> {
 
 impl<'a> TableCache<'a> {
     fn new(
-        vehicle_schedule: &'a VehicleSchedule,
+        vehicle_schedule_cache: &'a VehicleScheduleCache,
         timetable_entries: &'a Query<(&TimetableEntry, &TimetableEntryCache, &ChildOf)>,
         names: &'a Query<(Entity, &Name)>,
         msg_sender: MessageWriter<'a, AdjustTimetableEntry>,
         msg_open_ui: MessageWriter<'a, UiCommand>,
         vehicle_set: Entity,
     ) -> Self {
-        let schedule_length = vehicle_schedule.entities.len();
+        let schedule_length = vehicle_schedule_cache
+            .actual_route
+            .as_ref()
+            .map_or(0, |r| r.len());
         let mut entries = Vec::with_capacity(schedule_length);
-        for timetable_entry_entity in vehicle_schedule.entities.iter() {
-            let Ok((entry, entry_cache, parent)) = timetable_entries.get(*timetable_entry_entity)
+        for timetable_entry_entity in vehicle_schedule_cache.actual_route.iter().flatten() {
+            let Ok((entry, entry_cache, parent)) =
+                timetable_entries.get(timetable_entry_entity.inner())
             else {
                 continue;
             };
@@ -83,7 +87,7 @@ impl<'a> TableCache<'a> {
             msg_sender,
             msg_open_ui,
             vehicle_set,
-            timetable_entities: &vehicle_schedule.entities,
+            timetable_entities: vehicle_schedule_cache.actual_route.as_deref(),
         }
     }
 }
@@ -114,11 +118,14 @@ impl<'a> TableDelegate for TableCache<'a> {
             }
             1 => {
                 let response = ui.button(self.entries[i].entry.arrival.to_string());
+                let Some(timetable_entities) = self.timetable_entities else {
+                    return;
+                };
                 Popup::menu(&response)
                     .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
                     .show(|ui| {
                         timetable_popup::popup(
-                            self.timetable_entities[i],
+                            timetable_entities[i].inner(),
                             (self.entries[i].entry, self.entries[i].entry_cache),
                             if i == 0 {
                                 None
@@ -139,11 +146,14 @@ impl<'a> TableDelegate for TableCache<'a> {
                         .map(|t| t.to_string())
                         .unwrap_or("||".to_string()),
                 );
+                let Some(timetable_entities) = self.timetable_entities else {
+                    return;
+                };
                 Popup::menu(&response)
                     .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
                     .show(|ui| {
                         timetable_popup::popup(
-                            self.timetable_entities[i],
+                            timetable_entities[i].inner(),
                             (self.entries[i].entry, self.entries[i].entry_cache),
                             if i == 0 {
                                 None
@@ -173,18 +183,19 @@ impl<'a> TableDelegate for TableCache<'a> {
 
 pub fn show_vehicle(
     (InMut(ui), In(entity)): (InMut<egui::Ui>, In<Entity>),
-    schedules: Query<(&VehicleSchedule, &ChildOf)>,
+    schedules: Query<(&VehicleSchedule, &VehicleScheduleCache, &ChildOf)>,
     timetable_entries: Query<(&TimetableEntry, &TimetableEntryCache, &ChildOf)>,
     names: Query<(Entity, &Name)>,
     mut msg_sender: MessageWriter<AdjustTimetableEntry>,
     msg_open_ui: MessageWriter<UiCommand>,
+    mut show: Local<bool>,
 ) {
-    let Ok((vehicle_schedule, parent)) = schedules.get(entity) else {
+    let Ok((vehicle_schedule, vehicle_schedule_cache, parent)) = schedules.get(entity) else {
         ui.label("The vehicle does not exist.");
         return;
     };
     if ui.button("Refresh").clicked() {
-        for (schedule, _) in schedules {
+        for (schedule, _, _) in schedules {
             for entity in schedule.entities.iter().cloned() {
                 msg_sender.write(AdjustTimetableEntry {
                     entity,
@@ -193,8 +204,13 @@ pub fn show_vehicle(
             }
         }
     }
+    let old_show = *show;
+    ui.selectable_value(&mut *show, !old_show, "show");
+    if !*show {
+        return;
+    }
     let mut current_table_cache = TableCache::new(
-        vehicle_schedule,
+        vehicle_schedule_cache,
         &timetable_entries,
         &names,
         msg_sender,

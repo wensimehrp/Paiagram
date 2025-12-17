@@ -1,5 +1,6 @@
 use super::PageCache;
 use crate::colors;
+use crate::vehicles::entries::{ActualRouteEntry, VehicleScheduleCache};
 use crate::{
     interface::widgets::{buttons, timetable_popup},
     intervals::{Station, StationCache},
@@ -77,7 +78,7 @@ type PointData<'a> = (
     Pos2,
     Option<Pos2>,
     (&'a TimetableEntry, &'a TimetableEntryCache),
-    Entity,
+    ActualRouteEntry,
 );
 
 struct RenderedVehicle<'a> {
@@ -89,7 +90,7 @@ struct RenderedVehicle<'a> {
 pub fn show_diagram(
     (InMut(ui), In(displayed_line_entity)): (InMut<egui::Ui>, In<Entity>),
     displayed_lines: Populated<Ref<DisplayedLine>>,
-    vehicles_query: Populated<(Entity, &Name, &VehicleSchedule)>,
+    vehicles_query: Populated<(Entity, &Name, &VehicleSchedule, &VehicleScheduleCache)>,
     entry_parents: Query<&ChildOf, With<TimetableEntry>>,
     timetable_entries: Query<(&TimetableEntry, &TimetableEntryCache)>,
     station_names: Query<&Name, With<Station>>,
@@ -234,13 +235,21 @@ fn collect_rendered_vehicles<'a, F, G>(
 ) -> Vec<RenderedVehicle<'a>>
 where
     F: Fn(Entity) -> Option<(&'a TimetableEntry, &'a TimetableEntryCache)> + Copy + 'a,
-    G: Fn(Entity) -> Option<(Entity, &'a Name, &'a VehicleSchedule)> + 'a,
+    G: Fn(
+            Entity,
+        ) -> Option<(
+            Entity,
+            &'a Name,
+            &'a VehicleSchedule,
+            &'a VehicleScheduleCache,
+        )> + 'a,
 {
     let mut rendered_vehicles = Vec::new();
-    for (vehicle_entity, _name, schedule) in
+    for (vehicle_entity, _name, schedule, schedule_cache) in
         vehicles.iter().copied().filter_map(|e| get_vehicles(e))
     {
-        let Some(visible_sets) = schedule.get_entries_range(
+        let Some(visible_sets) = schedule_cache.get_entries_range(
+            schedule,
             TimetableTime((horizontal_visible.start / TICKS_PER_SECOND) as i32)
                 ..TimetableTime((horizontal_visible.end / TICKS_PER_SECOND) as i32),
             get_timetable_entries,
@@ -516,9 +525,16 @@ fn draw_selection_overlay(
             Pos2,
             Option<Pos2>,
             (&TimetableEntry, &TimetableEntryCache),
-            Entity,
+            ActualRouteEntry,
         )> = None;
-        for fragment in segment.iter().cloned() {
+        if state.zoom.x.min(state.zoom.y) < 0.0002 {
+            continue;
+        }
+        for fragment in segment
+            .iter()
+            .cloned()
+            .filter(|(_, _, _, a)| matches!(a, ActualRouteEntry::Nominal(_)))
+        {
             let (mut arrival_pos, maybe_departure_pos, (entry, entry_cache), entry_entity) =
                 fragment;
             const HANDLE_SIZE: f32 = 12.0;
@@ -546,49 +562,51 @@ fn draw_selection_overlay(
                 ui.put(Rect::from_pos(arrival_pos).expand(5.2), |ui: &mut Ui| {
                     let (rect, resp) =
                         ui.allocate_exact_size(ui.available_size(), Sense::click_and_drag());
-                    ui.scope_builder(
-                        UiBuilder::new()
-                            .sense(resp.sense)
-                            .max_rect(rect)
-                            .id(entry_entity.to_bits() as u128 | (line_index as u128) << 64),
-                        |ui| {
-                            ui.set_min_size(ui.available_size());
-                            let response = ui.response();
-                            let fill = if response.hovered() {
-                                Color32::GRAY
-                            } else {
-                                Color32::WHITE
-                            };
-                            let handle_stroke = Stroke {
-                                width: 2.5,
-                                color: stroke.color,
-                            };
-                            match entry.arrival {
-                                TravelMode::At(_) => buttons::circle_button_shape(
-                                    painter,
-                                    arrival_pos,
-                                    CIRCLE_HANDLE_SIZE,
-                                    handle_stroke,
-                                    fill,
-                                ),
-                                TravelMode::For(_) => buttons::dash_button_shape(
-                                    painter,
-                                    arrival_pos,
-                                    DASH_HANDLE_SIZE,
-                                    handle_stroke,
-                                    fill,
-                                ),
-                                TravelMode::Flexible => buttons::triangle_button_shape(
-                                    painter,
-                                    arrival_pos,
-                                    TRIANGLE_HANDLE_SIZE,
-                                    handle_stroke,
-                                    fill,
-                                ),
-                            };
-                        },
-                    )
-                    .response
+                    ui
+                        .scope_builder(
+                            UiBuilder::new()
+                                .sense(resp.sense)
+                                .max_rect(rect)
+                                .id(entry_entity.inner().to_bits() as u128
+                                    | (line_index as u128) << 64),
+                            |ui| {
+                                ui.set_min_size(ui.available_size());
+                                let response = ui.response();
+                                let fill = if response.hovered() {
+                                    Color32::GRAY
+                                } else {
+                                    Color32::WHITE
+                                };
+                                let handle_stroke = Stroke {
+                                    width: 2.5,
+                                    color: stroke.color,
+                                };
+                                match entry.arrival {
+                                    TravelMode::At(_) => buttons::circle_button_shape(
+                                        painter,
+                                        arrival_pos,
+                                        CIRCLE_HANDLE_SIZE,
+                                        handle_stroke,
+                                        fill,
+                                    ),
+                                    TravelMode::For(_) => buttons::dash_button_shape(
+                                        painter,
+                                        arrival_pos,
+                                        DASH_HANDLE_SIZE,
+                                        handle_stroke,
+                                        fill,
+                                    ),
+                                    TravelMode::Flexible => buttons::triangle_button_shape(
+                                        painter,
+                                        arrival_pos,
+                                        TRIANGLE_HANDLE_SIZE,
+                                        handle_stroke,
+                                        fill,
+                                    ),
+                                };
+                            },
+                        )
+                        .response
                 });
 
             if arrival_point_response.drag_started() {
@@ -603,7 +621,7 @@ fn draw_selection_overlay(
                 );
                 if duration != Duration(0) {
                     timetable_adjustment_writer.write(AdjustTimetableEntry {
-                        entity: entry_entity,
+                        entity: entry_entity.inner(),
                         adjustment: crate::vehicles::TimetableAdjustment::AdjustArrivalTime(
                             duration,
                         ),
@@ -632,7 +650,7 @@ fn draw_selection_overlay(
                     .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
                     .show(|ui| {
                         timetable_popup::popup(
-                            entry_entity,
+                            entry_entity.inner(),
                             (entry, entry_cache),
                             previous_entry.map(|e| {
                                 let e = e.2;
@@ -659,10 +677,12 @@ fn draw_selection_overlay(
                         },
                     );
                     ui.scope_builder(
-                        UiBuilder::new().sense(resp.sense).max_rect(rect).id(
-                            (entry_entity.to_bits() as u128 | (line_index as u128) << 64)
-                                ^ (1 << 127),
-                        ),
+                        UiBuilder::new()
+                            .sense(resp.sense)
+                            .max_rect(rect)
+                            .id((entry_entity.inner().to_bits() as u128
+                                | (line_index as u128) << 64)
+                                ^ (1 << 127)),
                         |ui| {
                             ui.set_min_size(ui.available_size());
                             let response = ui.response();
@@ -722,7 +742,7 @@ fn draw_selection_overlay(
                 );
                 if duration != Duration(0) {
                     timetable_adjustment_writer.write(AdjustTimetableEntry {
-                        entity: entry_entity,
+                        entity: entry_entity.inner(),
                         adjustment: crate::vehicles::TimetableAdjustment::AdjustDepartureTime(
                             duration,
                         ),
@@ -751,7 +771,7 @@ fn draw_selection_overlay(
                     .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
                     .show(|ui| {
                         timetable_popup::popup(
-                            entry_entity,
+                            entry_entity.inner(),
                             (entry, entry_cache),
                             previous_entry.map(|e| {
                                 let e = e.2;

@@ -221,7 +221,7 @@ impl TryFrom<RawQETRCService> for QETRCService {
                 entry.departure.0 += 86400;
             }
             if entry.arrival > entry.departure {
-                entry.arrival.0 += 86400;
+                entry.departure.0 += 86400;
             }
             last_departure = entry.departure;
         }

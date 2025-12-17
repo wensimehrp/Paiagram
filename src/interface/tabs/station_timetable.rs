@@ -4,7 +4,7 @@ use crate::{
     units::time::TimetableTime,
     vehicles::{
         AdjustTimetableEntry, TimetableAdjustment, Vehicle,
-        entries::{TimetableEntry, TimetableEntryCache, TravelMode, VehicleSchedule},
+        entries::{ActualRouteEntry, TimetableEntry, TimetableEntryCache, TravelMode, VehicleSchedule, VehicleScheduleCache},
         services::VehicleService,
         vehicle_set::VehicleSet,
     },
@@ -131,7 +131,7 @@ impl Default for PageSettings {
 pub fn show_station_timetable(
     (InMut(ui), In(station)): (InMut<egui::Ui>, In<Entity>),
     vehicle_sets: Query<(Entity, &Children, &Name), With<VehicleSet>>,
-    vehicles: Query<(Entity, &Name, &VehicleSchedule), With<Vehicle>>,
+    vehicles: Query<(Entity, &Name, &VehicleScheduleCache, &VehicleSchedule), With<Vehicle>>,
     station_names: Query<&Name, With<Station>>,
     station_caches: Query<&StationCache>,
     service_names: Query<&Name, With<VehicleService>>,
@@ -188,9 +188,11 @@ pub fn show_station_timetable(
             let index = hour.rem_euclid(24) as usize;
             let mut terminal_name = "---";
             let mut service_name = "---";
-            if let Ok((_, _, schedule)) = vehicles.get(parent.0)
+            if let Ok((_, _, schedule_cache, _schedule)) = vehicles.get(parent.0)
                 && let Some(entry_service) = entry.service
-                && let Some(last_entry_entity) = schedule.get_service_last_entry(entry_service)
+                && let Some(last_entry_entity) = schedule_cache
+                    .get_service_last_entry(entry_service)
+                    .map(ActualRouteEntry::inner)
                 && let Ok((last_entry, _, _)) =
                     timetable_entries.get(last_entry_entity)
                 && let Ok(name) = station_names.get(last_entry.station)

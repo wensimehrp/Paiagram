@@ -11,7 +11,7 @@ use petgraph::{Undirected, graphmap};
 pub type IntervalGraphType = graphmap::GraphMap<Entity, Entity, Undirected>;
 
 /// A graph representing the transportation network
-#[derive(Resource, Default)]
+#[derive(Resource, Default, Deref)]
 pub struct Graph(pub IntervalGraphType);
 
 #[derive(Message)]

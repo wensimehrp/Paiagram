@@ -7,7 +7,7 @@ const CARD_SIZE: Vec2 = Vec2 {
 };
 const CARD_SPACING: f32 = 20.0;
 
-pub fn display_start(InMut(ui): InMut<Ui>) {
+pub fn show_start(InMut(ui): InMut<Ui>) {
     // show a bunch of 3:2 rectangles
     let max_width = ui.available_width();
     ui.set_max_width(max_width);
