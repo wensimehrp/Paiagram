@@ -76,6 +76,17 @@ pub struct IntervalCache {
     pub passing_entries: Vec<ActualRouteEntry>,
 }
 
+impl IntervalCache {
+    pub fn passing_vehicles<F>(&self, get_parent: F) -> impl Iterator<Item = Entity>
+    where
+        F: Fn(Entity) -> Entity,
+    {
+        self.passing_entries
+            .iter()
+            .map(move |e| get_parent(e.inner()))
+    }
+}
+
 pub struct IntervalsPlugin;
 impl Plugin for IntervalsPlugin {
     fn build(&self, app: &mut App) {
@@ -183,5 +194,12 @@ pub fn update_interval_cache(
             }
             cache.passing_entries.push(*beg);
         }
+    }
+    for invalidated in invalidated.iter().copied() {
+        let Ok(mut cache) = intervals.get_mut(invalidated) else {
+            continue;
+        };
+        cache.passing_entries.sort_unstable_by_key(|e| e.inner());
+        cache.passing_entries.dedup_by_key(|e| e.inner());
     }
 }
