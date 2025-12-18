@@ -2,7 +2,7 @@ use crate::{
     units::speed::Velocity,
     vehicles::{
         AdjustTimetableEntry, AdjustVehicle, TimetableAdjustment, VehicleAdjustment,
-        entries::TimetableEntry,
+        entries::{ActualRouteEntry, TimetableEntry, VehicleScheduleCache},
     },
 };
 use bevy::prelude::*;
@@ -72,7 +72,8 @@ pub struct Interval {
 
 #[derive(Component, Debug, Default)]
 pub struct IntervalCache {
-    passing_entries: Vec<Entity>,
+    // start of the interval.
+    pub passing_entries: Vec<ActualRouteEntry>,
 }
 
 pub struct IntervalsPlugin;
@@ -82,7 +83,10 @@ impl Plugin for IntervalsPlugin {
             .init_resource::<IntervalsResource>()
             .add_systems(
                 FixedPostUpdate,
-                update_station_cache.run_if(on_message::<AdjustTimetableEntry>),
+                (
+                    update_station_cache.run_if(on_message::<AdjustTimetableEntry>),
+                    update_interval_cache,
+                ),
             );
     }
 }
@@ -100,7 +104,7 @@ impl FromWorld for IntervalsResource {
     }
 }
 
-pub fn update_station_cache(
+fn update_station_cache(
     mut msg_entry_change: MessageReader<AdjustTimetableEntry>,
     mut msg_schedule_change: MessageReader<AdjustVehicle>,
     timetable_entries: Query<&TimetableEntry>,
@@ -141,5 +145,43 @@ pub fn update_station_cache(
         {
             station_cache.passing_entries.remove(index);
         };
+    }
+}
+
+pub fn update_interval_cache(
+    changed_schedules: Populated<&VehicleScheduleCache, Changed<VehicleScheduleCache>>,
+    mut intervals: Query<&mut IntervalCache>,
+    timetable_entries: Query<&TimetableEntry>,
+    graph: Res<Graph>,
+    mut invalidated: Local<Vec<Entity>>,
+) {
+    invalidated.clear();
+    for schedule in changed_schedules {
+        let Some(actual_route) = &schedule.actual_route else {
+            continue;
+        };
+        for w in actual_route.windows(2) {
+            let [beg, end] = w else { continue };
+            let Ok(beg_entry) = timetable_entries.get(beg.inner()) else {
+                continue;
+            };
+            let Ok(end_entry) = timetable_entries.get(end.inner()) else {
+                continue;
+            };
+            let Some(&edge) = graph.edge_weight(beg_entry.station, end_entry.station) else {
+                continue;
+            };
+            let Ok(mut cache) = intervals.get_mut(edge) else {
+                continue;
+            };
+            // now that we have the cache, invalidate the cache first
+            if !invalidated.contains(&edge) {
+                cache
+                    .passing_entries
+                    .retain(|e| matches!(e, ActualRouteEntry::Nominal(_)));
+                invalidated.push(edge)
+            }
+            cache.passing_entries.push(*beg);
+        }
     }
 }

@@ -484,6 +484,8 @@ fn handle_input_selection(
             *selected_entity = found
         }
         return;
+    } else {
+        *selected_entity = None;
     }
 }
 

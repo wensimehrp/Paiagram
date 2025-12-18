@@ -13,6 +13,16 @@ impl Distance {
     }
 }
 
+impl std::fmt::Display for Distance {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.0 <= 1000 {
+            write!(f, "{}m", self.0)
+        } else {
+            write!(f, "{}.{:03}km", self.0 / 1000, self.0 % 1000)
+        }
+    }
+}
+
 impl std::ops::Mul<i32> for Distance {
     type Output = Self;
     fn mul(self, rhs: i32) -> Self::Output {
