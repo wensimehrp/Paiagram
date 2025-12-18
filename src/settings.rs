@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
+use strum_macros::EnumIter;
 
 pub struct SettingsPlugin;
 impl Plugin for SettingsPlugin {
@@ -8,7 +9,7 @@ impl Plugin for SettingsPlugin {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, EnumIter, PartialEq, Eq)]
 pub enum TerminologyScheme {
     Paiagram,
     ChineseRailway,
@@ -16,7 +17,6 @@ pub enum TerminologyScheme {
 }
 
 impl TerminologyScheme {
-    pub const ALL: &[Self] = &[Self::Paiagram, Self::ChineseRailway, Self::JapaneseRailway];
     pub fn name(self) -> &'static str {
         match self {
             Self::Paiagram => "Paiagram",
@@ -28,20 +28,25 @@ impl TerminologyScheme {
 
 /// Languages
 /// Sorted alphabetically
-#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, EnumIter, PartialEq, Eq)]
 pub enum Language {
     EnCA,
     ZhCN,
 }
 
 impl Language {
-    pub const ALL: &[Self] = &[Self::EnCA, Self::ZhCN];
     pub fn name(self) -> &'static str {
         match self {
             Self::EnCA => "English (Canada)",
             Self::ZhCN => "中文（简体）",
         }
     }
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, EnumIter, PartialEq, Eq)]
+pub enum PinyinScheme {
+    Sogou,
+    Microsoft,
 }
 
 #[derive(Resource, Serialize, Deserialize)]

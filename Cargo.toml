@@ -28,7 +28,7 @@ egui_taffy = "0.10.0"
 instant = { version = "0.1.13", features = ["wasm-bindgen"] }
 rayon = "1.11.0"
 eframe = { version = "0.33.3", features = ["wgpu"] }
-wgpu = { version = "*", features = ["webgpu", "webgl"] }
+wgpu = { version = "*", features = ["default", "webgpu", "webgl"] }
 egui = { version = "0.33.3", default-features = false, features = ["rayon"] }
 smallvec = "1.15.1"
 either = "1.15.0"
@@ -36,6 +36,9 @@ egui_ltreeview = "0.6.0"
 egui_table = "0.6.0"
 wasm-bindgen = "0.2"
 fluent = "0.17.0"
+strum = "0.27.2"
+strum_macros = "0.27.2"
+arrayvec = "0.7.6"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.3.*", features = ["wasm_js"] }

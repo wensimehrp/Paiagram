@@ -1,5 +1,6 @@
 use super::PageCache;
 use crate::colors;
+use crate::interface::side_panel::CurrentTab;
 use crate::vehicles::entries::{ActualRouteEntry, VehicleScheduleCache};
 use crate::{
     interface::widgets::{buttons, timetable_popup},
@@ -23,8 +24,17 @@ const TICKS_PER_SECOND: i64 = 100;
 // const TICKS_PER_WORLD_UNIT: f64 = SECONDS_PER_WORLD_UNIT * TICKS_PER_SECOND as f64;
 const LINE_ANIMATION_TIME: f32 = 0.2; // 0.2 seconds
 
+// TODO: implement multi select and editing
+#[derive(PartialEq, Eq, Clone, Copy)]
+pub enum SelectedEntityType {
+    Vehicle(Entity),
+    TimetableEntry { entry: Entity, vehicle: Entity },
+    Interval((Entity, Entity)),
+    Station(Entity),
+    Map(Entity),
+}
+
 pub struct DiagramPageCache {
-    selected_line: Option<Entity>,
     background_acc_time: f32,
     interaction_acc_time: f32,
     previous_total_drag_delta: Option<f32>,
@@ -60,7 +70,6 @@ impl Default for DiagramPageCache {
             background_acc_time: 0.0,
             interaction_acc_time: 0.0,
             previous_total_drag_delta: None,
-            selected_line: None,
             tick_offset: 0,
             vertical_offset: 0.0,
             stroke: Stroke {
@@ -88,7 +97,11 @@ struct RenderedVehicle<'a> {
 }
 
 pub fn show_diagram(
-    (InMut(ui), In(displayed_line_entity)): (InMut<egui::Ui>, In<Entity>),
+    (InMut(ui), In(displayed_line_entity), InMut(mut selected_entity)): (
+        InMut<egui::Ui>,
+        In<Entity>,
+        InMut<Option<SelectedEntityType>>,
+    ),
     displayed_lines: Populated<Ref<DisplayedLine>>,
     vehicles_query: Populated<(Entity, &Name, &VehicleSchedule, &VehicleScheduleCache)>,
     entry_parents: Query<&ChildOf, With<TimetableEntry>>,
@@ -98,6 +111,7 @@ pub fn show_diagram(
     station_caches: Query<&StationCache, With<Station>>,
     mut timetable_adjustment_writer: MessageWriter<AdjustTimetableEntry>,
     mut page_cache: Local<PageCache<Entity, DiagramPageCache>>,
+    mut visible_stations_scratch: Local<Vec<(Entity, f32)>>,
     time: Res<Time>,
 ) {
     let Ok(displayed_line) = displayed_lines.get(displayed_line_entity) else {
@@ -146,7 +160,13 @@ pub fn show_diagram(
             let (vertical_visible, horizontal_visible, ticks_per_screen_unit) =
                 calculate_visible_ranges(state, &response.rect);
 
-            let visible_stations = state.get_visible_stations(vertical_visible.clone());
+            // `get_visible_stations` returns a slice borrowed from `state`, so copy it out
+            // (into a reusable buffer) to avoid holding an immutable borrow of `state`
+            // across later mutations.
+            visible_stations_scratch.clear();
+            visible_stations_scratch
+                .extend_from_slice(state.get_visible_stations(vertical_visible.clone()));
+            let visible_stations: &[(Entity, f32)] = visible_stations_scratch.as_slice();
 
             draw_station_lines(
                 state.vertical_offset,
@@ -181,18 +201,73 @@ pub fn show_diagram(
                 &state.vehicle_entities,
             );
 
-            handle_input_selection(&response, &rendered_vehicles, state);
+            if response.clicked()
+                && let Some(pos) = response.interact_pointer_pos()
+            {
+                handle_input_selection(
+                    pos,
+                    &rendered_vehicles,
+                    visible_stations,
+                    &response.rect,
+                    state.vertical_offset,
+                    state.zoom.y,
+                    &mut state.interaction_acc_time,
+                    &mut selected_entity,
+                );
+            }
 
-            draw_vehicles(&mut painter, &rendered_vehicles, state, &time, ui.ctx());
-
-            draw_selection_overlay(
-                ui,
+            draw_vehicles(
                 &mut painter,
                 &rendered_vehicles,
                 state,
-                &mut timetable_adjustment_writer,
-                &station_names,
+                selected_entity.as_mut(),
+                &time,
+                ui.ctx(),
             );
+
+            match *selected_entity {
+                None => {}
+                Some(SelectedEntityType::Vehicle(v)) => {
+                    draw_vehicle_selection_overlay(
+                        ui,
+                        &mut painter,
+                        &rendered_vehicles,
+                        state,
+                        v,
+                        &mut timetable_adjustment_writer,
+                        &station_names,
+                    );
+                }
+                Some(SelectedEntityType::TimetableEntry {
+                    entry: e,
+                    vehicle: v,
+                }) => {}
+                Some(SelectedEntityType::Interval(i)) => {
+                    draw_interval_selection_overlay(
+                        ui,
+                        &mut painter,
+                        response.rect,
+                        state.vertical_offset,
+                        state.zoom.y,
+                        i,
+                        visible_stations,
+                    );
+                }
+                Some(SelectedEntityType::Station((s))) => {
+                    draw_station_selection_overlay(
+                        ui,
+                        &mut painter,
+                        response.rect,
+                        state.vertical_offset,
+                        state.zoom.y,
+                        s,
+                        visible_stations,
+                    );
+                }
+                Some(SelectedEntityType::Map(_)) => {
+                    todo!("Do this bro")
+                }
+            }
 
             handle_navigation(ui, &response, state);
         });
@@ -322,56 +397,93 @@ where
 }
 
 fn handle_input_selection(
-    response: &response::Response,
+    pointer_pos: Pos2,
     rendered_vehicles: &[RenderedVehicle],
-    state: &mut DiagramPageCache,
+    visible_stations: &[(Entity, f32)],
+    screen_rect: &Rect,
+    vertical_offset: f32,
+    zoom_y: f32,
+    interaction_acc_time: &mut f32,
+    selected_entity: &mut Option<SelectedEntityType>,
 ) {
-    if response.clicked()
-        && let Some(pos) = response.interact_pointer_pos()
-    {
-        let mut found = false;
-        'check_selected: for vehicle in rendered_vehicles {
-            for segment in &vehicle.segments {
-                let mut points = segment
-                    .iter()
-                    .flat_map(|(a_pos, d_pos, ..)| std::iter::once(*a_pos).chain(*d_pos));
+    const VEHICLE_SELECTION_RADIUS: f32 = 7.0;
+    const STATION_SELECTION_RADIUS: f32 = VEHICLE_SELECTION_RADIUS;
+    let mut found: Option<SelectedEntityType> = None;
+    'check_selected: for vehicle in rendered_vehicles {
+        for segment in &vehicle.segments {
+            let mut points = segment
+                .iter()
+                .flat_map(|(a_pos, d_pos, ..)| std::iter::once(*a_pos).chain(*d_pos));
 
-                if let Some(mut curr) = points.next() {
-                    for next in points {
-                        let a = pos.x - curr.x;
-                        let b = pos.y - curr.y;
-                        let c = next.x - curr.x;
-                        let d = next.y - curr.y;
-                        let dot = a * c + b * d;
-                        let len_sq = c * c + d * d;
-                        if len_sq == 0.0 {
-                            continue;
-                        }
-                        let t = (dot / len_sq).clamp(0.0, 1.0);
-                        let px = curr.x + t * c;
-                        let py = curr.y + t * d;
-                        let dx = pos.x - px;
-                        let dy = pos.y - py;
-
-                        if dx * dx + dy * dy < 49.0 {
-                            if let Some(selected_line) = state.selected_line
-                                && selected_line == vehicle.entity
-                            {
-                            } else {
-                                state.interaction_acc_time = 0.0;
-                                state.selected_line = Some(vehicle.entity);
-                            }
-                            found = true;
-                            break 'check_selected;
-                        }
-                        curr = next;
+            if let Some(mut curr) = points.next() {
+                for next in points {
+                    let a = pointer_pos.x - curr.x;
+                    let b = pointer_pos.y - curr.y;
+                    let c = next.x - curr.x;
+                    let d = next.y - curr.y;
+                    let dot = a * c + b * d;
+                    let len_sq = c * c + d * d;
+                    if len_sq == 0.0 {
+                        continue;
                     }
+                    let t = (dot / len_sq).clamp(0.0, 1.0);
+                    let px = curr.x + t * c;
+                    let py = curr.y + t * d;
+                    let dx = pointer_pos.x - px;
+                    let dy = pointer_pos.y - py;
+
+                    if dx * dx + dy * dy < VEHICLE_SELECTION_RADIUS.powi(2) {
+                        found = Some(SelectedEntityType::Vehicle(vehicle.entity));
+                        break 'check_selected;
+                    }
+                    curr = next;
                 }
             }
         }
-        if !found {
-            state.selected_line = None;
+    }
+    if found.is_some() {
+        if found == *selected_entity {
+            *selected_entity = None;
+        } else {
+            *selected_entity = found
         }
+        return;
+    }
+    // Handle station lines after vehicle lines,
+    for (station_entity, height) in visible_stations {
+        let y = (*height - vertical_offset) * zoom_y + screen_rect.top();
+        if (y - STATION_SELECTION_RADIUS..y + STATION_SELECTION_RADIUS).contains(&pointer_pos.y) {
+            found = Some(SelectedEntityType::Station(*station_entity));
+            break;
+        }
+    }
+    if found.is_some() {
+        if found == *selected_entity {
+            *selected_entity = None;
+        } else {
+            *selected_entity = found
+        }
+        return;
+    }
+    for w in visible_stations.windows(2) {
+        let [(e1, h1), (e2, h2)] = w else {
+            continue;
+        };
+        let y1 = (*h1 - vertical_offset) * zoom_y + screen_rect.top();
+        let y2 = (*h2 - vertical_offset) * zoom_y + screen_rect.top();
+        let (min_y, max_y) = if y1 <= y2 { (y1, y2) } else { (y2, y1) };
+        if (min_y..max_y).contains(&pointer_pos.y) {
+            found = Some(SelectedEntityType::Interval((*e1, *e2)));
+            break;
+        }
+    }
+    if found.is_some() {
+        if found == *selected_entity {
+            *selected_entity = None;
+        } else {
+            *selected_entity = found
+        }
+        return;
     }
 }
 
@@ -379,6 +491,7 @@ fn draw_vehicles(
     painter: &mut Painter,
     rendered_vehicles: &[RenderedVehicle],
     state: &mut DiagramPageCache,
+    selected_entity: Option<&mut SelectedEntityType>,
     time: &Res<Time>,
     ctx: &egui::Context,
 ) {
@@ -386,8 +499,8 @@ fn draw_vehicles(
 
     for vehicle in rendered_vehicles {
         if selected_vehicle.is_none()
-            && let Some(selected_entity) = state.selected_line
-            && selected_entity == vehicle.entity
+            && let Some(ref selected_entity) = selected_entity
+            && matches!(selected_entity, SelectedEntityType::Vehicle(e) if *e == vehicle.entity)
         {
             selected_vehicle = Some(vehicle);
             continue;
@@ -428,20 +541,18 @@ fn draw_vehicles(
     }
 }
 
-fn draw_selection_overlay(
+fn draw_vehicle_selection_overlay(
     ui: &mut Ui,
     painter: &mut Painter,
     rendered_vehicles: &[RenderedVehicle],
     state: &mut DiagramPageCache,
+    selected_entity: Entity,
     timetable_adjustment_writer: &mut MessageWriter<AdjustTimetableEntry>,
     station_names: &Query<&Name, With<Station>>,
 ) {
-    let Some(selected_entity) = state.selected_line else {
-        return;
-    };
     let Some(vehicle) = rendered_vehicles
         .iter()
-        .find(|v| v.entity == selected_entity)
+        .find(|v| selected_entity == v.entity)
     else {
         return;
     };
@@ -785,6 +896,77 @@ fn draw_selection_overlay(
                 previous_entry = Some(fragment);
             }
         }
+    }
+}
+
+fn draw_station_selection_overlay(
+    ui: &mut Ui,
+    painter: &mut Painter,
+    screen_rect: Rect,
+    vertical_offset: f32,
+    zoom_y: f32,
+    station_entity: Entity,
+    visible_stations: &[(Entity, f32)],
+) {
+    let stations = visible_stations
+        .iter()
+        .copied()
+        .filter_map(|(s, h)| if s == station_entity { Some(h) } else { None });
+    for station in stations {
+        let station_height = (station - vertical_offset) * zoom_y + screen_rect.top();
+        painter.rect(
+            Rect::from_two_pos(
+                Pos2 {
+                    x: screen_rect.left(),
+                    y: station_height,
+                },
+                Pos2 {
+                    x: screen_rect.right(),
+                    y: station_height,
+                },
+            )
+            .expand2(Vec2 { x: 0.0, y: 7.0 }),
+            4,
+            Color32::BLUE.linear_multiply(0.5),
+            Stroke::new(1.0, Color32::BLUE),
+            egui::StrokeKind::Middle,
+        );
+    }
+}
+
+fn draw_interval_selection_overlay(
+    ui: &mut Ui,
+    painter: &mut Painter,
+    screen_rect: Rect,
+    vertical_offset: f32,
+    zoom_y: f32,
+    (s1, s2): (Entity, Entity),
+    visible_stations: &[(Entity, f32)],
+) {
+    for w in visible_stations.windows(2) {
+        let [(e1, h1), (e2, h2)] = w else { continue };
+        if !((*e1 == s1 && *e2 == s2) || (*e1 == s2 && *e2 == s1)) {
+            continue;
+        }
+        let station_height_1 = (h1 - vertical_offset) * zoom_y + screen_rect.top();
+        let station_height_2 = (h2 - vertical_offset) * zoom_y + screen_rect.top();
+        painter.rect(
+            Rect::from_two_pos(
+                Pos2 {
+                    x: screen_rect.left(),
+                    y: station_height_1,
+                },
+                Pos2 {
+                    x: screen_rect.right(),
+                    y: station_height_2,
+                },
+            )
+            .expand2(Vec2 { x: 0.0, y: 7.0 }),
+            4,
+            Color32::GREEN.linear_multiply(0.5),
+            Stroke::new(1.0, Color32::GREEN),
+            egui::StrokeKind::Middle,
+        );
     }
 }
 

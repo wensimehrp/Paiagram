@@ -1,6 +1,7 @@
 pub mod classes;
 pub mod diagram;
 pub mod displayed_lines;
+pub mod minesweeper;
 pub mod services;
 pub mod settings;
 pub mod start;

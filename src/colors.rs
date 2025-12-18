@@ -58,30 +58,6 @@ pub enum PredefinedColor {
 }
 
 impl PredefinedColor {
-    pub const ALL: [Self; 22] = [
-        Self::Red,
-        Self::Orange,
-        Self::Amber,
-        Self::Yellow,
-        Self::Lime,
-        Self::Green,
-        Self::Emerald,
-        Self::Teal,
-        Self::Cyan,
-        Self::Sky,
-        Self::Blue,
-        Self::Indigo,
-        Self::Violet,
-        Self::Purple,
-        Self::Fuchsia,
-        Self::Pink,
-        Self::Rose,
-        Self::Slate,
-        Self::Gray,
-        Self::Zinc,
-        Self::Neutral,
-        Self::Stone,
-    ];
     // use 700 shade if light, otherwise use 400
     // neutral is special
     pub const fn get(self, light: bool) -> Color32 {

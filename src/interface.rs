@@ -1,15 +1,21 @@
 mod about;
+mod side_panel;
 mod tabs;
 mod widgets;
 
-use crate::colors;
+use crate::{
+    colors,
+    interface::tabs::{diagram::SelectedEntityType, tree_view},
+};
 use bevy::{
     color::palettes::tailwind::{EMERALD_600, EMERALD_700, EMERALD_800, EMERALD_900, GRAY_900},
     prelude::*,
 };
-use egui::{self, Color32, CornerRadius, Frame, Margin, Stroke};
+use egui::{self, Color32, CornerRadius, Frame, Margin, ScrollArea, Stroke};
 use egui_dock::{DockArea, DockState};
 use std::sync::Arc;
+use strum::IntoEnumIterator;
+use strum_macros::EnumIter;
 
 use crate::interface::tabs::{displayed_lines, start};
 
@@ -19,6 +25,7 @@ pub struct InterfacePlugin;
 impl Plugin for InterfacePlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<UiCommand>()
+            .init_resource::<MiscUiState>()
             .insert_resource(UiState::new())
             .insert_resource(StatusBarState::default())
             .add_systems(Update, modify_dock_state.run_if(on_message::<UiCommand>));
@@ -29,6 +36,49 @@ impl Plugin for InterfacePlugin {
 #[derive(Resource)]
 struct UiState {
     dock_state: DockState<AppTab>,
+}
+
+#[derive(Resource)]
+pub struct MiscUiState {
+    is_dark_mode: bool,
+    initialized: bool,
+    frame_times: egui::util::History<f32>,
+    workspace: CurrentWorkspace,
+    side_panel_tab: side_panel::CurrentTab,
+    selected_entity_type: Option<tabs::diagram::SelectedEntityType>,
+    modal_open: bool,
+}
+
+impl Default for MiscUiState {
+    fn default() -> Self {
+        let max_age: f32 = 1.0;
+        let max_len = (max_age * 300.0).round() as usize;
+        Self {
+            is_dark_mode: true,
+            frame_times: egui::util::History::new(0..max_len, max_age),
+            initialized: false,
+            side_panel_tab: side_panel::CurrentTab::default(),
+            selected_entity_type: None,
+            workspace: CurrentWorkspace::default(),
+            modal_open: false,
+        }
+    }
+}
+
+impl MiscUiState {
+    pub fn on_new_frame(&mut self, now: f64, previous_frame_time: Option<f32>) {
+        let previous_frame_time = previous_frame_time.unwrap_or_default();
+        if let Some(latest) = self.frame_times.latest_mut() {
+            *latest = previous_frame_time; // rewrite history now that we know
+        }
+        self.frame_times.add(now, previous_frame_time); // projected
+    }
+    pub fn mean_frame_time(&self) -> f32 {
+        self.frame_times.average().unwrap_or_default()
+    }
+    pub fn fps(&self) -> f32 {
+        1.0 / self.frame_times.mean_time_interval().unwrap_or_default()
+    }
 }
 
 #[derive(Default, Resource)]
@@ -85,6 +135,7 @@ pub enum UiCommand {
 /// and is constructed each frame.
 struct AppTabViewer<'w> {
     world: &'w mut World,
+    selected_entity_type: &'w mut Option<tabs::diagram::SelectedEntityType>,
 }
 
 impl<'w> egui_dock::TabViewer for AppTabViewer<'w> {
@@ -111,7 +162,7 @@ impl<'w> egui_dock::TabViewer for AppTabViewer<'w> {
             AppTab::Diagram(displayed_line_entity) => {
                 if let Err(e) = self.world.run_system_cached_with(
                     tabs::diagram::show_diagram,
-                    (ui, *displayed_line_entity),
+                    (ui, *displayed_line_entity, self.selected_entity_type),
                 ) {
                     error!("UI Error: {}", e)
                 }
@@ -181,8 +232,9 @@ impl<'w> egui_dock::TabViewer for AppTabViewer<'w> {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, EnumIter)]
 pub enum CurrentWorkspace {
+    Settings,
     #[default]
     Start,
     Edit,
@@ -190,12 +242,12 @@ pub enum CurrentWorkspace {
 }
 
 impl CurrentWorkspace {
-    const ALL: [Self; 3] = [Self::Start, Self::Edit, Self::Publish];
     fn name(self) -> &'static str {
         match self {
             Self::Start => "Start",
             Self::Edit => "Edit",
             Self::Publish => "Publish",
+            Self::Settings => "⚙",
         }
     }
 }
@@ -203,16 +255,21 @@ impl CurrentWorkspace {
 /// Main function to show the user interface
 pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> {
     ctx.request_repaint_after(std::time::Duration::from_millis(500));
-    if !app.initialized {
+    let mut mus = app
+        .bevy_app
+        .world_mut()
+        .remove_resource::<MiscUiState>()
+        .unwrap();
+    if !mus.initialized {
         ctx.style_mut(|style| {
             style.spacing.window_margin = egui::Margin::same(2);
             style.interaction.selectable_labels = false;
         });
         apply_custom_fonts(&ctx);
-        app.initialized = true;
+        mus.initialized = true;
     }
-    let fps = app.fps();
-    let frame_time = app.mean_frame_time();
+    let fps = mus.fps();
+    let frame_time = mus.mean_frame_time();
     app.bevy_app
         .world_mut()
         .resource_scope(|world, mut ui_state: Mut<UiState>| {
@@ -220,20 +277,20 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
                 .frame(Frame::side_top_panel(&ctx.style()))
                 .show(&ctx, |ui| {
                     ui.horizontal(|ui| {
-                        for v in CurrentWorkspace::ALL {
-                            ui.selectable_value(&mut app.workspace, v, v.name());
+                        for v in CurrentWorkspace::iter() {
+                            ui.selectable_value(&mut mus.workspace, v, v.name());
                         }
-                        ui.checkbox(&mut app.is_dark_mode, "Dark Mode")
+                        ui.checkbox(&mut mus.is_dark_mode, "Dark Mode")
                             .changed()
                             .then(|| {
-                                if app.is_dark_mode {
+                                if mus.is_dark_mode {
                                     ctx.set_theme(egui::Theme::Dark);
                                 } else {
                                     ctx.set_theme(egui::Theme::Light);
                                 }
                             });
                         world
-                            .run_system_cached_with(about::show_about, (ui, &mut app.modal_open))
+                            .run_system_cached_with(about::show_about, (ui, &mut mus.modal_open))
                             .unwrap();
                     })
                 });
@@ -267,7 +324,7 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
                 s.visuals.widgets.noninteractive.bg_stroke.color = old_bg_stroke_color
             });
 
-            match app.workspace {
+            match mus.workspace {
                 CurrentWorkspace::Start => {
                     egui::CentralPanel::default()
                         .frame(
@@ -281,11 +338,48 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
                 }
                 CurrentWorkspace::Edit => {
                     egui::SidePanel::left("TreeView").show(&ctx, |ui| {
-                        egui::ScrollArea::both().show(ui, |ui| {
-                            world
-                                .run_system_cached_with(tabs::tree_view::show_tree_view, ui)
-                                .unwrap();
-                        });
+                        side_panel::show_side_panel(ui, &mut mus.side_panel_tab);
+                        match (mus.side_panel_tab, mus.selected_entity_type) {
+                            (side_panel::CurrentTab::Edit, _) => {
+                                ScrollArea::both().show(ui, |ui| {
+                                    world.run_system_cached_with(tree_view::show_tree_view, ui)
+                                });
+                            }
+                            (
+                                side_panel::CurrentTab::Details,
+                                Some(SelectedEntityType::Station(station_entity)),
+                            ) => {
+                                ScrollArea::vertical().show(ui, |ui| {
+                                    world.run_system_cached_with(
+                                        side_panel::station_stats::show_station_stats,
+                                        (ui, station_entity),
+                                    )
+                                });
+                            }
+                            (
+                                side_panel::CurrentTab::Details,
+                                Some(SelectedEntityType::Vehicle(vehicle_entity)),
+                            ) => {
+                                ScrollArea::vertical().show(ui, |ui| {
+                                    world.run_system_cached_with(
+                                        side_panel::vehicle_stats::show_vehicle_stats,
+                                        (ui, vehicle_entity),
+                                    )
+                                });
+                            }
+                            (
+                                side_panel::CurrentTab::Details,
+                                Some(SelectedEntityType::Interval(interval)),
+                            ) => {
+                                ScrollArea::vertical().show(ui, |ui| {
+                                    world.run_system_cached_with(
+                                        side_panel::interval_stats::show_interval_stats,
+                                        (ui, interval),
+                                    )
+                                });
+                            }
+                            (side_panel::CurrentTab::Details, _) => {}
+                        }
                     });
 
                     egui::CentralPanel::default()
@@ -303,21 +397,22 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
                                 color: Color32::from_additive_luminance(30),
                                 width: 1.0,
                             };
-                            for xi in 0..=(ui.available_size().x / LINE_SPACING) as usize {
-                                painter.vline(
-                                    xi as f32 * LINE_SPACING + max_rect.min.x,
-                                    max_rect.min.y..=max_rect.max.y,
-                                    LINE_STROKE,
-                                );
+                            let x_max = (ui.available_size().x / LINE_SPACING) as usize;
+                            let y_max = (ui.available_size().y / LINE_SPACING) as usize;
+                            for xi in 0..=x_max {
+                                let mut x = xi as f32 * LINE_SPACING + max_rect.min.x;
+                                LINE_STROKE.round_center_to_pixel(ui.pixels_per_point(), &mut x);
+                                painter.vline(x, max_rect.min.y..=max_rect.max.y, LINE_STROKE);
                             }
-                            for yi in 0..=(ui.available_size().y / LINE_SPACING) as usize {
-                                painter.hline(
-                                    max_rect.min.x..=max_rect.max.x,
-                                    yi as f32 * LINE_SPACING + max_rect.min.y,
-                                    LINE_STROKE,
-                                );
+                            for yi in 0..=y_max {
+                                let mut y = yi as f32 * LINE_SPACING + max_rect.min.y;
+                                LINE_STROKE.round_center_to_pixel(ui.pixels_per_point(), &mut y);
+                                painter.hline(max_rect.min.x..=max_rect.max.x, y, LINE_STROKE);
                             }
-                            let mut tab_viewer = AppTabViewer { world: world };
+                            let mut tab_viewer = AppTabViewer {
+                                world: world,
+                                selected_entity_type: &mut mus.selected_entity_type,
+                            };
                             let mut style = egui_dock::Style::from_egui(ui.style());
                             style.tab.tab_body.inner_margin = Margin::same(0);
                             style.tab.tab_body.corner_radius = CornerRadius::ZERO;
@@ -336,8 +431,16 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
                             ui.centered_and_justified(|ui| ui.heading("Under Construction..."))
                         });
                 }
+                CurrentWorkspace::Settings => {
+                    egui::CentralPanel::default()
+                        .frame(Frame::central_panel(&ctx.style()))
+                        .show(&ctx, |ui| {
+                            world.run_system_cached_with(tabs::settings::show_settings, ui);
+                        });
+                }
             }
         });
+    app.bevy_app.world_mut().insert_resource(mus);
     Ok(())
 }
 

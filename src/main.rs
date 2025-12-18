@@ -14,13 +14,9 @@ mod troubleshoot;
 mod units;
 mod vehicles;
 
+// TODO: make them resources instead of stuff in the app
 struct PaiagramApp {
     bevy_app: App,
-    is_dark_mode: bool,
-    initialized: bool,
-    frame_times: egui::util::History<f32>,
-    workspace: interface::CurrentWorkspace,
-    modal_open: bool,
 }
 
 impl PaiagramApp {
@@ -41,35 +37,16 @@ impl PaiagramApp {
         let args = Cli::parse();
         app.insert_resource(args);
         app.add_systems(Startup, handle_args);
-        let max_age: f32 = 1.0;
-        let max_len = (max_age * 300.0).round() as usize;
-        Self {
-            bevy_app: app,
-            is_dark_mode: true,
-            frame_times: egui::util::History::new(0..max_len, max_age),
-            initialized: false,
-            workspace: interface::CurrentWorkspace::default(),
-            modal_open: false,
-        }
-    }
-    pub fn on_new_frame(&mut self, now: f64, previous_frame_time: Option<f32>) {
-        let previous_frame_time = previous_frame_time.unwrap_or_default();
-        if let Some(latest) = self.frame_times.latest_mut() {
-            *latest = previous_frame_time; // rewrite history now that we know
-        }
-        self.frame_times.add(now, previous_frame_time); // projected
-    }
-    pub fn mean_frame_time(&self) -> f32 {
-        self.frame_times.average().unwrap_or_default()
-    }
-    pub fn fps(&self) -> f32 {
-        1.0 / self.frame_times.mean_time_interval().unwrap_or_default()
+        Self { bevy_app: app }
     }
 }
 
 impl eframe::App for PaiagramApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
-        self.on_new_frame(ctx.input(|i| i.time), frame.info().cpu_usage);
+        self.bevy_app
+            .world_mut()
+            .resource_mut::<interface::MiscUiState>()
+            .on_new_frame(ctx.input(|i| i.time), frame.info().cpu_usage);
         self.bevy_app.update();
         if let Err(e) = interface::show_ui(self, ctx) {
             error!("UI Error: {:?}", e);
