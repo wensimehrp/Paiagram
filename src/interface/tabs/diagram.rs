@@ -928,7 +928,7 @@ fn draw_station_selection_overlay(
                     y: station_height,
                 },
             )
-            .expand2(Vec2 { x: 0.0, y: 7.0 }),
+            .expand2(Vec2 { x: -1.0, y: 7.0 }),
             4,
             Color32::BLUE.linear_multiply(0.5),
             Stroke::new(1.0, Color32::BLUE),
@@ -964,7 +964,7 @@ fn draw_interval_selection_overlay(
                     y: station_height_2,
                 },
             )
-            .expand2(Vec2 { x: 0.0, y: 7.0 }),
+            .expand2(Vec2 { x: -1.0, y: 7.0 }),
             4,
             Color32::GREEN.linear_multiply(0.5),
             Stroke::new(1.0, Color32::GREEN),

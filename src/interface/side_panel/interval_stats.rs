@@ -53,6 +53,7 @@ pub fn show_interval_stats(
     if cache.is_changed() {
         update_vehicle_buffer(passing_vehicles_buffer)
     }
+    // TODO: move the strings into their separate buffers;
     egui::Grid::new("interval_info_grid")
         .num_columns(2)
         .striped(true)

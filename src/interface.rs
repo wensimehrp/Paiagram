@@ -16,6 +16,7 @@ use egui_dock::{DockArea, DockState};
 use std::sync::Arc;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
+use wasm_bindgen::prelude::wasm_bindgen;
 
 use crate::interface::tabs::{displayed_lines, start};
 
@@ -47,6 +48,7 @@ pub struct MiscUiState {
     side_panel_tab: side_panel::CurrentTab,
     selected_entity_type: Option<tabs::diagram::SelectedEntityType>,
     modal_open: bool,
+    fullscreened: bool,
 }
 
 impl Default for MiscUiState {
@@ -61,6 +63,7 @@ impl Default for MiscUiState {
             selected_entity_type: None,
             workspace: CurrentWorkspace::default(),
             modal_open: false,
+            fullscreened: false,
         }
     }
 }
@@ -252,6 +255,23 @@ impl CurrentWorkspace {
     }
 }
 
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen(inline_js = r#"
+export function go_fullscreen(id) {
+    const el = document.getElementById(id);
+    if (el?.requestFullscreen) el.requestFullscreen();
+}
+export function exit_fullscreen() {
+    if (document.fullscreenElement) {
+        document.exitFullscreen();
+    }
+}
+"#)]
+unsafe extern "C" {
+    fn go_fullscreen(id: &str);
+    fn exit_fullscreen();
+}
+
 /// Main function to show the user interface
 pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> {
     ctx.request_repaint_after(std::time::Duration::from_millis(500));
@@ -289,6 +309,25 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
                                     ctx.set_theme(egui::Theme::Light);
                                 }
                             });
+                        #[cfg(not(target_arch = "wasm32"))]
+                        if ui.button("Fullscreen").clicked() {
+                            ui.ctx()
+                                .send_viewport_cmd(egui::ViewportCommand::Fullscreen(
+                                    !mus.fullscreened,
+                                ));
+                            mus.fullscreened = !mus.fullscreened;
+                        }
+                        #[cfg(target_arch = "wasm32")]
+                        if ui.button("Fullscreen").clicked() {
+                            unsafe {
+                                if mus.fullscreened {
+                                    exit_fullscreen();
+                                } else {
+                                    go_fullscreen("paiagram_canvas");
+                                }
+                            }
+                            mus.fullscreened = !mus.fullscreened;
+                        }
                         world
                             .run_system_cached_with(about::show_about, (ui, &mut mus.modal_open))
                             .unwrap();

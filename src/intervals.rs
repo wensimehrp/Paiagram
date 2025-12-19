@@ -196,7 +196,7 @@ pub fn update_interval_cache(
                     .retain(|e| matches!(e, ActualRouteEntry::Nominal(_)));
                 invalidated.push(edge)
             }
-            cache.passing_entries.push(*beg);
+            cache.passing_entries.push(*end);
         }
     }
     for invalidated in invalidated.iter().copied() {
