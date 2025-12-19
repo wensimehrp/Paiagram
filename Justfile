@@ -35,7 +35,7 @@ prepare-pages:
     cp -r web/* web-out/
     mkdir -p web-out/nightly/api-docs web-out/nightly/docs
     cp -r target/doc/* web-out/nightly/api-docs/
-    cp wasm-out/* web-out/nightly/
+    cp -r wasm-out/* web-out/nightly/
     cp docs/index.* web-out/nightly/docs/
     cp docs/style.css web-out/nightly/docs/
 
