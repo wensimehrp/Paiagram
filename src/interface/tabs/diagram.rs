@@ -134,12 +134,13 @@ pub fn show_diagram(
     ui.style_mut().visuals.window_stroke.width = 0.0;
 
     if entries_updated {
-        state.vehicle_entities = displayed_line
+        for station in displayed_line
             .stations
             .iter()
             .filter_map(|(s, _)| station_caches.get(*s).ok())
-            .flat_map(|c| c.passing_vehicles(|e| entry_parents.get(e).ok()))
-            .collect::<Vec<_>>();
+        {
+            station.passing_vehicles(&mut state.vehicle_entities, |e| entry_parents.get(e).ok());
+        }
         state.vehicle_entities.sort();
         state.vehicle_entities.dedup();
     }

@@ -38,19 +38,18 @@ pub struct StationCache {
 }
 
 impl StationCache {
-    pub fn passing_vehicles<'a, F>(&self, mut get_parent: F) -> Vec<Entity>
+    /// WARNING: this method does not automatically clear vehicle entities. Clear before calling
+    /// This is for chaining
+    pub fn passing_vehicles<'a, F>(&self, buffer: &mut Vec<Entity>, mut get_parent: F)
     where
-        F: FnMut(Entity) -> Option<&'a ChildOf> + 'a,
+        F: FnMut(Entity) -> Option<&'a ChildOf>,
     {
-        let mut iterated = Vec::new();
-        for entry_entity in self.passing_entries.iter().copied() {
-            if let Some(parent_entity) = get_parent(entry_entity)
-                && !iterated.contains(&parent_entity.0)
-            {
-                iterated.push(parent_entity.0)
-            }
+        for entity in self.passing_entries.iter().cloned() {
+            let Some(vehicle) = get_parent(entity) else {
+                continue
+            };
+            buffer.push(vehicle.0)
         }
-        iterated
     }
 }
 
@@ -77,13 +76,18 @@ pub struct IntervalCache {
 }
 
 impl IntervalCache {
-    pub fn passing_vehicles<F>(&self, get_parent: F) -> impl Iterator<Item = Entity>
+    /// WARNING: this method does not automatically clear vehicle entities. Clear before calling
+    /// This is for chaining
+    pub fn passing_vehicles<'a, F>(&self, buffer: &mut Vec<Entity>, mut get_parent: F)
     where
-        F: Fn(Entity) -> Entity,
+        F: FnMut(Entity) -> Option<&'a ChildOf>,
     {
-        self.passing_entries
-            .iter()
-            .map(move |e| get_parent(e.inner()))
+        for entity in self.passing_entries.iter().cloned() {
+            let Some(vehicle) = get_parent(entity.inner()) else {
+                continue
+            };
+            buffer.push(vehicle.0)
+        }
     }
 }
 
