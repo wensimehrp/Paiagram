@@ -1122,7 +1122,10 @@ fn draw_time_lines(
             continue;
         }
         let mut current_stroke = stroke;
-        current_stroke.color = current_stroke.color.gamma_multiply(strength as f32);
+        if strength.is_finite() {
+            // strange bug here
+            current_stroke.color = current_stroke.color.gamma_multiply(strength as f32);
+        }
         current_stroke.width = 0.5;
         while tick <= visible_ticks.end {
             tick += *spacing;

@@ -8,14 +8,15 @@ use crate::{
     interface::tabs::{diagram::SelectedEntityType, tree_view},
 };
 use bevy::{
-    color::palettes::tailwind::{EMERALD_600, EMERALD_700, EMERALD_800, EMERALD_900, GRAY_900},
+    color::palettes::tailwind::{EMERALD_700, EMERALD_800, GRAY_900},
     prelude::*,
 };
-use egui::{self, Color32, CornerRadius, Frame, Margin, ScrollArea, Stroke};
+use egui::{self, Color32, CornerRadius, Frame, Margin, ScrollArea, Stroke, Ui};
 use egui_dock::{DockArea, DockState};
 use std::sync::Arc;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
+#[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::wasm_bindgen;
 
 use crate::interface::tabs::{displayed_lines, start};
@@ -48,6 +49,7 @@ pub struct MiscUiState {
     side_panel_tab: side_panel::CurrentTab,
     selected_entity_type: Option<tabs::diagram::SelectedEntityType>,
     modal_open: bool,
+    side_panel_on_left: bool,
     fullscreened: bool,
 }
 
@@ -63,6 +65,7 @@ impl Default for MiscUiState {
             selected_entity_type: None,
             workspace: CurrentWorkspace::default(),
             modal_open: false,
+            side_panel_on_left: true,
             fullscreened: false,
         }
     }
@@ -288,7 +291,6 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
         apply_custom_fonts(&ctx);
         mus.initialized = true;
     }
-    let fps = mus.fps();
     let frame_time = mus.mean_frame_time();
     app.bevy_app
         .world_mut()
@@ -300,17 +302,15 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
                         for v in CurrentWorkspace::iter() {
                             ui.selectable_value(&mut mus.workspace, v, v.name());
                         }
-                        ui.checkbox(&mut mus.is_dark_mode, "Dark Mode")
-                            .changed()
-                            .then(|| {
-                                if mus.is_dark_mode {
-                                    ctx.set_theme(egui::Theme::Dark);
-                                } else {
-                                    ctx.set_theme(egui::Theme::Light);
-                                }
-                            });
+                        ui.checkbox(&mut mus.is_dark_mode, "D").changed().then(|| {
+                            if mus.is_dark_mode {
+                                ctx.set_theme(egui::Theme::Dark);
+                            } else {
+                                ctx.set_theme(egui::Theme::Light);
+                            }
+                        });
                         #[cfg(not(target_arch = "wasm32"))]
-                        if ui.button("Fullscreen").clicked() {
+                        if ui.button("F").clicked() {
                             ui.ctx()
                                 .send_viewport_cmd(egui::ViewportCommand::Fullscreen(
                                     !mus.fullscreened,
@@ -318,7 +318,7 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
                             mus.fullscreened = !mus.fullscreened;
                         }
                         #[cfg(target_arch = "wasm32")]
-                        if ui.button("Fullscreen").clicked() {
+                        if ui.button("F").clicked() {
                             unsafe {
                                 if mus.fullscreened {
                                     exit_fullscreen();
@@ -327,6 +327,9 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
                                 }
                             }
                             mus.fullscreened = !mus.fullscreened;
+                        }
+                        if ui.button("S").clicked() {
+                            mus.side_panel_on_left = !mus.side_panel_on_left;
                         }
                         world
                             .run_system_cached_with(about::show_about, (ui, &mut mus.modal_open))
@@ -376,7 +379,7 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
                         });
                 }
                 CurrentWorkspace::Edit => {
-                    egui::SidePanel::left("TreeView").show(&ctx, |ui| {
+                    let supplementary_panel_content = |ui: &mut Ui| {
                         side_panel::show_side_panel(ui, &mut mus.side_panel_tab);
                         match (mus.side_panel_tab, mus.selected_entity_type) {
                             (side_panel::CurrentTab::Edit, _) => {
@@ -419,7 +422,18 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
                             }
                             (side_panel::CurrentTab::Details, _) => {}
                         }
-                    });
+                    };
+
+                    if mus.side_panel_on_left {
+                        egui::SidePanel::left("TreeView")
+                            .default_width(ctx.used_size().x / 4.0)
+                            .show(&ctx, supplementary_panel_content);
+                    } else {
+                        egui::TopBottomPanel::bottom("TreeView")
+                            .resizable(false)
+                            .exact_height(ctx.used_size().y / 2.5)
+                            .show(&ctx, supplementary_panel_content);
+                    }
 
                     egui::CentralPanel::default()
                         .frame(egui::Frame::central_panel(&ctx.style()).inner_margin(Margin::ZERO))
@@ -474,7 +488,11 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
                     egui::CentralPanel::default()
                         .frame(Frame::central_panel(&ctx.style()))
                         .show(&ctx, |ui| {
-                            world.run_system_cached_with(tabs::settings::show_settings, ui);
+                            if let Err(e) =
+                                world.run_system_cached_with(tabs::settings::show_settings, ui)
+                            {
+                                error!("UI error: {}", e);
+                            };
                         });
                 }
             }
