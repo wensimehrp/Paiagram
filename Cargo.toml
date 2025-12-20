@@ -39,6 +39,7 @@ fluent = "0.17.0"
 strum = "0.27.2"
 strum_macros = "0.27.2"
 arrayvec = "0.7.6"
+bitvec = "1.0.1"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.3.*", features = ["wasm_js"] }

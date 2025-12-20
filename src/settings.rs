@@ -32,6 +32,7 @@ impl TerminologyScheme {
 pub enum Language {
     EnCA,
     ZhCN,
+    JaJP,
 }
 
 impl Language {
@@ -39,6 +40,7 @@ impl Language {
         match self {
             Self::EnCA => "English (Canada)",
             Self::ZhCN => "中文（简体）",
+            Self::JaJP => "Japanese"
         }
     }
 }

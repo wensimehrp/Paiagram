@@ -49,8 +49,29 @@ pub struct MiscUiState {
     side_panel_tab: side_panel::CurrentTab,
     selected_entity_type: Option<tabs::diagram::SelectedEntityType>,
     modal_open: bool,
-    side_panel_on_left: bool,
     fullscreened: bool,
+    supplementary_panel_state: SupplementaryPanelState,
+}
+
+#[derive(Default)]
+pub struct SupplementaryPanelState {
+    expanded: bool,
+    is_on_bottom: bool,
+    /// The width if is on left, or the height if is on bottom.
+    primary_length: f32,
+}
+
+impl SupplementaryPanelState {
+    fn animate(&mut self, target: f32, dt: f32) {
+        const SPEED: f32 = 300.0; // pixels per second
+        let diff = target - self.primary_length;
+        let step = SPEED * dt;
+        if diff.abs() <= step {
+            self.primary_length = target;
+        } else {
+            self.primary_length += diff.signum() * step;
+        }
+    }
 }
 
 impl Default for MiscUiState {
@@ -65,8 +86,8 @@ impl Default for MiscUiState {
             selected_entity_type: None,
             workspace: CurrentWorkspace::default(),
             modal_open: false,
-            side_panel_on_left: true,
             fullscreened: false,
+            supplementary_panel_state: SupplementaryPanelState::default(),
         }
     }
 }
@@ -329,7 +350,12 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
                             mus.fullscreened = !mus.fullscreened;
                         }
                         if ui.button("S").clicked() {
-                            mus.side_panel_on_left = !mus.side_panel_on_left;
+                            mus.supplementary_panel_state.is_on_bottom =
+                                !mus.supplementary_panel_state.is_on_bottom;
+                        }
+                        if ui.button("A").clicked() {
+                            mus.supplementary_panel_state.expanded =
+                                !mus.supplementary_panel_state.expanded;
                         }
                         world
                             .run_system_cached_with(about::show_about, (ui, &mut mus.modal_open))
@@ -424,15 +450,23 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
                         }
                     };
 
-                    if mus.side_panel_on_left {
-                        egui::SidePanel::left("TreeView")
-                            .default_width(ctx.used_size().x / 4.0)
-                            .show(&ctx, supplementary_panel_content);
-                    } else {
+                    if mus.supplementary_panel_state.is_on_bottom {
                         egui::TopBottomPanel::bottom("TreeView")
                             .resizable(false)
                             .exact_height(ctx.used_size().y / 2.5)
-                            .show(&ctx, supplementary_panel_content);
+                            .show_animated(
+                                ctx,
+                                mus.supplementary_panel_state.expanded,
+                                supplementary_panel_content,
+                            );
+                    } else {
+                        egui::SidePanel::left("TreeView")
+                            .default_width(ctx.used_size().x / 4.0)
+                            .show_animated(
+                                &ctx,
+                                mus.supplementary_panel_state.expanded,
+                                supplementary_panel_content,
+                            );
                     }
 
                     egui::CentralPanel::default()
