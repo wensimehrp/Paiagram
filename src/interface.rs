@@ -14,8 +14,6 @@ use bevy::{
 use egui::{self, Color32, CornerRadius, Frame, Margin, ScrollArea, Stroke, Ui};
 use egui_dock::{DockArea, DockState};
 use std::sync::Arc;
-use strum::IntoEnumIterator;
-use strum_macros::EnumIter;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::wasm_bindgen;
 
@@ -45,7 +43,6 @@ pub struct MiscUiState {
     is_dark_mode: bool,
     initialized: bool,
     frame_times: egui::util::History<f32>,
-    workspace: CurrentWorkspace,
     side_panel_tab: side_panel::CurrentTab,
     selected_entity_type: Option<tabs::diagram::SelectedEntityType>,
     modal_open: bool,
@@ -57,21 +54,6 @@ pub struct MiscUiState {
 pub struct SupplementaryPanelState {
     expanded: bool,
     is_on_bottom: bool,
-    /// The width if is on left, or the height if is on bottom.
-    primary_length: f32,
-}
-
-impl SupplementaryPanelState {
-    fn animate(&mut self, target: f32, dt: f32) {
-        const SPEED: f32 = 300.0; // pixels per second
-        let diff = target - self.primary_length;
-        let step = SPEED * dt;
-        if diff.abs() <= step {
-            self.primary_length = target;
-        } else {
-            self.primary_length += diff.signum() * step;
-        }
-    }
 }
 
 impl Default for MiscUiState {
@@ -84,7 +66,6 @@ impl Default for MiscUiState {
             initialized: false,
             side_panel_tab: side_panel::CurrentTab::default(),
             selected_entity_type: None,
-            workspace: CurrentWorkspace::default(),
             modal_open: false,
             fullscreened: false,
             supplementary_panel_state: SupplementaryPanelState::default(),
@@ -127,7 +108,7 @@ fn modify_dock_state(mut dock_state: ResMut<UiState>, mut msg_reader: MessageRea
 impl UiState {
     fn new() -> Self {
         Self {
-            dock_state: DockState::new(vec![]),
+            dock_state: DockState::new(vec![AppTab::Start]),
         }
     }
     /// Open a tab if it is not already open, or focus it if it is
@@ -150,6 +131,9 @@ pub enum AppTab {
     StationTimetable(Entity),
     Diagram(Entity),
     DisplayedLines,
+    Settings,
+    Start,
+    Publish,
 }
 
 /// User interface commands sent between systems
@@ -169,7 +153,7 @@ impl<'w> egui_dock::TabViewer for AppTabViewer<'w> {
     type Tab = AppTab;
 
     fn ui(&mut self, ui: &mut egui::Ui, tab: &mut Self::Tab) {
-        match tab {
+        let res = match tab {
             AppTab::Vehicle(entity) => {
                 if let Err(e) = self
                     .world
@@ -202,6 +186,22 @@ impl<'w> egui_dock::TabViewer for AppTabViewer<'w> {
                     error!("UI Error: {}", e)
                 }
             }
+            AppTab::Settings => {
+                if let Err(e) = self
+                    .world
+                    .run_system_cached_with(tabs::settings::show_settings, ui)
+                {
+                    error!("Ui Error: {}", e)
+                }
+            }
+            AppTab::Start => {
+                if let Err(e) = self.world.run_system_cached_with(start::show_start, ui) {
+                    error!("Ui Error: {}", e)
+                }
+            }
+            AppTab::Publish => {
+                // nothing here
+            }
         };
     }
 
@@ -225,6 +225,9 @@ impl<'w> egui_dock::TabViewer for AppTabViewer<'w> {
             }
             AppTab::Diagram(_) => "Diagram".into(),
             AppTab::DisplayedLines => "Available Lines".into(),
+            AppTab::Settings => "Settings".into(),
+            AppTab::Start => "Start".into(),
+            AppTab::Publish => "Publish".into(),
         }
     }
 
@@ -245,6 +248,9 @@ impl<'w> egui_dock::TabViewer for AppTabViewer<'w> {
             AppTab::StationTimetable(_) => [true; 2],
             AppTab::Diagram(_) => [false; 2],
             AppTab::DisplayedLines => [false; 2],
+            AppTab::Settings => [true; 2],
+            AppTab::Start => [true; 2],
+            AppTab::Publish => [true; 2],
         }
     }
 
@@ -255,26 +261,6 @@ impl<'w> egui_dock::TabViewer for AppTabViewer<'w> {
             s.clear();
             s.push_str("🖳 ");
             s.push_str(widget_text.text());
-        }
-    }
-}
-
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, EnumIter)]
-pub enum CurrentWorkspace {
-    Settings,
-    #[default]
-    Start,
-    Edit,
-    Publish,
-}
-
-impl CurrentWorkspace {
-    fn name(self) -> &'static str {
-        match self {
-            Self::Start => "Start",
-            Self::Edit => "Edit",
-            Self::Publish => "Publish",
-            Self::Settings => "⚙",
         }
     }
 }
@@ -320,9 +306,6 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
                 .frame(Frame::side_top_panel(&ctx.style()))
                 .show(&ctx, |ui| {
                     ui.horizontal(|ui| {
-                        for v in CurrentWorkspace::iter() {
-                            ui.selectable_value(&mut mus.workspace, v, v.name());
-                        }
                         ui.checkbox(&mut mus.is_dark_mode, "D").changed().then(|| {
                             if mus.is_dark_mode {
                                 ctx.set_theme(egui::Theme::Dark);
@@ -392,144 +375,112 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
                 s.visuals.widgets.noninteractive.bg_stroke.color = old_bg_stroke_color
             });
 
-            match mus.workspace {
-                CurrentWorkspace::Start => {
-                    egui::CentralPanel::default()
-                        .frame(
-                            egui::Frame::new()
-                                .inner_margin(egui::Margin::same(0))
-                                .fill(ctx.theme().default_visuals().panel_fill),
-                        )
-                        .show(&ctx, |ui| {
-                            world.run_system_cached_with(start::show_start, ui)
+            let supplementary_panel_content = |ui: &mut Ui| {
+                // Edit options change based on the currently focused tab
+                side_panel::show_side_panel(ui, &mut mus.side_panel_tab);
+                match (mus.side_panel_tab, mus.selected_entity_type) {
+                    (side_panel::CurrentTab::Edit, _) => {
+                        ScrollArea::both().show(ui, |ui| {
+                            world.run_system_cached_with(tree_view::show_tree_view, ui)
                         });
-                }
-                CurrentWorkspace::Edit => {
-                    let supplementary_panel_content = |ui: &mut Ui| {
-                        side_panel::show_side_panel(ui, &mut mus.side_panel_tab);
-                        match (mus.side_panel_tab, mus.selected_entity_type) {
-                            (side_panel::CurrentTab::Edit, _) => {
-                                ScrollArea::both().show(ui, |ui| {
-                                    world.run_system_cached_with(tree_view::show_tree_view, ui)
-                                });
-                            }
-                            (
-                                side_panel::CurrentTab::Details,
-                                Some(SelectedEntityType::Station(station_entity)),
-                            ) => {
-                                ScrollArea::vertical().show(ui, |ui| {
-                                    world.run_system_cached_with(
-                                        side_panel::station_stats::show_station_stats,
-                                        (ui, station_entity),
-                                    )
-                                });
-                            }
-                            (
-                                side_panel::CurrentTab::Details,
-                                Some(SelectedEntityType::Vehicle(vehicle_entity)),
-                            ) => {
-                                ScrollArea::vertical().show(ui, |ui| {
-                                    world.run_system_cached_with(
-                                        side_panel::vehicle_stats::show_vehicle_stats,
-                                        (ui, vehicle_entity),
-                                    )
-                                });
-                            }
-                            (
-                                side_panel::CurrentTab::Details,
-                                Some(SelectedEntityType::Interval(interval)),
-                            ) => {
-                                ScrollArea::vertical().show(ui, |ui| {
-                                    world.run_system_cached_with(
-                                        side_panel::interval_stats::show_interval_stats,
-                                        (ui, interval),
-                                    )
-                                });
-                            }
-                            (side_panel::CurrentTab::Details, _) => {}
-                        }
-                    };
-
-                    if mus.supplementary_panel_state.is_on_bottom {
-                        egui::TopBottomPanel::bottom("TreeView")
-                            .resizable(false)
-                            .exact_height(ctx.used_size().y / 2.5)
-                            .show_animated(
-                                ctx,
-                                mus.supplementary_panel_state.expanded,
-                                supplementary_panel_content,
-                            );
-                    } else {
-                        egui::SidePanel::left("TreeView")
-                            .default_width(ctx.used_size().x / 4.0)
-                            .show_animated(
-                                &ctx,
-                                mus.supplementary_panel_state.expanded,
-                                supplementary_panel_content,
-                            );
                     }
+                    (
+                        side_panel::CurrentTab::Details,
+                        Some(SelectedEntityType::Station(station_entity)),
+                    ) => {
+                        ScrollArea::vertical().show(ui, |ui| {
+                            world.run_system_cached_with(
+                                side_panel::station_stats::show_station_stats,
+                                (ui, station_entity),
+                            )
+                        });
+                    }
+                    (
+                        side_panel::CurrentTab::Details,
+                        Some(SelectedEntityType::Vehicle(vehicle_entity)),
+                    ) => {
+                        ScrollArea::vertical().show(ui, |ui| {
+                            world.run_system_cached_with(
+                                side_panel::vehicle_stats::show_vehicle_stats,
+                                (ui, vehicle_entity),
+                            )
+                        });
+                    }
+                    (
+                        side_panel::CurrentTab::Details,
+                        Some(SelectedEntityType::Interval(interval)),
+                    ) => {
+                        ScrollArea::vertical().show(ui, |ui| {
+                            world.run_system_cached_with(
+                                side_panel::interval_stats::show_interval_stats,
+                                (ui, interval),
+                            )
+                        });
+                    }
+                    (side_panel::CurrentTab::Details, _) => {}
+                }
+            };
 
-                    egui::CentralPanel::default()
-                        .frame(egui::Frame::central_panel(&ctx.style()).inner_margin(Margin::ZERO))
-                        .show(&ctx, |ui| {
-                            let painter = ui.painter();
-                            let max_rect = ui.max_rect();
-                            painter.rect_filled(
-                                max_rect,
-                                CornerRadius::ZERO,
-                                colors::translate_srgba_to_color32(GRAY_900),
-                            );
-                            const LINE_SPACING: f32 = 24.0;
-                            const LINE_STROKE: Stroke = Stroke {
-                                color: Color32::from_additive_luminance(30),
-                                width: 1.0,
-                            };
-                            let x_max = (ui.available_size().x / LINE_SPACING) as usize;
-                            let y_max = (ui.available_size().y / LINE_SPACING) as usize;
-                            for xi in 0..=x_max {
-                                let mut x = xi as f32 * LINE_SPACING + max_rect.min.x;
-                                LINE_STROKE.round_center_to_pixel(ui.pixels_per_point(), &mut x);
-                                painter.vline(x, max_rect.min.y..=max_rect.max.y, LINE_STROKE);
-                            }
-                            for yi in 0..=y_max {
-                                let mut y = yi as f32 * LINE_SPACING + max_rect.min.y;
-                                LINE_STROKE.round_center_to_pixel(ui.pixels_per_point(), &mut y);
-                                painter.hline(max_rect.min.x..=max_rect.max.x, y, LINE_STROKE);
-                            }
-                            let mut tab_viewer = AppTabViewer {
-                                world: world,
-                                selected_entity_type: &mut mus.selected_entity_type,
-                            };
-                            let mut style = egui_dock::Style::from_egui(ui.style());
-                            style.tab.tab_body.inner_margin = Margin::same(0);
-                            style.tab.tab_body.corner_radius = CornerRadius::ZERO;
-                            style.tab.tab_body.stroke.width = 0.0;
-                            style.tab.hline_below_active_tab_name = true;
-                            style.tab_bar.corner_radius = CornerRadius::ZERO;
-                            DockArea::new(&mut ui_state.dock_state)
-                                .style(style)
-                                .show_inside(ui, &mut tab_viewer);
-                        });
-                }
-                CurrentWorkspace::Publish => {
-                    egui::CentralPanel::default()
-                        .frame(egui::Frame::central_panel(&ctx.style()))
-                        .show(&ctx, |ui| {
-                            ui.centered_and_justified(|ui| ui.heading("Under Construction..."))
-                        });
-                }
-                CurrentWorkspace::Settings => {
-                    egui::CentralPanel::default()
-                        .frame(Frame::central_panel(&ctx.style()))
-                        .show(&ctx, |ui| {
-                            if let Err(e) =
-                                world.run_system_cached_with(tabs::settings::show_settings, ui)
-                            {
-                                error!("UI error: {}", e);
-                            };
-                        });
-                }
+            if mus.supplementary_panel_state.is_on_bottom {
+                egui::TopBottomPanel::bottom("TreeView")
+                    .resizable(false)
+                    .exact_height(ctx.used_size().y / 2.5)
+                    .show_animated(
+                        ctx,
+                        mus.supplementary_panel_state.expanded,
+                        supplementary_panel_content,
+                    );
+            } else {
+                egui::SidePanel::left("TreeView")
+                    .default_width(ctx.used_size().x / 4.0)
+                    .show_animated(
+                        &ctx,
+                        mus.supplementary_panel_state.expanded,
+                        supplementary_panel_content,
+                    );
             }
+
+            egui::CentralPanel::default()
+                .frame(egui::Frame::central_panel(&ctx.style()).inner_margin(Margin::ZERO))
+                .show(&ctx, |ui| {
+                    let painter = ui.painter();
+                    let max_rect = ui.max_rect();
+                    painter.rect_filled(
+                        max_rect,
+                        CornerRadius::ZERO,
+                        colors::translate_srgba_to_color32(GRAY_900),
+                    );
+                    const LINE_SPACING: f32 = 24.0;
+                    const LINE_STROKE: Stroke = Stroke {
+                        color: Color32::from_additive_luminance(30),
+                        width: 1.0,
+                    };
+                    let x_max = (ui.available_size().x / LINE_SPACING) as usize;
+                    let y_max = (ui.available_size().y / LINE_SPACING) as usize;
+                    for xi in 0..=x_max {
+                        let mut x = xi as f32 * LINE_SPACING + max_rect.min.x;
+                        LINE_STROKE.round_center_to_pixel(ui.pixels_per_point(), &mut x);
+                        painter.vline(x, max_rect.min.y..=max_rect.max.y, LINE_STROKE);
+                    }
+                    for yi in 0..=y_max {
+                        let mut y = yi as f32 * LINE_SPACING + max_rect.min.y;
+                        LINE_STROKE.round_center_to_pixel(ui.pixels_per_point(), &mut y);
+                        painter.hline(max_rect.min.x..=max_rect.max.x, y, LINE_STROKE);
+                    }
+                    let mut tab_viewer = AppTabViewer {
+                        world: world,
+                        selected_entity_type: &mut mus.selected_entity_type,
+                    };
+                    let mut style = egui_dock::Style::from_egui(ui.style());
+                    style.tab.tab_body.inner_margin = Margin::same(0);
+                    style.tab.tab_body.corner_radius = CornerRadius::ZERO;
+                    style.tab.tab_body.stroke.width = 0.0;
+                    style.tab.hline_below_active_tab_name = true;
+                    style.tab_bar.corner_radius = CornerRadius::ZERO;
+                    DockArea::new(&mut ui_state.dock_state)
+                        .style(style)
+                        .show_inside(ui, &mut tab_viewer);
+                });
         });
     app.bevy_app.world_mut().insert_resource(mus);
     Ok(())

@@ -409,6 +409,11 @@ fn handle_input_selection(
 ) {
     const VEHICLE_SELECTION_RADIUS: f32 = 7.0;
     const STATION_SELECTION_RADIUS: f32 = VEHICLE_SELECTION_RADIUS;
+    *interaction_acc_time = 0.0;
+    if selected_entity.is_some() {
+        *selected_entity = None;
+        return;
+    };
     let mut found: Option<SelectedEntityType> = None;
     'check_selected: for vehicle in rendered_vehicles {
         for segment in &vehicle.segments {
@@ -443,11 +448,7 @@ fn handle_input_selection(
         }
     }
     if found.is_some() {
-        if found == *selected_entity {
-            *selected_entity = None;
-        } else {
-            *selected_entity = found
-        }
+        *selected_entity = found;
         return;
     }
     // Handle station lines after vehicle lines,
@@ -459,11 +460,7 @@ fn handle_input_selection(
         }
     }
     if found.is_some() {
-        if found == *selected_entity {
-            *selected_entity = None;
-        } else {
-            *selected_entity = found
-        }
+        *selected_entity = found;
         return;
     }
     for w in visible_stations.windows(2) {
@@ -479,14 +476,8 @@ fn handle_input_selection(
         }
     }
     if found.is_some() {
-        if found == *selected_entity {
-            *selected_entity = None;
-        } else {
-            *selected_entity = found
-        }
+        *selected_entity = found;
         return;
-    } else {
-        *selected_entity = None;
     }
 }
 
