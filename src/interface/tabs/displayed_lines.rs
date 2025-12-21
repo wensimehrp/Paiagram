@@ -9,10 +9,25 @@ use egui::{Frame, Response, RichText, ScrollArea, Sense, Ui, UiBuilder, Vec2};
 const PANEL_DEFAULT_SIZE: f32 = 20.0;
 
 use crate::{
-    interface::tabs::PageCache,
+    interface::tabs::{PageCache, Tab},
     intervals::{Station, StationCache},
     lines::DisplayedLine,
 };
+
+#[derive(PartialEq, Debug, Clone, Copy)]
+pub struct DisplayedLinesTab;
+
+impl Tab for DisplayedLinesTab {
+    const NAME: &'static str = "Available Lines";
+    fn main_display(&self, world: &mut bevy::ecs::world::World, ui: &mut Ui) {
+        if let Err(e) = world.run_system_cached_with(show_displayed_lines, ui) {
+            bevy::log::error!("UI Error while displaying displayed lines page: {}", e)
+        }
+    }
+    fn scroll_bars(&self) -> [bool; 2] {
+        [false; 2]
+    }
+}
 
 fn full_width_button(ui: &mut Ui, text: &str) -> Response {
     let (rect, resp) = ui.allocate_exact_size(
@@ -38,9 +53,9 @@ fn full_width_button(ui: &mut Ui, text: &str) -> Response {
     res.response
 }
 
-pub fn show_displayed_lines(
+fn show_displayed_lines(
     InMut(ui): InMut<Ui>,
-    mut displayed_lines: Query<(Entity, &mut DisplayedLine, &Name)>,
+    displayed_lines: Query<(Entity, &mut DisplayedLine, &Name)>,
     station_names: Query<(Entity, &Name, &StationCache), With<Station>>,
     mut selected_line: Local<Option<Entity>>,
     mut selected_station_cache: Local<PageCache<Entity, Option<Entity>>>,

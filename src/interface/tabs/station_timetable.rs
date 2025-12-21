@@ -1,10 +1,16 @@
 use crate::{
-    interface::{AppTab, UiCommand, tabs::vehicle},
+    interface::{
+        AppTab, UiCommand,
+        tabs::{Tab, vehicle},
+    },
     intervals::{Depot, Station, StationCache},
     units::time::TimetableTime,
     vehicles::{
         AdjustTimetableEntry, TimetableAdjustment, Vehicle,
-        entries::{ActualRouteEntry, TimetableEntry, TimetableEntryCache, TravelMode, VehicleSchedule, VehicleScheduleCache},
+        entries::{
+            ActualRouteEntry, TimetableEntry, TimetableEntryCache, TravelMode, VehicleSchedule,
+            VehicleScheduleCache,
+        },
         services::VehicleService,
         vehicle_set::VehicleSet,
     },
@@ -18,10 +24,29 @@ use bevy::{
         query::With,
         system::{In, InMut, Local, Query},
     },
-    log::info,
+    log::{error, info},
 };
 use egui::{Button, Frame, Label, Rect, RichText, Sense, Separator, UiBuilder, Widget, vec2};
 use egui_table::{Column, Table, TableDelegate};
+
+#[derive(PartialEq, Debug, Clone, Copy)]
+pub struct StationTimetableTab {
+    pub station_entity: Entity,
+}
+
+impl Tab for StationTimetableTab {
+    const NAME: &'static str = "Station Timetable";
+    fn main_display(&self, world: &mut bevy::ecs::world::World, ui: &mut egui::Ui) {
+        if let Err(e) =
+            world.run_system_cached_with(show_station_timetable, (ui, self.station_entity))
+        {
+            error!("UI Error while displaying station timetable page: {}", e)
+        }
+    }
+    fn id(&self) -> egui::Id {
+        egui::Id::new(self.station_entity)
+    }
+}
 
 struct TableCache<'a> {
     msg_open_ui: MessageWriter<'a, UiCommand>,
@@ -98,7 +123,9 @@ impl TableDelegate for TableCache<'_> {
                         .response;
                     if response.clicked() {
                         self.msg_open_ui
-                            .write(UiCommand::OpenOrFocusTab(AppTab::Vehicle(*entity)));
+                            .write(UiCommand::OpenOrFocusTab(AppTab::Vehicle(
+                                vehicle::VehicleTab(*entity),
+                            )));
                     }
                 }
             }
@@ -193,8 +220,7 @@ pub fn show_station_timetable(
                 && let Some(last_entry_entity) = schedule_cache
                     .get_service_last_entry(entry_service)
                     .map(ActualRouteEntry::inner)
-                && let Ok((last_entry, _, _)) =
-                    timetable_entries.get(last_entry_entity)
+                && let Ok((last_entry, _, _)) = timetable_entries.get(last_entry_entity)
                 && let Ok(name) = station_names.get(last_entry.station)
             {
                 terminal_name = name
@@ -204,12 +230,7 @@ pub fn show_station_timetable(
             {
                 service_name = name;
             }
-            times[index].push((
-                terminal_name,
-                service_name,
-                estimate.departure,
-                parent.0,
-            ))
+            times[index].push((terminal_name, service_name, estimate.departure, parent.0))
         }
     }
     for time in &mut times {

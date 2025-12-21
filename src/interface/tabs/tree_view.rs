@@ -1,4 +1,6 @@
 use crate::interface::AppTab;
+use crate::interface::tabs::diagram::DiagramTab;
+use crate::interface::tabs::{displayed_lines, vehicle};
 use crate::vehicles::Vehicle;
 use crate::vehicles::vehicle_set::VehicleSet;
 use crate::{interface::UiCommand, lines::DisplayedLine};
@@ -21,11 +23,15 @@ pub fn show_tree_view(
 ) {
     ui.vertical(|ui| {
         if ui.button("All displayed lines").clicked() {
-            msg_open_tab.write(UiCommand::OpenOrFocusTab(AppTab::DisplayedLines));
+            msg_open_tab.write(UiCommand::OpenOrFocusTab(AppTab::DisplayedLines(
+                displayed_lines::DisplayedLinesTab,
+            )));
         }
         for (entity, name) in displayed_lines {
             if ui.button(name.as_str()).clicked() {
-                msg_open_tab.write(UiCommand::OpenOrFocusTab(AppTab::Diagram(entity)));
+                msg_open_tab.write(UiCommand::OpenOrFocusTab(AppTab::Diagram(DiagramTab {
+                    displayed_line_entity: entity,
+                })));
             }
         }
     });
@@ -50,7 +56,7 @@ pub fn show_tree_view(
                     match item {
                         TreeViewItem::Vehicle(entity) => {
                             msg_open_tab.write(UiCommand::OpenOrFocusTab(
-                                crate::interface::AppTab::Vehicle(entity),
+                                crate::interface::AppTab::Vehicle(vehicle::VehicleTab(entity)),
                             ));
                         }
                         _ => {}

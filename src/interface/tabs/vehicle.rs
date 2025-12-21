@@ -1,5 +1,8 @@
 use crate::interface::widgets::timetable_popup;
-use crate::interface::{AppTab, UiCommand};
+use crate::interface::{
+    AppTab, UiCommand,
+    tabs::{Tab, station_timetable::StationTimetableTab},
+};
 use crate::units::time::{Duration, TimetableTime};
 use crate::vehicles::entries::{ActualRouteEntry, TimetableEntryCache, VehicleScheduleCache};
 use crate::vehicles::{
@@ -10,6 +13,27 @@ use crate::vehicles::{
 use bevy::prelude::*;
 use egui::{Color32, Label, Popup, Sense, Separator, Stroke, Ui, Vec2};
 use egui_table::{CellInfo, HeaderCellInfo, Table, TableDelegate, columns::Column};
+
+#[derive(PartialEq, Debug, Clone, Copy)]
+pub struct VehicleTab(pub Entity);
+
+impl Tab for VehicleTab {
+    const NAME: &'static str = "Vehicle";
+    fn main_display(&self, world: &mut bevy::ecs::world::World, ui: &mut Ui) {
+        if let Err(e) = world.run_system_cached_with(show_vehicle, (ui, self.0)) {
+            error!("UI Error while displaying vehicle page: {}", e)
+        }
+    }
+    fn title(&self) -> egui::WidgetText {
+        "Vehicle".into()
+    }
+    fn id(&self) -> egui::Id {
+        egui::Id::new(format!("VehicleTab_{:?}", self.0))
+    }
+    fn scroll_bars(&self) -> [bool; 2] {
+        [false; 2]
+    }
+}
 
 const COLUMN_NAMES: &[&str] = &["Station", "Arri.", "Dept.", "Service", "Track", "Parent"];
 
@@ -111,7 +135,9 @@ impl<'a> TableDelegate for TableCache<'a> {
                 if ui.button("ℹ").clicked() {
                     self.msg_open_ui
                         .write(UiCommand::OpenOrFocusTab(AppTab::StationTimetable(
-                            self.entries[i].entry.station,
+                            StationTimetableTab {
+                                station_entity: self.entries[i].entry.station,
+                            },
                         )));
                 }
                 ui.label(self.entries[i].station_name.unwrap_or("---"));

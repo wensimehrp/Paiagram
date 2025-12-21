@@ -8,6 +8,20 @@ use bevy::{
     time::Time,
 };
 use egui::Ui;
+use super::Tab;
+
+#[derive(PartialEq, Debug, Clone, Copy)]
+pub struct MinesweeperTab;
+
+impl Tab for MinesweeperTab {
+    const NAME: &'static str = "Minesweeper";
+    fn main_display(&self, world: &mut bevy::ecs::world::World, ui: &mut Ui) {
+        if let Err(e) = world.run_system_cached_with(show_minesweeper, ui) {
+            bevy::log::error!("UI Error while displaying minesweeper page: {}", e)
+        }
+    }
+}
+
 const MINE_STR: &str = "💣";
 const FLAG_STR: &str = "🚩";
 
@@ -19,7 +33,7 @@ struct MinesweeperMap {
     flagged: ArrayVec<(u8, u8), 256>,
 }
 
-pub fn show_minesweeper(
+fn show_minesweeper(
     InMut(ui): InMut<Ui>,
     mut scores: Local<Vec<Duration>>,
     time: Res<Time>,

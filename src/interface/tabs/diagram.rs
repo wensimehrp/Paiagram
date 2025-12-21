@@ -1,6 +1,8 @@
 use super::PageCache;
 use crate::colors;
+use crate::interface::SelectedElement;
 use crate::interface::side_panel::CurrentTab;
+use crate::interface::tabs::Tab;
 use crate::vehicles::entries::{ActualRouteEntry, VehicleScheduleCache};
 use crate::{
     interface::widgets::{buttons, timetable_popup},
@@ -96,12 +98,32 @@ struct RenderedVehicle<'a> {
     entity: Entity,
 }
 
-pub fn show_diagram(
-    (InMut(ui), In(displayed_line_entity), InMut(mut selected_entity)): (
-        InMut<egui::Ui>,
-        In<Entity>,
-        InMut<Option<SelectedEntityType>>,
-    ),
+#[derive(PartialEq, Debug, Clone, Copy)]
+pub struct DiagramTab {
+    pub displayed_line_entity: Entity,
+}
+
+impl Tab for DiagramTab {
+    const NAME: &'static str = "Diagram";
+    fn main_display(&self, world: &mut World, ui: &mut Ui) {
+        if let Err(e) = world.run_system_cached_with(show_diagram, (ui, self.displayed_line_entity))
+        {
+            error!(
+                "UI Error while displaying diagram ({}): {}",
+                self.displayed_line_entity, e
+            )
+        }
+    }
+    fn id(&self) -> egui::Id {
+        egui::Id::new(self.displayed_line_entity)
+    }
+    fn scroll_bars(&self) -> [bool; 2] {
+        [false; 2]
+    }
+}
+
+fn show_diagram(
+    (InMut(ui), In(displayed_line_entity)): (InMut<egui::Ui>, In<Entity>),
     displayed_lines: Populated<Ref<DisplayedLine>>,
     vehicles_query: Populated<(Entity, &Name, &VehicleSchedule, &VehicleScheduleCache)>,
     entry_parents: Query<&ChildOf, With<TimetableEntry>>,
@@ -109,6 +131,7 @@ pub fn show_diagram(
     station_names: Query<&Name, With<Station>>,
     station_updated: Query<&StationCache, Changed<StationCache>>,
     station_caches: Query<&StationCache, With<Station>>,
+    mut selected_element: ResMut<SelectedElement>,
     mut timetable_adjustment_writer: MessageWriter<AdjustTimetableEntry>,
     mut page_cache: Local<PageCache<Entity, DiagramPageCache>>,
     mut visible_stations_scratch: Local<Vec<(Entity, f32)>>,
@@ -213,7 +236,7 @@ pub fn show_diagram(
                     state.vertical_offset,
                     state.zoom.y,
                     &mut state.interaction_acc_time,
-                    &mut selected_entity,
+                    &mut selected_element,
                 );
             }
 
@@ -221,12 +244,12 @@ pub fn show_diagram(
                 &mut painter,
                 &rendered_vehicles,
                 state,
-                selected_entity.as_mut(),
+                &mut selected_element,
                 &time,
                 ui.ctx(),
             );
 
-            match *selected_entity {
+            match selected_element.0 {
                 None => {}
                 Some(SelectedEntityType::Vehicle(v)) => {
                     draw_vehicle_selection_overlay(
@@ -485,7 +508,7 @@ fn draw_vehicles(
     painter: &mut Painter,
     rendered_vehicles: &[RenderedVehicle],
     state: &mut DiagramPageCache,
-    selected_entity: Option<&mut SelectedEntityType>,
+    selected_entity: &mut Option<SelectedEntityType>,
     time: &Res<Time>,
     ctx: &egui::Context,
 ) {
@@ -493,7 +516,7 @@ fn draw_vehicles(
 
     for vehicle in rendered_vehicles {
         if selected_vehicle.is_none()
-            && let Some(ref selected_entity) = selected_entity
+            && let Some(selected_entity) = selected_entity
             && matches!(selected_entity, SelectedEntityType::Vehicle(e) if *e == vehicle.entity)
         {
             selected_vehicle = Some(vehicle);

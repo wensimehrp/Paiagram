@@ -1,4 +1,8 @@
+use crate::interface::tabs::tree_view;
+
+use super::Tab;
 use bevy::ecs::system::InMut;
+use bevy::log::prelude::*;
 use egui::{Frame, Response, ScrollArea, Sense, Ui, UiBuilder, Vec2};
 const CARD_WIDTH: f32 = 150.0;
 const CARD_SIZE: Vec2 = Vec2 {
@@ -7,7 +11,24 @@ const CARD_SIZE: Vec2 = Vec2 {
 };
 const CARD_SPACING: f32 = 20.0;
 
-pub fn show_start(InMut(ui): InMut<Ui>) {
+#[derive(PartialEq, Debug, Clone, Copy)]
+pub struct StartTab;
+
+impl Tab for StartTab {
+    const NAME: &'static str = "Start";
+    fn main_display(&self, world: &mut bevy::ecs::world::World, ui: &mut Ui) {
+        if let Err(e) = world.run_system_cached_with(show_start, ui) {
+            error!("UI Error while displaying start page: {e}")
+        }
+    }
+    fn edit_display(&self, world: &mut bevy::ecs::world::World, ui: &mut Ui) {
+        if let Err(e) = world.run_system_cached_with(tree_view::show_tree_view, ui) {
+            error!("UI Errorr while displaying tree view: {e}")
+        }
+    }
+}
+
+fn show_start(InMut(ui): InMut<Ui>) {
     // show a bunch of 3:2 rectangles
     let max_width = ui.available_width();
     ui.set_max_width(max_width);

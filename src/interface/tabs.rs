@@ -1,3 +1,9 @@
+use bevy::ecs::world::World;
+use egui::{Id, Response, Ui, WidgetText};
+
+use crate::interface::StatusBarState;
+
+pub mod about;
 pub mod classes;
 pub mod diagram;
 pub mod displayed_lines;
@@ -55,5 +61,40 @@ where
             keys: Vec::new(),
             vals: Vec::new(),
         }
+    }
+}
+
+pub trait Tab {
+    const ICON: &'static str = "🖳";
+    const NAME: &'static str;
+    fn main_display(&self, world: &mut World, ui: &mut Ui);
+    fn edit_display(&self, _world: &mut World, ui: &mut Ui) {
+        ui.label(Self::NAME);
+        ui.label("The edit display is unimplemented for this tab.");
+        ui.label("This is considered a bug. Feel free to open a ticket on GitHub!");
+    }
+    fn display_display(&self, _world: &mut World, ui: &mut Ui) {
+        ui.label(Self::NAME);
+        ui.label("The details display is unimplemented for this tab.");
+        ui.label("This is considered a bug. Feel free to open a ticket on GitHub!");
+    }
+    fn title(&self) -> WidgetText {
+        Self::NAME.into()
+    }
+    fn on_tab_button(&self, world: &mut World, response: &Response) {
+        if response.hovered() {
+            let title_text = self.title();
+            let s = &mut world.resource_mut::<StatusBarState>().tooltip;
+            s.clear();
+            s.push_str(Self::ICON);
+            s.push(' ');
+            s.push_str(title_text.text());
+        }
+    }
+    fn id(&self) -> Id {
+        Id::new(Self::NAME)
+    }
+    fn scroll_bars(&self) -> [bool; 2] {
+        [true; 2]
     }
 }

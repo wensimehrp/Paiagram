@@ -5,13 +5,28 @@ mod widgets;
 
 use crate::{
     colors,
-    interface::tabs::{diagram::SelectedEntityType, tree_view},
+    interface::{
+        side_panel::CurrentTab,
+        tabs::{
+            Tab,
+            classes::ClassesTab,
+            diagram::{DiagramTab, SelectedEntityType},
+            displayed_lines::DisplayedLinesTab,
+            minesweeper::MinesweeperTab,
+            services::ServicesTab,
+            settings::SettingsTab,
+            start::StartTab,
+            station_timetable::StationTimetableTab,
+            tree_view,
+            vehicle::VehicleTab,
+        },
+    },
 };
 use bevy::{
     color::palettes::tailwind::{EMERALD_700, EMERALD_800, GRAY_900},
     prelude::*,
 };
-use egui::{self, Color32, CornerRadius, Frame, Margin, ScrollArea, Stroke, Ui};
+use egui::{self, Color32, CornerRadius, Frame, Margin, Rect, ScrollArea, Stroke, Ui};
 use egui_dock::{DockArea, DockState};
 use std::sync::Arc;
 #[cfg(target_arch = "wasm32")]
@@ -26,6 +41,7 @@ impl Plugin for InterfacePlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<UiCommand>()
             .init_resource::<MiscUiState>()
+            .init_resource::<SelectedElement>()
             .insert_resource(UiState::new())
             .insert_resource(StatusBarState::default())
             .add_systems(Update, modify_dock_state.run_if(on_message::<UiCommand>));
@@ -38,13 +54,15 @@ struct UiState {
     dock_state: DockState<AppTab>,
 }
 
+#[derive(Default, Resource, Deref, DerefMut)]
+pub struct SelectedElement(pub Option<SelectedEntityType>);
+
 #[derive(Resource)]
 pub struct MiscUiState {
     is_dark_mode: bool,
     initialized: bool,
     frame_times: egui::util::History<f32>,
     side_panel_tab: side_panel::CurrentTab,
-    selected_entity_type: Option<tabs::diagram::SelectedEntityType>,
     modal_open: bool,
     fullscreened: bool,
     supplementary_panel_state: SupplementaryPanelState,
@@ -65,7 +83,6 @@ impl Default for MiscUiState {
             frame_times: egui::util::History::new(0..max_len, max_age),
             initialized: false,
             side_panel_tab: side_panel::CurrentTab::default(),
-            selected_entity_type: None,
             modal_open: false,
             fullscreened: false,
             supplementary_panel_state: SupplementaryPanelState::default(),
@@ -108,7 +125,7 @@ fn modify_dock_state(mut dock_state: ResMut<UiState>, mut msg_reader: MessageRea
 impl UiState {
     fn new() -> Self {
         Self {
-            dock_state: DockState::new(vec![AppTab::Start]),
+            dock_state: DockState::new(vec![AppTab::Start(StartTab)]),
         }
     }
     /// Open a tab if it is not already open, or focus it if it is
@@ -127,13 +144,31 @@ impl UiState {
 /// An application tab
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub enum AppTab {
-    Vehicle(Entity),
-    StationTimetable(Entity),
-    Diagram(Entity),
-    DisplayedLines,
-    Settings,
-    Start,
-    Publish,
+    Start(StartTab),
+    Vehicle(VehicleTab),
+    StationTimetable(StationTimetableTab),
+    Diagram(DiagramTab),
+    DisplayedLines(DisplayedLinesTab),
+    Settings(SettingsTab),
+    Classes(ClassesTab),
+    Services(ServicesTab),
+    Minesweeper(MinesweeperTab),
+}
+
+macro_rules! for_all_tabs {
+    ($tab:expr, $t:ident, $body:expr) => {
+        match $tab {
+            AppTab::Start($t) => $body,
+            AppTab::Vehicle($t) => $body,
+            AppTab::StationTimetable($t) => $body,
+            AppTab::Diagram($t) => $body,
+            AppTab::DisplayedLines($t) => $body,
+            AppTab::Settings($t) => $body,
+            AppTab::Classes($t) => $body,
+            AppTab::Services($t) => $body,
+            AppTab::Minesweeper($t) => $body,
+        }
+    };
 }
 
 /// User interface commands sent between systems
@@ -146,122 +181,29 @@ pub enum UiCommand {
 /// and is constructed each frame.
 struct AppTabViewer<'w> {
     world: &'w mut World,
-    selected_entity_type: &'w mut Option<tabs::diagram::SelectedEntityType>,
 }
 
 impl<'w> egui_dock::TabViewer for AppTabViewer<'w> {
     type Tab = AppTab;
 
     fn ui(&mut self, ui: &mut egui::Ui, tab: &mut Self::Tab) {
-        let res = match tab {
-            AppTab::Vehicle(entity) => {
-                if let Err(e) = self
-                    .world
-                    .run_system_cached_with(tabs::vehicle::show_vehicle, (ui, *entity))
-                {
-                    error!("UI Error: {}", e)
-                }
-            }
-            AppTab::StationTimetable(station_entity) => {
-                if let Err(e) = self.world.run_system_cached_with(
-                    tabs::station_timetable::show_station_timetable,
-                    (ui, *station_entity),
-                ) {
-                    error!("UI Error: {}", e)
-                }
-            }
-            AppTab::Diagram(displayed_line_entity) => {
-                if let Err(e) = self.world.run_system_cached_with(
-                    tabs::diagram::show_diagram,
-                    (ui, *displayed_line_entity, self.selected_entity_type),
-                ) {
-                    error!("UI Error: {}", e)
-                }
-            }
-            AppTab::DisplayedLines => {
-                if let Err(e) = self
-                    .world
-                    .run_system_cached_with(displayed_lines::show_displayed_lines, ui)
-                {
-                    error!("UI Error: {}", e)
-                }
-            }
-            AppTab::Settings => {
-                if let Err(e) = self
-                    .world
-                    .run_system_cached_with(tabs::settings::show_settings, ui)
-                {
-                    error!("Ui Error: {}", e)
-                }
-            }
-            AppTab::Start => {
-                if let Err(e) = self.world.run_system_cached_with(start::show_start, ui) {
-                    error!("Ui Error: {}", e)
-                }
-            }
-            AppTab::Publish => {
-                // nothing here
-            }
-        };
+        for_all_tabs!(tab, t, t.main_display(self.world, ui))
     }
 
     fn title(&mut self, tab: &mut Self::Tab) -> egui::WidgetText {
-        match tab {
-            AppTab::Vehicle(entity) => {
-                // query the vehicle name from the world
-                let name = self
-                    .world
-                    .get::<Name>(*entity)
-                    .map_or_else(|| "Unknown Vehicle".into(), |n| format!("{}", n));
-                format!("{}", name).into()
-            }
-            AppTab::StationTimetable(station_entity) => {
-                // query the station name from the world
-                let name = self
-                    .world
-                    .get::<Name>(*station_entity)
-                    .map_or_else(|| "Unknown Station".into(), |n| format!("{}", n));
-                format!("Station Timetable - {}", name).into()
-            }
-            AppTab::Diagram(_) => "Diagram".into(),
-            AppTab::DisplayedLines => "Available Lines".into(),
-            AppTab::Settings => "Settings".into(),
-            AppTab::Start => "Start".into(),
-            AppTab::Publish => "Publish".into(),
-        }
+        for_all_tabs!(tab, t, t.title())
     }
 
     fn id(&mut self, tab: &mut Self::Tab) -> egui::Id {
-        match tab {
-            AppTab::Vehicle(entity) => egui::Id::new(format!("VehicleTab_{:?}", entity)),
-            AppTab::StationTimetable(station_entity) => {
-                egui::Id::new(format!("StationTimetableTab_{:?}", station_entity))
-            }
-            AppTab::Diagram(entity) => egui::Id::new(format!("DiagramTab_{:?}", entity)),
-            _ => egui::Id::new(self.title(tab).text()),
-        }
+        for_all_tabs!(tab, t, t.id())
     }
 
     fn scroll_bars(&self, tab: &Self::Tab) -> [bool; 2] {
-        match tab {
-            AppTab::Vehicle(_) => [false; 2],
-            AppTab::StationTimetable(_) => [true; 2],
-            AppTab::Diagram(_) => [false; 2],
-            AppTab::DisplayedLines => [false; 2],
-            AppTab::Settings => [true; 2],
-            AppTab::Start => [true; 2],
-            AppTab::Publish => [true; 2],
-        }
+        for_all_tabs!(tab, t, t.scroll_bars())
     }
 
     fn on_tab_button(&mut self, tab: &mut Self::Tab, response: &egui::Response) {
-        if response.hovered() {
-            let widget_text = self.title(tab);
-            let s = &mut self.world.resource_mut::<StatusBarState>().tooltip;
-            s.clear();
-            s.push_str("🖳 ");
-            s.push_str(widget_text.text());
-        }
+        for_all_tabs!(tab, t, t.on_tab_button(self.world, response))
     }
 }
 
@@ -378,46 +320,20 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
             let supplementary_panel_content = |ui: &mut Ui| {
                 // Edit options change based on the currently focused tab
                 side_panel::show_side_panel(ui, &mut mus.side_panel_tab);
-                match (mus.side_panel_tab, mus.selected_entity_type) {
-                    (side_panel::CurrentTab::Edit, _) => {
-                        ScrollArea::both().show(ui, |ui| {
-                            world.run_system_cached_with(tree_view::show_tree_view, ui)
-                        });
+                let Some((_, focused_tab)) = ui_state.dock_state.find_active_focused() else {
+                    return;
+                };
+                match mus.side_panel_tab {
+                    CurrentTab::Edit => {
+                        for_all_tabs!(focused_tab, t, {
+                            ScrollArea::vertical().show(ui, |ui| t.edit_display(world, ui));
+                        })
                     }
-                    (
-                        side_panel::CurrentTab::Details,
-                        Some(SelectedEntityType::Station(station_entity)),
-                    ) => {
-                        ScrollArea::vertical().show(ui, |ui| {
-                            world.run_system_cached_with(
-                                side_panel::station_stats::show_station_stats,
-                                (ui, station_entity),
-                            )
-                        });
+                    CurrentTab::Details => {
+                        for_all_tabs!(focused_tab, t, {
+                            ScrollArea::vertical().show(ui, |ui| t.display_display(world, ui));
+                        })
                     }
-                    (
-                        side_panel::CurrentTab::Details,
-                        Some(SelectedEntityType::Vehicle(vehicle_entity)),
-                    ) => {
-                        ScrollArea::vertical().show(ui, |ui| {
-                            world.run_system_cached_with(
-                                side_panel::vehicle_stats::show_vehicle_stats,
-                                (ui, vehicle_entity),
-                            )
-                        });
-                    }
-                    (
-                        side_panel::CurrentTab::Details,
-                        Some(SelectedEntityType::Interval(interval)),
-                    ) => {
-                        ScrollArea::vertical().show(ui, |ui| {
-                            world.run_system_cached_with(
-                                side_panel::interval_stats::show_interval_stats,
-                                (ui, interval),
-                            )
-                        });
-                    }
-                    (side_panel::CurrentTab::Details, _) => {}
                 }
             };
 
@@ -467,19 +383,26 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
                         LINE_STROKE.round_center_to_pixel(ui.pixels_per_point(), &mut y);
                         painter.hline(max_rect.min.x..=max_rect.max.x, y, LINE_STROKE);
                     }
-                    let mut tab_viewer = AppTabViewer {
-                        world: world,
-                        selected_entity_type: &mut mus.selected_entity_type,
-                    };
+                    let mut tab_viewer = AppTabViewer { world: world };
                     let mut style = egui_dock::Style::from_egui(ui.style());
                     style.tab.tab_body.inner_margin = Margin::same(0);
                     style.tab.tab_body.corner_radius = CornerRadius::ZERO;
                     style.tab.tab_body.stroke.width = 0.0;
                     style.tab.hline_below_active_tab_name = true;
                     style.tab_bar.corner_radius = CornerRadius::ZERO;
+                    // place a button on the bottom left corner for expanding and collapsing the side panel.
+                    let left_bottom = ui.max_rect().left_bottom();
+                    let shift = egui::Vec2 { x: 40.0, y: -40.0 };
                     DockArea::new(&mut ui_state.dock_state)
                         .style(style)
                         .show_inside(ui, &mut tab_viewer);
+                    let res = ui.place(
+                        Rect::from_two_pos(left_bottom + shift, left_bottom + shift + shift),
+                        |ui: &mut Ui| ui.button("123"),
+                    );
+                    if res.clicked() {
+                        mus.supplementary_panel_state.expanded = !mus.supplementary_panel_state.expanded;
+                    }
                 });
         });
     app.bevy_app.world_mut().insert_resource(mus);
