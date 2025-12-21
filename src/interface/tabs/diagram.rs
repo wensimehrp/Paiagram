@@ -105,7 +105,7 @@ pub struct DiagramTab {
 
 impl Tab for DiagramTab {
     const NAME: &'static str = "Diagram";
-    fn main_display(&self, world: &mut World, ui: &mut Ui) {
+    fn main_display(&mut self, world: &mut World, ui: &mut Ui) {
         if let Err(e) = world.run_system_cached_with(show_diagram, (ui, self.displayed_line_entity))
         {
             error!(

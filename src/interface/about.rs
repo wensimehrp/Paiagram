@@ -1,3 +1,5 @@
+use crate::interface::UiCommand;
+use crate::interface::tabs::all_tabs::MinesweeperTab;
 use crate::rw_data::ModifyData;
 use bevy::ecs::system::Single;
 use bevy::ecs::{message::MessageWriter, system::InMut};
@@ -68,6 +70,7 @@ async fn pick_file_contents(
 pub fn show_about(
     (InMut(ui), InMut(modal_open)): (InMut<egui::Ui>, InMut<bool>),
     mut msg_read_file: MessageWriter<ModifyData>,
+    mut msg_open_tab: MessageWriter<UiCommand>
 ) {
     let queue = shared_queue();
     let pending: Vec<_> = {
@@ -104,6 +107,9 @@ pub fn show_about(
             );
         });
         ui.menu_button("Help", |ui| {
+            if ui.button("Minesweeper").clicked() {
+                msg_open_tab.write(UiCommand::OpenOrFocusTab(super::AppTab::Minesweeper(MinesweeperTab)));
+            }
             if ui.button("Check for Updates").clicked() {
                 // TODO
             }

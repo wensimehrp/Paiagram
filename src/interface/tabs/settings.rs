@@ -10,7 +10,7 @@ pub struct SettingsTab;
 
 impl Tab for SettingsTab {
     const NAME: &'static str = "Settings";
-    fn main_display(&self, world: &mut bevy::ecs::world::World, ui: &mut Ui) {
+    fn main_display(&mut self, world: &mut bevy::ecs::world::World, ui: &mut Ui) {
         if let Err(e) = world.run_system_cached_with(show_settings, ui) {
             bevy::log::error!("UI Error while displaying settings page: {}", e)
         }

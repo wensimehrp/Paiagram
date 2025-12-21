@@ -12,7 +12,7 @@ pub struct ServicesTab;
 
 impl Tab for ServicesTab {
     const NAME: &'static str = "Services";
-    fn main_display(&self, world: &mut bevy::ecs::world::World, ui: &mut Ui) {
+    fn main_display(&mut self, world: &mut bevy::ecs::world::World, ui: &mut Ui) {
         if let Err(e) = world.run_system_cached_with(show_services, ui) {
             bevy::log::error!("UI Error while displaying services page: {}", e)
         }

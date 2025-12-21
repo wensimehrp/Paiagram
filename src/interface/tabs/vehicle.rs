@@ -19,7 +19,7 @@ pub struct VehicleTab(pub Entity);
 
 impl Tab for VehicleTab {
     const NAME: &'static str = "Vehicle";
-    fn main_display(&self, world: &mut bevy::ecs::world::World, ui: &mut Ui) {
+    fn main_display(&mut self, world: &mut bevy::ecs::world::World, ui: &mut Ui) {
         if let Err(e) = world.run_system_cached_with(show_vehicle, (ui, self.0)) {
             error!("UI Error while displaying vehicle page: {}", e)
         }

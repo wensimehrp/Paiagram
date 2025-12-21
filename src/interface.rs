@@ -7,26 +7,16 @@ use crate::{
     colors,
     interface::{
         side_panel::CurrentTab,
-        tabs::{
-            Tab,
-            classes::ClassesTab,
-            diagram::{DiagramTab, SelectedEntityType},
-            displayed_lines::DisplayedLinesTab,
-            minesweeper::MinesweeperTab,
-            services::ServicesTab,
-            settings::SettingsTab,
-            start::StartTab,
-            station_timetable::StationTimetableTab,
-            tree_view,
-            vehicle::VehicleTab,
-        },
+        tabs::{Tab, all_tabs::*, diagram::SelectedEntityType, minesweeper::MinesweeperData},
     },
 };
 use bevy::{
     color::palettes::tailwind::{EMERALD_700, EMERALD_800, GRAY_900},
     prelude::*,
 };
-use egui::{self, Color32, CornerRadius, Frame, Margin, Rect, ScrollArea, Stroke, Ui};
+use egui::{
+    self, Color32, CornerRadius, Frame, Margin, Pos2, Rect, ScrollArea, Sense, Shape, Stroke, Ui,
+};
 use egui_dock::{DockArea, DockState};
 use std::sync::Arc;
 #[cfg(target_arch = "wasm32")]
@@ -42,6 +32,7 @@ impl Plugin for InterfacePlugin {
         app.add_message::<UiCommand>()
             .init_resource::<MiscUiState>()
             .init_resource::<SelectedElement>()
+            .init_resource::<MinesweeperData>()
             .insert_resource(UiState::new())
             .insert_resource(StatusBarState::default())
             .add_systems(Update, modify_dock_state.run_if(on_message::<UiCommand>));
@@ -125,7 +116,7 @@ fn modify_dock_state(mut dock_state: ResMut<UiState>, mut msg_reader: MessageRea
 impl UiState {
     fn new() -> Self {
         Self {
-            dock_state: DockState::new(vec![AppTab::Start(StartTab)]),
+            dock_state: DockState::new(vec![AppTab::Start(StartTab::default())]),
         }
     }
     /// Open a tab if it is not already open, or focus it if it is
@@ -392,16 +383,32 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
                     style.tab_bar.corner_radius = CornerRadius::ZERO;
                     // place a button on the bottom left corner for expanding and collapsing the side panel.
                     let left_bottom = ui.max_rect().left_bottom();
-                    let shift = egui::Vec2 { x: 40.0, y: -40.0 };
+                    let shift = egui::Vec2 { x: 20.0, y: -40.0 };
                     DockArea::new(&mut ui_state.dock_state)
                         .style(style)
                         .show_inside(ui, &mut tab_viewer);
                     let res = ui.place(
-                        Rect::from_two_pos(left_bottom + shift, left_bottom + shift + shift),
-                        |ui: &mut Ui| ui.button("123"),
+                        Rect::from_two_pos(left_bottom, left_bottom + shift),
+                        |ui: &mut Ui| {
+                            let (resp, painter) =
+                                ui.allocate_painter(ui.available_size(), Sense::click());
+                                let rect = resp.rect;
+                            painter.add(Shape::convex_polygon(
+                                vec![
+                                    rect.left_bottom() + egui::Vec2 { x: 0.0, y: 0.0 },
+                                    rect.left_bottom() + egui::Vec2 { x: 0.0, y: -40.0 },
+                                    rect.left_bottom() + egui::Vec2 { x: 20.0, y: -20.0 },
+                                    rect.left_bottom() + egui::Vec2 { x: 20.0, y: 0.0 },
+                                ],
+                                ui.visuals().widgets.hovered.bg_fill,
+                                Stroke::NONE,
+                            ));
+                            resp
+                        },
                     );
                     if res.clicked() {
-                        mus.supplementary_panel_state.expanded = !mus.supplementary_panel_state.expanded;
+                        mus.supplementary_panel_state.expanded =
+                            !mus.supplementary_panel_state.expanded;
                     }
                 });
         });

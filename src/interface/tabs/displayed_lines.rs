@@ -19,7 +19,7 @@ pub struct DisplayedLinesTab;
 
 impl Tab for DisplayedLinesTab {
     const NAME: &'static str = "Available Lines";
-    fn main_display(&self, world: &mut bevy::ecs::world::World, ui: &mut Ui) {
+    fn main_display(&mut self, world: &mut bevy::ecs::world::World, ui: &mut Ui) {
         if let Err(e) = world.run_system_cached_with(show_displayed_lines, ui) {
             bevy::log::error!("UI Error while displaying displayed lines page: {}", e)
         }

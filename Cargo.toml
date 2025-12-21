@@ -2,6 +2,7 @@
 name = "paiagram"
 version = "0.1.0"
 edition = "2024"
+license = "AGPL-3.0-only"
 
 [dependencies]
 bevy = { version = "0.17.3", default-features = false, features = [

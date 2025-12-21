@@ -36,7 +36,7 @@ pub struct StationTimetableTab {
 
 impl Tab for StationTimetableTab {
     const NAME: &'static str = "Station Timetable";
-    fn main_display(&self, world: &mut bevy::ecs::world::World, ui: &mut egui::Ui) {
+    fn main_display(&mut self, world: &mut bevy::ecs::world::World, ui: &mut egui::Ui) {
         if let Err(e) =
             world.run_system_cached_with(show_station_timetable, (ui, self.station_entity))
         {

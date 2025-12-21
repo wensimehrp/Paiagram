@@ -3,7 +3,6 @@ use egui::{Id, Response, Ui, WidgetText};
 
 use crate::interface::StatusBarState;
 
-pub mod about;
 pub mod classes;
 pub mod diagram;
 pub mod displayed_lines;
@@ -14,6 +13,18 @@ pub mod start;
 pub mod station_timetable;
 pub mod tree_view;
 pub mod vehicle;
+
+pub mod all_tabs {
+    pub use super::classes::ClassesTab;
+    pub use super::diagram::DiagramTab;
+    pub use super::displayed_lines::DisplayedLinesTab;
+    pub use super::minesweeper::MinesweeperTab;
+    pub use super::services::ServicesTab;
+    pub use super::settings::SettingsTab;
+    pub use super::start::StartTab;
+    pub use super::station_timetable::StationTimetableTab;
+    pub use super::vehicle::VehicleTab;
+}
 
 /// The page cache. Lots of r/w, few insertions, good locality, fast executions.
 #[derive(Debug)]
@@ -67,13 +78,13 @@ where
 pub trait Tab {
     const ICON: &'static str = "🖳";
     const NAME: &'static str;
-    fn main_display(&self, world: &mut World, ui: &mut Ui);
-    fn edit_display(&self, _world: &mut World, ui: &mut Ui) {
+    fn main_display(&mut self, world: &mut World, ui: &mut Ui);
+    fn edit_display(&mut self, _world: &mut World, ui: &mut Ui) {
         ui.label(Self::NAME);
         ui.label("The edit display is unimplemented for this tab.");
         ui.label("This is considered a bug. Feel free to open a ticket on GitHub!");
     }
-    fn display_display(&self, _world: &mut World, ui: &mut Ui) {
+    fn display_display(&mut self, _world: &mut World, ui: &mut Ui) {
         ui.label(Self::NAME);
         ui.label("The details display is unimplemented for this tab.");
         ui.label("This is considered a bug. Feel free to open a ticket on GitHub!");
