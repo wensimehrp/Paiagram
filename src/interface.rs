@@ -16,7 +16,7 @@ use bevy::{
 };
 use egui::{
     self, Color32, CornerRadius, Frame, Id, Margin, Pos2, Rect, ScrollArea, Sense, Shape, Stroke,
-    Ui,
+    Ui, Vec2,
 };
 use egui_animation::{animate_bool_eased, animate_repeating};
 use egui_dock::{DockArea, DockState};
@@ -214,7 +214,7 @@ impl<'w> egui_dock::TabViewer for AppTabViewer<'w> {
                 ui.clip_rect(),
                 0,
                 Stroke {
-                    width: 1.5,
+                    width: 1.6,
                     color: Color32::LIGHT_BLUE.linear_multiply(strength),
                 },
                 egui::StrokeKind::Inside,

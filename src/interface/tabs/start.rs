@@ -120,7 +120,7 @@ where
 
 fn show_about(ui: &mut Ui) {
     ui.vertical_centered(|ui| {
-        let max_width = (620.0f32).min(ui.available_width()) - 20.0;
+        let max_width = (620.0f32).min(ui.available_width()) - 40.0;
         ui.set_max_width(max_width);
         ui.add_space(20.0);
         ui.heading("Paiagram");

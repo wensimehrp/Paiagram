@@ -41,8 +41,6 @@ pub enum SelectedEntityType {
 
 #[derive(Debug, Clone)]
 pub struct DiagramPageCache {
-    background_acc_time: f32,
-    interaction_acc_time: f32,
     previous_total_drag_delta: Option<f32>,
     stroke: Stroke,
     tick_offset: i64,
@@ -74,8 +72,6 @@ impl DiagramPageCache {
 impl Default for DiagramPageCache {
     fn default() -> Self {
         Self {
-            background_acc_time: 0.0,
-            interaction_acc_time: 0.0,
             previous_total_drag_delta: None,
             tick_offset: 0,
             vertical_offset: 0.0,
@@ -231,7 +227,6 @@ fn show_diagram(
     mut timetable_adjustment_writer: MessageWriter<AdjustTimetableEntry>,
     // Buffer used between all calls to avoid repeated allocations
     mut visible_stations_scratch: Local<Vec<(Entity, f32)>>,
-    time: Res<Time>,
 ) {
     let Ok(displayed_line) = displayed_lines.get(displayed_line_entity) else {
         ui.centered_and_justified(|ui| ui.heading("Diagram not found"));
@@ -330,28 +325,17 @@ fn show_diagram(
                     &response.rect,
                     state.vertical_offset,
                     state.zoom.y,
-                    &mut state.interaction_acc_time,
                     &mut selected_element,
                 );
             }
 
-            if selected_element.is_none() {
-                state.background_acc_time -= time.delta_secs();
-            } else {
-                state.background_acc_time += time.delta_secs();
-            }
-            state.interaction_acc_time += time.delta_secs();
-            state.background_acc_time = state.background_acc_time.clamp(0.0, LINE_ANIMATION_TIME);
-            state.interaction_acc_time = state.interaction_acc_time.clamp(0.0, LINE_ANIMATION_TIME);
-            if (f32::EPSILON..LINE_ANIMATION_TIME).contains(&state.background_acc_time)
-                || (f32::EPSILON..LINE_ANIMATION_TIME).contains(&state.interaction_acc_time)
-            {
-                ui.ctx().request_repaint();
-            }
+            let background_strength = ui.ctx().animate_bool(
+                ui.id().with("background animation"),
+                selected_element.is_some(),
+            );
 
             draw_vehicles(&mut painter, &rendered_vehicles, &mut selected_element);
 
-            let background_strength = state.background_acc_time / LINE_ANIMATION_TIME;
             if background_strength > 0.1 {
                 painter.rect_filled(painter.clip_rect(), CornerRadius::ZERO, {
                     let amt = (background_strength * 180.0) as u8;
@@ -371,6 +355,7 @@ fn show_diagram(
                         &mut painter,
                         &rendered_vehicles,
                         state,
+                        background_strength,
                         v,
                         &mut timetable_adjustment_writer,
                         &station_names,
@@ -383,7 +368,7 @@ fn show_diagram(
                 Some(SelectedEntityType::Interval(i)) => {
                     draw_interval_selection_overlay(
                         ui,
-                        state.interaction_acc_time,
+                        background_strength,
                         &mut painter,
                         response.rect,
                         state.vertical_offset,
@@ -395,7 +380,7 @@ fn show_diagram(
                 Some(SelectedEntityType::Station(s)) => {
                     draw_station_selection_overlay(
                         ui,
-                        state.interaction_acc_time,
+                        background_strength,
                         &mut painter,
                         response.rect,
                         state.vertical_offset,
@@ -543,12 +528,10 @@ fn handle_input_selection(
     screen_rect: &Rect,
     vertical_offset: f32,
     zoom_y: f32,
-    interaction_acc_time: &mut f32,
     selected_entity: &mut Option<SelectedEntityType>,
 ) {
     const VEHICLE_SELECTION_RADIUS: f32 = 7.0;
     const STATION_SELECTION_RADIUS: f32 = VEHICLE_SELECTION_RADIUS;
-    *interaction_acc_time = 0.0;
     if selected_entity.is_some() {
         *selected_entity = None;
         return;
@@ -650,6 +633,7 @@ fn draw_vehicle_selection_overlay(
     painter: &mut Painter,
     rendered_vehicles: &[RenderedVehicle],
     state: &mut DiagramPageCache,
+    line_strength: f32,
     selected_entity: Entity,
     timetable_adjustment_writer: &mut MessageWriter<AdjustTimetableEntry>,
     station_names: &Query<&Name, With<Station>>,
@@ -660,8 +644,6 @@ fn draw_vehicle_selection_overlay(
     else {
         return;
     };
-
-    let line_strength = 1.0 - ((state.interaction_acc_time / LINE_ANIMATION_TIME) - 1.0).powi(2);
 
     let mut stroke = vehicle.stroke;
     stroke.width = line_strength * 3.0 * stroke.width + stroke.width;
@@ -743,9 +725,12 @@ fn draw_vehicle_selection_overlay(
             ActualRouteEntry,
         )> = None;
         let show_button = state.zoom.x.min(state.zoom.y) > 0.0002;
-        let button_strength = ui
+        let mut button_strength = ui
             .ctx()
             .animate_bool(ui.id().with("all buttons animation"), show_button);
+        if button_strength > 0.0 && !show_button {
+            button_strength = 0.0;
+        }
         if button_strength <= 0.0 {
             continue;
         }
@@ -1011,7 +996,7 @@ fn draw_vehicle_selection_overlay(
 
 fn draw_station_selection_overlay(
     ui: &mut Ui,
-    interaction_acc_time: f32,
+    strength: f32,
     painter: &mut Painter,
     screen_rect: Rect,
     vertical_offset: f32,
@@ -1038,10 +1023,10 @@ fn draw_station_selection_overlay(
             )
             .expand2(Vec2 { x: -1.0, y: 7.0 }),
             4,
-            Color32::BLUE.linear_multiply(interaction_acc_time / LINE_ANIMATION_TIME * 0.5),
+            Color32::BLUE.linear_multiply(strength * 0.5),
             Stroke::new(
                 1.0,
-                Color32::BLUE.linear_multiply(interaction_acc_time / LINE_ANIMATION_TIME),
+                Color32::BLUE.linear_multiply(strength),
             ),
             egui::StrokeKind::Middle,
         );
@@ -1050,7 +1035,7 @@ fn draw_station_selection_overlay(
 
 fn draw_interval_selection_overlay(
     ui: &mut Ui,
-    interaction_acc_time: f32,
+    strength: f32,
     painter: &mut Painter,
     screen_rect: Rect,
     vertical_offset: f32,
@@ -1078,11 +1063,8 @@ fn draw_interval_selection_overlay(
             )
             .expand2(Vec2 { x: -1.0, y: 7.0 }),
             4,
-            Color32::GREEN.linear_multiply(interaction_acc_time / LINE_ANIMATION_TIME * 0.5),
-            Stroke::new(
-                1.0,
-                Color32::GREEN.linear_multiply(interaction_acc_time / LINE_ANIMATION_TIME),
-            ),
+            Color32::GREEN.linear_multiply(strength * 0.5),
+            Stroke::new(1.0, Color32::GREEN.linear_multiply(strength)),
             egui::StrokeKind::Middle,
         );
     }
