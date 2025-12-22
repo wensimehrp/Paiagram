@@ -15,10 +15,13 @@ use bevy::{
     prelude::*,
 };
 use egui::{
-    self, Color32, CornerRadius, Frame, Margin, Pos2, Rect, ScrollArea, Sense, Shape, Stroke, Ui,
+    self, Color32, CornerRadius, Frame, Id, Margin, Pos2, Rect, ScrollArea, Sense, Shape, Stroke,
+    Ui,
 };
+use egui_animation::{animate_bool_eased, animate_repeating};
 use egui_dock::{DockArea, DockState};
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
+use strum::{EnumCount, IntoEnumIterator};
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::wasm_bindgen;
 
@@ -132,20 +135,6 @@ impl UiState {
     }
 }
 
-/// An application tab
-#[derive(PartialEq, Clone, Debug)]
-pub enum AppTab {
-    Start(StartTab),
-    Vehicle(VehicleTab),
-    StationTimetable(StationTimetableTab),
-    Diagram(DiagramTab),
-    DisplayedLines(DisplayedLinesTab),
-    Settings(SettingsTab),
-    Classes(ClassesTab),
-    Services(ServicesTab),
-    Minesweeper(MinesweeperTab),
-}
-
 macro_rules! for_all_tabs {
     ($tab:expr, $t:ident, $body:expr) => {
         match $tab {
@@ -162,9 +151,37 @@ macro_rules! for_all_tabs {
     };
 }
 
+/// An application tab
+#[derive(Clone, Debug)]
+pub enum AppTab {
+    Start(StartTab),
+    Vehicle(VehicleTab),
+    StationTimetable(StationTimetableTab),
+    Diagram(DiagramTab),
+    DisplayedLines(DisplayedLinesTab),
+    Settings(SettingsTab),
+    Classes(ClassesTab),
+    Services(ServicesTab),
+    Minesweeper(MinesweeperTab),
+}
+
 impl AppTab {
     pub fn id(&self) -> egui::Id {
         for_all_tabs!(self, t, t.id())
+    }
+    pub fn color(&self) -> Color32 {
+        let num = self.id().value();
+        // given the num, generate a color32 from it
+        let color = colors::PredefinedColor::iter()
+            .nth(num as usize % colors::PredefinedColor::COUNT)
+            .unwrap();
+        color.get(false)
+    }
+}
+
+impl PartialEq for AppTab {
+    fn eq(&self, other: &Self) -> bool {
+        self.id() == other.id()
     }
 }
 
@@ -186,13 +203,19 @@ impl<'w> egui_dock::TabViewer for AppTabViewer<'w> {
 
     fn ui(&mut self, ui: &mut egui::Ui, tab: &mut Self::Tab) {
         for_all_tabs!(tab, t, t.main_display(self.world, ui));
-        if self.focused_id == Some(tab.id()) {
+
+        // focus ring
+        let is_focused = self.focused_id == Some(tab.id());
+        let strength = ui
+            .ctx()
+            .animate_bool(ui.id().with("focus_highlight"), is_focused);
+        if strength > 0.0 {
             ui.painter().rect_stroke(
                 ui.clip_rect(),
                 0,
                 Stroke {
-                    width: 1.0,
-                    color: Color32::LIGHT_BLUE,
+                    width: 1.5,
+                    color: Color32::LIGHT_BLUE.linear_multiply(strength),
                 },
                 egui::StrokeKind::Inside,
             );
@@ -216,6 +239,8 @@ impl<'w> egui_dock::TabViewer for AppTabViewer<'w> {
     }
 }
 
+/// WASM fullscreen functions
+/// SAFETY: These functions are unsafe because they interact with the DOM directly.
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen(inline_js = r#"
 export function go_fullscreen(id) {
@@ -274,6 +299,7 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
                         }
                         #[cfg(target_arch = "wasm32")]
                         if ui.button("F").clicked() {
+                            /// SAFETY: This function is unsafe because it interacts with the DOM directly.
                             unsafe {
                                 if mus.fullscreened {
                                     exit_fullscreen();

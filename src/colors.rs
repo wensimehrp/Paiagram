@@ -1,5 +1,6 @@
 use bevy::color::{Srgba, palettes::tailwind::*};
 use egui::{Color32, Widget};
+use strum_macros::{EnumCount, EnumIter};
 
 #[derive(Debug, Clone, Copy)]
 pub enum DisplayColor {
@@ -31,7 +32,7 @@ impl Widget for DisplayColor {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, EnumIter, EnumCount)]
 pub enum PredefinedColor {
     Red,
     Orange,
