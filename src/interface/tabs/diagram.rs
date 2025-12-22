@@ -742,7 +742,11 @@ fn draw_vehicle_selection_overlay(
             (&TimetableEntry, &TimetableEntryCache),
             ActualRouteEntry,
         )> = None;
-        if state.zoom.x.min(state.zoom.y) < 0.0002 {
+        let show_button = state.zoom.x.min(state.zoom.y) > 0.0002;
+        let button_strength = ui
+            .ctx()
+            .animate_bool(ui.id().with("all buttons animation"), show_button);
+        if button_strength <= 0.0 {
             continue;
         }
         for fragment in segment
@@ -791,10 +795,11 @@ fn draw_vehicle_selection_overlay(
                                     Color32::GRAY
                                 } else {
                                     Color32::WHITE
-                                };
+                                }
+                                .linear_multiply(button_strength);
                                 let handle_stroke = Stroke {
                                     width: 2.5,
-                                    color: stroke.color,
+                                    color: stroke.color.linear_multiply(button_strength),
                                 };
                                 match entry.arrival {
                                     TravelMode::At(_) => buttons::circle_button_shape(
@@ -905,10 +910,11 @@ fn draw_vehicle_selection_overlay(
                                 Color32::GRAY
                             } else {
                                 Color32::WHITE
-                            };
+                            }
+                            .linear_multiply(button_strength);
                             let handle_stroke = Stroke {
                                 width: 2.5,
-                                color: stroke.color,
+                                color: stroke.color.linear_multiply(button_strength),
                             };
                             match entry.departure {
                                 Some(TravelMode::At(_)) => buttons::circle_button_shape(
