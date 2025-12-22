@@ -29,9 +29,9 @@ pub fn show_tree_view(
         }
         for (entity, name) in displayed_lines {
             if ui.button(name.as_str()).clicked() {
-                msg_open_tab.write(UiCommand::OpenOrFocusTab(AppTab::Diagram(DiagramTab {
-                    displayed_line_entity: entity,
-                })));
+                msg_open_tab.write(UiCommand::OpenOrFocusTab(AppTab::Diagram(DiagramTab::new(
+                    entity,
+                ))));
             }
         }
     });

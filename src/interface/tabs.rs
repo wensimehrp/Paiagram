@@ -81,12 +81,12 @@ pub trait Tab {
     fn main_display(&mut self, world: &mut World, ui: &mut Ui);
     fn edit_display(&mut self, _world: &mut World, ui: &mut Ui) {
         ui.label(Self::NAME);
-        ui.label("The edit display is unimplemented for this tab.");
+        ui.label("This tab hasn't implemented Edit display yet.");
         ui.label("This is considered a bug. Feel free to open a ticket on GitHub!");
     }
     fn display_display(&mut self, _world: &mut World, ui: &mut Ui) {
         ui.label(Self::NAME);
-        ui.label("The details display is unimplemented for this tab.");
+        ui.label("This tab hasn't implemented Details display yet.");
         ui.label("This is considered a bug. Feel free to open a ticket on GitHub!");
     }
     fn title(&self) -> WidgetText {

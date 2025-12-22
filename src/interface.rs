@@ -133,7 +133,7 @@ impl UiState {
 }
 
 /// An application tab
-#[derive(PartialEq, Clone, Copy, Debug)]
+#[derive(PartialEq, Clone, Debug)]
 pub enum AppTab {
     Start(StartTab),
     Vehicle(VehicleTab),

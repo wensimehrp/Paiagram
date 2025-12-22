@@ -16,9 +16,12 @@ use crate::{
 };
 use bevy::prelude::*;
 use egui::{
-    Color32, CornerRadius, FontId, Frame, Margin, Painter, Popup, Pos2, Rect, Sense, Shape, Stroke,
-    Ui, UiBuilder, Vec2, response, vec2,
+    Color32, CornerRadius, FontId, Frame, Margin, Painter, Popup, Pos2, Rect, RichText, Sense,
+    Shape, Stroke, Ui, UiBuilder, Vec2, response, vec2,
 };
+use strum::EnumCount;
+use strum_macros::EnumCount;
+mod edit_line;
 
 // Time and time-canvas related constants
 // const SECONDS_PER_WORLD_UNIT: f64 = 1.0; // world units -> seconds
@@ -36,6 +39,7 @@ pub enum SelectedEntityType {
     Map(Entity),
 }
 
+#[derive(Debug, Clone)]
 pub struct DiagramPageCache {
     background_acc_time: f32,
     interaction_acc_time: f32,
@@ -57,7 +61,7 @@ impl DiagramPageCache {
         let first_visible = heights.iter().position(|(_, h)| *h > range.start);
         let last_visible = heights.iter().rposition(|(_, h)| *h < range.end);
         if let (Some(mut first_visible), Some(mut last_visible)) = (first_visible, last_visible) {
-            first_visible = first_visible.saturating_sub(1);
+            first_visible = first_visible.saturating_sub(2);
             last_visible = (last_visible + 1).min(heights.len() - 1);
             &heights[first_visible..=last_visible]
         } else {
@@ -98,20 +102,107 @@ struct RenderedVehicle<'a> {
     entity: Entity,
 }
 
-#[derive(PartialEq, Debug, Clone, Copy)]
+#[derive(PartialEq, Debug, Default, Clone, EnumCount)]
+enum EditingState {
+    #[default]
+    None,
+    EditingLine,
+}
+
+#[derive(Debug, Clone)]
 pub struct DiagramTab {
     pub displayed_line_entity: Entity,
+    editing: EditingState,
+    state: DiagramPageCache,
 }
+
+impl DiagramTab {
+    pub fn new(displayed_line_entity: Entity) -> Self {
+        Self {
+            displayed_line_entity,
+            editing: EditingState::default(),
+            state: DiagramPageCache::default(),
+        }
+    }
+}
+
+impl PartialEq for DiagramTab {
+    fn eq(&self, other: &Self) -> bool {
+        self.displayed_line_entity == other.displayed_line_entity
+    }
+}
+
+impl Eq for DiagramTab {}
 
 impl Tab for DiagramTab {
     const NAME: &'static str = "Diagram";
     fn main_display(&mut self, world: &mut World, ui: &mut Ui) {
-        if let Err(e) = world.run_system_cached_with(show_diagram, (ui, self.displayed_line_entity))
-        {
+        if let Err(e) = world.run_system_cached_with(
+            show_diagram,
+            (ui, self.displayed_line_entity, &mut self.state),
+        ) {
             error!(
                 "UI Error while displaying diagram ({}): {}",
                 self.displayed_line_entity, e
             )
+        }
+    }
+    fn edit_display(&mut self, world: &mut World, ui: &mut Ui) {
+        // edit line, edit stations on line, etc.
+        let current_tab = world.resource::<SelectedElement>();
+        let width = ui.available_width();
+        let spacing = ui.spacing().item_spacing.x;
+        let element_width = (width - spacing) / EditingState::COUNT as f32;
+        ui.horizontal(|ui| {
+            if ui
+                .add_sized(
+                    [element_width, 30.0],
+                    egui::Button::new("None").selected(self.editing == EditingState::None),
+                )
+                .clicked()
+            {
+                self.editing = EditingState::None;
+            }
+            if ui
+                .add_sized(
+                    [element_width, 30.0],
+                    egui::Button::new("Edit Lines")
+                        .selected(self.editing == EditingState::EditingLine),
+                )
+                .clicked()
+            {
+                self.editing = EditingState::EditingLine;
+            }
+        });
+        // match current_tab.0 {
+        //     // There are nothing selected. In this case, provide tools for editing the displayed line itself
+        //     // and the vehicles on it.
+        //     None => {}
+        //     _ => {}
+        // }
+        if self.editing == EditingState::EditingLine {
+            world.run_system_cached_with(edit_line::edit_line, (ui, self.displayed_line_entity));
+        }
+    }
+    fn display_display(&mut self, world: &mut World, ui: &mut Ui) {
+        let current_tab = world.resource::<SelectedElement>();
+        use super::super::side_panel::*;
+        match current_tab.0 {
+            None => {
+                // this is technically oblique, but let's just wait until the next version of egui.
+                ui.label(RichText::new("Nothing Selected").italics());
+            }
+            Some(SelectedEntityType::Interval(i)) => {
+                world.run_system_cached_with(interval_stats::show_interval_stats, (ui, i));
+            }
+            Some(SelectedEntityType::Map(i)) => {}
+            Some(SelectedEntityType::Station(s)) => {
+                world.run_system_cached_with(station_stats::show_station_stats, (ui, s));
+            }
+            Some(SelectedEntityType::TimetableEntry { entry, vehicle }) => {}
+            Some(SelectedEntityType::Vehicle(v)) => {
+                world.run_system_cached_with(vehicle_stats::show_vehicle_stats, (ui, v));
+            }
         }
     }
     fn id(&self) -> egui::Id {
@@ -123,7 +214,11 @@ impl Tab for DiagramTab {
 }
 
 fn show_diagram(
-    (InMut(ui), In(displayed_line_entity)): (InMut<egui::Ui>, In<Entity>),
+    (InMut(ui), In(displayed_line_entity), InMut(state)): (
+        InMut<egui::Ui>,
+        In<Entity>,
+        InMut<DiagramPageCache>,
+    ),
     displayed_lines: Populated<Ref<DisplayedLine>>,
     vehicles_query: Populated<(Entity, &Name, &VehicleSchedule, &VehicleScheduleCache)>,
     entry_parents: Query<&ChildOf, With<TimetableEntry>>,
@@ -133,7 +228,7 @@ fn show_diagram(
     station_caches: Query<&StationCache, With<Station>>,
     mut selected_element: ResMut<SelectedElement>,
     mut timetable_adjustment_writer: MessageWriter<AdjustTimetableEntry>,
-    mut page_cache: Local<PageCache<Entity, DiagramPageCache>>,
+    // Buffer used between all calls to avoid repeated allocations
     mut visible_stations_scratch: Local<Vec<(Entity, f32)>>,
     time: Res<Time>,
 ) {
@@ -141,7 +236,6 @@ fn show_diagram(
         ui.centered_and_justified(|ui| ui.heading("Diagram not found"));
         return;
     };
-    let state = page_cache.get_mut_or_insert_with(displayed_line_entity, DiagramPageCache::default);
 
     state.stroke.color = ui.visuals().text_color();
 
@@ -240,14 +334,33 @@ fn show_diagram(
                 );
             }
 
-            draw_vehicles(
-                &mut painter,
-                &rendered_vehicles,
-                state,
-                &mut selected_element,
-                &time,
-                ui.ctx(),
-            );
+            if selected_element.is_none() {
+                state.background_acc_time -= time.delta_secs();
+            } else {
+                state.background_acc_time += time.delta_secs();
+            }
+            state.interaction_acc_time += time.delta_secs();
+            state.background_acc_time = state.background_acc_time.clamp(0.0, LINE_ANIMATION_TIME);
+            state.interaction_acc_time = state.interaction_acc_time.clamp(0.0, LINE_ANIMATION_TIME);
+            if (f32::EPSILON..LINE_ANIMATION_TIME).contains(&state.background_acc_time)
+                || (f32::EPSILON..LINE_ANIMATION_TIME).contains(&state.interaction_acc_time)
+            {
+                ui.ctx().request_repaint();
+            }
+
+            draw_vehicles(&mut painter, &rendered_vehicles, &mut selected_element);
+
+            let background_strength = state.background_acc_time / LINE_ANIMATION_TIME;
+            if background_strength > 0.1 {
+                painter.rect_filled(painter.clip_rect(), CornerRadius::ZERO, {
+                    let amt = (background_strength * 180.0) as u8;
+                    if ui.ctx().theme().default_visuals().dark_mode {
+                        Color32::from_black_alpha(amt)
+                    } else {
+                        Color32::from_white_alpha(amt)
+                    }
+                });
+            }
 
             match selected_element.0 {
                 None => {}
@@ -269,6 +382,7 @@ fn show_diagram(
                 Some(SelectedEntityType::Interval(i)) => {
                     draw_interval_selection_overlay(
                         ui,
+                        state.interaction_acc_time,
                         &mut painter,
                         response.rect,
                         state.vertical_offset,
@@ -277,9 +391,10 @@ fn show_diagram(
                         visible_stations,
                     );
                 }
-                Some(SelectedEntityType::Station((s))) => {
+                Some(SelectedEntityType::Station(s)) => {
                     draw_station_selection_overlay(
                         ui,
+                        state.interaction_acc_time,
                         &mut painter,
                         response.rect,
                         state.vertical_offset,
@@ -507,13 +622,9 @@ fn handle_input_selection(
 fn draw_vehicles(
     painter: &mut Painter,
     rendered_vehicles: &[RenderedVehicle],
-    state: &mut DiagramPageCache,
-    selected_entity: &mut Option<SelectedEntityType>,
-    time: &Res<Time>,
-    ctx: &egui::Context,
+    selected_entity: &Option<SelectedEntityType>,
 ) {
     let mut selected_vehicle = None;
-
     for vehicle in rendered_vehicles {
         if selected_vehicle.is_none()
             && let Some(selected_entity) = selected_entity
@@ -530,31 +641,6 @@ fn draw_vehicles(
                 .collect::<Vec<_>>();
             painter.line(points, vehicle.stroke);
         }
-    }
-
-    if selected_vehicle.is_none() {
-        state.background_acc_time -= time.delta_secs();
-    } else {
-        state.background_acc_time += time.delta_secs();
-    }
-    state.interaction_acc_time += time.delta_secs();
-    state.background_acc_time = state.background_acc_time.clamp(0.0, LINE_ANIMATION_TIME);
-    state.interaction_acc_time = state.interaction_acc_time.clamp(0.0, LINE_ANIMATION_TIME);
-    if (f32::EPSILON..LINE_ANIMATION_TIME).contains(&state.background_acc_time)
-        || (f32::EPSILON..LINE_ANIMATION_TIME).contains(&state.interaction_acc_time)
-    {
-        ctx.request_repaint();
-    }
-    let background_strength = state.background_acc_time / LINE_ANIMATION_TIME;
-    if background_strength > 0.1 {
-        painter.rect_filled(painter.clip_rect(), CornerRadius::ZERO, {
-            let amt = (background_strength * 180.0) as u8;
-            if ctx.theme().default_visuals().dark_mode {
-                Color32::from_black_alpha(amt)
-            } else {
-                Color32::from_white_alpha(amt)
-            }
-        });
     }
 }
 
@@ -918,6 +1004,7 @@ fn draw_vehicle_selection_overlay(
 
 fn draw_station_selection_overlay(
     ui: &mut Ui,
+    interaction_acc_time: f32,
     painter: &mut Painter,
     screen_rect: Rect,
     vertical_offset: f32,
@@ -944,8 +1031,11 @@ fn draw_station_selection_overlay(
             )
             .expand2(Vec2 { x: -1.0, y: 7.0 }),
             4,
-            Color32::BLUE.linear_multiply(0.5),
-            Stroke::new(1.0, Color32::BLUE),
+            Color32::BLUE.linear_multiply(interaction_acc_time / LINE_ANIMATION_TIME * 0.5),
+            Stroke::new(
+                1.0,
+                Color32::BLUE.linear_multiply(interaction_acc_time / LINE_ANIMATION_TIME),
+            ),
             egui::StrokeKind::Middle,
         );
     }
@@ -953,6 +1043,7 @@ fn draw_station_selection_overlay(
 
 fn draw_interval_selection_overlay(
     ui: &mut Ui,
+    interaction_acc_time: f32,
     painter: &mut Painter,
     screen_rect: Rect,
     vertical_offset: f32,
@@ -980,8 +1071,11 @@ fn draw_interval_selection_overlay(
             )
             .expand2(Vec2 { x: -1.0, y: 7.0 }),
             4,
-            Color32::GREEN.linear_multiply(0.5),
-            Stroke::new(1.0, Color32::GREEN),
+            Color32::GREEN.linear_multiply(interaction_acc_time / LINE_ANIMATION_TIME * 0.5),
+            Stroke::new(
+                1.0,
+                Color32::GREEN.linear_multiply(interaction_acc_time / LINE_ANIMATION_TIME),
+            ),
             egui::StrokeKind::Middle,
         );
     }
@@ -990,10 +1084,12 @@ fn draw_interval_selection_overlay(
 fn handle_navigation(ui: &mut Ui, response: &response::Response, state: &mut DiagramPageCache) {
     let mut zoom_delta: Vec2 = Vec2::default();
     let mut translation_delta: Vec2 = Vec2::default();
-    ui.input(|input| {
-        zoom_delta = input.zoom_delta_2d();
-        translation_delta = input.translation_delta();
-    });
+    if response.contains_pointer() {
+        ui.input(|input| {
+            zoom_delta = input.zoom_delta_2d();
+            translation_delta = input.translation_delta();
+        });
+    }
     if let Some(pos) = response.hover_pos() {
         let old_zoom = state.zoom;
         let mut new_zoom = state.zoom * zoom_delta;

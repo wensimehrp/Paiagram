@@ -1,8 +1,7 @@
-use std::time::Duration;
-
 use super::Tab;
 use bevy::prelude::*;
 use egui::{Rect, Ui, Vec2};
+use std::time::Duration;
 
 #[derive(PartialEq, Debug, Clone, Copy)]
 pub struct MinesweeperTab;
@@ -79,7 +78,7 @@ enum MinesweeperDifficulty {
 impl MinesweeperDifficulty {
     fn parameters(&self) -> (u8, u8, u8) {
         match self {
-            MinesweeperDifficulty::Easy => (9, 9, 1),
+            MinesweeperDifficulty::Easy => (9, 9, 10),
             MinesweeperDifficulty::Medium => (16, 16, 40),
             MinesweeperDifficulty::Hard => (30, 16, 99),
         }
@@ -176,11 +175,7 @@ impl MinesweeperMap {
     }
 }
 
-fn show_minesweeper(
-    InMut(ui): InMut<Ui>,
-    mut data: ResMut<MinesweeperData>,
-    time: Res<Time>,
-) {
+fn show_minesweeper(InMut(ui): InMut<Ui>, mut data: ResMut<MinesweeperData>, time: Res<Time>) {
     if !data.started {
         ui.centered_and_justified(|ui| ui.heading("Start from assistance panel"));
         return;

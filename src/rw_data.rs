@@ -50,3 +50,7 @@ fn clear_resources(
     }
     info!("Cleared all data from the application.");
 }
+
+fn load_online_data() {
+    todo!("Finish this fucking mess")
+}
