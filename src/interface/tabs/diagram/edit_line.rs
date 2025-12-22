@@ -7,7 +7,7 @@ use bevy::{
     },
     log::info,
 };
-use egui::{Pos2, Sense, Stroke, Ui, UiBuilder, Vec2};
+use egui::{Color32, Pos2, Sense, Stroke, Ui, UiBuilder, Vec2};
 
 use crate::intervals::Station;
 
@@ -36,17 +36,57 @@ pub fn edit_line(
                 x: ui.max_rect().left() + addition_button_offset,
                 y: ui.min_rect().bottom()
                     + (label_height + addition_button_height)
-                        * (displayed_line.stations.len() as f32),
+                        * (displayed_line.stations.len() + 1) as f32,
             },
         ],
         ui.visuals().widgets.hovered.bg_stroke,
     );
+
+    let add_station_between = |ui: &mut Ui, index: usize| {
+        let (rect, resp) = ui.allocate_exact_size(
+            Vec2 {
+                x: ui.available_width(),
+                y: addition_button_height,
+            },
+            Sense::click(),
+        );
+        let stroke = if resp.interact_pointer_pos().is_some() {
+            ui.visuals().widgets.hovered.fg_stroke
+        } else if resp.hovered() {
+            ui.visuals().widgets.hovered.bg_stroke
+        } else {
+            Stroke::NONE
+        };
+        let fill = if resp.hovered() || resp.interact_pointer_pos().is_some() {
+            ui.visuals().window_fill
+        } else {
+            Color32::TRANSPARENT
+        };
+        ui.painter()
+            .line_segment([rect.left_center(), rect.right_center()], stroke);
+        ui.painter().circle(
+            rect.left_center()
+                + Vec2 {
+                    x: addition_button_offset,
+                    y: 0.0,
+                },
+            6.0,
+            fill,
+            stroke,
+        );
+        // display a list of stations to add
+        if resp.clicked() {
+            // TODO: add stuff here
+        }
+    };
+
     let station_names = displayed_line
         .stations
         .iter()
         .copied()
         .map(|(e, _)| stations.get(e).map_or("<Unknown>", Name::as_str));
-    for name in station_names {
+    add_station_between(ui, 0);
+    for (i, name) in station_names.enumerate() {
         let (rect, resp) = ui.allocate_exact_size(
             Vec2 {
                 x: ui.available_width(),
@@ -70,30 +110,6 @@ pub fn edit_line(
             ui.visuals().widgets.hovered.bg_fill,
             ui.visuals().widgets.hovered.bg_stroke,
         );
-        let (rect, resp) = ui.allocate_exact_size(
-            Vec2 {
-                x: ui.available_width(),
-                y: addition_button_height,
-            },
-            Sense::click(),
-        );
-        let stroke = if resp.interact_pointer_pos().is_some() {
-            ui.visuals().widgets.hovered.fg_stroke
-        } else if resp.hovered() {
-            ui.visuals().widgets.hovered.bg_stroke
-        } else {
-            Stroke::NONE
-        };
-        ui.painter()
-            .line_segment([rect.left_center(), rect.right_center()], stroke);
-        ui.painter().circle_stroke(
-            rect.left_center()
-                + Vec2 {
-                    x: addition_button_offset,
-                    y: 0.0,
-                },
-            6.0,
-            stroke,
-        );
+        add_station_between(ui, i + 1);
     }
 }

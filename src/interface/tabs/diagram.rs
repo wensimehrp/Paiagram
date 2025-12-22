@@ -61,6 +61,7 @@ impl DiagramPageCache {
         let first_visible = heights.iter().position(|(_, h)| *h > range.start);
         let last_visible = heights.iter().rposition(|(_, h)| *h < range.end);
         if let (Some(mut first_visible), Some(mut last_visible)) = (first_visible, last_visible) {
+            // saturating sub 2 to add some buffer
             first_visible = first_visible.saturating_sub(2);
             last_visible = (last_visible + 1).min(heights.len() - 1);
             &heights[first_visible..=last_visible]

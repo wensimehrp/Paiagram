@@ -162,6 +162,12 @@ macro_rules! for_all_tabs {
     };
 }
 
+impl AppTab {
+    pub fn id(&self) -> egui::Id {
+        for_all_tabs!(self, t, t.id())
+    }
+}
+
 /// User interface commands sent between systems
 #[derive(Message)]
 pub enum UiCommand {
@@ -172,13 +178,25 @@ pub enum UiCommand {
 /// and is constructed each frame.
 struct AppTabViewer<'w> {
     world: &'w mut World,
+    focused_id: Option<egui::Id>,
 }
 
 impl<'w> egui_dock::TabViewer for AppTabViewer<'w> {
     type Tab = AppTab;
 
     fn ui(&mut self, ui: &mut egui::Ui, tab: &mut Self::Tab) {
-        for_all_tabs!(tab, t, t.main_display(self.world, ui))
+        for_all_tabs!(tab, t, t.main_display(self.world, ui));
+        if self.focused_id == Some(tab.id()) {
+            ui.painter().rect_stroke(
+                ui.clip_rect(),
+                0,
+                Stroke {
+                    width: 1.0,
+                    color: Color32::LIGHT_BLUE,
+                },
+                egui::StrokeKind::Inside,
+            );
+        }
     }
 
     fn title(&mut self, tab: &mut Self::Tab) -> egui::WidgetText {
@@ -186,7 +204,7 @@ impl<'w> egui_dock::TabViewer for AppTabViewer<'w> {
     }
 
     fn id(&mut self, tab: &mut Self::Tab) -> egui::Id {
-        for_all_tabs!(tab, t, t.id())
+        tab.id()
     }
 
     fn scroll_bars(&self, tab: &Self::Tab) -> [bool; 2] {
@@ -374,7 +392,11 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
                         LINE_STROKE.round_center_to_pixel(ui.pixels_per_point(), &mut y);
                         painter.hline(max_rect.min.x..=max_rect.max.x, y, LINE_STROKE);
                     }
-                    let mut tab_viewer = AppTabViewer { world: world };
+                    let focused_id = ui_state
+                        .dock_state
+                        .find_active_focused()
+                        .map(|(_, tab)| tab.id());
+                    let mut tab_viewer = AppTabViewer { world, focused_id };
                     let mut style = egui_dock::Style::from_egui(ui.style());
                     style.tab.tab_body.inner_margin = Margin::same(0);
                     style.tab.tab_body.corner_radius = CornerRadius::ZERO;
@@ -392,7 +414,7 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
                         |ui: &mut Ui| {
                             let (resp, painter) =
                                 ui.allocate_painter(ui.available_size(), Sense::click());
-                                let rect = resp.rect;
+                            let rect = resp.rect;
                             painter.add(Shape::convex_polygon(
                                 vec![
                                     rect.left_bottom() + egui::Vec2 { x: 0.0, y: 0.0 },
