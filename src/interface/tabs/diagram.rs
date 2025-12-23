@@ -243,6 +243,10 @@ fn show_diagram(
             .copied()
             .any(|(s, _)| station_updated.get(s).is_ok());
 
+    if entries_updated {
+        info!("Updating vehicle entities for diagram display");
+    }
+
     ui.style_mut().visuals.menu_corner_radius = CornerRadius::ZERO;
     ui.style_mut().visuals.window_stroke.width = 0.0;
 
@@ -258,7 +262,9 @@ fn show_diagram(
         state.vehicle_entities.dedup();
     }
 
-    ensure_heights(state, &displayed_line);
+    if displayed_line.is_changed() || state.heights.is_none() {
+        ensure_heights(state, &displayed_line);
+    }
 
     Frame::canvas(ui.style())
         .fill(if ui.visuals().dark_mode {
@@ -399,15 +405,13 @@ fn show_diagram(
 }
 
 fn ensure_heights(state: &mut DiagramPageCache, displayed_line: &DisplayedLine) {
-    if state.heights.is_none() {
-        let mut current_height = 0.0;
-        let mut heights = Vec::new();
-        for (station, distance) in &displayed_line.stations {
-            current_height += distance.abs().log2().max(1.0) * 15f32;
-            heights.push((*station, current_height))
-        }
-        state.heights = Some(heights);
+    let mut current_height = 0.0;
+    let mut heights = Vec::new();
+    for (station, distance) in &displayed_line.stations {
+        current_height += distance.abs().log2().max(1.0) * 15f32;
+        heights.push((*station, current_height))
     }
+    state.heights = Some(heights);
 }
 
 fn calculate_visible_ranges(
@@ -423,6 +427,9 @@ fn calculate_visible_ranges(
     (vertical_visible, horizontal_visible, ticks_per_screen_unit)
 }
 
+/// Collects and transforms vehicle schedule data into screen-space segments for rendering.
+/// This function handles the mapping of timetable entries to station lines, including
+/// cases where a station might appear multiple times in the diagram.
 fn collect_rendered_vehicles<'a, F, G>(
     get_timetable_entries: F,
     get_vehicles: G,
@@ -445,9 +452,11 @@ where
         )> + 'a,
 {
     let mut rendered_vehicles = Vec::new();
+
     for (vehicle_entity, _name, schedule, schedule_cache) in
         vehicles.iter().copied().filter_map(|e| get_vehicles(e))
     {
+        // Get all repetitions of the schedule that fall within the visible time range.
         let Some(visible_sets) = schedule_cache.get_entries_range(
             schedule,
             TimetableTime((horizontal_visible.start / TICKS_PER_SECOND) as i32)
@@ -458,60 +467,191 @@ where
         };
 
         let mut segments = Vec::new();
+
         for (initial_offset, set) in visible_sets {
-            let mut current_segment: Vec<PointData> = Vec::new();
-            for ((entry, entry_cache), timetable_entity) in set {
-                let Some(estimate) = &entry_cache.estimate else {
-                    if !current_segment.is_empty() {
-                        segments.push(std::mem::take(&mut current_segment));
+            // local_edges holds WIP segments and the index of the station line they are currently on.
+            let mut local_edges: Vec<(Vec<PointData<'a>>, usize)> = Vec::new();
+            let mut previous_indices: Vec<usize> = Vec::new();
+
+            // Initialize previous_indices with all occurrences of the first station in the set.
+            if let Some((ce_data, _)) = set.first() {
+                let (ce, _) = ce_data;
+                previous_indices = visible_stations
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, (s, _))| if *s == ce.station { Some(i) } else { None })
+                    .collect();
+            }
+
+            for entry_idx in 0..set.len() {
+                let (ce_data, ce_actual) = &set[entry_idx];
+                let (ce, ce_cache) = ce_data;
+                let ne = set.get(entry_idx + 1);
+
+                // If the current station isn't visible, try to find the next one and flush WIP edges.
+                if previous_indices.is_empty() {
+                    if let Some((ne_data, _)) = ne {
+                        let (ne_entry, _) = ne_data;
+                        previous_indices = visible_stations
+                            .iter()
+                            .enumerate()
+                            .filter_map(|(i, (s, _))| {
+                                if *s == ne_entry.station {
+                                    Some(i)
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
+                    }
+                    for (segment, _) in local_edges.drain(..) {
+                        if segment.len() >= 2 {
+                            segments.push(segment);
+                        }
+                    }
+                    continue;
+                }
+
+                let mut next_local_edges = Vec::new();
+
+                // If there's no time estimate, we can't draw this point. Flush WIP edges.
+                let Some(estimate) = ce_cache.estimate.as_ref() else {
+                    for (segment, _) in local_edges.drain(..) {
+                        if segment.len() >= 2 {
+                            segments.push(segment);
+                        }
+                    }
+                    if let Some((ne_data, _)) = ne {
+                        let (ne_entry, _) = ne_data;
+                        previous_indices = visible_stations
+                            .iter()
+                            .enumerate()
+                            .filter_map(|(i, (s, _))| {
+                                if *s == ne_entry.station {
+                                    Some(i)
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
                     }
                     continue;
                 };
-                let Some((_, h)) = visible_stations.iter().find(|(s, _)| *s == entry.station)
-                else {
-                    if !current_segment.is_empty() {
-                        segments.push(std::mem::take(&mut current_segment));
-                    }
-                    continue;
-                };
 
-                let draw_height = (*h - state.vertical_offset) * state.zoom.y + screen_rect.top();
+                // Calculate absolute ticks for arrival and departure.
+                let arrival_ticks = (initial_offset.0 as i64
+                    + (estimate.arrival.0 - schedule.start.0) as i64)
+                    * TICKS_PER_SECOND;
+                let departure_ticks = (initial_offset.0 as i64
+                    + (estimate.departure.0 - schedule.start.0) as i64)
+                    * TICKS_PER_SECOND;
 
-                let arrival_pos = Pos2 {
-                    x: ticks_to_screen_x(
-                        (estimate.arrival.0 + initial_offset.0) as i64 * TICKS_PER_SECOND,
-                        screen_rect,
-                        ticks_per_screen_unit,
-                        state.tick_offset,
-                    ),
-                    y: draw_height,
-                };
+                // For each occurrence of the current station in the diagram...
+                for &current_line_index in &previous_indices {
+                    let height = visible_stations[current_line_index].1;
 
-                let mut departure_pos = None;
-                if let Some(departure_mode) = entry.departure
-                    && !matches!(departure_mode, TravelMode::Flexible)
-                {
-                    departure_pos = Some(Pos2 {
-                        x: ticks_to_screen_x(
-                            (estimate.departure.0 + initial_offset.0) as i64 * TICKS_PER_SECOND,
+                    // Try to find a WIP edge that was on an adjacent station line.
+                    // Adjacency is defined as being within 1 index in the station list.
+                    // This matching logic relies on the "no A-B-A" constraint to ensure that
+                    // a vehicle line doesn't have multiple valid "previous" segments to choose from.
+                    let matched_idx = local_edges
+                        .iter()
+                        .position(|(_, idx)| current_line_index.abs_diff(*idx) <= 1);
+
+                    let mut segment = if let Some(idx) = matched_idx {
+                        local_edges.swap_remove(idx).0
+                    } else {
+                        Vec::new()
+                    };
+
+                    let arrival_pos = Pos2::new(
+                        ticks_to_screen_x(
+                            arrival_ticks,
                             screen_rect,
                             ticks_per_screen_unit,
                             state.tick_offset,
                         ),
-                        y: draw_height,
-                    });
+                        (height - state.vertical_offset) * state.zoom.y + screen_rect.top(),
+                    );
+
+                    let departure_pos = if ce.departure.is_some() {
+                        Some(Pos2::new(
+                            ticks_to_screen_x(
+                                departure_ticks,
+                                screen_rect,
+                                ticks_per_screen_unit,
+                                state.tick_offset,
+                            ),
+                            (height - state.vertical_offset) * state.zoom.y + screen_rect.top(),
+                        ))
+                    } else {
+                        None
+                    };
+
+                    segment.push((arrival_pos, departure_pos, (*ce, *ce_cache), *ce_actual));
+
+                    // Check if the next station in the schedule is adjacent in the diagram.
+                    // We only check the immediate neighbors (index -1, 0, +1) of the current station line.
+                    //
+                    // SAFETY: The diagram layout does not contain "A - B - A" arrangements
+                    // where a station B has the same station A as both its predecessor and successor.
+                    // This ensures that there is at most one valid adjacent station line to connect to,
+                    // allowing us to 'break' after the first match without ambiguity.
+                    let mut continued = false;
+                    if let Some((ne_data, _)) = ne {
+                        let (ne_entry, _) = ne_data;
+                        for offset in [-1, 0, 1] {
+                            let next_idx = (current_line_index as isize + offset) as usize;
+                            if let Some((s, _)) = visible_stations.get(next_idx) {
+                                if *s == ne_entry.station {
+                                    next_local_edges.push((segment.clone(), next_idx));
+                                    continued = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    // If the path doesn't continue to an adjacent station, flush this segment.
+                    if !continued {
+                        if segment.len() >= 2 {
+                            segments.push(segment);
+                        }
+                    }
                 }
-                current_segment.push((
-                    arrival_pos,
-                    departure_pos,
-                    (entry, entry_cache),
-                    timetable_entity,
-                ))
+
+                // Flush any WIP edges that weren't matched to the current station.
+                for (segment, _) in local_edges.drain(..) {
+                    if segment.len() >= 2 {
+                        segments.push(segment);
+                    }
+                }
+
+                local_edges = next_local_edges;
+                if let Some((ne_data, _)) = ne {
+                    let (ne_entry, _) = ne_data;
+                    previous_indices = visible_stations
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(i, (s, _))| {
+                            if *s == ne_entry.station {
+                                Some(i)
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+                }
             }
-            if !current_segment.is_empty() {
-                segments.push(current_segment);
+
+            // Final flush of remaining WIP edges for this repetition.
+            for (segment, _) in local_edges {
+                if segment.len() >= 2 {
+                    segments.push(segment);
+                }
             }
         }
+
         rendered_vehicles.push(RenderedVehicle {
             segments,
             stroke: state.stroke,
@@ -1024,10 +1164,7 @@ fn draw_station_selection_overlay(
             .expand2(Vec2 { x: -1.0, y: 7.0 }),
             4,
             Color32::BLUE.linear_multiply(strength * 0.5),
-            Stroke::new(
-                1.0,
-                Color32::BLUE.linear_multiply(strength),
-            ),
+            Stroke::new(1.0, Color32::BLUE.linear_multiply(strength)),
             egui::StrokeKind::Middle,
         );
     }

@@ -7,17 +7,17 @@ use bevy::{
     },
     log::info,
 };
-use egui::{Color32, Pos2, Sense, Stroke, Ui, UiBuilder, Vec2};
+use egui::{Color32, Popup, Pos2, ScrollArea, Sense, Stroke, Ui, UiBuilder, Vec2};
 
 use crate::intervals::Station;
 
 pub fn edit_line(
     (InMut(ui), In(displayed_line_entity)): (InMut<Ui>, In<Entity>),
-    stations: Query<&Name, With<Station>>,
+    stations: Query<(Entity, &Name), With<Station>>,
     mut displayed_lines: Query<&mut super::DisplayedLine>,
 ) {
-    let insertion: Option<(usize, Entity)> = None;
-    let deletion: Option<usize> = None;
+    let mut insertion: Option<(usize, Entity)> = None;
+    let mut deletion: Option<usize> = None;
     let Ok(mut displayed_line) = displayed_lines.get_mut(displayed_line_entity) else {
         ui.label("Error: Displayed line not found.");
         return;
@@ -42,7 +42,7 @@ pub fn edit_line(
         ui.visuals().widgets.hovered.bg_stroke,
     );
 
-    let add_station_between = |ui: &mut Ui, index: usize| {
+    let mut add_station_between = |ui: &mut Ui, index: usize| {
         let (rect, resp) = ui.allocate_exact_size(
             Vec2 {
                 x: ui.available_width(),
@@ -74,17 +74,23 @@ pub fn edit_line(
             fill,
             stroke,
         );
-        // display a list of stations to add
-        if resp.clicked() {
-            // TODO: add stuff here
-        }
+        Popup::menu(&resp).show(|ui| {
+            // TODO: improve station selection UI
+            ScrollArea::vertical().show(ui, |ui| {
+                for (entity, name) in stations.iter() {
+                    if ui.button(name.as_str()).clicked() {
+                        insertion = Some((index, entity));
+                    }
+                }
+            });
+        });
     };
 
     let station_names = displayed_line
         .stations
         .iter()
         .copied()
-        .map(|(e, _)| stations.get(e).map_or("<Unknown>", Name::as_str));
+        .map(|(e, _)| stations.get(e).map_or("<Unknown>", |(_, n)| n.as_str()));
     add_station_between(ui, 0);
     for (i, name) in station_names.enumerate() {
         let (rect, resp) = ui.allocate_exact_size(
@@ -111,5 +117,10 @@ pub fn edit_line(
             ui.visuals().widgets.hovered.bg_stroke,
         );
         add_station_between(ui, i + 1);
+    }
+    if let Some((index, entity)) = insertion {
+        info!("Inserting station at index {index}");
+        // TODO: fix the 10.0 thingy
+        displayed_line.stations.insert(index, (entity, 10.0));
     }
 }
