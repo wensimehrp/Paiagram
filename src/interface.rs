@@ -19,7 +19,7 @@ use egui::{
     Ui, Vec2,
 };
 use egui_animation::{animate_bool_eased, animate_repeating};
-use egui_dock::{DockArea, DockState};
+use egui_dock::{DockArea, DockState, TabInteractionStyle};
 use std::{sync::Arc, time::Duration};
 use strum::{EnumCount, IntoEnumIterator};
 #[cfg(target_arch = "wasm32")]
@@ -36,6 +36,7 @@ impl Plugin for InterfacePlugin {
             .init_resource::<MiscUiState>()
             .init_resource::<SelectedElement>()
             .init_resource::<MinesweeperData>()
+            .init_resource::<SidePanelState>()
             .insert_resource(UiState::new())
             .insert_resource(StatusBarState::default())
             .add_systems(Update, modify_dock_state.run_if(on_message::<UiCommand>));
@@ -215,7 +216,7 @@ impl<'w> egui_dock::TabViewer for AppTabViewer<'w> {
                 0,
                 Stroke {
                     width: 1.6,
-                    color: Color32::LIGHT_BLUE.linear_multiply(strength),
+                    color: tab.color().linear_multiply(strength),
                 },
                 egui::StrokeKind::Inside,
             );
@@ -236,6 +237,69 @@ impl<'w> egui_dock::TabViewer for AppTabViewer<'w> {
 
     fn on_tab_button(&mut self, tab: &mut Self::Tab, response: &egui::Response) {
         for_all_tabs!(tab, t, t.on_tab_button(self.world, response))
+    }
+
+    fn tab_style_override(
+        &self,
+        tab: &Self::Tab,
+        global_style: &egui_dock::TabStyle,
+    ) -> Option<egui_dock::TabStyle> {
+        Some(egui_dock::TabStyle {
+            focused: TabInteractionStyle {
+                bg_fill: tab.color(),
+                ..Default::default()
+            },
+            ..global_style.clone()
+        })
+    }
+}
+
+#[derive(Resource)]
+struct SidePanelState {
+    dock_state: DockState<SidePanelTab>,
+}
+
+impl Default for SidePanelState {
+    fn default() -> Self {
+        let dock_state = DockState::new(vec![SidePanelTab::Properties, SidePanelTab::Details]);
+        Self { dock_state }
+    }
+}
+
+enum SidePanelTab {
+    Properties,
+    Details,
+}
+
+struct SidePanelViewer<'w> {
+    world: &'w mut World,
+    focused_tab: Option<&'w mut AppTab>,
+}
+
+impl<'w> egui_dock::TabViewer for SidePanelViewer<'w> {
+    type Tab = SidePanelTab;
+    fn ui(&mut self, ui: &mut egui::Ui, tab: &mut Self::Tab) {
+        let Some(focused_tab) = self.focused_tab.as_deref_mut() else {
+            ui.label("No tabs focused. Open a tab to see its properties.");
+            return;
+        };
+        match tab {
+            SidePanelTab::Properties => {
+                for_all_tabs!(focused_tab, t, { t.edit_display(self.world, ui) })
+            }
+            SidePanelTab::Details => {
+                for_all_tabs!(focused_tab, t, { t.display_display(self.world, ui) })
+            }
+        }
+    }
+    fn title(&mut self, tab: &mut Self::Tab) -> egui::WidgetText {
+        match tab {
+            SidePanelTab::Properties => "Properties".into(),
+            SidePanelTab::Details => "Details".into(),
+        }
+    }
+    fn is_closeable(&self, _tab: &Self::Tab) -> bool {
+        false
     }
 }
 
@@ -265,6 +329,11 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
         .bevy_app
         .world_mut()
         .remove_resource::<MiscUiState>()
+        .unwrap();
+    let mut side_panel_state = app
+        .bevy_app
+        .world_mut()
+        .remove_resource::<SidePanelState>()
         .unwrap();
     if !mus.initialized {
         ctx.style_mut(|style| {
@@ -353,27 +422,29 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
             });
 
             let supplementary_panel_content = |ui: &mut Ui| {
-                // Edit options change based on the currently focused tab
-                side_panel::show_side_panel(ui, &mut mus.side_panel_tab);
-                let Some((_, focused_tab)) = ui_state.dock_state.find_active_focused() else {
-                    return;
-                };
-                match mus.side_panel_tab {
-                    CurrentTab::Edit => {
-                        for_all_tabs!(focused_tab, t, {
-                            ScrollArea::vertical().show(ui, |ui| t.edit_display(world, ui));
-                        })
-                    }
-                    CurrentTab::Details => {
-                        for_all_tabs!(focused_tab, t, {
-                            ScrollArea::vertical().show(ui, |ui| t.display_display(world, ui));
-                        })
-                    }
-                }
+                let focused_tab = ui_state
+                    .dock_state
+                    .find_active_focused()
+                    .map(|(_, tab)| tab);
+                let mut side_panel_viewer = SidePanelViewer { world, focused_tab };
+                let mut style = egui_dock::Style::from_egui(ui.style());
+                style.tab.tab_body.inner_margin = Margin::same(1);
+                style.tab.tab_body.corner_radius = CornerRadius::ZERO;
+                style.tab.tab_body.stroke.width = 0.0;
+                style.tab.hline_below_active_tab_name = true;
+                style.tab_bar.corner_radius = CornerRadius::ZERO;
+                DockArea::new(&mut side_panel_state.dock_state)
+                    .id(Id::new("Side panel stuff"))
+                    .draggable_tabs(false)
+                    .show_leaf_close_all_buttons(false)
+                    .show_leaf_collapse_buttons(false)
+                    .style(style)
+                    .show_inside(ui, &mut side_panel_viewer);
             };
 
             if mus.supplementary_panel_state.is_on_bottom {
                 egui::TopBottomPanel::bottom("TreeView")
+                    .frame(egui::Frame::new())
                     .resizable(false)
                     .exact_height(ctx.used_size().y / 2.5)
                     .show_animated(
@@ -383,6 +454,7 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
                     );
             } else {
                 egui::SidePanel::left("TreeView")
+                    .frame(egui::Frame::new())
                     .default_width(ctx.used_size().x / 4.0)
                     .show_animated(
                         &ctx,
@@ -424,7 +496,7 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
                         .map(|(_, tab)| tab.id());
                     let mut tab_viewer = AppTabViewer { world, focused_id };
                     let mut style = egui_dock::Style::from_egui(ui.style());
-                    style.tab.tab_body.inner_margin = Margin::same(0);
+                    style.tab.tab_body.inner_margin = Margin::same(1);
                     style.tab.tab_body.corner_radius = CornerRadius::ZERO;
                     style.tab.tab_body.stroke.width = 0.0;
                     style.tab.hline_below_active_tab_name = true;
@@ -461,6 +533,7 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
                 });
         });
     app.bevy_app.world_mut().insert_resource(mus);
+    app.bevy_app.world_mut().insert_resource(side_panel_state);
     Ok(())
 }
 

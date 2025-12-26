@@ -1,7 +1,4 @@
-use super::PageCache;
-use crate::colors;
 use crate::interface::SelectedElement;
-use crate::interface::side_panel::CurrentTab;
 use crate::interface::tabs::Tab;
 use crate::vehicles::entries::{ActualRouteEntry, VehicleScheduleCache};
 use crate::{
@@ -24,10 +21,7 @@ use strum_macros::EnumCount;
 mod edit_line;
 
 // Time and time-canvas related constants
-// const SECONDS_PER_WORLD_UNIT: f64 = 1.0; // world units -> seconds
 const TICKS_PER_SECOND: i64 = 100;
-// const TICKS_PER_WORLD_UNIT: f64 = SECONDS_PER_WORLD_UNIT * TICKS_PER_SECOND as f64;
-const LINE_ANIMATION_TIME: f32 = 0.2; // 0.2 seconds
 
 // TODO: implement multi select and editing
 #[derive(PartialEq, Eq, Clone, Copy)]
@@ -146,7 +140,6 @@ impl Tab for DiagramTab {
     }
     fn edit_display(&mut self, world: &mut World, ui: &mut Ui) {
         // edit line, edit stations on line, etc.
-        let current_tab = world.resource::<SelectedElement>();
         let width = ui.available_width();
         let spacing = ui.spacing().item_spacing.x;
         let element_width = (width - spacing) / EditingState::COUNT as f32;
@@ -178,7 +171,9 @@ impl Tab for DiagramTab {
         //     _ => {}
         // }
         if self.editing == EditingState::EditingLine {
-            world.run_system_cached_with(edit_line::edit_line, (ui, self.displayed_line_entity));
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                world.run_system_cached_with(edit_line::edit_line, (ui, self.displayed_line_entity))
+            });
         }
     }
     fn display_display(&mut self, world: &mut World, ui: &mut Ui) {
@@ -353,6 +348,11 @@ fn show_diagram(
                 });
             }
 
+            let show_button = state.zoom.x.min(state.zoom.y) > 0.0002;
+            let button_strength = ui
+                .ctx()
+                .animate_bool(ui.id().with("all buttons animation"), show_button);
+
             match selected_element.0 {
                 None => {}
                 Some(SelectedEntityType::Vehicle(v)) => {
@@ -362,6 +362,7 @@ fn show_diagram(
                         &rendered_vehicles,
                         state,
                         background_strength,
+                        button_strength,
                         v,
                         &mut timetable_adjustment_writer,
                         &station_names,
@@ -774,6 +775,7 @@ fn draw_vehicle_selection_overlay(
     rendered_vehicles: &[RenderedVehicle],
     state: &mut DiagramPageCache,
     line_strength: f32,
+    button_strength: f32,
     selected_entity: Entity,
     timetable_adjustment_writer: &mut MessageWriter<AdjustTimetableEntry>,
     station_names: &Query<&Name, With<Station>>,
@@ -864,13 +866,6 @@ fn draw_vehicle_selection_overlay(
             (&TimetableEntry, &TimetableEntryCache),
             ActualRouteEntry,
         )> = None;
-        let show_button = state.zoom.x.min(state.zoom.y) > 0.0002;
-        let mut button_strength = ui
-            .ctx()
-            .animate_bool(ui.id().with("all buttons animation"), show_button);
-        if button_strength > 0.0 && !show_button {
-            button_strength = 0.0;
-        }
         if button_strength <= 0.0 {
             continue;
         }
