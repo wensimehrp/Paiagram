@@ -3,15 +3,9 @@ use crate::interface::tabs::tree_view;
 use super::Tab;
 use bevy::ecs::system::{In, InMut};
 use bevy::log::prelude::*;
-use egui::{Frame, Response, ScrollArea, Sense, Ui, UiBuilder, Vec2, vec2};
+use egui::{Frame, Label, Response, ScrollArea, Sense, Ui, UiBuilder, Vec2, vec2};
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
-const CARD_WIDTH: f32 = 150.0;
-const CARD_SIZE: Vec2 = Vec2 {
-    x: CARD_WIDTH,
-    y: CARD_WIDTH / 2.0 * 3.0,
-};
-const CARD_SPACING: f32 = 20.0;
 
 #[derive(Debug, Default, Clone, Copy, EnumIter, PartialEq)]
 enum CurrentField {
@@ -75,44 +69,44 @@ impl Tab for StartTab {
 }
 
 fn show_start(InMut(ui): InMut<Ui>) {
-    // show a bunch of 3:2 rectangles
-    let max_width = ui.available_width();
-    ui.set_max_width(max_width);
-    ui.style_mut().spacing.item_spacing = Vec2::ZERO;
-    ScrollArea::vertical().show(ui, |ui| {
-        ui.horizontal(|ui| {
-            ui.vertical(|ui| {
-                diagram_card(ui, |ui| {
-                    ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
-                        ui.label("NEW DIAGRAM");
-                    });
-                });
-            });
-            ui.add_space(CARD_SPACING);
-            for _ in 1..=(max_width / (CARD_SIZE.x + CARD_SPACING)) as usize {
-                diagram_card(ui, |_| {});
-                ui.add_space(CARD_SPACING);
+    const CARD_SPACING: f32 = 10.0;
+    ui.spacing_mut().item_spacing.x = CARD_SPACING;
+    ui.spacing_mut().item_spacing.y = CARD_SPACING;
+    ui.vertical_centered(|ui| {
+        ui.horizontal_wrapped(|ui| {
+            for _ in 0..=100 {
+                diagram_card(ui, "Create new diagram", None);
             }
         });
     });
 }
 
-fn diagram_card<R, F>(ui: &mut Ui, content: F) -> Response
-where
-    F: FnOnce(&mut Ui) -> R,
-{
+fn diagram_card(ui: &mut Ui, title: &str, image: Option<i32>) -> Response {
+    // the image is handled later.
+    const CARD_WIDTH: f32 = 150.0;
+    const CARD_SIZE: Vec2 = Vec2 {
+        x: CARD_WIDTH,
+        y: CARD_WIDTH / 2.0 * 3.0,
+    };
+
     let (rect, resp) = ui.allocate_exact_size(CARD_SIZE, Sense::click());
-    ui.scope_builder(UiBuilder::new().sense(resp.sense).max_rect(rect), |ui| {
-        let response = ui.response();
-        let visuals = ui.style().interact(&response);
-        let mut stroke = visuals.bg_stroke;
-        stroke.width = 1.5;
-        Frame::canvas(ui.style())
-            .fill(visuals.bg_fill.gamma_multiply(0.4))
+    ui.scope_builder(UiBuilder::new().max_rect(rect).sense(resp.sense), |ui| {
+        let visuals = ui.style().interact(&ui.response());
+        let stroke = {
+            let mut a = visuals.bg_stroke;
+            a.width = 1.5;
+            a
+        };
+        Frame::new()
+            .fill(visuals.bg_fill)
             .stroke(stroke)
+            .inner_margin(3)
+            .corner_radius(3)
             .show(ui, |ui| {
                 ui.set_min_size(ui.available_size());
-                ui.allocate_ui(ui.available_size(), content)
+                ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
+                    ui.add(Label::new(title).truncate())
+                });
             });
     })
     .response
@@ -164,9 +158,12 @@ fn show_about(ui: &mut Ui) {
         });
 
         ui.collapsing("Contact & Support", |ui| {
-            ui.label("• Bug Reports: [Link to Issue Tracker]");
-            ui.label("• Discussions: [Link to Forum/Discord]");
-            ui.label("• Email: [Your Email]");
+            ui.label("• Bug Reports: We don't have one yet.");
+            ui.label("• Discussions: We don't have one yet.");
+            ui.horizontal(|ui| {
+                ui.label("• Email: ");
+                ui.hyperlink("mailto://wensimehrp@gmail.com");
+            });
         });
 
         ui.collapsing("Special Thanks", |ui| {
