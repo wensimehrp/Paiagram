@@ -42,6 +42,7 @@
               wget
               p7zip
               binaryen
+              trunk
               cargo-about
             ]
             ++ lib.optionals (lib.strings.hasInfix "linux" system) [

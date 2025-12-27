@@ -1,6 +1,5 @@
 use crate::intervals::*;
 use crate::lines::{DisplayedLine, DisplayedLineType};
-use crate::units::canvas::CanvasLength;
 // use crate::lines::*;
 use crate::units::distance::Distance;
 use crate::units::time::{Duration, TimetableTime};
@@ -285,7 +284,7 @@ pub fn load_qetrc(
     // graph hashmap that stores the intervals
     // create stations and intervals from lines
     for line in qetrc_data.lines {
-        create_line_entities(&mut commands, line, &mut stations, &mut existing_graph.0);
+        create_line_entities(&mut commands, line, &mut stations, &mut existing_graph);
     }
     // create services and their timetables
     // reuse the stations hashmap for looking up station entities
@@ -379,7 +378,7 @@ fn create_timetable_entries(
     service_entity: Option<Entity>,
 ) -> Vec<Entity> {
     let mut entries = Vec::with_capacity(timetable.len());
-    for (i, entry) in timetable.iter().enumerate() {
+    for entry in timetable.iter() {
         let Some(&station_entity) = stations.get(&entry.station_name) else {
             continue;
         };
@@ -412,7 +411,7 @@ fn create_line_entities(
     commands: &mut Commands,
     line: QETRCLine,
     stations: &mut std::collections::HashMap<String, Entity>,
-    graph_map: &mut IntervalGraphType,
+    graph: &mut Graph,
 ) {
     let mut intervals: DisplayedLineType = Vec::with_capacity(line.stations.len());
     let Some(first_station) = line.stations.first() else {
@@ -426,24 +425,48 @@ fn create_line_entities(
         return;
     };
     let first_entity = get_or_create_station(commands, stations, first_station);
+    let first_idx = *graph
+        .indexes
+        .entry(first_entity)
+        .or_insert_with(|| graph.inner.add_node(first_entity));
+
     intervals.push((first_entity, 0.0));
     let mut prev_station = first_station;
-    let mut prev_entity = first_entity;
+    let mut prev_idx = first_idx;
     for station in line.stations.iter().skip(1) {
         let next_entity = get_or_create_station(commands, stations, station);
+        let next_idx = *graph
+            .indexes
+            .entry(next_entity)
+            .or_insert_with(|| graph.inner.add_node(next_entity));
+
         let distance_delta = (station.distance - prev_station.distance).abs();
-        if !graph_map.contains_edge(prev_entity, next_entity) {
-            let interval_entity = commands
+
+        // Check if an interval already exists in either direction to reuse the entity
+        let interval_entity = if let Some(edge_idx) = graph.inner.find_edge(prev_idx, next_idx) {
+            *graph.inner.edge_weight(edge_idx).unwrap()
+        } else if let Some(edge_idx) = graph.inner.find_edge(next_idx, prev_idx) {
+            *graph.inner.edge_weight(edge_idx).unwrap()
+        } else {
+            commands
                 .spawn(crate::intervals::Interval {
                     length: Distance::from_km(distance_delta),
                     speed_limit: None,
                 })
-                .id();
-            graph_map.add_edge(prev_entity, next_entity, interval_entity);
+                .id()
+        };
+
+        // Ensure directed edges exist in both directions for the bidirectional railway interval
+        if graph.inner.find_edge(prev_idx, next_idx).is_none() {
+            graph.inner.add_edge(prev_idx, next_idx, interval_entity);
         }
+        if graph.inner.find_edge(next_idx, prev_idx).is_none() {
+            graph.inner.add_edge(next_idx, prev_idx, interval_entity);
+        }
+
         intervals.push((next_entity, distance_delta));
         prev_station = station;
-        prev_entity = next_entity;
+        prev_idx = next_idx;
     }
 
     commands.spawn((

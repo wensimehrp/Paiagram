@@ -88,6 +88,12 @@ pub fn show_about(
         )));
     }
 
+    if ui.button("G").clicked() {
+        msg_open_tab.write(UiCommand::OpenOrFocusTab(super::AppTab::Graph(
+            super::tabs::graph::GraphTab,
+        )));
+    }
+
     egui::MenuBar::new().ui(ui, |ui| {
         ui.menu_button("File", |ui| {
             if ui.button("Read...").clicked() {

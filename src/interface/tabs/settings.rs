@@ -1,6 +1,6 @@
 use bevy::ecs::system::{InMut, ResMut};
 use egui::Ui;
-use egui_i18n::{get_language, set_language, tr};
+use egui_i18n::{set_language, tr};
 use strum::IntoEnumIterator;
 
 use super::Tab;

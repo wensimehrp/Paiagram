@@ -179,7 +179,7 @@ pub fn calculate_estimates(
                 let interval_distance = if previous_station == station || arr_dur.is_some() {
                     None
                 } else {
-                    match graph.0.edge_weight(previous_station, station) {
+                    match graph.edge_weight(previous_station, station) {
                         Some(w) => {
                             if let Ok(interval) = intervals.get(*w) {
                                 Some(interval.length)
@@ -204,7 +204,7 @@ pub fn calculate_estimates(
                 previous_station = station;
             }
             distances.push(if time_offset.is_none() {
-                match graph.0.edge_weight(previous_station, current_station) {
+                match graph.edge_weight(previous_station, current_station) {
                     Some(w) => {
                         if let Ok(interval) = intervals.get(*w) {
                             Some(interval.length)

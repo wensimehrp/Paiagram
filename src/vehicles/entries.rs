@@ -188,8 +188,8 @@ pub fn calculate_actual_route(
 
             // If either station isn't in the graph at all (e.g. schedule-only stations), routing
             // is expected to fail. Don't spam warnings or run astar in this case.
-            let prev_in_graph = graph.0.contains_node(prev.station);
-            let next_in_graph = graph.0.contains_node(entry.station);
+            let prev_in_graph = graph.contains_node(prev.station);
+            let next_in_graph = graph.contains_node(entry.station);
             let service_name = prev
                 .service
                 .map(|e| names.get(e).ok())
@@ -219,11 +219,11 @@ pub fn calculate_actual_route(
             }
             // compare the stuff between the last and current entries
             let Some((_, path)) = astar(
-                &graph.0,
-                prev.station,
-                |finish| finish == entry.station,
-                |(_start, _end, weight)| {
-                    if let Ok(interval) = intervals.get(*weight) {
+                &graph.inner,
+                graph.node(prev.station).unwrap(),
+                |finish| finish == graph.node(entry.station).unwrap(),
+                |edge| {
+                    if let Ok(interval) = intervals.get(*edge.weight()) {
                         interval.length.0
                     } else {
                         i32::MAX
@@ -255,14 +255,15 @@ pub fn calculate_actual_route(
             };
             if path.len() >= 2 {
                 for &station in &path[1..path.len() - 1] {
+                    let station_entity = graph.entity(station).unwrap();
                     let station_name = names
-                        .get(station)
+                        .get(station_entity)
                         .ok()
                         .map(Name::as_str)
                         .unwrap_or("<unnamed>");
                     info!(?station_name, ?service_name);
                     let derived_entity = commands
-                        .spawn(TimetableEntry::new_derived(station, prev.service))
+                        .spawn(TimetableEntry::new_derived(station_entity, prev.service))
                         .id();
                     commands.entity(vehicle_entity).add_child(derived_entity);
                     actual_route_list.push(ActualRouteEntry::Derived(derived_entity));

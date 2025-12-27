@@ -6,7 +6,6 @@ use crate::vehicles::vehicle_set::VehicleSet;
 use crate::{interface::UiCommand, lines::DisplayedLine};
 use bevy::prelude::*;
 use egui::Id;
-use egui_ltreeview::{Action, TreeView};
 
 #[derive(Hash, PartialEq, Eq, Clone, Copy)]
 enum TreeViewItem {
@@ -35,35 +34,17 @@ pub fn show_tree_view(
             }
         }
     });
-    let (response, actions) = TreeView::new(Id::new("tree view")).show(ui, |builder| {
-        for (set_entity, set_name, children) in vehicle_sets {
-            builder.dir(TreeViewItem::VehicleSet(set_entity), set_name.to_string());
-            for child in children {
-                if let Ok((vehicle_entity, vehicle_name)) = vehicles.get(*child) {
-                    builder.leaf(
-                        TreeViewItem::Vehicle(vehicle_entity),
-                        vehicle_name.to_string(),
-                    );
-                }
+    for (set_entity, set_name, set) in vehicle_sets {
+        ui.label(set_name.as_str());
+        for vehicle in set.into_iter().copied() {
+            let Ok((entity, name)) = vehicles.get(vehicle) else {
+                continue;
+            };
+            if ui.button(name.as_str()).clicked() {
+                msg_open_tab.write(UiCommand::OpenOrFocusTab(AppTab::Vehicle(
+                    vehicle::VehicleTab(entity),
+                )));
             }
-            builder.close_dir();
-        }
-    });
-    for action in actions {
-        match action {
-            Action::Activate(entries) => {
-                for item in entries.selected {
-                    match item {
-                        TreeViewItem::Vehicle(entity) => {
-                            msg_open_tab.write(UiCommand::OpenOrFocusTab(
-                                crate::interface::AppTab::Vehicle(vehicle::VehicleTab(entity)),
-                            ));
-                        }
-                        _ => {}
-                    }
-                }
-            }
-            _ => {}
         }
     }
 }

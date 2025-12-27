@@ -14,6 +14,7 @@ pub mod start;
 pub mod station_timetable;
 pub mod tree_view;
 pub mod vehicle;
+pub mod graph;
 
 pub mod all_tabs {
     pub use super::classes::ClassesTab;
@@ -25,6 +26,7 @@ pub mod all_tabs {
     pub use super::start::StartTab;
     pub use super::station_timetable::StationTimetableTab;
     pub use super::vehicle::VehicleTab;
+    pub use super::graph::GraphTab;
 }
 
 /// The page cache. Lots of r/w, few insertions, good locality, fast executions.
