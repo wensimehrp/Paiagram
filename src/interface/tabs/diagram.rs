@@ -1205,12 +1205,10 @@ fn draw_interval_selection_overlay(
 fn handle_navigation(ui: &mut Ui, response: &response::Response, state: &mut DiagramPageCache) {
     let mut zoom_delta: Vec2 = Vec2::default();
     let mut translation_delta: Vec2 = Vec2::default();
-    if response.contains_pointer() {
-        ui.input(|input| {
-            zoom_delta = input.zoom_delta_2d();
-            translation_delta = input.translation_delta();
-        });
-    }
+    ui.input(|input| {
+        zoom_delta = input.zoom_delta_2d();
+        translation_delta = input.translation_delta();
+    });
     if let Some(pos) = response.hover_pos() {
         let old_zoom = state.zoom;
         let mut new_zoom = state.zoom * zoom_delta;

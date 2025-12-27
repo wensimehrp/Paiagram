@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use strum_macros::EnumIter;
+pub use crate::i18n::Language;
 
 pub struct SettingsPlugin;
 impl Plugin for SettingsPlugin {
@@ -22,25 +23,6 @@ impl TerminologyScheme {
             Self::Paiagram => "Paiagram",
             Self::ChineseRailway => "Chinese Railway",
             Self::JapaneseRailway => "Japanese Railway",
-        }
-    }
-}
-
-/// Languages
-/// Sorted alphabetically
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, EnumIter, PartialEq, Eq)]
-pub enum Language {
-    EnCA,
-    ZhCN,
-    JaJP,
-}
-
-impl Language {
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::EnCA => "English (Canada)",
-            Self::ZhCN => "中文（简体）",
-            Self::JaJP => "Japanese"
         }
     }
 }

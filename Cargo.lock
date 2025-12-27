@@ -2082,6 +2082,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "egui-i18n"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c8c22bf30b6ac742d2a0fd2999982f5bea18a1625a9247e6be8b439cc42ada0b"
+dependencies = [
+ "fluent",
+ "fluent-bundle",
+ "intl-memoizer",
+ "log",
+ "once_cell",
+ "unic-langid",
+]
+
+[[package]]
 name = "egui-wgpu"
 version = "0.33.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3966,6 +3980,7 @@ dependencies = [
  "derive_more",
  "eframe",
  "egui",
+ "egui-i18n",
  "egui_animation",
  "egui_dock",
  "egui_ltreeview",

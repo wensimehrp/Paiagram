@@ -6,6 +6,7 @@ use bevy::log::prelude::*;
 use egui::{Frame, Label, Response, ScrollArea, Sense, Ui, UiBuilder, Vec2, vec2};
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
+use egui_i18n::tr;
 
 #[derive(Debug, Default, Clone, Copy, EnumIter, PartialEq)]
 enum CurrentField {
@@ -51,9 +52,12 @@ impl Tab for StartTab {
             CurrentField::Misc => {}
         }
     }
+    fn title(&self) -> egui::WidgetText {
+        tr!("tab-start").into()
+    }
     fn edit_display(&mut self, world: &mut bevy::ecs::world::World, ui: &mut Ui) {
         if let Err(e) = world.run_system_cached_with(tree_view::show_tree_view, ui) {
-            error!("UI Errorr while displaying tree view: {e}")
+            error!("UI Error while displaying tree view: {e}")
         }
     }
     fn display_display(&mut self, world: &mut bevy::ecs::world::World, ui: &mut Ui) {

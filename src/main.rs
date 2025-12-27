@@ -1,8 +1,8 @@
 use bevy::{log::LogPlugin, prelude::*};
 use clap::Parser;
-use std::collections::VecDeque;
 
 mod colors;
+mod i18n;
 mod interface;
 mod intervals;
 mod lines;
@@ -92,6 +92,7 @@ fn handle_args(cli: Res<Cli>, mut msg: MessageWriter<rw_data::ModifyData>, mut c
 
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result<()> {
+    i18n::init();
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("Paiagram Drawer")
@@ -119,6 +120,7 @@ pub struct WebHandle {
 // When compiling to web using trunk:
 #[cfg(target_arch = "wasm32")]
 fn main() {
+    i18n::init();
     use eframe::wasm_bindgen::JsCast as _;
     use eframe::web_sys;
 

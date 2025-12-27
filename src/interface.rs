@@ -9,17 +9,19 @@ use crate::{
         side_panel::CurrentTab,
         tabs::{Tab, all_tabs::*, diagram::SelectedEntityType, minesweeper::MinesweeperData},
     },
+    settings::ApplicationSettings,
 };
 use bevy::{
     color::palettes::tailwind::{EMERALD_700, EMERALD_800, GRAY_900},
     prelude::*,
 };
 use egui::{
-    self, Color32, CornerRadius, Frame, Id, Margin, Pos2, Rect, ScrollArea, Sense, Shape, Stroke,
-    Ui, Vec2,
+    self, Color32, CornerRadius, Frame, Id, Margin, Pos2, Rect, ScrollArea, Sense, Shape,
+    SidePanel, Stroke, Ui, Vec2,
 };
 use egui_animation::{animate_bool_eased, animate_repeating};
 use egui_dock::{DockArea, DockState, TabInteractionStyle};
+use egui_i18n::tr;
 use std::{sync::Arc, time::Duration};
 use strum::{EnumCount, IntoEnumIterator};
 #[cfg(target_arch = "wasm32")]
@@ -261,14 +263,19 @@ struct SidePanelState {
 
 impl Default for SidePanelState {
     fn default() -> Self {
-        let dock_state = DockState::new(vec![SidePanelTab::Properties, SidePanelTab::Details]);
+        let dock_state = DockState::new(vec![
+            SidePanelTab::Edit,
+            SidePanelTab::Details,
+            SidePanelTab::Export,
+        ]);
         Self { dock_state }
     }
 }
 
 enum SidePanelTab {
-    Properties,
+    Edit,
     Details,
+    Export,
 }
 
 struct SidePanelViewer<'w> {
@@ -284,18 +291,30 @@ impl<'w> egui_dock::TabViewer for SidePanelViewer<'w> {
             return;
         };
         match tab {
-            SidePanelTab::Properties => {
+            SidePanelTab::Edit => {
                 for_all_tabs!(focused_tab, t, { t.edit_display(self.world, ui) })
             }
             SidePanelTab::Details => {
                 for_all_tabs!(focused_tab, t, { t.display_display(self.world, ui) })
             }
+            SidePanelTab::Export => {
+                for_all_tabs!(focused_tab, t, { t.export_display(self.world, ui) })
+            }
         }
     }
     fn title(&mut self, tab: &mut Self::Tab) -> egui::WidgetText {
         match tab {
-            SidePanelTab::Properties => "Properties".into(),
-            SidePanelTab::Details => "Details".into(),
+            SidePanelTab::Edit => tr!("side-panel-edit"),
+            SidePanelTab::Details => tr!("side-panel-details"),
+            SidePanelTab::Export => tr!("side-panel-export"),
+        }
+        .into()
+    }
+    fn id(&mut self, tab: &mut Self::Tab) -> Id {
+        match tab {
+            SidePanelTab::Edit => Id::new("edit"),
+            SidePanelTab::Details => Id::new("details"),
+            SidePanelTab::Export => Id::new("export"),
         }
     }
     fn is_closeable(&self, _tab: &Self::Tab) -> bool {
@@ -411,6 +430,12 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             let current_time = chrono::Local::now();
                             ui.monospace(current_time.format("%H:%M:%S").to_string());
+                            if !world
+                                .resource::<ApplicationSettings>()
+                                .show_performance_stats
+                            {
+                                return;
+                            }
                             ui.monospace(format!("eFPS: {:>6.1}", 1.0 / frame_time));
                             ui.monospace(format!("{:>5.2} ms/f", 1e3 * frame_time));
                         });
@@ -431,7 +456,6 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
                 style.tab.tab_body.inner_margin = Margin::same(1);
                 style.tab.tab_body.corner_radius = CornerRadius::ZERO;
                 style.tab.tab_body.stroke.width = 0.0;
-                style.tab.hline_below_active_tab_name = true;
                 style.tab_bar.corner_radius = CornerRadius::ZERO;
                 DockArea::new(&mut side_panel_state.dock_state)
                     .id(Id::new("Side panel stuff"))
@@ -499,7 +523,6 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
                     style.tab.tab_body.inner_margin = Margin::same(1);
                     style.tab.tab_body.corner_radius = CornerRadius::ZERO;
                     style.tab.tab_body.stroke.width = 0.0;
-                    style.tab.hline_below_active_tab_name = true;
                     style.tab_bar.corner_radius = CornerRadius::ZERO;
                     // place a button on the bottom left corner for expanding and collapsing the side panel.
                     let left_bottom = ui.max_rect().left_bottom();

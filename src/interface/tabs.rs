@@ -1,5 +1,6 @@
 use bevy::ecs::world::World;
 use egui::{Id, Response, Ui, WidgetText};
+use egui_i18n::tr;
 
 use crate::interface::StatusBarState;
 
@@ -76,18 +77,27 @@ where
 }
 
 pub trait Tab {
+    /// The icon for the tab button.
     const ICON: &'static str = "🖳";
+    /// The internal name of the tab used for identification. This must be a static string.
+    /// The actual displayed name could be different based on e.g. the localization or other contents.
     const NAME: &'static str;
+    /// The main display of the tab.
     fn main_display(&mut self, world: &mut World, ui: &mut Ui);
     fn edit_display(&mut self, _world: &mut World, ui: &mut Ui) {
         ui.label(Self::NAME);
-        ui.label("This tab hasn't implemented Edit display yet.");
-        ui.label("This is considered a bug. Feel free to open a ticket on GitHub!");
+        ui.label(tr!("side-panel-edit-fallback-1"));
+        ui.label(tr!("side-panel-edit-fallback-2"));
     }
     fn display_display(&mut self, _world: &mut World, ui: &mut Ui) {
         ui.label(Self::NAME);
-        ui.label("This tab hasn't implemented Details display yet.");
-        ui.label("This is considered a bug. Feel free to open a ticket on GitHub!");
+        ui.label(tr!("side-panel-details-fallback-1"));
+        ui.label(tr!("side-panel-details-fallback-2"));
+    }
+    fn export_display(&mut self, _world: &mut World, ui: &mut Ui) {
+        ui.label(Self::NAME);
+        ui.label(tr!("side-panel-export-fallback-1"));
+        ui.label(tr!("side-panel-export-fallback-2"));
     }
     fn title(&self) -> WidgetText {
         Self::NAME.into()
