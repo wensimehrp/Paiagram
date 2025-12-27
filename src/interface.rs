@@ -571,19 +571,19 @@ fn apply_custom_fonts(ctx: &egui::Context) {
         ))),
     );
 
-    fonts.font_data.insert(
-        "app_mono".to_owned(),
-        Arc::new(egui::FontData::from_static(include_bytes!(
-            "../assets/fonts/SarasaTermSC-Regular.ttf"
-        ))),
-    );
+    // fonts.font_data.insert(
+    //     "app_mono".to_owned(),
+    //     Arc::new(egui::FontData::from_static(include_bytes!(
+    //         "../assets/fonts/SarasaTermSC-Regular.ttf"
+    //     ))),
+    // );
 
     if let Some(family) = fonts.families.get_mut(&egui::FontFamily::Proportional) {
         family.insert(0, "app_default".to_owned());
     }
-    if let Some(family) = fonts.families.get_mut(&egui::FontFamily::Monospace) {
-        family.insert(0, "app_mono".to_owned());
-    }
+    // if let Some(family) = fonts.families.get_mut(&egui::FontFamily::Monospace) {
+    //     family.insert(0, "app_mono".to_owned());
+    // }
 
     ctx.set_fonts(fonts);
 }
