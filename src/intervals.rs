@@ -5,101 +5,25 @@ use crate::{
         entries::{ActualRouteEntry, TimetableEntry, VehicleScheduleCache},
     },
 };
-use bevy::{
-    ecs::{entity::EntityHashMap, resource},
-    prelude::*,
-};
-use egui_graphs::to_graph;
-use petgraph::{self, Directed, csr::DefaultIx, graph::NodeIndex, prelude::StableGraph};
+use bevy::{ecs::entity::EntityHash, prelude::*};
+use petgraph::prelude::*;
 
-pub type IntervalGraphType = StableGraph<Entity, Entity, Directed>;
+pub type IntervalGraphType = GraphMap<Entity, Entity, Directed, EntityHash>;
 
 /// A graph representing the transportation network
-#[derive(Resource)]
-pub struct Graph {
-    pub inner: IntervalGraphType,
-    pub indexes: EntityHashMap<NodeIndex>,
-}
+#[derive(Resource, Default, Debug, Deref, DerefMut)]
+pub struct Graph(pub IntervalGraphType);
 
-impl Default for Graph {
-    fn default() -> Self {
-        Self {
-            inner: IntervalGraphType::new(),
-            indexes: EntityHashMap::default(),
-        }
-    }
-}
-
-#[derive(Resource, Deref, DerefMut)]
-pub struct UiGraph(
-    pub  egui_graphs::Graph<
-        Entity,
-        Entity,
-        Directed,
-        DefaultIx,
-        egui_graphs::DefaultNodeShape,
-        egui_graphs::DefaultEdgeShape,
-    >,
-);
-
-impl FromWorld for UiGraph {
-    fn from_world(world: &mut World) -> Self {
-        Self(to_graph(&world.resource::<Graph>().inner))
-    }
-}
-
-impl Graph {
-    pub fn edge_weight(&self, from: Entity, to: Entity) -> Option<&Entity> {
-        let from_idx = *self.indexes.get(&from)?;
-        let to_idx = *self.indexes.get(&to)?;
-        self.inner
-            .find_edge(from_idx, to_idx)
-            .and_then(|edge_idx| self.inner.edge_weight(edge_idx))
-    }
-    pub fn node(&self, entity: Entity) -> Option<NodeIndex> {
-        self.indexes.get(&entity).copied()
-    }
-    pub fn contains_node(&self, node: Entity) -> bool {
-        self.indexes.contains_key(&node)
-    }
-    pub fn contains_edge(&self, from: Entity, to: Entity) -> bool {
-        let from_idx = match self.indexes.get(&from) {
-            Some(idx) => *idx,
-            None => return false,
-        };
-        let to_idx = match self.indexes.get(&to) {
-            Some(idx) => *idx,
-            None => return false,
-        };
-        self.inner.find_edge(from_idx, to_idx).is_some()
-    }
-    pub fn entity(&self, node: NodeIndex) -> Option<Entity> {
-        for (entity, &idx) in self.indexes.iter() {
-            if idx == node {
-                return Some(*entity);
-            }
-        }
-        None
-    }
-}
-
-#[derive(Message)]
-pub enum GraphAdjustment {
-    AddEdge(GraphAdjustmentEdgeAddition),
-    RemoveEdge(Entity),
-    AddNode(Entity),
-}
-
-pub struct GraphAdjustmentEdgeAddition {
-    from: Entity,
-    to: Entity,
-    weight: Entity,
-}
-
-/// A station or node in the transportation network
+/// A depot or yard in the transportation network
+/// A depot cannot be a node in the transportation network graph. Use `Station` for that.
 #[derive(Component)]
+#[require(Station)]
+pub struct Depot;
+
+/// A station or in the transportation network
+#[derive(Component, Default, Deref, DerefMut, Debug)]
 #[require(Name, StationCache)]
-pub struct Station;
+pub struct Station(pub egui::Pos2);
 
 #[derive(Component, Debug, Default)]
 pub struct StationCache {
@@ -121,12 +45,6 @@ impl StationCache {
         }
     }
 }
-
-/// A depot or yard in the transportation network
-/// A depot cannot be a node in the transportation network graph. Use `Station` for that.
-#[derive(Component)]
-#[require(Name)]
-pub struct Depot;
 
 /// A track segment between two stations or nodes
 #[derive(Component)]
@@ -165,13 +83,11 @@ impl Plugin for IntervalsPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(Graph::default())
             .init_resource::<IntervalsResource>()
-            .init_resource::<UiGraph>()
             .add_systems(
                 FixedPostUpdate,
                 (
                     update_station_cache.run_if(on_message::<AdjustTimetableEntry>),
                     update_interval_cache,
-                    update_ui_graph,
                 ),
             );
     }
@@ -188,25 +104,6 @@ impl FromWorld for IntervalsResource {
         let default_depot = world.spawn((Name::new("Default Depot"), Depot)).id();
         Self { default_depot }
     }
-}
-
-fn update_ui_graph(
-    mut graph: Res<Graph>,
-    mut ui_graph: ResMut<UiGraph>,
-    station_names: Query<&Name, With<Station>>,
-    intervals: Query<Ref<Interval>>,
-) {
-    if !(graph.is_changed() || intervals.iter().any(|i| i.is_changed())) {
-        return;
-    }
-    let node_transform = |n: &mut egui_graphs::Node<Entity, Entity>| {
-        // show the name of the station if available
-        if let Ok(name) = station_names.get(n.props().payload) {
-            n.set_label(name.as_str().to_string());
-        }
-    };
-    let edge_transform = |e: &mut egui_graphs::Edge<Entity, Entity>| {};
-    ui_graph.0 = egui_graphs::to_graph_custom(&graph.inner, node_transform, edge_transform);
 }
 
 fn update_station_cache(

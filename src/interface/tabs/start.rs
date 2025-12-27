@@ -121,7 +121,7 @@ fn show_about(ui: &mut Ui) {
         let max_width = (620.0f32).min(ui.available_width()) - 40.0;
         ui.set_max_width(max_width);
         ui.add_space(20.0);
-        ui.heading("Paiagram");
+        ui.heading(tr!("program-name"));
         ui.label(format!("Version: {}", env!("CARGO_PKG_VERSION")));
         ui.monospace(format!("Revision: {}", git_version::git_version!()));
         ui.add_space(10.0);

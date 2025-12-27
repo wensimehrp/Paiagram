@@ -1,24 +1,47 @@
-use crate::intervals::{Graph, UiGraph};
+use super::Tab;
+use crate::intervals::{Graph, Station};
 use crate::rw_data::write::write_text_file;
 use bevy::prelude::*;
-use egui::Rect;
-use egui_graphs::{DefaultEdgeShape, DefaultGraphView, DefaultNodeShape, GraphView, to_graph};
-
-use super::Tab;
+use egui::{Color32, Pos2, Rect, Sense, Stroke, Ui, UiBuilder, Vec2};
+use egui_i18n::tr;
+use emath::{self, RectTransform};
+use petgraph::dot;
 
 #[derive(Debug, Clone)]
-pub struct GraphTab;
+pub struct GraphTab {
+    zoom: f32,
+    translation: Vec2,
+    selected_item: Option<SelectedItem>,
+}
+
+#[derive(Debug, Clone)]
+enum SelectedItem {
+    Node((Entity, Pos2)),
+    Edge(Entity),
+}
+
+impl Default for GraphTab {
+    fn default() -> Self {
+        Self {
+            zoom: 1.0,
+            translation: Vec2::ZERO,
+            selected_item: None,
+        }
+    }
+}
 
 impl Tab for GraphTab {
     const NAME: &'static str = "Graph";
     fn main_display(&mut self, world: &mut bevy::ecs::world::World, ui: &mut egui::Ui) {
-        if let Err(e) = world.run_system_cached_with(show_graph, ui) {
+        if let Err(e) = world.run_system_cached_with(show_graph, (ui, self)) {
             bevy::log::error!("UI Error while displaying graph page: {}", e)
         }
     }
+    fn title(&self) -> egui::WidgetText {
+        tr!("tab-graph").into()
+    }
     fn export_display(&mut self, world: &mut World, ui: &mut egui::Ui) {
-        // export the current graph as a .dot file
-        let mut buffer = String::with_capacity(512);
+        let mut buffer = String::with_capacity(4096);
         if ui.button("Export Graph as DOT file").clicked() {
             if let Err(e) = world.run_system_cached_with(make_dot_string, &mut buffer) {
                 bevy::log::error!("Error while generating DOT string: {}", e);
@@ -28,6 +51,9 @@ impl Tab for GraphTab {
                 bevy::log::error!("Failed to export graph: {:?}", e);
             }
         }
+    }
+    fn scroll_bars(&self) -> [bool; 2] {
+        [false; 2]
     }
 }
 
@@ -40,39 +66,138 @@ fn make_dot_string(InMut(buffer): InMut<String>, graph: Res<Graph>, names: Query
                 .map_or("<Unknown>".to_string(), |name| name.to_string())
         )
     };
-    let dot_string = petgraph::dot::Dot::with_attr_getters(
-        &graph.inner,
-        &[],
-        &|_, _| String::new(),
+    let get_edge_attr = |_, _| String::new();
+    let dot_string = dot::Dot::with_attr_getters(
+        &graph.0,
+        &[dot::Config::EdgeNoLabel, dot::Config::NodeNoLabel],
+        &get_edge_attr,
         &get_node_attr,
     );
     buffer.clear();
     buffer.push_str(&format!("{:?}", dot_string));
 }
 
-fn show_graph(InMut(ui): InMut<egui::Ui>, mut ui_graph: ResMut<UiGraph>) {
-    type L = egui_graphs::LayoutHierarchical;
-    type S = egui_graphs::LayoutStateHierarchical;
+fn show_graph(
+    (InMut(ui), mut state): (InMut<egui::Ui>, InMut<GraphTab>),
+    graph: Res<Graph>,
+    mut stations: Query<(&Name, &mut Station)>,
+) {
+    const EDGE_OFFSET: f32 = 10.0;
+    let selected_strength = ui.ctx().animate_bool(
+        ui.id().with("background animation"),
+        state.selected_item.is_some(),
+    );
+    let selected_strength_ease = ui.ctx().animate_bool_with_time_and_easing(
+        ui.id().with("selected item animation"),
+        state.selected_item.is_some(),
+        0.2,
+        emath::easing::quadratic_out,
+    );
+    // Iterate over the graph and see what's in it
+    egui::Frame::canvas(&ui.style()).show(ui, |ui| {
+        // Draw lines between stations with shifted positions
+        let (response, painter) =
+            ui.allocate_painter(ui.available_size_before_wrap(), Sense::click_and_drag());
+        let world_rect = Rect::from_min_size(
+            Pos2::new(state.translation.x, state.translation.y),
+            Vec2::new(
+                response.rect.width() / state.zoom,
+                response.rect.height() / state.zoom,
+            ),
+        );
+        if response.clicked() {
+            state.selected_item = None;
+        }
+        let to_screen = RectTransform::from_to(world_rect, response.rect);
+        for node in graph.nodes() {
+            let Ok((name, mut station)) = stations.get_mut(node) else {
+                continue;
+            };
+            let pos = &mut station.0;
+            ui.place(
+                Rect::from_pos(to_screen * *pos).expand(10.0),
+                |ui: &mut Ui| {
+                    let (rect, resp) =
+                        ui.allocate_exact_size(ui.available_size(), Sense::click_and_drag());
+                    let fill = if resp.hovered() {
+                        Color32::YELLOW
+                    } else {
+                        Color32::LIGHT_GREEN
+                    };
+                    if resp.clicked() {
+                        state.selected_item = Some(SelectedItem::Node((node, *pos)));
+                    }
+                    ui.painter().circle_filled(to_screen * *pos, 10.0, fill);
+                    if resp.dragged() {
+                        *pos += resp.drag_delta() / state.zoom;
+                    }
+                    resp
+                },
+            );
+        }
+        for (from, to, weight) in graph.all_edges() {
+            let Ok((_, from_station)) = stations.get(from) else {
+                continue;
+            };
+            let Ok((_, to_station)) = stations.get(to) else {
+                continue;
+            };
+            let from = from_station.0;
+            let to = to_station.0;
+            // shift the two points to its left by EDGE_OFFSET pixels
+            let direction = (to - from).normalized();
+            let angle = direction.y.atan2(direction.x) + std::f32::consts::FRAC_PI_2;
+            let offset = Vec2::new(angle.cos(), angle.sin()) * EDGE_OFFSET / state.zoom;
+            let from = from + offset;
+            let to = to + offset;
+            painter.line_segment(
+                [to_screen * from, to_screen * to],
+                Stroke::new(1.0, Color32::LIGHT_BLUE),
+            );
+        }
+        painter.rect_filled(response.rect, 0, {
+            let amt = (selected_strength * 180.0) as u8;
+            if ui.ctx().theme().default_visuals().dark_mode {
+                Color32::from_black_alpha(amt)
+            } else {
+                Color32::from_white_alpha(amt)
+            }
+        });
+        if let Some(SelectedItem::Node((entity, station_pos))) = state.selected_item {
+            painter.circle(
+                to_screen * station_pos,
+                12.0 + 10.0 * (1.0 - selected_strength_ease),
+                Color32::RED.gamma_multiply(0.5 * selected_strength_ease),
+                Stroke::new(2.0, Color32::RED.gamma_multiply(selected_strength_ease)),
+            );
+            painter.circle_filled(to_screen * station_pos, 10.0, Color32::LIGHT_RED);
+        }
+        // handle zooming and panning
+        let mut zoom_delta: f32 = 1.0;
+        let mut translation_delta: Vec2 = Vec2::default();
+        ui.input(|input| {
+            zoom_delta = input.zoom_delta();
+            translation_delta = input.translation_delta();
+        });
+        if let Some(pos) = response.hover_pos() {
+            let old_zoom = state.zoom;
+            let new_zoom = state.zoom * zoom_delta;
+            let rel_pos = (pos - response.rect.min) / response.rect.size();
 
-    // 1. Create the view
-    let mut view = egui_graphs::GraphView::<_, _, _, _, _, _, S, L>::new(&mut ui_graph)
-        // 2. Enable Zoom and Pan (Navigation)
-        .with_navigations(
-            &egui_graphs::SettingsNavigation::default()
-                .with_zoom_and_pan_enabled(true)
-                .with_fit_to_screen_enabled(false),
-        ) // Set to false to allow free movement
-        // 3. Enable Node Dragging (Interaction)
-        .with_interactions(
-            &egui_graphs::SettingsInteraction::default()
-                .with_dragging_enabled(true)
-                .with_edge_selection_enabled(true)
-                .with_node_selection_enabled(true),
-        )
-        .with_styles(&egui_graphs::SettingsStyle::default().with_labels_always(true))
-        // 4. Provide a unique ID (Crucial for persisting zoom/pan state in tabs)
-        .with_id(Some("main_transport_graph".to_string()));
+            let world_width_before = response.rect.width() / old_zoom;
+            let world_width_after = response.rect.width() / new_zoom;
+            let world_pos_before_x = state.translation.x + rel_pos.x * world_width_before;
+            let new_translation_x = world_pos_before_x - rel_pos.x * world_width_after;
 
-    // 5. Just add it to the UI. It will automatically fill the available space.
-    ui.add(&mut view);
+            let world_height_before = response.rect.height() / old_zoom;
+            let world_height_after = response.rect.height() / new_zoom;
+            let world_pos_before_y = state.translation.y + rel_pos.y * world_height_before;
+            let new_translation_y = world_pos_before_y - rel_pos.y * world_height_after;
+
+            state.zoom = new_zoom;
+            state.translation = Vec2::new(new_translation_x, new_translation_y);
+        }
+        let zoom = state.zoom;
+        state.translation -= (translation_delta + response.drag_delta()) / zoom;
+    });
 }

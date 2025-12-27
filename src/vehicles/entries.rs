@@ -53,7 +53,7 @@ pub struct TimetableEntry {
     pub arrival: TravelMode,
     /// How would the vehicle depart from a station. A `None` value means that the vehicle does not stop at the station.
     pub departure: Option<TravelMode>,
-    /// The station the vehicle stops at or passes.
+    /// The node the vehicle stops at or passes.
     pub station: Entity,
     /// The service the entry belongs to.
     pub service: Option<Entity>,
@@ -219,11 +219,11 @@ pub fn calculate_actual_route(
             }
             // compare the stuff between the last and current entries
             let Some((_, path)) = astar(
-                &graph.inner,
-                graph.node(prev.station).unwrap(),
-                |finish| finish == graph.node(entry.station).unwrap(),
-                |edge| {
-                    if let Ok(interval) = intervals.get(*edge.weight()) {
+                &graph.0,
+                prev.station,
+                |finish| finish == entry.station,
+                |(_start, _end, weight)| {
+                    if let Ok(interval) = intervals.get(*weight) {
                         interval.length.0
                     } else {
                         i32::MAX
@@ -254,8 +254,7 @@ pub fn calculate_actual_route(
                 continue;
             };
             if path.len() >= 2 {
-                for &station in &path[1..path.len() - 1] {
-                    let station_entity = graph.entity(station).unwrap();
+                for &station_entity in &path[1..path.len() - 1] {
                     let station_name = names
                         .get(station_entity)
                         .ok()

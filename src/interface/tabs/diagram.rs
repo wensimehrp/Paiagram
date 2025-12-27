@@ -898,7 +898,7 @@ fn draw_vehicle_selection_overlay(
                 departure_pos = pos;
             };
             let arrival_point_response =
-                ui.put(Rect::from_pos(arrival_pos).expand(5.2), |ui: &mut Ui| {
+                ui.place(Rect::from_pos(arrival_pos).expand(5.2), |ui: &mut Ui| {
                     let (rect, resp) =
                         ui.allocate_exact_size(ui.available_size(), Sense::click_and_drag());
                     ui

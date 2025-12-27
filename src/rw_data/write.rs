@@ -16,7 +16,9 @@ pub fn write_text_file(data: &str, filename: &str) -> Result<(), String> {
     use web_sys::{Blob, BlobPropertyBag, Url};
 
     let window = web_sys::window().ok_or("no global window found")?;
-    let document = window.document().ok_or("should have a document on window")?;
+    let document = window
+        .document()
+        .ok_or("should have a document on window")?;
     let body = document.body().ok_or("document should have a body")?;
 
     // 1. Create a Blob from the string data
