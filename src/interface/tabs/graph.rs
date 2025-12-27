@@ -133,48 +133,7 @@ fn show_graph(
             state.selected_item = None;
         }
         let to_screen = RectTransform::from_to(world_rect, response.rect);
-        for node in graph.inner.node_indices().map(|n| graph.entity(n).unwrap()) {
-            let Ok((name, mut station)) = stations.get_mut(node) else {
-                continue;
-            };
-            let pos = &mut station.0;
-            let galley = painter.layout_no_wrap(
-                name.to_string(),
-                egui::FontId::proportional(13.0),
-                ui.visuals().text_color(),
-            );
-            painter.galley({
-                let pos = to_screen * *pos;
-                let offset = Vec2::new(
-                    15.0,
-                    -galley.size().y / 2.0,
-                );
-                pos + offset
-            }, galley, ui.visuals().text_color());
-            ui.place(
-                Rect::from_pos(to_screen * *pos).expand(10.0),
-                |ui: &mut Ui| {
-                    let (rect, resp) =
-                        ui.allocate_exact_size(ui.available_size(), Sense::click_and_drag());
-                    let fill = if resp.hovered() {
-                        Color32::YELLOW
-                    } else {
-                        Color32::LIGHT_GREEN
-                    };
-                    if resp.clicked() {
-                        state.selected_item = Some(SelectedItem::Node(node));
-                    }
-                    if matches!(state.selected_item, Some(SelectedItem::Node(n)) if n == node) {
-                        focused_pos = Some((*pos, Pos2::ZERO));
-                    }
-                    ui.painter().circle_filled(to_screen * *pos, 10.0, fill);
-                    if resp.dragged() {
-                        *pos += resp.drag_delta() / state.zoom;
-                    }
-                    resp
-                },
-            );
-        }
+        // draw edges
         for (from, to, weight) in graph.inner.node_indices().flat_map(|n| {
             graph.inner.edges_directed(n, Outgoing).map(|a| {
                 (
@@ -201,6 +160,50 @@ fn show_graph(
             painter.line_segment(
                 [to_screen * from, to_screen * to],
                 Stroke::new(1.0, Color32::LIGHT_BLUE),
+            );
+        }
+        // draw nodes after edges
+        for node in graph.inner.node_indices().map(|n| graph.entity(n).unwrap()) {
+            let Ok((name, mut station)) = stations.get_mut(node) else {
+                continue;
+            };
+            let pos = &mut station.0;
+            let galley = painter.layout_no_wrap(
+                name.to_string(),
+                egui::FontId::proportional(13.0),
+                ui.visuals().text_color(),
+            );
+            painter.galley(
+                {
+                    let pos = to_screen * *pos;
+                    let offset = Vec2::new(15.0, -galley.size().y / 2.0);
+                    pos + offset
+                },
+                galley,
+                ui.visuals().text_color(),
+            );
+            ui.place(
+                Rect::from_pos(to_screen * *pos).expand(10.0),
+                |ui: &mut Ui| {
+                    let (rect, resp) =
+                        ui.allocate_exact_size(ui.available_size(), Sense::click_and_drag());
+                    let fill = if resp.hovered() {
+                        Color32::YELLOW
+                    } else {
+                        Color32::LIGHT_GREEN
+                    };
+                    if resp.clicked() {
+                        state.selected_item = Some(SelectedItem::Node(node));
+                    }
+                    if matches!(state.selected_item, Some(SelectedItem::Node(n)) if n == node) {
+                        focused_pos = Some((*pos, Pos2::ZERO));
+                    }
+                    ui.painter().circle_filled(to_screen * *pos, 10.0, fill);
+                    if resp.dragged() {
+                        *pos += resp.drag_delta() / state.zoom;
+                    }
+                    resp
+                },
             );
         }
         painter.rect_filled(response.rect, 0, {
