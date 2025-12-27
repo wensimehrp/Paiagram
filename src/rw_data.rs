@@ -1,5 +1,6 @@
 pub mod oudiasecond;
 pub mod qetrc;
+pub mod write;
 
 use bevy::prelude::*;
 

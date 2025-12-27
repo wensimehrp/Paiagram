@@ -1,4 +1,5 @@
 use crate::intervals::{Graph, UiGraph};
+use crate::rw_data::write::write_text_file;
 use bevy::prelude::*;
 use egui::Rect;
 use egui_graphs::{DefaultEdgeShape, DefaultGraphView, DefaultNodeShape, GraphView, to_graph};
@@ -15,9 +16,40 @@ impl Tab for GraphTab {
             bevy::log::error!("UI Error while displaying graph page: {}", e)
         }
     }
+    fn export_display(&mut self, world: &mut World, ui: &mut egui::Ui) {
+        // export the current graph as a .dot file
+        let mut buffer = String::with_capacity(512);
+        if ui.button("Export Graph as DOT file").clicked() {
+            if let Err(e) = world.run_system_cached_with(make_dot_string, &mut buffer) {
+                bevy::log::error!("Error while generating DOT string: {}", e);
+                return;
+            }
+            if let Err(e) = write_text_file(&buffer, "transport_graph.dot") {
+                bevy::log::error!("Failed to export graph: {:?}", e);
+            }
+        }
+    }
 }
 
-// ...existing code...
+fn make_dot_string(InMut(buffer): InMut<String>, graph: Res<Graph>, names: Query<&Name>) {
+    let get_node_attr = |_, (_, entity): (_, &Entity)| {
+        format!(
+            r#"label = {}"#,
+            names
+                .get(*entity)
+                .map_or("<Unknown>".to_string(), |name| name.to_string())
+        )
+    };
+    let dot_string = petgraph::dot::Dot::with_attr_getters(
+        &graph.inner,
+        &[],
+        &|_, _| String::new(),
+        &get_node_attr,
+    );
+    buffer.clear();
+    buffer.push_str(&format!("{:?}", dot_string));
+}
+
 fn show_graph(InMut(ui): InMut<egui::Ui>, mut ui_graph: ResMut<UiGraph>) {
     type L = egui_graphs::LayoutHierarchical;
     type S = egui_graphs::LayoutStateHierarchical;

@@ -4011,6 +4011,7 @@ dependencies = [
  "git-version",
  "ib-matcher",
  "instant",
+ "js-sys",
  "pest",
  "pest_derive",
  "petgraph",
@@ -4024,6 +4025,7 @@ dependencies = [
  "strum_macros",
  "wasm-bindgen",
  "wasm-bindgen-futures",
+ "web-sys",
  "wgpu 27.0.1",
 ]
 
