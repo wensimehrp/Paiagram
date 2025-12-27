@@ -43,6 +43,7 @@ bitvec = "1.0.1"
 egui_animation = "0.10.0"
 egui-i18n = { version = "0.1.2", features = ["fluent"] }
 emath = "0.33.3"
+visgraph = "0.1.0"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.3.*", features = ["wasm_js"] }

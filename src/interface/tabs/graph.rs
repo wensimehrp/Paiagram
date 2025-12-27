@@ -1,22 +1,26 @@
 use super::Tab;
-use crate::intervals::{Graph, Station};
+use crate::intervals::{Graph, IntervalGraphType, Station};
 use crate::rw_data::write::write_text_file;
 use bevy::prelude::*;
 use egui::{Color32, Pos2, Rect, Sense, Stroke, Ui, UiBuilder, Vec2};
 use egui_i18n::tr;
 use emath::{self, RectTransform};
+use petgraph::Direction::Outgoing;
 use petgraph::dot;
+use petgraph::visit::EdgeRef;
+use visgraph::Orientation::TopToBottom;
+use visgraph::layout::hierarchical::hierarchical_layout;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct GraphTab {
     zoom: f32,
     translation: Vec2,
     selected_item: Option<SelectedItem>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 enum SelectedItem {
-    Node((Entity, Pos2)),
+    Node(Entity),
     Edge(Entity),
 }
 
@@ -35,6 +39,13 @@ impl Tab for GraphTab {
     fn main_display(&mut self, world: &mut bevy::ecs::world::World, ui: &mut egui::Ui) {
         if let Err(e) = world.run_system_cached_with(show_graph, (ui, self)) {
             bevy::log::error!("UI Error while displaying graph page: {}", e)
+        }
+    }
+    fn edit_display(&mut self, world: &mut World, ui: &mut Ui) {
+        if ui.button("Auto-arrange Graph").clicked() {
+            if let Err(e) = world.run_system_cached(auto_arrange_graph) {
+                error!("Error while auto-arranging graph: {}", e);
+            }
         }
     }
     fn title(&self) -> egui::WidgetText {
@@ -57,10 +68,22 @@ impl Tab for GraphTab {
     }
 }
 
+fn auto_arrange_graph(graph: Res<Graph>, mut stations: Query<&mut Station>) {
+    const SHIFT_FACTOR: f32 = 500.0;
+    let inner = &graph.inner;
+    let layout = hierarchical_layout(&inner, TopToBottom);
+    for node in inner.node_indices() {
+        let pos = layout(node);
+        if let Ok(mut station) = stations.get_mut(graph.entity(node).unwrap()) {
+            station.0 = Pos2::new(pos.0 * SHIFT_FACTOR, pos.1 * SHIFT_FACTOR);
+        }
+    }
+}
+
 fn make_dot_string(InMut(buffer): InMut<String>, graph: Res<Graph>, names: Query<&Name>) {
     let get_node_attr = |_, (_, entity): (_, &Entity)| {
         format!(
-            r#"label = {}"#,
+            r#"label = "{}""#,
             names
                 .get(*entity)
                 .map_or("<Unknown>".to_string(), |name| name.to_string())
@@ -68,7 +91,7 @@ fn make_dot_string(InMut(buffer): InMut<String>, graph: Res<Graph>, names: Query
     };
     let get_edge_attr = |_, _| String::new();
     let dot_string = dot::Dot::with_attr_getters(
-        &graph.0,
+        &graph.inner,
         &[dot::Config::EdgeNoLabel, dot::Config::NodeNoLabel],
         &get_edge_attr,
         &get_node_attr,
@@ -93,6 +116,7 @@ fn show_graph(
         0.2,
         emath::easing::quadratic_out,
     );
+    let mut focused_pos: Option<(Pos2, Pos2)> = None;
     // Iterate over the graph and see what's in it
     egui::Frame::canvas(&ui.style()).show(ui, |ui| {
         // Draw lines between stations with shifted positions
@@ -109,11 +133,24 @@ fn show_graph(
             state.selected_item = None;
         }
         let to_screen = RectTransform::from_to(world_rect, response.rect);
-        for node in graph.nodes() {
+        for node in graph.inner.node_indices().map(|n| graph.entity(n).unwrap()) {
             let Ok((name, mut station)) = stations.get_mut(node) else {
                 continue;
             };
             let pos = &mut station.0;
+            let galley = painter.layout_no_wrap(
+                name.to_string(),
+                egui::FontId::proportional(13.0),
+                ui.visuals().text_color(),
+            );
+            painter.galley({
+                let pos = to_screen * *pos;
+                let offset = Vec2::new(
+                    15.0,
+                    -galley.size().y / 2.0,
+                );
+                pos + offset
+            }, galley, ui.visuals().text_color());
             ui.place(
                 Rect::from_pos(to_screen * *pos).expand(10.0),
                 |ui: &mut Ui| {
@@ -125,7 +162,10 @@ fn show_graph(
                         Color32::LIGHT_GREEN
                     };
                     if resp.clicked() {
-                        state.selected_item = Some(SelectedItem::Node((node, *pos)));
+                        state.selected_item = Some(SelectedItem::Node(node));
+                    }
+                    if matches!(state.selected_item, Some(SelectedItem::Node(n)) if n == node) {
+                        focused_pos = Some((*pos, Pos2::ZERO));
                     }
                     ui.painter().circle_filled(to_screen * *pos, 10.0, fill);
                     if resp.dragged() {
@@ -135,7 +175,15 @@ fn show_graph(
                 },
             );
         }
-        for (from, to, weight) in graph.all_edges() {
+        for (from, to, weight) in graph.inner.node_indices().flat_map(|n| {
+            graph.inner.edges_directed(n, Outgoing).map(|a| {
+                (
+                    graph.entity(a.source()).unwrap(),
+                    graph.entity(a.target()).unwrap(),
+                    a.weight(),
+                )
+            })
+        }) {
             let Ok((_, from_station)) = stations.get(from) else {
                 continue;
             };
@@ -163,7 +211,9 @@ fn show_graph(
                 Color32::from_white_alpha(amt)
             }
         });
-        if let Some(SelectedItem::Node((entity, station_pos))) = state.selected_item {
+        if let (Some(SelectedItem::Node(_)), Some((station_pos, _))) =
+            (state.selected_item, focused_pos)
+        {
             painter.circle(
                 to_screen * station_pos,
                 12.0 + 10.0 * (1.0 - selected_strength_ease),

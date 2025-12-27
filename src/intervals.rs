@@ -5,14 +5,60 @@ use crate::{
         entries::{ActualRouteEntry, TimetableEntry, VehicleScheduleCache},
     },
 };
-use bevy::{ecs::entity::EntityHash, prelude::*};
+use bevy::{ecs::entity::{EntityHash, EntityHashMap}, prelude::*};
 use petgraph::prelude::*;
 
-pub type IntervalGraphType = GraphMap<Entity, Entity, Directed, EntityHash>;
+pub type IntervalGraphType = StableDiGraph<Entity, Entity>;
 
 /// A graph representing the transportation network
-#[derive(Resource, Default, Debug, Deref, DerefMut)]
-pub struct Graph(pub IntervalGraphType);
+#[derive(Resource, Default, Debug)]
+pub struct Graph{
+    pub inner: IntervalGraphType,
+    pub indices: EntityHashMap<NodeIndex>
+}
+
+impl Graph {
+    pub fn edge_weight(&self, a: Entity, b: Entity) -> Option<&Entity> {
+        let &a_index = self.indices.get(&a)?;
+        let &b_index = self.indices.get(&b)?;
+        self.inner.edge_weight(self.inner.find_edge(a_index, b_index)?)
+    }
+    pub fn contains_edge(&self, a: Entity, b: Entity) -> bool {
+        let Some(&a_index) = self.indices.get(&a) else {
+            return false;
+        };
+        let Some(&b_index) = self.indices.get(&b) else {
+            return false;
+        };
+        self.inner.find_edge(a_index, b_index).is_some()
+    }
+    pub fn contains_node(&self, a: Entity) -> bool {
+        self.indices.contains_key(&a)
+    }
+    pub fn node_index(&self, a: Entity) -> Option<NodeIndex> {
+        self.indices.get(&a).cloned()
+    }
+    pub fn entity(&self, index: NodeIndex) -> Option<Entity> {
+        self.inner.node_weight(index).cloned()
+    }
+    pub fn add_edge(&mut self, a: Entity, b: Entity, edge: Entity) {
+        let a_index = if let Some(&index) = self.indices.get(&a) {
+            index
+        } else {
+            let index = self.inner.add_node(a);
+            self.indices.insert(a, index);
+            index
+        };
+        let b_index = if let Some(&index) = self.indices.get(&b) {
+            index
+        } else {
+            let index = self.inner.add_node(b);
+            self.indices.insert(b, index);
+            index
+        };
+        self.inner.add_edge(a_index, b_index, edge);
+    }
+}
 
 /// A depot or yard in the transportation network
 /// A depot cannot be a node in the transportation network graph. Use `Station` for that.

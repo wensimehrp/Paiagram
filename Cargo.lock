@@ -3996,6 +3996,7 @@ dependencies = [
  "smallvec",
  "strum",
  "strum_macros",
+ "visgraph",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -5407,6 +5408,19 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
+
+[[package]]
+name = "visgraph"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9306a64a0d4d9726243f2be28e88b76a536c5e5e298a90b33b74865466c9f80f"
+dependencies = [
+ "fastrand",
+ "fixedbitset",
+ "petgraph",
+ "ryu",
+ "thiserror 2.0.17",
+]
 
 [[package]]
 name = "walkdir"

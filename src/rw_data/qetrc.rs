@@ -285,7 +285,7 @@ pub fn load_qetrc(
     // graph hashmap that stores the intervals
     // create stations and intervals from lines
     for line in qetrc_data.lines {
-        create_line_entities(&mut commands, line, &mut stations, &mut existing_graph.0);
+        create_line_entities(&mut commands, line, &mut stations, &mut existing_graph);
     }
     // create services and their timetables
     // reuse the stations hashmap for looking up station entities
@@ -412,7 +412,7 @@ fn create_line_entities(
     commands: &mut Commands,
     line: QETRCLine,
     stations: &mut std::collections::HashMap<String, Entity>,
-    graph_map: &mut IntervalGraphType,
+    graph_map: &mut ResMut<Graph>,
 ) {
     let mut intervals: DisplayedLineType = Vec::with_capacity(line.stations.len());
     let Some(first_station) = line.stations.first() else {

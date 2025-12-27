@@ -219,11 +219,11 @@ pub fn calculate_actual_route(
             }
             // compare the stuff between the last and current entries
             let Some((_, path)) = astar(
-                &graph.0,
-                prev.station,
-                |finish| finish == entry.station,
-                |(_start, _end, weight)| {
-                    if let Ok(interval) = intervals.get(*weight) {
+                &graph.inner,
+                graph.node_index(prev.station).unwrap(),
+                |finish| finish == graph.node_index(entry.station).unwrap(),
+                |edge| {
+                    if let Ok(interval) = intervals.get(*edge.weight()) {
                         interval.length.0
                     } else {
                         i32::MAX
@@ -254,7 +254,8 @@ pub fn calculate_actual_route(
                 continue;
             };
             if path.len() >= 2 {
-                for &station_entity in &path[1..path.len() - 1] {
+                for &node_index in &path[1..path.len() - 1] {
+                    let station_entity = graph.entity(node_index).unwrap();
                     let station_name = names
                         .get(station_entity)
                         .ok()
