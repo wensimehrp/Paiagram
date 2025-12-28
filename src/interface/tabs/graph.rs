@@ -142,7 +142,7 @@ fn display_displayed_line(
 
 fn auto_arrange_graph(graph: Res<Graph>, mut stations: Query<&mut Station>) {
     const SHIFT_FACTOR: f32 = 500.0;
-    let inner = &graph.inner;
+    let inner = &graph.inner();
     let layout = hierarchical_layout(&inner, TopToBottom);
     for node in inner.node_indices() {
         let pos = layout(node);
@@ -163,7 +163,7 @@ fn make_dot_string(InMut(buffer): InMut<String>, graph: Res<Graph>, names: Query
     };
     let get_edge_attr = |_, _| String::new();
     let dot_string = dot::Dot::with_attr_getters(
-        &graph.inner,
+        graph.inner(),
         &[dot::Config::EdgeNoLabel, dot::Config::NodeNoLabel],
         &get_edge_attr,
         &get_node_attr,
@@ -207,8 +207,8 @@ fn show_graph(
         }
         let to_screen = RectTransform::from_to(world_rect, response.rect);
         // draw edges
-        for (from, to, weight) in graph.inner.node_indices().flat_map(|n| {
-            graph.inner.edges_directed(n, Outgoing).map(|a| {
+        for (from, to, weight) in graph.inner().node_indices().flat_map(|n| {
+            graph.inner().edges_directed(n, Outgoing).map(|a| {
                 (
                     graph.entity(a.source()).unwrap(),
                     graph.entity(a.target()).unwrap(),
@@ -236,7 +236,7 @@ fn show_graph(
             );
         }
         // draw nodes after edges
-        for node in graph.inner.node_indices().map(|n| graph.entity(n).unwrap()) {
+        for node in graph.inner().node_indices().map(|n| graph.entity(n).unwrap()) {
             let Ok((name, mut station)) = stations.get_mut(node) else {
                 continue;
             };

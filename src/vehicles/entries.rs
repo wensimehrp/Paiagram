@@ -219,7 +219,7 @@ pub fn calculate_actual_route(
             }
             // compare the stuff between the last and current entries
             let Some((_, path)) = astar(
-                &graph.inner,
+                &graph.inner(),
                 graph.node_index(prev.station).unwrap(),
                 |finish| finish == graph.node_index(entry.station).unwrap(),
                 |edge| {

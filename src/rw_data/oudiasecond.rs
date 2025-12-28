@@ -1,29 +1,38 @@
-use bevy::{
-    ecs::{message::MessageReader, name},
-    log::error,
+use crate::{
+    intervals::{Graph, Interval},
+    rw_data::ModifyData,
+    units::{
+        distance::Distance,
+        time::{Duration, TimetableTime},
+    },
+    vehicles::{
+        Vehicle,
+        entries::{TravelMode, VehicleSchedule},
+        vehicle_set::VehicleSet,
+    },
 };
+use bevy::{ecs::system::command, prelude::*};
 use pest::Parser;
 use pest_derive::Parser;
-
-use crate::{rw_data::ModifyData, units::time::TimetableTime};
+use serde::Deserialize;
 
 #[derive(Parser)]
 #[grammar = "rw_data/oudiasecond.pest"]
 pub struct OUD2Parser;
 
 #[derive(Debug)]
-enum OUD2AstStruct<'a> {
-    Struct(&'a str, Vec<OUD2AstStruct<'a>>),
-    Pair(&'a str, OUD2AstValue<'a>),
+enum Structure<'a> {
+    Struct(&'a str, Vec<Structure<'a>>),
+    Pair(&'a str, Value<'a>),
 }
 
 #[derive(Debug)]
-enum OUD2AstValue<'a> {
+enum Value<'a> {
     Single(&'a str),
     List(Vec<&'a str>),
 }
 
-fn parse_oud2_to_ast(file: &str) -> Result<OUD2AstStruct<'_>, pest::error::Error<Rule>> {
+fn parse_oud2_to_ast(file: &str) -> Result<Structure<'_>, pest::error::Error<Rule>> {
     let oud2 = OUD2Parser::parse(Rule::file, file)?
         .next()
         .unwrap()
@@ -31,7 +40,7 @@ fn parse_oud2_to_ast(file: &str) -> Result<OUD2AstStruct<'_>, pest::error::Error
         .next()
         .unwrap();
     use pest::iterators::Pair;
-    fn parse_struct(pair: Pair<Rule>) -> OUD2AstStruct {
+    fn parse_struct(pair: Pair<Rule>) -> Structure {
         match pair.as_rule() {
             Rule::r#struct => {
                 let mut inner = pair.into_inner();
@@ -41,7 +50,7 @@ fn parse_oud2_to_ast(file: &str) -> Result<OUD2AstStruct<'_>, pest::error::Error
                     let field_struct = parse_struct(field_pair);
                     fields.push(field_struct);
                 }
-                OUD2AstStruct::Struct(name, fields)
+                Structure::Struct(name, fields)
             }
             Rule::wrapper => {
                 let inner = pair.into_inner();
@@ -51,21 +60,21 @@ fn parse_oud2_to_ast(file: &str) -> Result<OUD2AstStruct<'_>, pest::error::Error
                     let field_struct = parse_struct(field_pair);
                     fields.push(field_struct);
                 }
-                OUD2AstStruct::Struct(name, fields)
+                Structure::Struct(name, fields)
             }
             Rule::kvpair => {
                 let mut inner = pair.into_inner();
                 let key = inner.next().unwrap().as_str();
                 let val = inner.next().unwrap();
                 let val = match val.as_rule() {
-                    Rule::value => OUD2AstValue::Single(val.as_str()),
+                    Rule::value => Value::Single(val.as_str()),
                     Rule::list => {
                         let list_vals = val.into_inner().map(|v| v.as_str()).collect();
-                        OUD2AstValue::List(list_vals)
+                        Value::List(list_vals)
                     }
                     _ => unreachable!(),
                 };
-                OUD2AstStruct::Pair(key, val)
+                Structure::Pair(key, val)
             }
             _ => unreachable!(),
         }
@@ -73,289 +82,381 @@ fn parse_oud2_to_ast(file: &str) -> Result<OUD2AstStruct<'_>, pest::error::Error
     Ok(parse_struct(oud2))
 }
 
-struct OUD2File {
-    file_type: String,
-    line: OUD2Line,
-}
-
-struct OUD2Line {
-    name: String,
-    stations: Vec<OUD2Station>,
-    vehicle_sets: Vec<OUD2VehicleSet>,
-}
-
-struct OUD2Station {
-    name: String,
-    tracks: Vec<OUD2Track>,
-}
-
-struct OUD2Track {
-    name: String,
-    alias: String,
-}
-
-struct OUD2VehicleSet {
-    name: String,
-    // down and up. kudari for down and nobori for up.
-    kudari: Vec<OUD2Vehicle>,
-    nobori: Vec<OUD2Vehicle>,
-}
-
-struct OUD2Vehicle {
-    // class: String,
-    /// Ressyabangou
-    name: String,
-    times: Vec<Option<OUD2Entry>>,
-}
-
-struct OUD2Entry {
-    pass_type: OUD2PassType,
-    arrival_time: Option<TimetableTime>,
-    departure_time: Option<TimetableTime>,
-    track: usize,
-    operation_tree: OUD2OperationTree,
-}
-
-enum OUD2PassType {
-    Stop,
-    NonStop,
-    NoOp,
-}
-
-struct OUD2OperationTree {
-    value: Option<[String; 6]>,
-    before: Option<Box<OUD2OperationTree>>,
-    after: Option<Box<OUD2OperationTree>>,
-}
-
-fn parse_to_file(ast: OUD2AstStruct<'_>) -> Result<OUD2File, String> {
-    let mut line: Option<OUD2Line> = None;
-    let mut file_type: Option<String> = None;
-    match ast {
-        OUD2AstStruct::Pair("FileType", OUD2AstValue::Single(s)) => {
-            file_type = Some(s.to_string());
-        }
-        OUD2AstStruct::Struct("Rosen", inner) => {
-            line = Some(parse_to_line(inner)?);
-        }
-        _ => {}
-    };
-    if let (Some(file_type), Some(line)) = (file_type, line) {
-        Ok(OUD2File { file_type, line })
-    } else {
-        Err("Missing required fields in OUD2 file.".to_string())
-    }
-}
-
-fn parse_to_line(inner: Vec<OUD2AstStruct<'_>>) -> Result<OUD2Line, String> {
-    let mut name: Option<String> = None;
-    let mut stations = Vec::new();
-    let mut vehicle_sets = Vec::new();
-    for field in inner {
-        match field {
-            OUD2AstStruct::Pair("DiaName", OUD2AstValue::Single(s)) => {
-                name = Some(s.to_string());
-            }
-            OUD2AstStruct::Struct("Eki", inner) => {
-                let station = parse_to_station(inner)?;
-                stations.push(station);
-            }
-            OUD2AstStruct::Struct("Dia", inner) => {
-                let vehicle_set = parse_to_vehicle_set(inner)?;
-                vehicle_sets.push(vehicle_set);
-            }
-            _ => {}
-        }
-    }
-    if let Some(name) = name {
-        Ok(OUD2Line {
-            name,
-            stations,
-            vehicle_sets,
-        })
-    } else {
-        Err("Missing line name in OUD2 file.".to_string())
-    }
-}
-
-fn parse_to_station(inner: Vec<OUD2AstStruct<'_>>) -> Result<OUD2Station, String> {
-    let mut name: Option<String> = None;
-    let mut tracks = Vec::new();
-    for field in inner {
-        match field {
-            OUD2AstStruct::Pair("Ekimei", OUD2AstValue::Single(s)) => {
-                name = Some(s.to_string());
-            }
-            OUD2AstStruct::Struct("EkiTrack2Cont", inner) => {
-                for field in inner {
-                    let OUD2AstStruct::Struct(_, inner) = field else {
-                        continue;
-                    };
-                    let mut name: Option<String> = None;
-                    let mut alias: Option<String> = None;
-                    for field in inner {
-                        match field {
-                            OUD2AstStruct::Pair("TrackName", OUD2AstValue::Single(s)) => {
-                                name = Some(s.to_string());
-                            }
-                            OUD2AstStruct::Pair("TrackRyakusyou", OUD2AstValue::Single(s)) => {
-                                alias = Some(s.to_string());
-                            }
-                            _ => {}
-                        }
-                    }
-                    if let (Some(name), Some(alias)) = (name, alias) {
-                        tracks.push(OUD2Track { name, alias });
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    if let Some(name) = name {
-        Ok(OUD2Station { name, tracks })
-    } else {
-        Err("Missing station name in OUD2 file.".to_string())
-    }
-}
-
-fn parse_to_vehicle_set(inner: Vec<OUD2AstStruct<'_>>) -> Result<OUD2VehicleSet, String> {
-    let mut name: Option<String> = None;
-    let mut kudari = Vec::new();
-    let mut nobori = Vec::new();
-    for field in inner {
-        match field {
-            OUD2AstStruct::Pair("DiaName", OUD2AstValue::Single(s)) => {
-                name = Some(s.to_string());
-            }
-            OUD2AstStruct::Struct("Kudari", inner) => {
-                for field in inner {
-                    let OUD2AstStruct::Struct(name, inner) = field else {
-                        continue;
-                    };
-                    if name != "Ressya" {
-                        continue;
-                    }
-                    let vehicle = parse_to_vehicle(inner)?;
-                    kudari.push(vehicle);
-                }
-            }
-            OUD2AstStruct::Struct("Nobori", inner) => {
-                for field in inner {
-                    let OUD2AstStruct::Struct(name, inner) = field else {
-                        continue;
-                    };
-                    if name != "Ressya" {
-                        continue;
-                    }
-                    let vehicle = parse_to_vehicle(inner)?;
-                    nobori.push(vehicle);
-                }
-            }
-            _ => {}
-        }
-    }
-    if let Some(name) = name {
-        Ok(OUD2VehicleSet {
-            name,
-            kudari,
-            nobori,
-        })
-    } else {
-        Err("Missing vehicle set name in OUD2 file.".to_string())
-    }
-}
-
-fn parse_to_vehicle(inner: Vec<OUD2AstStruct<'_>>) -> Result<OUD2Vehicle, String> {
-    let mut name: Option<String> = None;
-    let mut class: Option<usize> = None;
-    let mut times: Vec<Option<OUD2Entry>> = Vec::new();
-    let mut operations: Option<String> = None;
-    for field in inner {
-        match field {
-            OUD2AstStruct::Pair("Syubetsu", OUD2AstValue::Single(s)) => {
-                class = s.parse().ok();
-            }
-            OUD2AstStruct::Pair("Ressyabangou", OUD2AstValue::Single(s)) => {
-                name = Some(s.to_string());
-            }
-            OUD2AstStruct::Pair("EkiJikoku", inner) => {
-                let inner = match inner {
-                    OUD2AstValue::Single(s) => vec![s],
-                    OUD2AstValue::List(v) => v,
-                };
-                for entry in inner {
-                    let time = parse_to_time(entry).ok();
-                    times.push(time);
-                }
-            }
-            OUD2AstStruct::Pair(s, v) if s.starts_with("Operation") => {
-                // TODO
-            }
-            _ => {}
-        };
-    }
-    if let Some(name) = name {
-        Ok(OUD2Vehicle { name, times })
-    } else {
-        Err("Missing vehicle name in OUD2 file.".to_string())
-    }
-}
-
-fn parse_to_time(inner: &str) -> Result<OUD2Entry, String> {
-    let parts = OUD2Parser::parse(Rule::timetable_entry, inner).map_err(|e| e.to_string())?;
-    let mut pass_type = OUD2PassType::NoOp;
-    let mut arrival_time: Option<TimetableTime> = None;
-    let mut departure_time: Option<TimetableTime> = None;
-    let mut track: usize = 0;
-    // for part in parts {
-    //     match part.as_rule() {
-    //         Rule::service_mode => {
-    //             if part.as_str() == "0" {
-    //                 pass_type = OUD2PassType::Stop;
-    //             } else if part.as_str() == "1" {
-    //                 pass_type = OUD2PassType::NonStop;
-    //             }
-    //         }
-    //         Rule::arrival => {
-    //             let time_str = part.into_inner().next().unwrap().as_str();
-    //             let time = TimetableTime::from_str(time_str).map_err(|e| e.to_string())?;
-    //             arrival_time = Some(time);
-    //         }
-    //         // TODO finish for tomorrow
-    //     }
-    // }
-    Ok(OUD2Entry {
-        pass_type,
-        arrival_time,
-        departure_time,
-        track,
-        operation_tree: OUD2OperationTree {
-            value: None,
-            before: None,
-            after: None,
-        },
-    })
-}
-
-use bevy::prelude::*;
 pub fn load_oud2(
     mut commands: Commands,
-    mut msg_read_rw: MessageReader<ModifyData>, // TODO: error display
-                                                // mut msg_display_error: MessageWriter<DisplayError>,
+    mut reader: MessageReader<ModifyData>,
+    mut graph: ResMut<Graph>,
 ) {
-    let mut data: Option<&str> = None;
-    for msg in msg_read_rw.read() {
-        if let ModifyData::LoadOuDiaSecond(content) = msg {
-            data = Some(content);
+    graph.clear();
+    let mut str: Option<&str> = None;
+    for modification in reader.read() {
+        match modification {
+            ModifyData::LoadOuDiaSecond(s) => str = Some(s.as_str()),
+            _ => {}
         }
     }
-    let Some(data) = data else {
+    let Some(str) = str else {
         return;
     };
-    // TODO: error display
-    let Ok(ast) = parse_oud2_to_ast(data) else {
-        error!("Failed to parse OuDiaSecond data.");
-        return;
+    info!("Loading OUD2 data...");
+    let ast = parse_oud2_to_ast(str).expect("Failed to parse OUD2 file");
+    let root = parse_ast(&ast).expect("Failed to convert OUD2 AST to internal representation");
+    for line in root.lines {
+        let mut stations: Vec<(Entity, bool)> = Vec::new();
+        for station in line.stations.iter() {
+            let station_entity = commands
+                .spawn((
+                    Name::new(station.name.clone()),
+                    crate::intervals::Station::default(),
+                ))
+                .id();
+            stations.push((station_entity, station.break_interval));
+        }
+        for (i, station) in line.stations.iter().enumerate() {
+            if let Some(branch_index) = station.branch_index {
+                let (e, _) = stations[i];
+                commands.entity(e).despawn();
+                stations[i].0 = stations[branch_index].0;
+            }
+            if let Some(loop_index) = station.loop_index {
+                let (e, _) = stations[i];
+                commands.entity(e).despawn();
+                stations[i].0 = stations[loop_index].0;
+            }
+        }
+        for w in stations.windows(2) {
+            let [(prev, break_interval), (next, _)] = w else { continue };
+            // create new intervals
+            if *break_interval {
+                continue;
+            }
+            let e1 = commands
+                .spawn(Interval {
+                    length: Distance::from_m(1000),
+                    speed_limit: None,
+                })
+                .id();
+            let e2 = commands
+                .spawn(Interval {
+                    length: Distance::from_m(1000),
+                    speed_limit: None,
+                })
+                .id();
+            graph.add_edge(*prev, *next, e1);
+            graph.add_edge(*next, *prev, e2);
+        }
+        for diagram in line.diagrams {
+            let vehicle_set_entity = commands.spawn((Name::new(diagram.name), VehicleSet)).id();
+            for train in diagram.trains {
+                let vehicle_entity = commands.spawn((Vehicle, Name::new(train.name))).id();
+                let mut schedule = Vec::new();
+                commands
+                    .entity(vehicle_set_entity)
+                    .add_child(vehicle_entity);
+                for (i, time) in train.times.into_iter().enumerate() {
+                    let Some(time) = time else {
+                        continue;
+                    };
+                    if matches!(time.passing_mode, PassingMode::NoOperation) {
+                        continue;
+                    }
+                    let arrival = if matches!(time.passing_mode, PassingMode::Pass) {
+                        TravelMode::Flexible
+                    } else {
+                        time.arrival
+                            .map_or(TravelMode::Flexible, |t| TravelMode::At(t))
+                    };
+                    let departure = if matches!(time.passing_mode, PassingMode::Pass) {
+                        None
+                    } else {
+                        Some(
+                            time.departure
+                                .map_or(TravelMode::Flexible, |t| TravelMode::At(t)),
+                        )
+                    };
+                    let entry_entity = commands
+                        .spawn(crate::vehicles::entries::TimetableEntry {
+                            arrival,
+                            departure,
+                            station: stations[match train.direction {
+                                Direction::Down => i,
+                                Direction::Up => stations.len() - 1 - i,
+                            }].0,
+                            service: None,
+                            track: None,
+                        })
+                        .id();
+                    schedule.push(entry_entity);
+                    commands.entity(vehicle_entity).add_child(entry_entity);
+                }
+                commands.entity(vehicle_entity).insert(VehicleSchedule {
+                    entities: schedule,
+                    ..Default::default()
+                });
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+struct Root {
+    version: String,
+    lines: Vec<LineMeta>,
+}
+
+#[derive(Debug)]
+struct LineMeta {
+    name: String,
+    stations: Vec<Station>,
+    diagrams: Vec<Diagram>,
+}
+
+#[derive(Debug)]
+struct Station {
+    name: String,
+    branch_index: Option<usize>,
+    loop_index: Option<usize>,
+    break_interval: bool,
+}
+
+#[derive(Debug)]
+struct Diagram {
+    name: String,
+    trains: Vec<Train>,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum Direction {
+    // kudari
+    Down,
+    // nobori
+    Up,
+}
+
+#[derive(Debug)]
+struct Train {
+    direction: Direction,
+    name: String,
+    times: Vec<Option<TimetableEntry>>,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum PassingMode {
+    Stop,
+    Pass,
+    NoOperation,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct TimetableEntry {
+    passing_mode: PassingMode,
+    arrival: Option<TimetableTime>,
+    departure: Option<TimetableTime>,
+    track: Option<usize>,
+}
+
+use Structure::*;
+use Value::*;
+fn parse_ast(ast: &Structure) -> Result<Root, String> {
+    let Struct(k, v) = ast else {
+        return Err("Expected root structure".to_string());
     };
+    let mut root = Root {
+        version: String::new(),
+        lines: Vec::new(),
+    };
+    for field in v {
+        match field {
+            Struct(k, v) if *k == "Rosen" => {
+                root.lines.push(parse_line_meta(v)?);
+            }
+            Pair(k, Single(v)) if *k == "FileType" => {
+                root.version = v.to_string();
+            }
+            _ => {}
+        }
+    }
+    Ok(root)
+}
+fn parse_line_meta(fields: &[Structure]) -> Result<LineMeta, String> {
+    let mut line_meta = LineMeta {
+        name: String::new(),
+        stations: Vec::new(),
+        diagrams: Vec::new(),
+    };
+    for field in fields {
+        match field {
+            Pair(k, Single(v)) if *k == "Rosenmei" => {
+                line_meta.name = v.to_string();
+            }
+            Struct(k, v) if *k == "Eki" => {
+                line_meta.stations.push(parse_station(v)?);
+            }
+            Struct(k, v) if *k == "Dia" => {
+                line_meta.diagrams.push(parse_diagram(v)?);
+            }
+            _ => {}
+        }
+    }
+    Ok(line_meta)
+}
+
+fn parse_station(fields: &[Structure]) -> Result<Station, String> {
+    let mut station = Station {
+        name: String::new(),
+        branch_index: None,
+        loop_index: None,
+        break_interval: false,
+    };
+    let mut kudari_display = false;
+    let mut nobori_display = false;
+    for field in fields {
+        match field {
+            Pair(k, Single(v)) if *k == "Ekimei" => {
+                station.name = v.to_string();
+            }
+            Pair(k, Single(v)) if *k == "BrunchCoreEkiIndex" => {
+                station.branch_index = Some(
+                    v.parse::<usize>()
+                        .map_err(|e| format!("Failed to parse branch index: {}", e))?,
+                );
+            }
+            Pair(k, Single(v)) if *k == "LoopOriginEkiIndex" => {
+                station.loop_index = Some(
+                    v.parse::<usize>()
+                        .map_err(|e| format!("Failed to parse loop index: {}", e))?,
+                );
+            }
+            Pair(k, List(v)) if *k == "JikokuhyouJikokuDisplayKudari" => {
+                kudari_display = v.len() == 2 && [v[0], v[1]] == ["1", "0"];
+            }
+            Pair(k, List(v)) if *k == "JikokuhyouJikokuDisplayNobori" => {
+                nobori_display = v.len() == 2 && [v[0], v[1]] == ["0", "1"];
+            }
+            _ => {}
+        }
+    }
+    station.break_interval = kudari_display && nobori_display;
+    Ok(station)
+}
+
+fn parse_diagram(fields: &[Structure]) -> Result<Diagram, String> {
+    let mut diagram = Diagram {
+        name: String::new(),
+        trains: Vec::new(),
+    };
+    for field in fields {
+        match field {
+            Pair(k, Single(v)) if *k == "DiaName" => {
+                diagram.name = v.to_string();
+            }
+            Struct(k, v) if *k == "Kudari" => {
+                diagram.trains.extend(parse_trains(Direction::Down, v)?);
+            }
+            Struct(k, v) if *k == "Nobori" => {
+                diagram.trains.extend(parse_trains(Direction::Up, v)?);
+            }
+            _ => {}
+        }
+    }
+    Ok(diagram)
+}
+
+fn parse_trains(direction: Direction, fields: &[Structure]) -> Result<Vec<Train>, String> {
+    fn parse_time(str: &str) -> Result<Option<TimetableEntry>, String> {
+        let mut entry = TimetableEntry {
+            passing_mode: PassingMode::NoOperation,
+            arrival: None,
+            departure: None,
+            track: None,
+        };
+        if str.is_empty() {
+            return Ok(None);
+        }
+        let parts = OUD2Parser::parse(Rule::timetable_entry, str)
+            .map_err(|e| e.to_string())?
+            .next()
+            .ok_or("Unexpected error while unwrapping")?;
+        for field in parts.into_inner() {
+            match field.as_rule() {
+                Rule::service_mode => match field.as_str() {
+                    "1" => entry.passing_mode = PassingMode::Stop,
+                    "2" => entry.passing_mode = PassingMode::Pass,
+                    _ => entry.passing_mode = PassingMode::NoOperation,
+                },
+                Rule::arrival => entry.arrival = TimetableTime::from_oud2_str(field.as_str()),
+                Rule::departure => entry.departure = TimetableTime::from_oud2_str(field.as_str()),
+                Rule::track => {
+                    // TODO
+                }
+                _ => {}
+            }
+        }
+        Ok(Some(entry))
+    }
+    let parse_trains = |fields: &[Structure]| -> Result<Train, String> {
+        let mut train = Train {
+            direction,
+            name: String::new(),
+            times: Vec::new(),
+        };
+        for field in fields {
+            match field {
+                Pair(k, Single(v)) if *k == "Ressyabangou" => {
+                    train.name = v.to_string();
+                }
+                Pair(k, v) if *k == "EkiJikoku" => {
+                    let times = match v {
+                        Single(s) => &vec![*s],
+                        List(l) => l,
+                    };
+                    for time in times {
+                        train.times.push(parse_time(time)?);
+                    }
+                }
+                _ => {}
+            }
+        }
+        let mut previous_valid_time = train
+            .times
+            .iter()
+            .find_map(|e| {
+                if let Some(e) = e {
+                    e.departure.or(e.arrival)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(TimetableTime::from_hms(0, 0, 0));
+        for time in train
+            .times
+            .iter_mut()
+            .flat_map(|t| {
+                std::iter::once(t).flatten().flat_map(|t| {
+                    std::iter::once(&mut t.arrival)
+                        .flatten()
+                        .chain(std::iter::once(&mut t.departure).flatten())
+                })
+            })
+            .skip(1)
+        {
+            if *time >= previous_valid_time {
+                previous_valid_time = *time;
+                continue;
+            }
+            *time += Duration(86400);
+            previous_valid_time = *time;
+        }
+        Ok(train)
+    };
+    let mut trains = Vec::new();
+    for field in fields {
+        match field {
+            Struct(k, v) if *k == "Ressya" => {
+                trains.push(parse_trains(v)?);
+            }
+            _ => {}
+        }
+    }
+    Ok(trains)
 }

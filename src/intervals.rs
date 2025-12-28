@@ -13,11 +13,18 @@ pub type IntervalGraphType = StableDiGraph<Entity, Entity>;
 /// A graph representing the transportation network
 #[derive(Resource, Default, Debug)]
 pub struct Graph{
-    pub inner: IntervalGraphType,
-    pub indices: EntityHashMap<NodeIndex>
+    inner: IntervalGraphType,
+    indices: EntityHashMap<NodeIndex>
 }
 
 impl Graph {
+    pub fn inner(&self) -> &IntervalGraphType {
+        &self.inner
+    }
+    pub fn clear(&mut self) {
+        self.inner.clear();
+        self.indices.clear();
+    }
     pub fn edge_weight(&self, a: Entity, b: Entity) -> Option<&Entity> {
         let &a_index = self.indices.get(&a)?;
         let &b_index = self.indices.get(&b)?;
