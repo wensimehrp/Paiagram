@@ -103,7 +103,7 @@ pub fn show_line<'a, F>(
         .show_inside(ui, |ui| {
             ScrollArea::vertical().show(ui, |ui| {
                 for (station_entity, station_name, _) in line
-                    .stations
+                    .stations()
                     .iter()
                     .filter_map(|(e, _)| get_station_info(*e))
                 {

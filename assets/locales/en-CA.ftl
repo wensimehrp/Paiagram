@@ -30,3 +30,13 @@ tab-settings = Settings
 tab-diagram = Diagram
 # Graph tab
 tab-graph = Graph
+tab-graph-new-displayed-line = Create new displayed line
+tab-graph-new-displayed-line-desc = Create a new displayed line. The new line would be used as the foundation of a diagram.
+tab-graph-auto-arrange = Auto-arrange graph
+tab-graph-auto-arrange-desc = Automatically arrange the current graph.
+
+# new lines desc
+new-displayed-line = New Displayed Line
+
+# general
+done = Done

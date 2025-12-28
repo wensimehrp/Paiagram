@@ -1,5 +1,6 @@
 use super::Tab;
 use crate::intervals::{Graph, IntervalGraphType, Station};
+use crate::lines::DisplayedLine;
 use crate::rw_data::write::write_text_file;
 use bevy::prelude::*;
 use egui::{Color32, Pos2, Rect, Sense, Stroke, Ui, UiBuilder, Vec2};
@@ -11,17 +12,25 @@ use petgraph::visit::EdgeRef;
 use visgraph::Orientation::TopToBottom;
 use visgraph::layout::hierarchical::hierarchical_layout;
 
-#[derive(Debug, Clone, Copy)]
+// TODO: implement snapping and alignment guides when moving stations
+#[derive(Clone)]
 pub struct GraphTab {
     zoom: f32,
     translation: Vec2,
     selected_item: Option<SelectedItem>,
+    edit_mode: Option<EditMode>,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum EditMode {
+    EditDisplayedLine(Entity),
 }
 
 #[derive(Debug, Clone, Copy)]
 enum SelectedItem {
     Node(Entity),
     Edge(Entity),
+    DisplayedLine(Entity),
 }
 
 impl Default for GraphTab {
@@ -30,6 +39,7 @@ impl Default for GraphTab {
             zoom: 1.0,
             translation: Vec2::ZERO,
             selected_item: None,
+            edit_mode: None,
         }
     }
 }
@@ -42,10 +52,52 @@ impl Tab for GraphTab {
         }
     }
     fn edit_display(&mut self, world: &mut World, ui: &mut Ui) {
-        if ui.button("Auto-arrange Graph").clicked() {
-            if let Err(e) = world.run_system_cached(auto_arrange_graph) {
-                error!("Error while auto-arranging graph: {}", e);
+        ui.group(|ui| {
+            ui.label(tr!("tab-graph-auto-arrange-desc"));
+            if ui.button(tr!("tab-graph-auto-arrange")).clicked() {
+                if let Err(e) = world.run_system_cached(auto_arrange_graph) {
+                    error!("Error while auto-arranging graph: {}", e);
+                }
             }
+        });
+        match self.selected_item {
+            None => {
+                ui.group(|ui| {
+                    ui.label(tr!("tab-graph-new-displayed-line-desc"));
+                    if !ui.button(tr!("tab-graph-new-displayed-line")).clicked() {
+                        return;
+                    }
+                    let new_displayed_line = world
+                        .spawn((
+                            DisplayedLine::new(vec![]),
+                            Name::new(tr!("new-displayed-line")),
+                        ))
+                        .id();
+                    self.edit_mode = Some(EditMode::EditDisplayedLine(new_displayed_line));
+                    self.selected_item = Some(SelectedItem::DisplayedLine(new_displayed_line));
+                });
+            }
+            Some(SelectedItem::DisplayedLine(e)) => {
+                ui.group(|ui| {
+                    if let Err(e) = world.run_system_cached_with(display_displayed_line, (ui, e)) {
+                        bevy::log::error!("UI Error while displaying displayed line editor: {}", e)
+                    }
+                    if ui.button(tr!("done")).clicked() {
+                        // check if the displayed line is empty
+                        // if so, delete it
+                        if let Ok((_, line)) =
+                            world.query::<(&Name, &DisplayedLine)>().get(world, e)
+                        {
+                            if line.stations().is_empty() {
+                                world.entity_mut(e).despawn();
+                            }
+                        }
+                        self.edit_mode = None;
+                        self.selected_item = None;
+                    }
+                });
+            }
+            _ => {}
         }
     }
     fn title(&self) -> egui::WidgetText {
@@ -65,6 +117,26 @@ impl Tab for GraphTab {
     }
     fn scroll_bars(&self) -> [bool; 2] {
         [false; 2]
+    }
+}
+
+fn display_displayed_line(
+    (InMut(ui), In(entity)): (InMut<Ui>, In<Entity>),
+    displayed_lines: Query<(&Name, &DisplayedLine)>,
+    stations: Query<&Name, With<Station>>,
+) {
+    let Ok((name, line)) = displayed_lines.get(entity) else {
+        return;
+    };
+    ui.heading(name.as_str());
+    for (i, (station_entity, _)) in line.stations().iter().enumerate() {
+        let Some(station_name) = stations.get(*station_entity).ok() else {
+            continue;
+        };
+        ui.horizontal(|ui| {
+            ui.label(format!("{}.", i + 1));
+            ui.label(station_name.as_str());
+        });
     }
 }
 
@@ -103,6 +175,7 @@ fn make_dot_string(InMut(buffer): InMut<String>, graph: Res<Graph>, names: Query
 fn show_graph(
     (InMut(ui), mut state): (InMut<egui::Ui>, InMut<GraphTab>),
     graph: Res<Graph>,
+    mut displayed_lines: Query<(Entity, &mut DisplayedLine)>,
     mut stations: Query<(&Name, &mut Station)>,
 ) {
     const EDGE_OFFSET: f32 = 10.0;
@@ -129,7 +202,7 @@ fn show_graph(
                 response.rect.height() / state.zoom,
             ),
         );
-        if response.clicked() {
+        if response.clicked() && !state.edit_mode.is_some() {
             state.selected_item = None;
         }
         let to_screen = RectTransform::from_to(world_rect, response.rect);
@@ -192,8 +265,16 @@ fn show_graph(
                     } else {
                         Color32::LIGHT_GREEN
                     };
-                    if resp.clicked() {
-                        state.selected_item = Some(SelectedItem::Node(node));
+                    match (state.edit_mode, resp.clicked()) {
+                        (_, false) => {}
+                        (None, true) => {
+                            state.selected_item = Some(SelectedItem::Node(node));
+                        }
+                        (Some(EditMode::EditDisplayedLine(e)), true) => {
+                            if let Ok((_, mut line)) = displayed_lines.get_mut(e) {
+                                line.push((node, 0.0));
+                            }
+                        }
                     }
                     if matches!(state.selected_item, Some(SelectedItem::Node(n)) if n == node) {
                         focused_pos = Some((*pos, Pos2::ZERO));
@@ -205,6 +286,24 @@ fn show_graph(
                     resp
                 },
             );
+        }
+        for (line_entity, line) in displayed_lines {
+            let mut nodes = line
+                .stations()
+                .iter()
+                .copied()
+                .filter_map(|(e, _)| stations.get(e).ok())
+                .map(|(_, station)| station.0);
+            let Some(mut previous) = nodes.next() else {
+                continue;
+            };
+            for station_pos in nodes {
+                painter.line_segment(
+                    [to_screen * previous, to_screen * station_pos],
+                    Stroke::new(4.0, Color32::LIGHT_YELLOW),
+                );
+                previous = station_pos
+            }
         }
         painter.rect_filled(response.rect, 0, {
             let amt = (selected_strength * 180.0) as u8;

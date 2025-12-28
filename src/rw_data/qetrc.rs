@@ -417,10 +417,7 @@ fn create_line_entities(
     let mut intervals: DisplayedLineType = Vec::with_capacity(line.stations.len());
     let Some(first_station) = line.stations.first() else {
         commands.spawn((
-            DisplayedLine {
-                stations: intervals,
-                ..Default::default()
-            },
+            DisplayedLine::new(intervals),
             Name::new(line.name),
         ));
         return;
@@ -455,10 +452,7 @@ fn create_line_entities(
         prev_entity = next_entity;
     }
     commands.spawn((
-        DisplayedLine {
-            stations: intervals,
-            ..Default::default()
-        },
+        DisplayedLine::new(intervals),
         Name::new(line.name),
     ));
 }

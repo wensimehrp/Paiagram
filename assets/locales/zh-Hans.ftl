@@ -19,9 +19,24 @@ side-panel-export-fallback-1 = 当前选中的页面尚未实现「导出」功�
 side-panel-export-fallback-2 = 太可恶了这个作者怎么什么都没有做
 
 # Tabs
+# Start tab
 tab-start = 开始
+tab-start-version = Version: {$version}
+tab-start-revision = Revision: {$revision}
+tab-start-description = A high-performance transport timetable diagramming and analysis tool built with egui and Bevy.
+# Settings tab
 tab-settings = 设置
 # Diagram tab
 tab-diagram = 运行图
 # Graph tab
 tab-graph = 线路网
+tab-graph-new-displayed-line = 新建基线
+tab-graph-new-displayed-line-desc = 新建基线。基线可用于显示运行图
+tab-graph-auto-arrange = 自动整理线路网
+tab-graph-auto-arrange-desc = 自动整理当前线路网
+
+# new lines desc
+new-displayed-line = 新基线
+
+# general
+done = 完成

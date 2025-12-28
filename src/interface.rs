@@ -156,7 +156,7 @@ macro_rules! for_all_tabs {
 }
 
 /// An application tab
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum AppTab {
     Start(StartTab),
     Vehicle(VehicleTab),

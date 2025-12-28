@@ -36,7 +36,7 @@ pub fn edit_line(
                 x: ui.max_rect().left() + addition_button_offset,
                 y: ui.min_rect().bottom()
                     + (label_height + addition_button_height)
-                        * (displayed_line.stations.len() + 1) as f32,
+                        * (displayed_line.stations().len() + 1) as f32,
             },
         ],
         ui.visuals().widgets.hovered.bg_stroke,
@@ -87,7 +87,7 @@ pub fn edit_line(
     };
 
     let station_names = displayed_line
-        .stations
+        .stations()
         .iter()
         .copied()
         .map(|(e, _)| stations.get(e).map_or("<Unknown>", |(_, n)| n.as_str()));
@@ -121,6 +121,6 @@ pub fn edit_line(
     if let Some((index, entity)) = insertion {
         info!("Inserting station at index {index}");
         // TODO: fix the 10.0 thingy
-        displayed_line.stations.insert(index, (entity, 10.0));
+        displayed_line.insert(index, (entity, 10.0));
     }
 }

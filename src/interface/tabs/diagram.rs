@@ -233,7 +233,7 @@ fn show_diagram(
     let entries_updated = displayed_line.is_changed()
         || state.vehicle_entities.is_empty()
         || displayed_line
-            .stations
+            .stations()
             .iter()
             .copied()
             .any(|(s, _)| station_updated.get(s).is_ok());
@@ -247,7 +247,7 @@ fn show_diagram(
 
     if entries_updated {
         for station in displayed_line
-            .stations
+            .stations()
             .iter()
             .filter_map(|(s, _)| station_caches.get(*s).ok())
         {
@@ -408,7 +408,7 @@ fn show_diagram(
 fn ensure_heights(state: &mut DiagramPageCache, displayed_line: &DisplayedLine) {
     let mut current_height = 0.0;
     let mut heights = Vec::new();
-    for (station, distance) in &displayed_line.stations {
+    for (station, distance) in displayed_line.stations() {
         current_height += distance.abs().log2().max(1.0) * 15f32;
         heights.push((*station, current_height))
     }
