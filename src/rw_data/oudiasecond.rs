@@ -87,7 +87,6 @@ pub fn load_oud2(
     mut reader: MessageReader<ModifyData>,
     mut graph: ResMut<Graph>,
 ) {
-    graph.clear();
     let mut str: Option<&str> = None;
     for modification in reader.read() {
         match modification {
@@ -98,6 +97,7 @@ pub fn load_oud2(
     let Some(str) = str else {
         return;
     };
+    graph.clear();
     info!("Loading OUD2 data...");
     let ast = parse_oud2_to_ast(str).expect("Failed to parse OUD2 file");
     let root = parse_ast(&ast).expect("Failed to convert OUD2 AST to internal representation");
