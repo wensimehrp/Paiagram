@@ -34,6 +34,8 @@ tab-graph-new-displayed-line = 新建基线
 tab-graph-new-displayed-line-desc = 新建基线。基线可用于显示运行图
 tab-graph-auto-arrange = 自动整理线路网
 tab-graph-auto-arrange-desc = 自动整理当前线路网
+tab-graph-animation = 动画控制
+tab-graph-animation-desc = 控制动态运行图动画。
 
 # new lines desc
 new-displayed-line = 新基线

@@ -127,6 +127,44 @@ pub struct VehicleScheduleCache {
     pub service_entities: Vec<(Entity, SmallVec<[std::ops::Range<usize>; 1]>)>,
 }
 
+// TODO: implement start times
+impl VehicleScheduleCache {
+    pub fn position<'a>(
+        &self,
+        time: f32,
+        get_info: impl Fn(Entity) -> Option<(&'a TimetableEntry, &'a TimetableEntryCache)>,
+    ) -> Option<Either<(Entity, Entity, f32), Entity>> {
+        let actual_route = self.actual_route.as_ref()?;
+        let i = actual_route.iter().rposition(|e| {
+            let Some((_, cache)) = get_info(e.inner()) else {
+                return false;
+            };
+            let Some(entry_time) = cache.estimate.as_ref().map(|est| est.arrival) else {
+                return false;
+            };
+            entry_time.0 <= time as i32
+        })?;
+        let (this_entry, this_cache) = get_info(actual_route[i].inner())?;
+        let this_times = this_cache.estimate.as_ref()?;
+        if this_times.arrival.0 <= (time as i32) && (time as i32) <= this_times.departure.0 {
+            return Some(Either::Right(this_entry.station));
+        }
+        let (next_entry, next_cache) = get_info(actual_route.get(i + 1)?.inner())?;
+        let next_times = next_cache.estimate.as_ref()?;
+        let duration = next_times.arrival - this_times.departure;
+        let elapsed = time - this_times.departure.0 as f32;
+        if duration.0 <= 0 {
+            return Some(Either::Right(next_entry.station));
+        }
+        let factor = elapsed / (duration.0 as f32);
+        Some(Either::Left((
+            this_entry.station,
+            next_entry.station,
+            factor,
+        )))
+    }
+}
+
 pub fn calculate_actual_route(
     mut vehicles: Query<(&mut VehicleScheduleCache, &VehicleSchedule)>,
     mut msg_vehicle_changes: MessageReader<AdjustTimetableEntry>,

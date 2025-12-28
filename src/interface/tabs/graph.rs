@@ -2,9 +2,12 @@ use super::Tab;
 use crate::intervals::{Graph, IntervalGraphType, Station};
 use crate::lines::DisplayedLine;
 use crate::rw_data::write::write_text_file;
+use crate::units::time::{Duration, TimetableTime};
+use crate::vehicles::entries::{TimetableEntry, TimetableEntryCache, VehicleScheduleCache};
 use bevy::prelude::*;
 use egui::{Color32, Pos2, Rect, Sense, Stroke, Ui, UiBuilder, Vec2};
 use egui_i18n::tr;
+use either::Either::{Left, Right};
 use emath::{self, RectTransform};
 use petgraph::Direction::Outgoing;
 use petgraph::dot;
@@ -19,6 +22,8 @@ pub struct GraphTab {
     translation: Vec2,
     selected_item: Option<SelectedItem>,
     edit_mode: Option<EditMode>,
+    animation_counter: f32,
+    animation_playing: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -40,6 +45,8 @@ impl Default for GraphTab {
             translation: Vec2::ZERO,
             selected_item: None,
             edit_mode: None,
+            animation_playing: false,
+            animation_counter: 0.0,
         }
     }
 }
@@ -59,6 +66,28 @@ impl Tab for GraphTab {
                     error!("Error while auto-arranging graph: {}", e);
                 }
             }
+        });
+        ui.group(|ui| {
+            ui.label(tr!("tab-graph-animation"));
+            ui.label(tr!("tab-graph-animation-desc"));
+            ui.horizontal(|ui| {
+                if ui
+                    .button(if self.animation_playing { "⏸" } else { "►" })
+                    .clicked()
+                {
+                    self.animation_playing = !self.animation_playing;
+                }
+                if ui.button("⏮").clicked() {
+                    self.animation_counter = 0.0;
+                }
+                ui.add(
+                    egui::Slider::new(
+                        &mut self.animation_counter,
+                        (-86400.0 * 2.0)..=(86400.0 * 2.0),
+                    )
+                    .text("Time"),
+                );
+            })
         });
         match self.selected_item {
             None => {
@@ -177,7 +206,14 @@ fn show_graph(
     graph: Res<Graph>,
     mut displayed_lines: Query<(Entity, &mut DisplayedLine)>,
     mut stations: Query<(&Name, &mut Station)>,
+    schedules: Query<&VehicleScheduleCache>,
+    timetable_entries: Query<(&TimetableEntry, &TimetableEntryCache)>,
+    time: Res<Time>,
 ) {
+    if state.animation_playing {
+        state.animation_counter += time.delta_secs() * 10.0;
+        ui.ctx().request_repaint();
+    }
     const EDGE_OFFSET: f32 = 10.0;
     let selected_strength = ui.ctx().animate_bool(
         ui.id().with("background animation"),
@@ -236,7 +272,11 @@ fn show_graph(
             );
         }
         // draw nodes after edges
-        for node in graph.inner().node_indices().map(|n| graph.entity(n).unwrap()) {
+        for node in graph
+            .inner()
+            .node_indices()
+            .map(|n| graph.entity(n).unwrap())
+        {
             let Ok((name, mut station)) = stations.get_mut(node) else {
                 continue;
             };
@@ -303,6 +343,36 @@ fn show_graph(
                     Stroke::new(4.0, Color32::LIGHT_YELLOW),
                 );
                 previous = station_pos
+            }
+        }
+        if state.animation_playing {
+            for section in schedules.iter().filter_map(|s| {
+                s.position(state.animation_counter, |e| timetable_entries.get(e).ok())
+            }) {
+                match section {
+                    Left((from_entity, to_entity, progress)) => {
+                        let Ok((_, from_station)) = stations.get(from_entity) else {
+                            continue;
+                        };
+                        let Ok((_, to_station)) = stations.get(to_entity) else {
+                            continue;
+                        };
+                        let from_pos = to_screen * from_station.0;
+                        let to_pos = to_screen * to_station.0;
+                        // shift the from and to positions to its left by EDGE_OFFSET pixels
+                        let direction = (to_pos - from_pos).normalized();
+                        let angle = direction.y.atan2(direction.x) + std::f32::consts::FRAC_PI_2;
+                        let offset = Vec2::new(angle.cos(), angle.sin()) * EDGE_OFFSET;
+                        let from_pos = from_pos + offset;
+                        let to_pos = to_pos + offset;
+                        painter.circle_filled(
+                            from_pos.lerp(to_pos, progress),
+                            6.0,
+                            Color32::from_rgb(100, 200, 100),
+                        );
+                    }
+                    Right(station_pos) => {}
+                };
             }
         }
         painter.rect_filled(response.rect, 0, {
