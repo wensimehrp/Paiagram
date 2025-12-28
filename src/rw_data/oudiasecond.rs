@@ -125,7 +125,9 @@ pub fn load_oud2(
             }
         }
         for w in stations.windows(2) {
-            let [(prev, break_interval), (next, _)] = w else { continue };
+            let [(prev, break_interval), (next, _)] = w else {
+                continue;
+            };
             // create new intervals
             if *break_interval {
                 continue;
@@ -181,7 +183,8 @@ pub fn load_oud2(
                             station: stations[match train.direction {
                                 Direction::Down => i,
                                 Direction::Up => stations.len() - 1 - i,
-                            }].0,
+                            }]
+                            .0,
                             service: None,
                             track: None,
                         })
@@ -417,29 +420,17 @@ fn parse_trains(direction: Direction, fields: &[Structure]) -> Result<Vec<Train>
                 _ => {}
             }
         }
-        let mut previous_valid_time = train
-            .times
-            .iter()
-            .find_map(|e| {
-                if let Some(e) = e {
-                    e.departure.or(e.arrival)
-                } else {
-                    None
-                }
+        let mut time_iter = train.times.iter_mut().flat_map(|t| {
+            std::iter::once(t).flatten().flat_map(|t| {
+                std::iter::once(&mut t.arrival)
+                    .flatten()
+                    .chain(std::iter::once(&mut t.departure).flatten())
             })
-            .unwrap_or(TimetableTime::from_hms(0, 0, 0));
-        for time in train
-            .times
-            .iter_mut()
-            .flat_map(|t| {
-                std::iter::once(t).flatten().flat_map(|t| {
-                    std::iter::once(&mut t.arrival)
-                        .flatten()
-                        .chain(std::iter::once(&mut t.departure).flatten())
-                })
-            })
-            .skip(1)
-        {
+        });
+        let mut previous_valid_time = time_iter
+            .next()
+            .map_or(TimetableTime::from_hms(0, 0, 0), |t| *t);
+        for time in time_iter {
             if *time >= previous_valid_time {
                 previous_valid_time = *time;
                 continue;
