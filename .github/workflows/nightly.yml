@@ -33,6 +33,9 @@ jobs:
       - name: Download Sarasa fonts
         run: nix develop .#default --command just get-fonts
 
+      - name: Fetch submodules
+        run: git submodule update --init
+
       - name: Compile project documentation (build check)
         run: nix develop .#default --command just doc-check
 
