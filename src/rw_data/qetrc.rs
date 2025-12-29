@@ -1,43 +1,49 @@
-// TODO: rewrite this shit
-use crate::intervals::*;
-use crate::lines::{DisplayedLine, DisplayedLineType};
-use crate::units::canvas::CanvasLength;
-// use crate::lines::*;
-use crate::units::distance::Distance;
-use crate::units::time::{Duration, TimetableTime};
-use crate::vehicles::entries::{TimetableEntry, TravelMode, VehicleSchedule};
-use crate::vehicles::services::VehicleService;
-use crate::vehicles::vehicle_set::VehicleSet;
-use crate::vehicles::*;
-use bevy::platform::collections::HashMap;
+use std::cmp::Ordering;
+
+use bevy::{platform::collections::HashMap, prelude::*};
 use serde::Deserialize;
 use serde_json;
 
+use crate::{
+    intervals::{Graph, Interval},
+    lines::DisplayedLine,
+    rw_data::ModifyData,
+    units::{
+        distance::Distance,
+        time::{Duration, TimetableTime},
+    },
+    vehicles::{
+        entries::{TravelMode, VehicleSchedule},
+        services::VehicleService,
+        vehicle_set::VehicleSet,
+    },
+};
+
 #[derive(Deserialize)]
-struct RawQETRCRoot {
+struct Root {
     // qetrc_release: u32,
     // qetrc_version: String,
     #[serde(rename = "trains")]
-    services: Vec<RawQETRCService>,
+    services: Vec<Service>,
     // qETRC has the line field and the lines array, both contains line data
     // but for some unknown(tm) reason sometimes the `lines` field is missing
     // hence Option<T>
     /// A single line
-    line: RawQETRCLine,
+    line: Line,
     /// Additional lines. This field does not exist in pyETRC, only in qETRC.
-    lines: Option<Vec<RawQETRCLine>>,
+    lines: Option<Vec<Line>>,
     #[serde(rename = "circuits")]
-    vehicles: Vec<RawQETRCVehicle>,
+    vehicles: Vec<Vehicle>,
 }
 
 #[derive(Deserialize)]
-struct RawQETRCLine {
+struct Line {
     name: String,
-    stations: Vec<RawQETRCStation>,
+    stations: Vec<Station>,
 }
 
 #[derive(Deserialize)]
-struct RawQETRCStation {
+struct Station {
     #[serde(rename = "zhanming")]
     name: String,
     #[serde(rename = "licheng")]
@@ -45,16 +51,16 @@ struct RawQETRCStation {
 }
 
 #[derive(Deserialize)]
-struct RawQETRCService {
+struct Service {
     #[serde(rename = "checi")]
     service_number: Vec<String>,
     // #[serde(rename = "type")]
     // service_type: String,
-    timetable: Vec<RawQETRCTimetableEntry>,
+    timetable: Vec<TimetableEntry>,
 }
 
 #[derive(Deserialize)]
-struct RawQETRCTimetableEntry {
+struct TimetableEntry {
     #[serde(rename = "business")]
     stops: Option<bool>,
     #[serde(rename = "ddsj")]
@@ -66,440 +72,225 @@ struct RawQETRCTimetableEntry {
 }
 
 #[derive(Deserialize)]
-struct RawQETRCVehicle {
+struct Vehicle {
     #[serde(rename = "model")]
     make: String,
     name: String,
     #[serde(rename = "order")]
-    services: Vec<RawQETRCVehicleServiceEntry>,
+    services: Vec<VehicleServiceEntry>,
 }
 
 #[derive(Deserialize)]
-struct RawQETRCVehicleServiceEntry {
+struct VehicleServiceEntry {
     #[serde(rename = "checi")]
     service_number: String,
 }
 
-struct QETRCRoot {
-    // release: u32,
-    // version: String,
-    services: Vec<QETRCService>,
-    lines: Vec<QETRCLine>,
-    vehicles: Vec<QETRCVehicle>,
-}
-
-struct QETRCLine {
-    name: String,
-    stations: Vec<QETRCStation>,
-}
-
-struct QETRCStation {
-    name: String,
-    distance: f32,
-}
-
-struct QETRCService {
-    name: String,
-    // service_type: String,
-    timetable: Vec<QETRCTimetableEntry>,
-}
-
-impl QETRCService {
-    fn shift_time(&mut self, time: Duration) {
-        self.timetable.iter_mut().for_each(|entry| {
-            entry.arrival += time;
-            entry.departure += time;
-        });
-    }
-}
-
-struct QETRCTimetableEntry {
-    stops: bool,
+struct ProcessedEntry {
     arrival: TimetableTime,
     departure: TimetableTime,
-    station_name: String,
+    station_entity: Entity,
+    service_entity: Entity,
 }
-
-struct QETRCVehicle {
-    make: String,
-    name: String,
-    services: Vec<QETRCService>,
-}
-
-impl TryFrom<RawQETRCRoot> for QETRCRoot {
-    type Error = String;
-    fn try_from(value: RawQETRCRoot) -> Result<Self, Self::Error> {
-        let mut services = HashMap::with_capacity(value.services.len());
-        for raw_service in value.services {
-            let service = QETRCService::try_from(raw_service)?;
-            services.insert(service.name.clone(), service);
-        }
-        let mut vehicles = Vec::with_capacity(value.vehicles.len());
-        for raw_vehicle in value.vehicles {
-            // consume the services that matches
-            // keep in track of the last entry
-            let mut vehicle_services = Vec::with_capacity(raw_vehicle.services.len());
-            let mut last_entry: Option<&QETRCTimetableEntry> = None;
-            for raw_service in raw_vehicle.services {
-                if let Some((_, mut service)) = services.remove_entry(&raw_service.service_number) {
-                    let current_first_entry = service.timetable.first();
-                    // if there is a last entry, and the current first entry is before it, shift
-                    if let (Some(last), Some(current_first)) = (last_entry, current_first_entry)
-                        && current_first.arrival < last.departure
-                    {
-                        // shift by 24 hours
-                        service.shift_time(Duration(86400));
-                    }
-                    vehicle_services.push(service);
-                    last_entry = vehicle_services.last().and_then(|s| s.timetable.last());
-                }
-            }
-            vehicles.push(QETRCVehicle {
-                make: raw_vehicle.make,
-                name: raw_vehicle.name,
-                services: vehicle_services,
-            });
-        }
-        // make the remaining orphaned services into a vec
-        let services = services.into_values().collect::<Vec<_>>();
-        let mut lines = Vec::with_capacity(1 + value.lines.iter().len());
-        lines.push(QETRCLine::try_from(value.line)?);
-        if let Some(raw_lines) = value.lines {
-            lines.extend(
-                raw_lines
-                    .into_iter()
-                    .map(QETRCLine::try_from)
-                    .collect::<Result<Vec<_>, _>>()?,
-            );
-        }
-        Ok(QETRCRoot {
-            // release: value.qetrc_release,
-            // version: value.qetrc_version,
-            services,
-            lines,
-            vehicles,
-        })
-    }
-}
-
-impl TryFrom<RawQETRCLine> for QETRCLine {
-    type Error = String;
-    fn try_from(value: RawQETRCLine) -> Result<Self, Self::Error> {
-        Ok(QETRCLine {
-            name: value.name,
-            stations: value
-                .stations
-                .into_iter()
-                .map(QETRCStation::try_from)
-                .collect::<Result<Vec<_>, _>>()?,
-        })
-    }
-}
-
-impl TryFrom<RawQETRCStation> for QETRCStation {
-    type Error = String;
-    fn try_from(value: RawQETRCStation) -> Result<Self, Self::Error> {
-        Ok(QETRCStation {
-            name: value.name,
-            distance: value.distance,
-        })
-    }
-}
-
-impl TryFrom<RawQETRCService> for QETRCService {
-    type Error = String;
-    fn try_from(value: RawQETRCService) -> Result<Self, Self::Error> {
-        let name = value.service_number.first().cloned().unwrap_or_default();
-        let mut timetable = value
-            .timetable
-            .into_iter()
-            .map(QETRCTimetableEntry::try_from)
-            .collect::<Result<Vec<_>, _>>()?;
-        let mut last_departure = TimetableTime(0);
-        for entry in &mut timetable {
-            if entry.arrival < last_departure {
-                entry.arrival.0 += 86400;
-                entry.departure.0 += 86400;
-            }
-            if entry.arrival > entry.departure {
-                entry.departure.0 += 86400;
-            }
-            last_departure = entry.departure;
-        }
-        Ok(QETRCService {
-            name,
-            // service_type: value.service_type,
-            timetable,
-        })
-    }
-}
-
-impl TryFrom<RawQETRCTimetableEntry> for QETRCTimetableEntry {
-    type Error = String;
-    fn try_from(value: RawQETRCTimetableEntry) -> Result<Self, Self::Error> {
-        Ok(QETRCTimetableEntry {
-            stops: value.stops.unwrap_or(false),
-            arrival: TimetableTime::from_str(&value.arrival).unwrap_or_default(),
-            departure: TimetableTime::from_str(&value.departure).unwrap_or_default(),
-            station_name: value.station_name,
-        })
-    }
-}
-
-fn parse_qetrc(json_str: &str) -> Result<QETRCRoot, String> {
-    let raw: RawQETRCRoot = serde_json::from_str(json_str).map_err(|e| e.to_string())?;
-    let qetrc_data: QETRCRoot = raw.try_into().map_err(|e: String| e.to_string())?;
-    // Adjust timetable entries to ensure strictly increasing arrival times
-    Ok(qetrc_data)
-}
-
-use super::ModifyData;
-use bevy::prelude::*;
-
-// try to parse QETRC data into bevy ECS components
 
 pub fn load_qetrc(
     mut commands: Commands,
     mut reader: MessageReader<ModifyData>,
-    mut existing_graph: ResMut<Graph>,
+    mut graph: ResMut<Graph>,
 ) {
-    let mut data: Option<&str> = None;
+    let mut str: Option<&str> = None;
     for modification in reader.read() {
-        let ModifyData::LoadQETRC(d) = modification else {
-            continue;
-        };
-        data = Some(d);
+        match modification {
+            ModifyData::LoadQETRC(s) => str = Some(s.as_str()),
+            _ => {}
+        }
     }
-    let Some(data) = data else {
+    let Some(str) = str else {
         return;
     };
-    let vehicle_set_entity = commands
-        .spawn((VehicleSet, Name::new("qETRC Vehicle Set")))
-        .id();
-    let now = instant::Instant::now();
-    let qetrc_data = parse_qetrc(data).map_err(|e| e.to_string()).unwrap();
-    info!("Parsed QETRC data in {:.2?}", now.elapsed());
-    let now = instant::Instant::now();
-    // dedup first, then create entities
-    // station hashmap for deduplication
-    let mut stations = std::collections::HashMap::new();
-    // graph hashmap that stores the intervals
-    // create stations and intervals from lines
-    for line in qetrc_data.lines {
-        create_line_entities(&mut commands, line, &mut stations, &mut existing_graph);
-    }
-    // create services and their timetables
-    // reuse the stations hashmap for looking up station entities
-    ensure_stations_exist(
-        &mut commands,
-        &qetrc_data.services,
-        &qetrc_data.vehicles,
-        &mut stations,
-    );
-    // create vehicle entities
-    for vehicle in qetrc_data.vehicles {
-        let new_vehicle_entity = create_vehicle(&mut commands, vehicle, &stations);
-        commands
-            .entity(vehicle_set_entity)
-            .add_child(new_vehicle_entity);
-    }
-    // now create the orphaned services and their timetables
-    for service in qetrc_data.services {
-        let new_vehicle_entity = create_vehicle_from_service(&mut commands, service, &stations);
-        commands
-            .entity(vehicle_set_entity)
-            .add_child(new_vehicle_entity);
-    }
-    info!("Loaded QETRC data in {:.2?}", now.elapsed());
-}
-
-fn create_vehicle(
-    commands: &mut Commands,
-    vehicle: QETRCVehicle,
-    stations: &std::collections::HashMap<String, Entity>,
-) -> Entity {
-    let vehicle_entity = commands
-        .spawn((
-            Vehicle,
-            Name::new(format!("{} [{}]", vehicle.name, vehicle.make)),
-        ))
-        .id();
-    let mut timetable_entries = Vec::new();
-    for service in vehicle.services {
-        let service_entity = commands
-            .spawn((VehicleService { class: None }, Name::new(service.name)))
-            .id();
-        commands.entity(vehicle_entity).add_child(service_entity);
-        let service_entries = create_timetable_entries(
-            commands,
-            &service.timetable,
-            stations,
-            vehicle_entity,
-            Some(service_entity),
-        );
-        timetable_entries.extend(service_entries);
-    }
-    commands.entity(vehicle_entity).insert(VehicleSchedule {
-        entities: timetable_entries,
-        ..Default::default()
-    });
-    vehicle_entity
-}
-
-fn create_vehicle_from_service(
-    commands: &mut Commands,
-    service: QETRCService,
-    stations: &std::collections::HashMap<String, Entity>,
-) -> Entity {
-    let vehicle_entity = commands
-        .spawn((Vehicle, Name::new(service.name.clone())))
-        .id();
-    let service_entity = commands
-        .spawn((VehicleService { class: None }, Name::new(service.name)))
-        .id();
-    commands.entity(vehicle_entity).add_child(service_entity);
-    let timetable_entries = create_timetable_entries(
-        commands,
-        &service.timetable,
-        stations,
-        vehicle_entity,
-        Some(service_entity),
-    );
-    commands.entity(vehicle_entity).insert(VehicleSchedule {
-        entities: timetable_entries,
-        ..Default::default()
-    });
-    vehicle_entity
-}
-
-fn create_timetable_entries(
-    commands: &mut Commands,
-    timetable: &[QETRCTimetableEntry],
-    stations: &std::collections::HashMap<String, Entity>,
-    vehicle_entity: Entity,
-    service_entity: Option<Entity>,
-) -> Vec<Entity> {
-    let mut entries = Vec::with_capacity(timetable.len());
-    for (i, entry) in timetable.iter().enumerate() {
-        let Some(&station_entity) = stations.get(&entry.station_name) else {
-            continue;
-        };
-        let timetable_entry = commands
-            .spawn({
-                TimetableEntry {
-                    arrival: if entry.stops && entry.arrival == entry.departure {
-                        TravelMode::Flexible
-                    } else {
-                        TravelMode::At(entry.arrival)
-                    },
-                    departure: if !entry.stops && entry.arrival == entry.departure {
-                        None
-                    } else {
-                        Some(TravelMode::At(entry.departure))
-                    },
-                    station: station_entity,
-                    service: service_entity,
-                    track: None,
-                }
-            })
-            .id();
-        entries.push(timetable_entry);
-        commands.entity(vehicle_entity).add_child(timetable_entry);
-    }
-    entries
-}
-
-fn create_line_entities(
-    commands: &mut Commands,
-    line: QETRCLine,
-    stations: &mut std::collections::HashMap<String, Entity>,
-    graph_map: &mut ResMut<Graph>,
-) {
-    let mut intervals: DisplayedLineType = Vec::with_capacity(line.stations.len());
-    let Some(first_station) = line.stations.first() else {
-        commands.spawn((
-            DisplayedLine::new(intervals),
-            Name::new(line.name),
-        ));
-        return;
-    };
-    let first_entity = get_or_create_station(commands, stations, first_station);
-    intervals.push((first_entity, 0.0));
-    let mut prev_station = first_station;
-    let mut prev_entity = first_entity;
-    for station in line.stations.iter().skip(1) {
-        let next_entity = get_or_create_station(commands, stations, station);
-        let distance_delta = (station.distance - prev_station.distance).abs();
-        if !graph_map.contains_edge(prev_entity, next_entity) {
-            let interval_entity = commands
-                .spawn(crate::intervals::Interval {
-                    length: Distance::from_km(distance_delta),
-                    speed_limit: None,
-                })
-                .id();
-            graph_map.add_edge(prev_entity, next_entity, interval_entity);
-        }
-        if !graph_map.contains_edge(next_entity, prev_entity) {
-            let interval_entity = commands
-                .spawn(crate::intervals::Interval {
-                    length: Distance::from_km(distance_delta),
-                    speed_limit: None,
-                })
-                .id();
-            graph_map.add_edge(next_entity, prev_entity, interval_entity);
-        }
-        intervals.push((next_entity, distance_delta));
-        prev_station = station;
-        prev_entity = next_entity;
-    }
-    commands.spawn((
-        DisplayedLine::new(intervals),
-        Name::new(line.name),
-    ));
-}
-
-fn get_or_create_station(
-    commands: &mut Commands,
-    stations: &mut std::collections::HashMap<String, Entity>,
-    station: &QETRCStation,
-) -> Entity {
-    if let Some(&entity) = stations.get(&station.name) {
-        entity
-    } else {
-        let entity = commands
-            .spawn((Station::default(), Name::new(station.name.clone())))
-            .id();
-        stations.insert(station.name.clone(), entity);
-        entity
-    }
-}
-
-fn ensure_stations_exist(
-    commands: &mut Commands,
-    services: &[QETRCService],
-    vehicles: &[QETRCVehicle],
-    stations: &mut std::collections::HashMap<String, Entity>,
-) {
-    let mut create_station_if_needed = |station_name: &str| {
-        if stations.contains_key(station_name) {
+    let root: Root = match serde_json::from_str(str) {
+        Ok(r) => r,
+        // TODO: handle warning better
+        // TODO: add log page and warning banner
+        Err(e) => {
+            warn!("Failed to parse QETRC data: {e:?}");
             return;
         }
-        let station = commands
-            .spawn((Station::default(), Name::new(station_name.to_string())))
-            .id();
-        stations.insert(station_name.to_string(), station);
     };
-
-    for vehicle in vehicles.iter() {
-        for service in vehicle.services.iter() {
-            for entry in service.timetable.iter() {
-                create_station_if_needed(&entry.station_name);
+    let lines_iter = std::iter::once(root.line).chain(root.lines.into_iter().flatten());
+    let mut station_map: HashMap<String, Entity> = HashMap::new();
+    fn make_station(
+        name: String,
+        commands: &mut Commands,
+        station_map: &mut HashMap<String, Entity>,
+        graph: &mut Graph,
+    ) -> Entity {
+        if let Some(&entity) = station_map.get(&name) {
+            return entity;
+        }
+        let station_entity = commands
+            .spawn((
+                crate::intervals::Station::default(),
+                Name::new(name.clone()),
+            ))
+            .id();
+        station_map.insert(name, station_entity);
+        graph.add_node(station_entity);
+        station_entity
+    }
+    for line in lines_iter {
+        let mut entity_heights: Vec<(Entity, f32)> = Vec::with_capacity(line.stations.len());
+        for station in line.stations {
+            let e = make_station(station.name, &mut commands, &mut station_map, &mut graph);
+            entity_heights.push((e, station.distance));
+        }
+        for w in entity_heights.windows(2) {
+            let [(prev, prev_d), (this, this_d)] = w else {
+                unreachable!()
+            };
+            // TODO: handle one way stations and intervals
+            let e1 = commands
+                .spawn(Interval {
+                    speed_limit: None,
+                    length: Distance::from_km((this_d - prev_d).abs()),
+                })
+                .id();
+            let e2 = commands
+                .spawn(Interval {
+                    speed_limit: None,
+                    length: Distance::from_km((this_d - prev_d).abs()),
+                })
+                .id();
+            graph.add_edge(*prev, *this, e1);
+            graph.add_edge(*this, *prev, e2);
+        }
+        // create a new displayed line
+        commands.spawn((Name::new(line.name), DisplayedLine::new(entity_heights)));
+    }
+    let mut service_pool: HashMap<String, Vec<ProcessedEntry>> =
+        HashMap::with_capacity(root.services.len());
+    for service in root.services {
+        let service_name = service
+            .service_number
+            .get(0)
+            .cloned()
+            .unwrap_or("<Unnamed>".into());
+        // TODO: handle class
+        let service_entity = commands
+            .spawn((
+                Name::new(service_name.clone()),
+                VehicleService { class: None },
+            ))
+            .id();
+        let mut processed_entries: Vec<ProcessedEntry> =
+            Vec::with_capacity(service.timetable.len());
+        for entry in service.timetable {
+            let station_entity = make_station(
+                entry.station_name,
+                &mut commands,
+                &mut station_map,
+                &mut graph,
+            );
+            let a = TimetableTime::from_str(&entry.arrival).unwrap_or_default();
+            let d = TimetableTime::from_str(&entry.departure).unwrap_or_default();
+            processed_entries.push(ProcessedEntry {
+                arrival: a,
+                departure: d,
+                station_entity,
+                service_entity,
+            });
+        }
+        service_pool.insert(service_name, processed_entries);
+    }
+    fn normalize_times(times: &mut [ProcessedEntry]) {
+        let mut time_iter = times
+            .iter_mut()
+            .flat_map(|t| std::iter::once(&mut t.arrival).chain(std::iter::once(&mut t.departure)));
+        let Some(mut previous_time) = time_iter.next().copied() else {
+            return;
+        };
+        for time in time_iter {
+            if *time < previous_time {
+                *time += Duration(86400);
             }
+            previous_time = *time;
         }
     }
-    for service in services.iter() {
-        for entry in service.timetable.iter() {
-            create_station_if_needed(&entry.station_name);
+    fn make_entry_entity(
+        commands: &mut Commands,
+        processed_entries: Vec<ProcessedEntry>,
+        entry_entites: &mut Vec<Entity>,
+        vehicle_entity: Entity,
+    ) {
+        for ps in processed_entries {
+            let (arrival_mode, departure_mode) = if ps.arrival == ps.departure {
+                (TravelMode::At(ps.arrival), None)
+            } else {
+                (
+                    TravelMode::At(ps.arrival),
+                    Some(TravelMode::At(ps.departure)),
+                )
+            };
+            let entry_entity = commands
+                .spawn(crate::vehicles::entries::TimetableEntry {
+                    arrival: arrival_mode,
+                    departure: departure_mode,
+                    station: ps.station_entity,
+                    service: Some(ps.service_entity),
+                    track: None,
+                })
+                .id();
+            commands.entity(vehicle_entity).add_child(entry_entity);
+            entry_entites.push(entry_entity);
         }
+    }
+    let vehicle_set_entity = commands
+        .spawn((Name::new("qETRC Vehicle Set"), VehicleSet))
+        .id();
+    for vehicle in root.vehicles {
+        let vehicle_entity = commands
+            .spawn((
+                Name::new(format!("{} [{}]", vehicle.name, vehicle.make)),
+                crate::vehicles::Vehicle,
+            ))
+            .id();
+        commands
+            .entity(vehicle_set_entity)
+            .add_child(vehicle_entity);
+        let mut processed_entries: Vec<ProcessedEntry> = vehicle
+            .services
+            .iter()
+            .filter_map(|s| service_pool.remove(&s.service_number))
+            .flatten()
+            .collect();
+        let mut entry_entites: Vec<Entity> = Vec::with_capacity(processed_entries.len());
+        normalize_times(&mut processed_entries);
+        make_entry_entity(
+            &mut commands,
+            processed_entries,
+            &mut entry_entites,
+            vehicle_entity,
+        );
+        // insert the schedule into the vehicle
+        commands.entity(vehicle_entity).insert(VehicleSchedule {
+            entities: entry_entites,
+            ..Default::default()
+        });
+    }
+    for (service_name, mut entries) in service_pool {
+        let vehicle_entity = commands
+            .spawn((Name::new(service_name), crate::vehicles::Vehicle))
+            .id();
+        commands
+            .entity(vehicle_set_entity)
+            .add_child(vehicle_entity);
+        let mut entry_entites: Vec<Entity> = Vec::with_capacity(entries.len());
+        normalize_times(&mut entries);
+        make_entry_entity(&mut commands, entries, &mut entry_entites, vehicle_entity);
+        // insert the schedule into the vehicle
+        commands.entity(vehicle_entity).insert(VehicleSchedule {
+            entities: entry_entites,
+            ..Default::default()
+        });
     }
 }

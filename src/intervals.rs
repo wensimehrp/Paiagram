@@ -65,6 +65,13 @@ impl Graph {
         };
         self.inner.add_edge(a_index, b_index, edge);
     }
+    pub fn add_node(&mut self, a: Entity) {
+        if self.indices.contains_key(&a) {
+            return;
+        }
+        let index = self.inner.add_node(a);
+        self.indices.insert(a, index);
+    }
 }
 
 /// A depot or yard in the transportation network

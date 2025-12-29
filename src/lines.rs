@@ -45,6 +45,9 @@ impl DisplayedLine {
             scale_mode: ScaleMode::default(),
         }
     }
+    pub fn _new(stations: impl Iterator<Item = Entity>) -> Self {
+        todo!("implement this stuff")
+    }
     pub fn stations(&self) -> &DisplayedLineType {
         &self.stations
     }
