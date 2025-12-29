@@ -12,7 +12,8 @@ bevy = { version = "0.17.3", default-features = false, features = [
     "bevy_log",
     "bevy_color",
 ] }
-egui_dock = "0.18.0"
+# local path to egui_dock
+egui_dock = { path = "./egui_dock" }
 petgraph = "0.8.3"
 derive_more = { version = "2.1.0", features = ["full"] }
 serde_json = "1.0.145"
@@ -25,11 +26,13 @@ pest_derive = "2.8.3"
 git-version = "0.3.9"
 chrono = "0.4.42"
 clap = { version = "4.5.51", features = ["derive"] }
-egui_taffy = "0.10.0"
 instant = { version = "0.1.13", features = ["wasm-bindgen"] }
 rayon = "1.11.0"
 eframe = { version = "0.33.3", features = ["wgpu"] }
-egui = { version = "0.33.3", default-features = false, features = ["rayon", "persistence"] }
+egui = { version = "0.33.3", default-features = false, features = [
+    "rayon",
+    "persistence",
+] }
 wgpu = { version = "*", features = ["default", "webgpu", "webgl"] }
 smallvec = "1.15.1"
 either = "1.15.0"
@@ -49,7 +52,15 @@ visgraph = "0.1.0"
 getrandom = { version = "0.3.*", features = ["wasm_js"] }
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
-web-sys = { version = "0.3", features = ["Document", "Element", "HtmlAnchorElement", "Window", "Blob", "BlobPropertyBag", "Url"] }
+web-sys = { version = "0.3", features = [
+    "Document",
+    "Element",
+    "HtmlAnchorElement",
+    "Window",
+    "Blob",
+    "BlobPropertyBag",
+    "Url",
+] }
 js-sys = "0.3"
 
 # Enable a small amount of optimization in the dev profile.
