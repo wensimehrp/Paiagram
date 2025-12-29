@@ -1,6 +1,7 @@
 use crate::interface::SelectedElement;
 use crate::interface::tabs::Tab;
 use crate::vehicles::entries::{ActualRouteEntry, VehicleScheduleCache};
+use crate::vehicles::vehicle_set::VehicleSet;
 use crate::{
     interface::widgets::{buttons, timetable_popup},
     intervals::{Station, StationCache},
@@ -42,6 +43,7 @@ pub struct DiagramPageCache {
     heights: Option<Vec<(Entity, f32)>>,
     zoom: Vec2,
     vehicle_entities: Vec<Entity>,
+    vehicle_set: Option<Entity>,
 }
 
 impl DiagramPageCache {
@@ -76,6 +78,7 @@ impl Default for DiagramPageCache {
             heights: None,
             zoom: vec2(0.0005, 1.0),
             vehicle_entities: Vec::new(),
+            vehicle_set: None,
         }
     }
 }
@@ -139,6 +142,9 @@ impl Tab for DiagramTab {
         }
     }
     fn edit_display(&mut self, world: &mut World, ui: &mut Ui) {
+        ui.group(|ui| {
+            world.run_system_cached_with(select_vehicle_set, (ui, &mut self.state.vehicle_set))
+        });
         // edit line, edit stations on line, etc.
         let width = ui.available_width();
         let spacing = ui.spacing().item_spacing.x;
@@ -205,6 +211,25 @@ impl Tab for DiagramTab {
     }
 }
 
+fn select_vehicle_set(
+    (InMut(ui), InMut(vehicle_set)): (InMut<egui::Ui>, InMut<Option<Entity>>),
+    vehicle_sets: Query<(Entity, &Name), With<VehicleSet>>,
+) {
+    let displayed_text = vehicle_set.map_or("None", |e| {
+        vehicle_sets
+            .get(e)
+            .map(|(_, name)| name.as_str())
+            .unwrap_or("Unknown")
+    });
+    egui::ComboBox::from_id_salt("vehicle set")
+        .selected_text(displayed_text)
+        .show_ui(ui, |ui| {
+            for (entity, name) in vehicle_sets {
+                ui.selectable_value(vehicle_set, Some(entity), name.as_str());
+            }
+        });
+}
+
 fn show_diagram(
     (InMut(ui), In(displayed_line_entity), InMut(state)): (
         InMut<egui::Ui>,
@@ -222,6 +247,8 @@ fn show_diagram(
     mut timetable_adjustment_writer: MessageWriter<AdjustTimetableEntry>,
     // Buffer used between all calls to avoid repeated allocations
     mut visible_stations_scratch: Local<Vec<(Entity, f32)>>,
+    vehicle_sets: Query<&Children, With<VehicleSet>>,
+    mut previous_vehicle_set: Local<Option<Entity>>,
 ) {
     let Ok(displayed_line) = displayed_lines.get(displayed_line_entity) else {
         ui.centered_and_justified(|ui| ui.heading("Diagram not found"));
@@ -236,7 +263,8 @@ fn show_diagram(
             .stations()
             .iter()
             .copied()
-            .any(|(s, _)| station_updated.get(s).is_ok());
+            .any(|(s, _)| station_updated.get(s).is_ok())
+        || previous_vehicle_set.as_ref() != state.vehicle_set.as_ref();
 
     if entries_updated {
         info!("Updating vehicle entities for diagram display");
@@ -254,7 +282,14 @@ fn show_diagram(
             station.passing_vehicles(&mut state.vehicle_entities, |e| entry_parents.get(e).ok());
         }
         state.vehicle_entities.sort();
+        // filter out those not in the vehicle set, if any
+        if let Some(vehicle_set_entity) = state.vehicle_set {
+            if let Ok(vehicle_set) = vehicle_sets.get(vehicle_set_entity) {
+                state.vehicle_entities.retain(|e| vehicle_set.contains(e));
+            }
+        }
         state.vehicle_entities.dedup();
+        *previous_vehicle_set = state.vehicle_set;
     }
 
     if displayed_line.is_changed() || state.heights.is_none() {

@@ -42,3 +42,6 @@ new-displayed-line = 新基线
 
 # general
 done = 完成
+
+# RW data
+oud2-default-line = OUD2 默认运行线

@@ -1,5 +1,6 @@
 use crate::{
     intervals::{Graph, Interval},
+    lines::DisplayedLine,
     rw_data::ModifyData,
     units::{
         distance::Distance,
@@ -12,6 +13,7 @@ use crate::{
     },
 };
 use bevy::{ecs::system::command, prelude::*};
+use egui_i18n::tr;
 use pest::Parser;
 use pest_derive::Parser;
 use serde::Deserialize;
@@ -103,6 +105,7 @@ pub fn load_oud2(
     let root = parse_ast(&ast).expect("Failed to convert OUD2 AST to internal representation");
     for line in root.lines {
         let mut stations: Vec<(Entity, bool)> = Vec::new();
+        let mut displayed_line_entities: Vec<(Entity, f32)> = Vec::new();
         for station in line.stations.iter() {
             let station_entity = commands
                 .spawn((
@@ -111,7 +114,12 @@ pub fn load_oud2(
                 ))
                 .id();
             stations.push((station_entity, station.break_interval));
+            displayed_line_entities.push((station_entity, 0.0));
         }
+        commands.spawn((
+            Name::new(tr!("oud2-default-line")),
+            DisplayedLine::new(displayed_line_entities),
+        ));
         for (i, station) in line.stations.iter().enumerate() {
             if let Some(branch_index) = station.branch_index {
                 let (e, _) = stations[i];

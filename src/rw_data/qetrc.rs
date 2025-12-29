@@ -1,5 +1,3 @@
-use std::cmp::Ordering;
-
 use bevy::{platform::collections::HashMap, prelude::*};
 use serde::Deserialize;
 use serde_json;
@@ -164,6 +162,12 @@ pub fn load_qetrc(
             graph.add_edge(*prev, *this, e1);
             graph.add_edge(*this, *prev, e2);
         }
+        let mut previous_distance = entity_heights.first().map_or(0.0, |(_, d)| *d);
+        for (_, distance) in entity_heights.iter_mut().skip(1) {
+            let current_distance = *distance;
+            *distance -= previous_distance;
+            previous_distance = current_distance;
+        }
         // create a new displayed line
         commands.spawn((Name::new(line.name), DisplayedLine::new(entity_heights)));
     }
@@ -202,95 +206,80 @@ pub fn load_qetrc(
         }
         service_pool.insert(service_name, processed_entries);
     }
-    fn normalize_times(times: &mut [ProcessedEntry]) {
-        let mut time_iter = times
-            .iter_mut()
-            .flat_map(|t| std::iter::once(&mut t.arrival).chain(std::iter::once(&mut t.departure)));
-        let Some(mut previous_time) = time_iter.next().copied() else {
-            return;
-        };
-        for time in time_iter {
-            if *time < previous_time {
-                *time += Duration(86400);
-            }
-            previous_time = *time;
-        }
-    }
-    fn make_entry_entity(
-        commands: &mut Commands,
-        processed_entries: Vec<ProcessedEntry>,
-        entry_entites: &mut Vec<Entity>,
-        vehicle_entity: Entity,
-    ) {
-        for ps in processed_entries {
-            let (arrival_mode, departure_mode) = if ps.arrival == ps.departure {
-                (TravelMode::At(ps.arrival), None)
-            } else {
-                (
-                    TravelMode::At(ps.arrival),
-                    Some(TravelMode::At(ps.departure)),
-                )
-            };
-            let entry_entity = commands
-                .spawn(crate::vehicles::entries::TimetableEntry {
-                    arrival: arrival_mode,
-                    departure: departure_mode,
-                    station: ps.station_entity,
-                    service: Some(ps.service_entity),
-                    track: None,
-                })
-                .id();
-            commands.entity(vehicle_entity).add_child(entry_entity);
-            entry_entites.push(entry_entity);
-        }
-    }
     let vehicle_set_entity = commands
         .spawn((Name::new("qETRC Vehicle Set"), VehicleSet))
         .id();
     for vehicle in root.vehicles {
-        let vehicle_entity = commands
-            .spawn((
-                Name::new(format!("{} [{}]", vehicle.name, vehicle.make)),
-                crate::vehicles::Vehicle,
-            ))
-            .id();
-        commands
-            .entity(vehicle_set_entity)
-            .add_child(vehicle_entity);
-        let mut processed_entries: Vec<ProcessedEntry> = vehicle
+        let processed_entries: Vec<ProcessedEntry> = vehicle
             .services
             .iter()
             .filter_map(|s| service_pool.remove(&s.service_number))
             .flatten()
             .collect();
-        let mut entry_entites: Vec<Entity> = Vec::with_capacity(processed_entries.len());
-        normalize_times(&mut processed_entries);
-        make_entry_entity(
+        make_vehicle(
+            format!("{} [{}]", vehicle.name, vehicle.make),
             &mut commands,
             processed_entries,
-            &mut entry_entites,
-            vehicle_entity,
+            vehicle_set_entity,
         );
-        // insert the schedule into the vehicle
-        commands.entity(vehicle_entity).insert(VehicleSchedule {
-            entities: entry_entites,
-            ..Default::default()
-        });
     }
-    for (service_name, mut entries) in service_pool {
-        let vehicle_entity = commands
-            .spawn((Name::new(service_name), crate::vehicles::Vehicle))
+    for (service_name, entries) in service_pool {
+        make_vehicle(service_name, &mut commands, entries, vehicle_set_entity);
+    }
+}
+
+fn normalize_times(times: &mut [ProcessedEntry]) {
+    let mut time_iter = times
+        .iter_mut()
+        .flat_map(|t| std::iter::once(&mut t.arrival).chain(std::iter::once(&mut t.departure)));
+    let Some(mut previous_time) = time_iter.next().copied() else {
+        return;
+    };
+    for time in time_iter {
+        if *time < previous_time {
+            *time += Duration(86400);
+        }
+        previous_time = *time;
+    }
+}
+
+fn make_vehicle(
+    name: String,
+    commands: &mut Commands,
+    mut processed_entries: Vec<ProcessedEntry>,
+    vehicle_set_entity: Entity,
+) {
+    let vehicle_entity = commands
+        .spawn((Name::new(name), crate::vehicles::Vehicle))
+        .id();
+    commands
+        .entity(vehicle_set_entity)
+        .add_child(vehicle_entity);
+    let mut entry_entites: Vec<Entity> = Vec::with_capacity(processed_entries.len());
+    normalize_times(&mut processed_entries);
+    for ps in processed_entries {
+        let (arrival_mode, departure_mode) = if ps.arrival == ps.departure {
+            (TravelMode::At(ps.arrival), None)
+        } else {
+            (
+                TravelMode::At(ps.arrival),
+                Some(TravelMode::At(ps.departure)),
+            )
+        };
+        let entry_entity = commands
+            .spawn(crate::vehicles::entries::TimetableEntry {
+                arrival: arrival_mode,
+                departure: departure_mode,
+                station: ps.station_entity,
+                service: Some(ps.service_entity),
+                track: None,
+            })
             .id();
-        commands
-            .entity(vehicle_set_entity)
-            .add_child(vehicle_entity);
-        let mut entry_entites: Vec<Entity> = Vec::with_capacity(entries.len());
-        normalize_times(&mut entries);
-        make_entry_entity(&mut commands, entries, &mut entry_entites, vehicle_entity);
-        // insert the schedule into the vehicle
-        commands.entity(vehicle_entity).insert(VehicleSchedule {
-            entities: entry_entites,
-            ..Default::default()
-        });
+        commands.entity(vehicle_entity).add_child(entry_entity);
+        entry_entites.push(entry_entity);
     }
+    commands.entity(vehicle_entity).insert(VehicleSchedule {
+        entities: entry_entites,
+        ..Default::default()
+    });
 }

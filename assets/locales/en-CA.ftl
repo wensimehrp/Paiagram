@@ -42,3 +42,6 @@ new-displayed-line = New Displayed Line
 
 # general
 done = Done
+
+# RW data
+oud2-default-line = OUD2 Default Line

@@ -5,16 +5,19 @@ use crate::{
         entries::{ActualRouteEntry, TimetableEntry, VehicleScheduleCache},
     },
 };
-use bevy::{ecs::entity::{EntityHash, EntityHashMap}, prelude::*};
+use bevy::{
+    ecs::entity::{EntityHash, EntityHashMap},
+    prelude::*,
+};
 use petgraph::prelude::*;
 
 pub type IntervalGraphType = StableDiGraph<Entity, Entity>;
 
 /// A graph representing the transportation network
 #[derive(Resource, Default, Debug)]
-pub struct Graph{
+pub struct Graph {
     inner: IntervalGraphType,
-    indices: EntityHashMap<NodeIndex>
+    indices: EntityHashMap<NodeIndex>,
 }
 
 impl Graph {
@@ -28,7 +31,8 @@ impl Graph {
     pub fn edge_weight(&self, a: Entity, b: Entity) -> Option<&Entity> {
         let &a_index = self.indices.get(&a)?;
         let &b_index = self.indices.get(&b)?;
-        self.inner.edge_weight(self.inner.find_edge(a_index, b_index)?)
+        self.inner
+            .edge_weight(self.inner.find_edge(a_index, b_index)?)
     }
     pub fn contains_edge(&self, a: Entity, b: Entity) -> bool {
         let Some(&a_index) = self.indices.get(&a) else {
