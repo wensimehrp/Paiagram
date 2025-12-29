@@ -200,6 +200,7 @@ pub enum UiCommand {
 /// and is constructed each frame.
 struct AppTabViewer<'w> {
     world: &'w mut World,
+    ctx: &'w egui::Context,
     focused_id: Option<egui::Id>,
 }
 
@@ -219,7 +220,7 @@ impl<'w> egui_dock::TabViewer for AppTabViewer<'w> {
                 ui.clip_rect(),
                 0,
                 Stroke {
-                    width: 1.6,
+                    width: 1.8,
                     color: tab.color().linear_multiply(strength),
                 },
                 egui::StrokeKind::Inside,
@@ -250,8 +251,33 @@ impl<'w> egui_dock::TabViewer for AppTabViewer<'w> {
     ) -> Option<egui_dock::TabStyle> {
         Some(egui_dock::TabStyle {
             focused: TabInteractionStyle {
-                bg_fill: tab.color(),
-                ..Default::default()
+                bg_fill: tab.color().gamma_multiply_u8(180),
+                text_color: if self.ctx.theme().default_visuals().dark_mode {
+                    Color32::WHITE
+                } else {
+                    Color32::BLACK
+                },
+                ..global_style.focused
+            },
+            active: TabInteractionStyle {
+                bg_fill: tab.color().gamma_multiply_u8(120),
+                ..global_style.active
+            },
+            active_with_kb_focus: TabInteractionStyle {
+                bg_fill: tab.color().gamma_multiply_u8(120),
+                ..global_style.active_with_kb_focus
+            },
+            hovered: TabInteractionStyle {
+                bg_fill: tab.color().gamma_multiply_u8(120),
+                ..global_style.hovered
+            },
+            inactive: TabInteractionStyle {
+                bg_fill: tab.color().gamma_multiply_u8(90),
+                ..global_style.inactive
+            },
+            inactive_with_kb_focus: TabInteractionStyle {
+                bg_fill: tab.color().gamma_multiply_u8(90),
+                ..global_style.inactive_with_kb_focus
             },
             ..global_style.clone()
         })
@@ -520,12 +546,32 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
                         .dock_state
                         .find_active_focused()
                         .map(|(_, tab)| tab.id());
-                    let mut tab_viewer = AppTabViewer { world, focused_id };
+                    let mut tab_viewer = AppTabViewer {
+                        world,
+                        ctx,
+                        focused_id,
+                    };
                     let mut style = egui_dock::Style::from_egui(ui.style());
                     style.tab.tab_body.inner_margin = Margin::same(1);
                     style.tab.tab_body.corner_radius = CornerRadius::ZERO;
                     style.tab.tab_body.stroke.width = 0.0;
+                    style.tab.active.outline_color = Color32::TRANSPARENT;
+                    style.tab.inactive.outline_color = Color32::TRANSPARENT;
+                    style.tab.focused.outline_color = Color32::TRANSPARENT;
+                    style.tab.hovered.outline_color = Color32::TRANSPARENT;
+                    style.tab.inactive_with_kb_focus.outline_color = Color32::TRANSPARENT;
+                    style.tab.active_with_kb_focus.outline_color = Color32::TRANSPARENT;
+                    style.tab.focused_with_kb_focus.text_color = Color32::TRANSPARENT;
+                    style.tab.active.corner_radius = CornerRadius::ZERO;
+                    style.tab.inactive.corner_radius = CornerRadius::ZERO;
+                    style.tab.focused.corner_radius = CornerRadius::ZERO;
+                    style.tab.hovered.corner_radius = CornerRadius::ZERO;
+                    style.tab.inactive_with_kb_focus.corner_radius = CornerRadius::ZERO;
+                    style.tab.active_with_kb_focus.corner_radius = CornerRadius::ZERO;
+                    style.tab.focused_with_kb_focus.corner_radius = CornerRadius::ZERO;
                     style.tab_bar.corner_radius = CornerRadius::ZERO;
+                    style.tab_bar.hline_color = Color32::TRANSPARENT;
+                    style.tab.hline_below_active_tab_name = true;
                     // place a button on the bottom left corner for expanding and collapsing the side panel.
                     let left_bottom = ui.max_rect().left_bottom();
                     let shift = egui::Vec2 { x: 20.0, y: -40.0 };

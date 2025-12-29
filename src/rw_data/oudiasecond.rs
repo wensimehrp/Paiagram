@@ -12,11 +12,10 @@ use crate::{
         vehicle_set::VehicleSet,
     },
 };
-use bevy::{ecs::system::command, prelude::*};
+use bevy::prelude::*;
 use egui_i18n::tr;
 use pest::Parser;
 use pest_derive::Parser;
-use serde::Deserialize;
 
 #[derive(Parser)]
 #[grammar = "rw_data/oudiasecond.pest"]
@@ -232,6 +231,7 @@ struct Station {
 struct Diagram {
     name: String,
     trains: Vec<Train>,
+    is_timing_foundation: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -270,44 +270,47 @@ fn parse_ast(ast: &Structure) -> Result<Root, String> {
     let Struct(k, v) = ast else {
         return Err("Expected root structure".to_string());
     };
-    let mut root = Root {
-        version: String::new(),
-        lines: Vec::new(),
-    };
+    let mut version = Option::None;
+    let mut lines = Vec::new();
     for field in v {
         match field {
             Struct(k, v) if *k == "Rosen" => {
-                root.lines.push(parse_line_meta(v)?);
+                lines.push(parse_line_meta(v)?);
             }
             Pair(k, Single(v)) if *k == "FileType" => {
-                root.version = v.to_string();
+                version = Some(v.to_string());
             }
             _ => {}
         }
     }
-    Ok(root)
+    Ok(Root {
+        version: version.ok_or("File does not have a version")?,
+        lines,
+    })
 }
 fn parse_line_meta(fields: &[Structure]) -> Result<LineMeta, String> {
-    let mut line_meta = LineMeta {
-        name: String::new(),
-        stations: Vec::new(),
-        diagrams: Vec::new(),
-    };
+    let mut name = "Unknown Line".into();
+    let mut stations = Vec::new();
+    let mut diagrams = Vec::new();
     for field in fields {
         match field {
             Pair(k, Single(v)) if *k == "Rosenmei" => {
-                line_meta.name = v.to_string();
+                name = v.to_string();
             }
             Struct(k, v) if *k == "Eki" => {
-                line_meta.stations.push(parse_station(v)?);
+                stations.push(parse_station(v)?);
             }
             Struct(k, v) if *k == "Dia" => {
-                line_meta.diagrams.push(parse_diagram(v)?);
+                diagrams.push(parse_diagram(v)?);
             }
             _ => {}
         }
     }
-    Ok(line_meta)
+    Ok(LineMeta {
+        name,
+        stations,
+        diagrams,
+    })
 }
 
 fn parse_station(fields: &[Structure]) -> Result<Station, String> {
@@ -353,10 +356,13 @@ fn parse_diagram(fields: &[Structure]) -> Result<Diagram, String> {
     let mut diagram = Diagram {
         name: String::new(),
         trains: Vec::new(),
+        is_timing_foundation: false,
     };
     for field in fields {
         match field {
             Pair(k, Single(v)) if *k == "DiaName" => {
+                // hard coded eh
+                diagram.is_timing_foundation = *v == "基準運転時分";
                 diagram.name = v.to_string();
             }
             Struct(k, v) if *k == "Kudari" => {
