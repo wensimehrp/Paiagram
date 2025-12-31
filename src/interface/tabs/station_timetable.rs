@@ -28,8 +28,9 @@ use bevy::{
 };
 use egui::{Button, Frame, Label, Rect, RichText, Sense, Separator, UiBuilder, Widget, vec2};
 use egui_table::{Column, Table, TableDelegate};
+use serde::{Deserialize, Serialize};
 
-#[derive(PartialEq, Debug, Clone, Copy)]
+#[derive(PartialEq, Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct StationTimetableTab {
     pub station_entity: Entity,
 }

@@ -7,26 +7,28 @@ use crate::interface::StatusBarState;
 pub mod classes;
 pub mod diagram;
 pub mod displayed_lines;
+pub mod graph;
 pub mod minesweeper;
+pub mod overview;
 pub mod services;
 pub mod settings;
 pub mod start;
 pub mod station_timetable;
 pub mod tree_view;
 pub mod vehicle;
-pub mod graph;
 
 pub mod all_tabs {
     pub use super::classes::ClassesTab;
     pub use super::diagram::DiagramTab;
     pub use super::displayed_lines::DisplayedLinesTab;
+    pub use super::graph::GraphTab;
     pub use super::minesweeper::MinesweeperTab;
+    pub use super::overview::OverviewTab;
     pub use super::services::ServicesTab;
     pub use super::settings::SettingsTab;
     pub use super::start::StartTab;
     pub use super::station_timetable::StationTimetableTab;
     pub use super::vehicle::VehicleTab;
-    pub use super::graph::GraphTab;
 }
 
 /// The page cache. Lots of r/w, few insertions, good locality, fast executions.

@@ -44,6 +44,7 @@
               binaryen
               trunk
               cargo-about
+              gitui
             ]
             ++ lib.optionals (lib.strings.hasInfix "linux" system) [
               # for Linux

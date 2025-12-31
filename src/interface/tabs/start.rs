@@ -4,11 +4,12 @@ use super::Tab;
 use bevy::ecs::system::{In, InMut};
 use bevy::log::prelude::*;
 use egui::{Frame, Label, Response, ScrollArea, Sense, Ui, UiBuilder, Vec2, vec2};
+use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 use egui_i18n::tr;
 
-#[derive(Debug, Default, Clone, Copy, EnumIter, PartialEq)]
+#[derive(Debug, Default, Clone, Copy, EnumIter, PartialEq, Serialize, Deserialize)]
 enum CurrentField {
     #[default]
     List,
@@ -26,7 +27,7 @@ impl CurrentField {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize)]
 pub struct StartTab {
     current_field: CurrentField,
 }

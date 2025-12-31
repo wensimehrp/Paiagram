@@ -3,11 +3,12 @@ use bevy::ecs::{
     system::{InMut, Query},
 };
 use egui::Ui;
+use serde::{Deserialize, Serialize};
 
 use crate::vehicles::entries::{VehicleSchedule, VehicleScheduleCache};
 use super::Tab;
 
-#[derive(PartialEq, Debug, Clone, Copy)]
+#[derive(PartialEq, Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct ServicesTab;
 
 impl Tab for ServicesTab {

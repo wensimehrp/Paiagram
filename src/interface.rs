@@ -17,6 +17,7 @@ use bevy::{
 use egui::{self, Color32, CornerRadius, Frame, Id, Margin, Rect, Sense, Shape, Stroke, Ui};
 use egui_dock::{DockArea, DockState, TabInteractionStyle};
 use egui_i18n::tr;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use strum::{EnumCount, IntoEnumIterator};
 #[cfg(target_arch = "wasm32")]
@@ -39,7 +40,8 @@ impl Plugin for InterfacePlugin {
 }
 
 /// The state of the user interface
-#[derive(Resource)]
+#[derive(Resource, Clone, Reflect, Serialize, Deserialize)]
+#[reflect(opaque, Resource, Serialize, Deserialize)]
 struct UiState {
     dock_state: DockState<AppTab>,
 }
@@ -144,7 +146,7 @@ macro_rules! for_all_tabs {
 }
 
 /// An application tab
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub enum AppTab {
     Start(StartTab),
     Vehicle(VehicleTab),
@@ -560,6 +562,8 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
                     style.tab_bar.corner_radius = CornerRadius::ZERO;
                     style.tab_bar.hline_color = Color32::TRANSPARENT;
                     style.tab.hline_below_active_tab_name = true;
+                    style.overlay.selection_corner_radius = CornerRadius::same(4);
+                    style.tab_bar.height = 32.0;
                     // place a button on the bottom left corner for expanding and collapsing the side panel.
                     let left_bottom = ui.max_rect().left_bottom();
                     let shift = egui::Vec2 { x: 20.0, y: -40.0 };

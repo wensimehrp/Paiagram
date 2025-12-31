@@ -10,6 +10,7 @@ use bevy::{
     prelude::*,
 };
 use petgraph::prelude::*;
+use serde::{Deserialize, Serialize};
 
 pub type IntervalGraphType = StableDiGraph<Entity, Entity>;
 
@@ -85,7 +86,8 @@ impl Graph {
 pub struct Depot;
 
 /// A station or in the transportation network
-#[derive(Component, Default, Deref, DerefMut, Debug)]
+#[derive(Component, Default, Deref, DerefMut, Debug, Clone, Reflect, Serialize, Deserialize)]
+#[reflect(Component, opaque, Serialize, Deserialize)]
 #[require(Name, StationCache)]
 pub struct Station(pub egui::Pos2);
 

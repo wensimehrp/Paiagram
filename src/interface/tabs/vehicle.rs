@@ -13,8 +13,9 @@ use crate::vehicles::{
 use bevy::prelude::*;
 use egui::{Color32, Label, Popup, Sense, Separator, Stroke, Ui, Vec2};
 use egui_table::{CellInfo, HeaderCellInfo, Table, TableDelegate, columns::Column};
+use serde::{Deserialize, Serialize};
 
-#[derive(PartialEq, Debug, Clone, Copy)]
+#[derive(PartialEq, Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct VehicleTab(pub Entity);
 
 impl Tab for VehicleTab {

@@ -12,11 +12,12 @@ use emath::{self, RectTransform};
 use petgraph::Direction::Outgoing;
 use petgraph::dot;
 use petgraph::visit::EdgeRef;
+use serde::{Deserialize, Serialize};
 use visgraph::Orientation::TopToBottom;
 use visgraph::layout::hierarchical::hierarchical_layout;
 
 // TODO: implement snapping and alignment guides when moving stations
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct GraphTab {
     zoom: f32,
     translation: Vec2,
@@ -26,12 +27,12 @@ pub struct GraphTab {
     animation_playing: bool,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 enum EditMode {
     EditDisplayedLine(Entity),
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 enum SelectedItem {
     Node(Entity),
     Edge(Entity),

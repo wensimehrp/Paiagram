@@ -17,6 +17,7 @@ use egui::{
     Color32, CornerRadius, FontId, Frame, Margin, Painter, Popup, Pos2, Rect, RichText, Sense,
     Shape, Stroke, Ui, UiBuilder, Vec2, response, vec2,
 };
+use serde::{Deserialize, Serialize};
 use strum::EnumCount;
 use strum_macros::EnumCount;
 mod edit_line;
@@ -34,7 +35,7 @@ pub enum SelectedEntityType {
     Map(Entity),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DiagramPageCache {
     previous_total_drag_delta: Option<f32>,
     stroke: Stroke,
@@ -96,14 +97,14 @@ struct RenderedVehicle<'a> {
     entity: Entity,
 }
 
-#[derive(PartialEq, Debug, Default, Clone, EnumCount)]
+#[derive(PartialEq, Debug, Default, Clone, EnumCount, Serialize, Deserialize)]
 enum EditingState {
     #[default]
     None,
     EditingLine,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DiagramTab {
     pub displayed_line_entity: Entity,
     editing: EditingState,

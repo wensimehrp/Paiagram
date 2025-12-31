@@ -1,12 +1,13 @@
 use bevy::ecs::system::{InMut, ResMut};
 use egui::Ui;
 use egui_i18n::{set_language, tr};
+use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
 
 use super::Tab;
 use crate::settings::{ApplicationSettings, Language, TerminologyScheme};
 
-#[derive(PartialEq, Debug, Clone, Copy)]
+#[derive(PartialEq, Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct SettingsTab;
 
 impl Tab for SettingsTab {

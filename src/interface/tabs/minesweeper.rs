@@ -1,9 +1,10 @@
 use super::Tab;
 use bevy::prelude::*;
 use egui::{Rect, Ui, Vec2};
+use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-#[derive(PartialEq, Debug, Clone, Copy)]
+#[derive(PartialEq, Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct MinesweeperTab;
 
 impl Tab for MinesweeperTab {

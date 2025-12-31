@@ -5,6 +5,7 @@ use bevy::ecs::{
     system::{InMut, Local, Populated, Query},
 };
 use egui::{Frame, Response, RichText, ScrollArea, Sense, Ui, UiBuilder, Vec2};
+use serde::{Deserialize, Serialize};
 
 const PANEL_DEFAULT_SIZE: f32 = 20.0;
 
@@ -14,7 +15,7 @@ use crate::{
     lines::DisplayedLine,
 };
 
-#[derive(PartialEq, Debug, Clone, Copy)]
+#[derive(PartialEq, Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct DisplayedLinesTab;
 
 impl Tab for DisplayedLinesTab {

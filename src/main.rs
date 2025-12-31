@@ -1,7 +1,5 @@
-use bevy::ecs::entity::EntityHashMap;
-use bevy::{log::LogPlugin, prelude::*, scene::serde::SceneDeserializer};
+use bevy::{log::LogPlugin, prelude::*};
 use clap::Parser;
-use serde::de::DeserializeSeed;
 
 mod colors;
 mod i18n;
@@ -57,22 +55,35 @@ impl eframe::App for PaiagramApp {
         true
     }
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
-        let builder = bevy::prelude::DynamicSceneBuilder::from_world(self.bevy_app.world())
-            .allow_all();
-        let scene = builder.build();
-        let registry = self.bevy_app.world().resource::<AppTypeRegistry>().read();
-        match scene.serialize(&registry) {
-            Ok(serialized) => {
-                info!("Successfully saved the current state");
-                eframe::set_value(storage, "paiagram state", &serialized)
-            }
+        info!("Saving state...");
+        let world = self.bevy_app.world_mut();
+        let time = world.remove_resource::<Time<Real>>();
+        let scene = DynamicSceneBuilder::from_world(&world)
+            .extract_entities(
+                // we do this instead of a query, in order to completely sidestep default query filters.
+                // while we could use `Allow<_>`, this wouldn't account for custom disabled components
+                world
+                    .archetypes()
+                    .iter()
+                    .flat_map(bevy::ecs::archetype::Archetype::entities)
+                    .map(bevy::ecs::archetype::ArchetypeEntity::id),
+            )
+            .extract_resources()
+            .build();
+        if let Some(time) = time {
+            world.insert_resource(time);
+        }
+        let type_registry = world.resource::<AppTypeRegistry>().read();
+        match scene.serialize(&type_registry) {
+            Ok(serialized) => eframe::set_value(storage, "paiagram_state", &serialized),
             Err(e) => {
-                error!("Failed to serialize scene: {:?}", e);
+                error!("Failed to serialize state: {}", e);
             }
         }
     }
 }
 
+/// a one shot resource
 #[derive(Parser, Resource)]
 #[command(version, about, long_about = None)]
 struct Cli {

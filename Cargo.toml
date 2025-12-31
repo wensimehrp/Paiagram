@@ -13,9 +13,10 @@ bevy = { version = "0.17.3", default-features = false, features = [
     "bevy_color",
     "bevy_scene",
     "serialize",
+    "reflect_auto_register",
 ] }
 # local path to egui_dock
-egui_dock = { path = "./egui_dock" }
+egui_dock = { path = "./egui_dock", features = ["serde"] }
 petgraph = { version = "0.8.3", features = ["serde-1", "rayon"] }
 derive_more = { version = "2.1.0", features = ["full"] }
 serde_json = "1.0.145"

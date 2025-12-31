@@ -1,7 +1,8 @@
 use egui::Ui;
+use serde::{Deserialize, Serialize};
 use super::Tab;
 
-#[derive(PartialEq, Debug, Clone, Copy)]
+#[derive(PartialEq, Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct ClassesTab;
 
 impl Tab for ClassesTab {
