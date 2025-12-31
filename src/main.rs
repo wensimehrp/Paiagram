@@ -1,5 +1,7 @@
-use bevy::{log::LogPlugin, prelude::*};
+use bevy::ecs::entity::EntityHashMap;
+use bevy::{log::LogPlugin, prelude::*, scene::serde::SceneDeserializer};
 use clap::Parser;
+use serde::de::DeserializeSeed;
 
 mod colors;
 mod i18n;
@@ -14,13 +16,12 @@ mod troubleshoot;
 mod units;
 mod vehicles;
 
-// TODO: make them resources instead of stuff in the app
 struct PaiagramApp {
     bevy_app: App,
 }
 
 impl PaiagramApp {
-    fn new(_cc: &eframe::CreationContext) -> Self {
+    fn new(cc: &eframe::CreationContext) -> Self {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins);
         app.add_plugins(LogPlugin::default());
@@ -50,6 +51,24 @@ impl eframe::App for PaiagramApp {
         self.bevy_app.update();
         if let Err(e) = interface::show_ui(self, ctx) {
             error!("UI Error: {:?}", e);
+        }
+    }
+    fn persist_egui_memory(&self) -> bool {
+        true
+    }
+    fn save(&mut self, storage: &mut dyn eframe::Storage) {
+        let builder = bevy::prelude::DynamicSceneBuilder::from_world(self.bevy_app.world())
+            .allow_all();
+        let scene = builder.build();
+        let registry = self.bevy_app.world().resource::<AppTypeRegistry>().read();
+        match scene.serialize(&registry) {
+            Ok(serialized) => {
+                info!("Successfully saved the current state");
+                eframe::set_value(storage, "paiagram state", &serialized)
+            }
+            Err(e) => {
+                error!("Failed to serialize scene: {:?}", e);
+            }
         }
     }
 }

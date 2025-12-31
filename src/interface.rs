@@ -5,9 +5,8 @@ mod widgets;
 
 use crate::{
     colors,
-    interface::{
-        side_panel::CurrentTab,
-        tabs::{Tab, all_tabs::*, diagram::SelectedEntityType, minesweeper::MinesweeperData},
+    interface::tabs::{
+        Tab, all_tabs::*, diagram::SelectedEntityType, minesweeper::MinesweeperData,
     },
     settings::ApplicationSettings,
 };
@@ -15,19 +14,13 @@ use bevy::{
     color::palettes::tailwind::{EMERALD_700, EMERALD_800, GRAY_900},
     prelude::*,
 };
-use egui::{
-    self, Color32, CornerRadius, Frame, Id, Margin, Pos2, Rect, ScrollArea, Sense, Shape,
-    SidePanel, Stroke, Ui, Vec2,
-};
-use egui_animation::{animate_bool_eased, animate_repeating};
+use egui::{self, Color32, CornerRadius, Frame, Id, Margin, Rect, Sense, Shape, Stroke, Ui};
 use egui_dock::{DockArea, DockState, TabInteractionStyle};
 use egui_i18n::tr;
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 use strum::{EnumCount, IntoEnumIterator};
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::wasm_bindgen;
-
-use crate::interface::tabs::{displayed_lines, start};
 
 /// Plugin that sets up the user interface
 pub struct InterfacePlugin;
@@ -59,7 +52,6 @@ pub struct MiscUiState {
     is_dark_mode: bool,
     initialized: bool,
     frame_times: egui::util::History<f32>,
-    side_panel_tab: side_panel::CurrentTab,
     modal_open: bool,
     fullscreened: bool,
     supplementary_panel_state: SupplementaryPanelState,
@@ -79,7 +71,6 @@ impl Default for MiscUiState {
             is_dark_mode: true,
             frame_times: egui::util::History::new(0..max_len, max_age),
             initialized: false,
-            side_panel_tab: side_panel::CurrentTab::default(),
             modal_open: false,
             fullscreened: false,
             supplementary_panel_state: SupplementaryPanelState::default(),
@@ -97,9 +88,6 @@ impl MiscUiState {
     }
     pub fn mean_frame_time(&self) -> f32 {
         self.frame_times.average().unwrap_or_default()
-    }
-    pub fn fps(&self) -> f32 {
-        1.0 / self.frame_times.mean_time_interval().unwrap_or_default()
     }
 }
 

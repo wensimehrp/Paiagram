@@ -1,4 +1,4 @@
-use bevy::prelude::{Deref, DerefMut};
+use bevy::prelude::{Deref, DerefMut, Reflect};
 use serde::{Deserialize, Serialize};
 use std::ops;
 
