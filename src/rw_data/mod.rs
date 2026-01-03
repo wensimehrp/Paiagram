@@ -1,8 +1,11 @@
+pub mod custom;
 pub mod oudiasecond;
 pub mod qetrc;
 pub mod write;
 
 use bevy::prelude::*;
+
+use crate::units::time::{Duration, TimetableTime};
 
 pub struct RwDataPlugin;
 
@@ -10,7 +13,12 @@ impl Plugin for RwDataPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<ModifyData>().add_systems(
             FixedUpdate,
-            (clear_resources, qetrc::load_qetrc, oudiasecond::load_oud2)
+            (
+                clear_resources,
+                qetrc::load_qetrc,
+                oudiasecond::load_oud2,
+                custom::load_qetrc,
+            )
                 .chain()
                 .run_if(on_message::<ModifyData>),
         );
@@ -22,6 +30,7 @@ pub enum ModifyData {
     ClearAllData,
     LoadQETRC(String),
     LoadOuDiaSecond(String),
+    LoadCustom(String),
 }
 
 fn clear_resources(
@@ -50,6 +59,18 @@ fn clear_resources(
         commands.entity(station).despawn_children().despawn();
     }
     info!("Cleared all data from the application.");
+}
+
+fn normalize_times<'a>(mut time_iter: impl Iterator<Item = &'a mut TimetableTime> + 'a) {
+    let Some(mut previous_time) = time_iter.next().copied() else {
+        return;
+    };
+    for time in time_iter {
+        if *time < previous_time {
+            *time += Duration(86400);
+        }
+        previous_time = *time;
+    }
 }
 
 fn load_online_data() {

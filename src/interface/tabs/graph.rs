@@ -14,6 +14,7 @@ use petgraph::dot;
 use petgraph::visit::EdgeRef;
 use serde::{Deserialize, Serialize};
 use visgraph::Orientation::TopToBottom;
+use visgraph::layout::force_directed::force_directed_layout;
 use visgraph::layout::hierarchical::hierarchical_layout;
 
 // TODO: implement snapping and alignment guides when moving stations
@@ -173,7 +174,7 @@ fn display_displayed_line(
 fn auto_arrange_graph(graph: Res<Graph>, mut stations: Query<&mut Station>) {
     const SHIFT_FACTOR: f32 = 500.0;
     let inner = &graph.inner();
-    let layout = hierarchical_layout(&inner, TopToBottom);
+    let layout = force_directed_layout(&inner, 3000, 0.1);
     for node in inner.node_indices() {
         let pos = layout(node);
         if let Ok(mut station) = stations.get_mut(graph.entity(node).unwrap()) {
@@ -200,6 +201,100 @@ fn make_dot_string(InMut(buffer): InMut<String>, graph: Res<Graph>, names: Query
     );
     buffer.clear();
     buffer.push_str(&format!("{:?}", dot_string));
+}
+
+fn draw_line_spline(
+    painter: &egui::Painter,
+    to_screen: RectTransform,
+    viewport: Rect,
+    stations_list: &[(Entity, f32)],
+    stations: &Query<(&Name, &Station)>,
+) {
+    let n = stations_list.len();
+    if n < 2 {
+        return;
+    }
+
+    // Find the range of visible stations to optimize rendering
+    let mut first_visible = None;
+    let mut last_visible = None;
+    for (i, (entity, _)) in stations_list.iter().enumerate() {
+        if let Ok((_, s)) = stations.get(*entity) {
+            if viewport.expand(100.0).contains(to_screen * s.0) {
+                if first_visible.is_none() {
+                    first_visible = Some(i);
+                }
+                last_visible = Some(i);
+            }
+        }
+    }
+
+    let (Some(start_idx), Some(end_idx)) = (first_visible, last_visible) else {
+        return;
+    };
+
+    // Expand the range by 3 points on each side as requested
+    let render_start = start_idx.saturating_sub(3);
+    let render_end = (end_idx + 3).min(n - 1);
+
+    let mut previous = stations
+        .get(stations_list[render_start].0)
+        .map(|(_, s)| to_screen * s.0)
+        .unwrap_or(Pos2::ZERO);
+
+    for i in render_start..render_end {
+        let p1_world = stations
+            .get(stations_list[i].0)
+            .map(|(_, s)| s.0)
+            .unwrap_or(Pos2::ZERO);
+        let p2_world = stations
+            .get(stations_list[i + 1].0)
+            .map(|(_, s)| s.0)
+            .unwrap_or(Pos2::ZERO);
+
+        let p0 = if i > 0 {
+            to_screen
+                * stations
+                    .get(stations_list[i - 1].0)
+                    .map(|(_, s)| s.0)
+                    .unwrap_or(Pos2::ZERO)
+        } else {
+            to_screen * p1_world
+        };
+        let p1 = to_screen * p1_world;
+        let p2 = to_screen * p2_world;
+        let p3 = if i + 2 < n {
+            to_screen
+                * stations
+                    .get(stations_list[i + 2].0)
+                    .map(|(_, s)| s.0)
+                    .unwrap_or(Pos2::ZERO)
+        } else {
+            p2
+        };
+
+        let num_samples =
+            ((p3.distance(p2) + p2.distance(p1) + p1.distance(p0)) as usize / 20).max(1);
+
+        let v0 = bevy::math::Vec2::new(p0.x, p0.y);
+        let v1 = bevy::math::Vec2::new(p1.x, p1.y);
+        let v2 = bevy::math::Vec2::new(p2.x, p2.y);
+        let v3 = bevy::math::Vec2::new(p3.x, p3.y);
+
+        for j in 1..=num_samples {
+            let t = j as f32 / num_samples as f32;
+            let t2 = t * t;
+            let t3 = t2 * t;
+            let pos_v = 0.5
+                * ((2.0 * v1)
+                    + (-v0 + v2) * t
+                    + (2.0 * v0 - 5.0 * v1 + 4.0 * v2 - v3) * t2
+                    + (-v0 + 3.0 * v1 - 3.0 * v2 + v3) * t3);
+            let pos = Pos2::new(pos_v.x, pos_v.y);
+            painter.line_segment([previous, pos], Stroke::new(4.0, Color32::LIGHT_YELLOW));
+            previous = pos;
+        }
+    }
 }
 
 fn show_graph(
@@ -328,24 +423,20 @@ fn show_graph(
                 },
             );
         }
-        for (line_entity, line) in displayed_lines {
-            let mut nodes = line
-                .stations()
-                .iter()
-                .copied()
-                .filter_map(|(e, _)| stations.get(e).ok())
-                .map(|(_, station)| station.0);
-            let Some(mut previous) = nodes.next() else {
-                continue;
-            };
-            for station_pos in nodes {
-                painter.line_segment(
-                    [to_screen * previous, to_screen * station_pos],
-                    Stroke::new(4.0, Color32::LIGHT_YELLOW),
+
+        let stations_readonly = stations.as_readonly();
+        displayed_lines
+            .as_readonly()
+            .par_iter()
+            .for_each(|(_line_entity, line)| {
+                draw_line_spline(
+                    &painter,
+                    to_screen,
+                    response.rect,
+                    line.stations(),
+                    &stations_readonly,
                 );
-                previous = station_pos
-            }
-        }
+            });
         if state.animation_playing {
             for section in schedules.iter().filter_map(|s| {
                 s.position(state.animation_counter, |e| timetable_entries.get(e).ok())

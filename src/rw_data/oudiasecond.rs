@@ -267,15 +267,16 @@ struct TimetableEntry {
 use Structure::*;
 use Value::*;
 fn parse_ast(ast: &Structure) -> Result<Root, String> {
-    let Struct(k, v) = ast else {
+    let Struct(_, v) = ast else {
         return Err("Expected root structure".to_string());
     };
     let mut version = Option::None;
     let mut lines = Vec::new();
+    let mut unnamed_line_counter = 0;
     for field in v {
         match field {
             Struct(k, v) if *k == "Rosen" => {
-                lines.push(parse_line_meta(v)?);
+                lines.push(parse_line_meta(v, &mut unnamed_line_counter)?);
             }
             Pair(k, Single(v)) if *k == "FileType" => {
                 version = Some(v.to_string());
@@ -288,53 +289,70 @@ fn parse_ast(ast: &Structure) -> Result<Root, String> {
         lines,
     })
 }
-fn parse_line_meta(fields: &[Structure]) -> Result<LineMeta, String> {
-    let mut name = "Unknown Line".into();
+fn parse_line_meta(
+    fields: &[Structure],
+    unnamed_line_counter: &mut usize,
+) -> Result<LineMeta, String> {
+    let mut name: Option<String> = None;
     let mut stations = Vec::new();
     let mut diagrams = Vec::new();
+    let mut unnamed_station_counter = 0;
+    let mut unnamed_diagram_counter = 0;
+    let mut unnamed_train_counter = 0;
     for field in fields {
         match field {
             Pair(k, Single(v)) if *k == "Rosenmei" => {
-                name = v.to_string();
+                name = Some(v.to_string());
             }
             Struct(k, v) if *k == "Eki" => {
-                stations.push(parse_station(v)?);
+                stations.push(parse_station(v, &mut unnamed_station_counter)?);
             }
             Struct(k, v) if *k == "Dia" => {
-                diagrams.push(parse_diagram(v)?);
+                diagrams.push(parse_diagram(
+                    v,
+                    &mut unnamed_diagram_counter,
+                    &mut unnamed_train_counter,
+                )?);
             }
             _ => {}
         }
     }
     Ok(LineMeta {
-        name,
+        name: name.unwrap_or_else(|| {
+            *unnamed_line_counter += 1;
+            let name = tr!("oud2-unnamed-line", {
+                number: unnamed_line_counter.to_string()
+            });
+            name
+        }),
         stations,
         diagrams,
     })
 }
 
-fn parse_station(fields: &[Structure]) -> Result<Station, String> {
-    let mut station = Station {
-        name: String::new(),
-        branch_index: None,
-        loop_index: None,
-        break_interval: false,
-    };
+fn parse_station(
+    fields: &[Structure],
+    unnamed_station_counter: &mut usize,
+) -> Result<Station, String> {
+    let mut name: Option<String> = None;
+    let mut branch_index: Option<usize> = None;
+    let mut loop_index: Option<usize> = None;
     let mut kudari_display = false;
     let mut nobori_display = false;
     for field in fields {
         match field {
             Pair(k, Single(v)) if *k == "Ekimei" => {
-                station.name = v.to_string();
+                name = Some(v.to_string());
             }
+            // The "brunch" here is intended - it is spelling mistake in the original software
             Pair(k, Single(v)) if *k == "BrunchCoreEkiIndex" => {
-                station.branch_index = Some(
+                branch_index = Some(
                     v.parse::<usize>()
                         .map_err(|e| format!("Failed to parse branch index: {}", e))?,
                 );
             }
             Pair(k, Single(v)) if *k == "LoopOriginEkiIndex" => {
-                station.loop_index = Some(
+                loop_index = Some(
                     v.parse::<usize>()
                         .map_err(|e| format!("Failed to parse loop index: {}", e))?,
                 );
@@ -348,36 +366,63 @@ fn parse_station(fields: &[Structure]) -> Result<Station, String> {
             _ => {}
         }
     }
-    station.break_interval = kudari_display && nobori_display;
-    Ok(station)
+    let break_interval = kudari_display && nobori_display;
+    Ok(Station {
+        name: name.unwrap_or_else(|| {
+            *unnamed_station_counter += 1;
+            let name = tr!("oud2-unnamed-station", {
+                number: unnamed_station_counter.to_string()
+            });
+            name
+        }),
+        branch_index,
+        loop_index,
+        break_interval,
+    })
 }
 
-fn parse_diagram(fields: &[Structure]) -> Result<Diagram, String> {
-    let mut diagram = Diagram {
-        name: String::new(),
-        trains: Vec::new(),
-        is_timing_foundation: false,
-    };
+fn parse_diagram(
+    fields: &[Structure],
+    unnamed_diagram_counter: &mut usize,
+    unnamed_train_counter: &mut usize,
+) -> Result<Diagram, String> {
+    let mut name: Option<String> = None;
+    let mut trains: Vec<Train> = Vec::new();
+    let mut is_timing_foundation = false;
     for field in fields {
         match field {
             Pair(k, Single(v)) if *k == "DiaName" => {
                 // hard coded eh
-                diagram.is_timing_foundation = *v == "基準運転時分";
-                diagram.name = v.to_string();
+                is_timing_foundation = *v == "基準運転時分";
+                name = Some(v.to_string());
             }
             Struct(k, v) if *k == "Kudari" => {
-                diagram.trains.extend(parse_trains(Direction::Down, v)?);
+                trains.extend(parse_trains(Direction::Down, v, unnamed_train_counter)?);
             }
             Struct(k, v) if *k == "Nobori" => {
-                diagram.trains.extend(parse_trains(Direction::Up, v)?);
+                trains.extend(parse_trains(Direction::Up, v, unnamed_train_counter)?);
             }
             _ => {}
         }
     }
-    Ok(diagram)
+    Ok(Diagram {
+        name: name.unwrap_or_else(|| {
+            *unnamed_diagram_counter += 1;
+            let name = tr!("oud2-unnamed-diagram", {
+                number: unnamed_diagram_counter.to_string()
+            });
+            name
+        }),
+        trains,
+        is_timing_foundation,
+    })
 }
 
-fn parse_trains(direction: Direction, fields: &[Structure]) -> Result<Vec<Train>, String> {
+fn parse_trains(
+    direction: Direction,
+    fields: &[Structure],
+    unnamed_train_counter: &mut usize,
+) -> Result<Vec<Train>, String> {
     fn parse_time(str: &str) -> Result<Option<TimetableEntry>, String> {
         let mut entry = TimetableEntry {
             passing_mode: PassingMode::NoOperation,
@@ -409,16 +454,13 @@ fn parse_trains(direction: Direction, fields: &[Structure]) -> Result<Vec<Train>
         }
         Ok(Some(entry))
     }
-    let parse_trains = |fields: &[Structure]| -> Result<Train, String> {
-        let mut train = Train {
-            direction,
-            name: String::new(),
-            times: Vec::new(),
-        };
+    let mut parse_trains = |fields: &[Structure]| -> Result<Train, String> {
+        let mut name: Option<String> = None;
+        let mut entries: Vec<Option<TimetableEntry>> = Vec::new();
         for field in fields {
             match field {
-                Pair(k, Single(v)) if *k == "Ressyabangou" => {
-                    train.name = v.to_string();
+                Pair(k, Single(v)) if *k == "Ressyabangou" && !v.trim().is_empty() => {
+                    name = Some(v.to_string());
                 }
                 Pair(k, v) if *k == "EkiJikoku" => {
                     let times = match v {
@@ -426,31 +468,31 @@ fn parse_trains(direction: Direction, fields: &[Structure]) -> Result<Vec<Train>
                         List(l) => l,
                     };
                     for time in times {
-                        train.times.push(parse_time(time)?);
+                        entries.push(parse_time(time)?);
                     }
                 }
                 _ => {}
             }
         }
-        let mut time_iter = train.times.iter_mut().flat_map(|t| {
+        let time_iter = entries.iter_mut().flat_map(|t| {
             std::iter::once(t).flatten().flat_map(|t| {
                 std::iter::once(&mut t.arrival)
                     .flatten()
                     .chain(std::iter::once(&mut t.departure).flatten())
             })
         });
-        let mut previous_valid_time = time_iter
-            .next()
-            .map_or(TimetableTime::from_hms(0, 0, 0), |t| *t);
-        for time in time_iter {
-            if *time >= previous_valid_time {
-                previous_valid_time = *time;
-                continue;
-            }
-            *time += Duration(86400);
-            previous_valid_time = *time;
-        }
-        Ok(train)
+        super::normalize_times(time_iter);
+        Ok(Train {
+            direction,
+            name: name.unwrap_or_else(|| {
+                *unnamed_train_counter += 1;
+                let name = tr!("oud2-unnamed-train", {
+                    number: unnamed_train_counter.to_string()
+                });
+                name
+            }),
+            times: entries,
+        })
     };
     let mut trains = Vec::new();
     for field in fields {

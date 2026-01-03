@@ -45,3 +45,7 @@ done = Done
 
 # RW data
 oud2-default-line = OUD2 Default Line
+oud2-unnamed-line = Unnamed Line {$number}
+oud2-unnamed-station = Unnamed Station {$number}
+oud2-unnamed-diagram = Unnamed Diagram {$number}
+oud2-unnamed-train = Unnamed Train {$number}

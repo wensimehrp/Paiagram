@@ -309,7 +309,7 @@ dependencies = [
  "enumflags2",
  "futures-channel",
  "futures-util",
- "rand",
+ "rand 0.9.2",
  "raw-window-handle",
  "serde",
  "serde_repr",
@@ -561,6 +561,15 @@ name = "autocfg"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
+
+[[package]]
+name = "base31"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2ba7424f58c37cd9f6739e013526009b0fb7df29f8051ae6b07d17ce579e0c23"
+dependencies = [
+ "phf",
+]
 
 [[package]]
 name = "base64"
@@ -940,7 +949,7 @@ dependencies = [
  "glam",
  "itertools",
  "libm",
- "rand",
+ "rand 0.9.2",
  "rand_distr",
  "serde",
  "smallvec",
@@ -2825,7 +2834,7 @@ checksum = "bd47b05dddf0005d850e5644cae7f2b14ac3df487979dbfff3b56f20b1a6ae46"
 dependencies = [
  "bytemuck",
  "libm",
- "rand",
+ "rand 0.9.2",
  "serde_core",
 ]
 
@@ -3580,6 +3589,97 @@ dependencies = [
 ]
 
 [[package]]
+name = "moonshine-core"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3147362443f73121eaf4512158f5eaa17785a1e52c873c4f63ac4edab869e723"
+dependencies = [
+ "bevy_app",
+ "moonshine-kind",
+ "moonshine-object",
+ "moonshine-save",
+ "moonshine-tag",
+ "moonshine-util",
+]
+
+[[package]]
+name = "moonshine-kind"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f89bb44c5c539bf5e422d239e6e3cc8aa926db823f01fdfb4df36bbd3c89e097"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "bevy_utils",
+ "disqualified",
+]
+
+[[package]]
+name = "moonshine-object"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "90c9adaca363423d8ccad0c77a9081f1fc1d99514ebffd931f2862d023547ce7"
+dependencies = [
+ "bevy_ecs",
+ "moonshine-kind",
+ "moonshine-tag",
+ "moonshine-util",
+]
+
+[[package]]
+name = "moonshine-save"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "df9e99614ad909e6ed3ec91856c93f248fbed423b5d8a640f9fffdd3c8944105"
+dependencies = [
+ "bevy_app",
+ "bevy_ecs",
+ "bevy_log",
+ "bevy_platform",
+ "bevy_reflect",
+ "bevy_scene",
+ "bevy_utils",
+ "moonshine-util",
+ "serde",
+ "thiserror 2.0.17",
+]
+
+[[package]]
+name = "moonshine-tag"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5cce3443c31b44bb1161c409909e4e74298923bde21fceb03a8c97fabd91c911"
+dependencies = [
+ "base31",
+ "bevy_app",
+ "bevy_ecs",
+ "bevy_platform",
+ "bevy_reflect",
+ "bevy_utils",
+ "const-fnv1a-hash",
+ "inventory",
+ "itertools",
+ "moonshine-util",
+ "once_cell",
+ "ron 0.11.0",
+ "serde",
+]
+
+[[package]]
+name = "moonshine-util"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f89faefd59d3a4375c2d12c50ff9df97d9f57474d94a8095427c37c4becec056"
+dependencies = [
+ "bevy_app",
+ "bevy_ecs",
+ "bevy_log",
+ "bevy_platform",
+ "bevy_reflect",
+ "disqualified",
+]
+
+[[package]]
 name = "moxcms"
 version = "0.7.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4118,10 +4218,11 @@ dependencies = [
  "ib-matcher",
  "instant",
  "js-sys",
+ "moonshine-core",
  "pest",
  "pest_derive",
  "petgraph",
- "rand",
+ "rand 0.9.2",
  "rayon",
  "rfd",
  "ron 0.12.0",
@@ -4233,6 +4334,48 @@ dependencies = [
  "rayon",
  "serde",
  "serde_derive",
+]
+
+[[package]]
+name = "phf"
+version = "0.11.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1fd6780a80ae0c52cc120a26a1a42c1ae51b247a253e4e06113d23d2c2edd078"
+dependencies = [
+ "phf_macros",
+ "phf_shared",
+]
+
+[[package]]
+name = "phf_generator"
+version = "0.11.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3c80231409c20246a13fddb31776fb942c38553c51e871f8cbd687a4cfb5843d"
+dependencies = [
+ "phf_shared",
+ "rand 0.8.5",
+]
+
+[[package]]
+name = "phf_macros"
+version = "0.11.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f84ac04429c13a7ff43785d75ad27569f2951ce0ffd30a3321230db2fc727216"
+dependencies = [
+ "phf_generator",
+ "phf_shared",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.111",
+]
+
+[[package]]
+name = "phf_shared"
+version = "0.11.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "67eabc2ef2a60eb7faa00097bd1ffdb5bd28e62bf39990626a582201b7a754e5"
+dependencies = [
+ "siphasher",
 ]
 
 [[package]]
@@ -4484,12 +4627,21 @@ checksum = "019b4b213425016d7d84a153c4c73afb0946fbb4840e4eece7ba8848b9d6da22"
 
 [[package]]
 name = "rand"
+version = "0.8.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "34af8d1a0e25924bc5b7c43c079c942339d8f0a8b57c39049bef581b46327404"
+dependencies = [
+ "rand_core 0.6.4",
+]
+
+[[package]]
+name = "rand"
 version = "0.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6db2770f06117d490610c7488547d543617b21bfa07796d7a12f6f1bd53850d1"
 dependencies = [
  "rand_chacha",
- "rand_core",
+ "rand_core 0.9.3",
 ]
 
 [[package]]
@@ -4499,8 +4651,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d3022b5f1df60f26e1ffddd6c66e8aa15de382ae63b3a0c1bfc0e4d3e3f325cb"
 dependencies = [
  "ppv-lite86",
- "rand_core",
+ "rand_core 0.9.3",
 ]
+
+[[package]]
+name = "rand_core"
+version = "0.6.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
 
 [[package]]
 name = "rand_core"
@@ -4518,7 +4676,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6a8615d50dcf34fa31f7ab52692afec947c4dd0ab803cc87cb3b0b4570ff7463"
 dependencies = [
  "num-traits",
- "rand",
+ "rand 0.9.2",
 ]
 
 [[package]]
@@ -4928,6 +5086,12 @@ name = "simd-adler32"
 version = "0.3.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e320a6c5ad31d271ad523dcf3ad13e2767ad8b1cb8f047f75a8aeaf8da139da2"
+
+[[package]]
+name = "siphasher"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "56199f7ddabf13fe5074ce809e7d3f42b42ae711800501b5b16ea82ad029c39d"
 
 [[package]]
 name = "skrifa"

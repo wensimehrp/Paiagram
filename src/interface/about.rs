@@ -117,6 +117,14 @@ pub fn show_about(
                 &["oud2"],
                 ModifyData::LoadOuDiaSecond,
             );
+            // FIXME: THIS IS NOT CUSTOM AT ALL
+            show_import_button(
+                ui,
+                "Import Custom...",
+                "Custom Files",
+                &["json"],
+                ModifyData::LoadCustom,
+            );
         });
         ui.menu_button("Help", |ui| {
             if ui.button("Minesweeper").clicked() {

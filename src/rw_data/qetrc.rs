@@ -228,21 +228,6 @@ pub fn load_qetrc(
     }
 }
 
-fn normalize_times(times: &mut [ProcessedEntry]) {
-    let mut time_iter = times
-        .iter_mut()
-        .flat_map(|t| std::iter::once(&mut t.arrival).chain(std::iter::once(&mut t.departure)));
-    let Some(mut previous_time) = time_iter.next().copied() else {
-        return;
-    };
-    for time in time_iter {
-        if *time < previous_time {
-            *time += Duration(86400);
-        }
-        previous_time = *time;
-    }
-}
-
 fn make_vehicle(
     name: String,
     commands: &mut Commands,
@@ -256,7 +241,11 @@ fn make_vehicle(
         .entity(vehicle_set_entity)
         .add_child(vehicle_entity);
     let mut entry_entites: Vec<Entity> = Vec::with_capacity(processed_entries.len());
-    normalize_times(&mut processed_entries);
+    super::normalize_times(
+        processed_entries
+            .iter_mut()
+            .flat_map(|t| std::iter::once(&mut t.arrival).chain(std::iter::once(&mut t.departure))),
+    );
     for ps in processed_entries {
         let (arrival_mode, departure_mode) = if ps.arrival == ps.departure {
             (TravelMode::At(ps.arrival), None)
