@@ -36,7 +36,7 @@
                 ];
               })
               pkg-config
-              wasm-bindgen-cli_0_2_104
+              wasm-bindgen-cli_0_2_106
               typst
               just
               wget
