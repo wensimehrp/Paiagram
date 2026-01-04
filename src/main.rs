@@ -1,4 +1,4 @@
-use bevy::{log::LogPlugin, prelude::*};
+use bevy::{ecs::system::RunSystemOnce, log::LogPlugin, prelude::*};
 use clap::Parser;
 
 mod colors;
@@ -19,7 +19,8 @@ struct PaiagramApp {
 }
 
 impl PaiagramApp {
-    fn new(cc: &eframe::CreationContext) -> Self {
+    fn new(_cc: &eframe::CreationContext) -> Self {
+        // TODO: handle load from storage
         let mut app = App::new();
         app.add_plugins(MinimalPlugins);
         app.add_plugins(LogPlugin::default());
@@ -34,8 +35,9 @@ impl PaiagramApp {
             troubleshoot::TroubleShootPlugin,
         ));
         let args = Cli::parse();
-        app.insert_resource(args);
-        app.add_systems(Startup, handle_args);
+        if let Err(e) = app.world_mut().run_system_once_with(handle_args, args) {
+            error!("Failed to handle command line arguments: {:?}", e);
+        }
         Self { bevy_app: app }
     }
 }
@@ -54,37 +56,17 @@ impl eframe::App for PaiagramApp {
     fn persist_egui_memory(&self) -> bool {
         true
     }
+    fn auto_save_interval(&self) -> std::time::Duration {
+        std::time::Duration::from_mins(5)
+    }
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
-        info!("Saving state...");
-        let world = self.bevy_app.world_mut();
-        let time = world.remove_resource::<Time<Real>>();
-        let scene = DynamicSceneBuilder::from_world(&world)
-            .extract_entities(
-                // we do this instead of a query, in order to completely sidestep default query filters.
-                // while we could use `Allow<_>`, this wouldn't account for custom disabled components
-                world
-                    .archetypes()
-                    .iter()
-                    .flat_map(bevy::ecs::archetype::Archetype::entities)
-                    .map(bevy::ecs::archetype::ArchetypeEntity::id),
-            )
-            .extract_resources()
-            .build();
-        if let Some(time) = time {
-            world.insert_resource(time);
-        }
-        let type_registry = world.resource::<AppTypeRegistry>().read();
-        match scene.serialize(&type_registry) {
-            Ok(serialized) => eframe::set_value(storage, "paiagram_state", &serialized),
-            Err(e) => {
-                error!("Failed to serialize state: {}", e);
-            }
+        if let Err(e) = rw_data::save::autosave(&mut self.bevy_app, storage) {
+            error!("Autosave failed: {:?}", e);
         }
     }
 }
 
-/// a one shot resource
-#[derive(Parser, Resource)]
+#[derive(Parser)]
 #[command(version, about, long_about = None)]
 struct Cli {
     #[arg(
@@ -92,10 +74,10 @@ struct Cli {
         long = "open",
         help = "Path to a .paiagram file (or any other compatible file formats) to open on startup"
     )]
-    open: Option<String>,
+open: Option<String>,
 }
 
-fn handle_args(cli: Res<Cli>, mut msg: MessageWriter<rw_data::ModifyData>, mut commands: Commands) {
+fn handle_args(cli: In<Cli>, mut msg: MessageWriter<rw_data::ModifyData>) {
     if let Some(path) = &cli.open {
         use rw_data::ModifyData;
         // match the ending of the path
@@ -117,7 +99,6 @@ fn handle_args(cli: Res<Cli>, mut msg: MessageWriter<rw_data::ModifyData>, mut c
             }
         }
     }
-    commands.remove_resource::<Cli>();
 }
 
 #[cfg(not(target_arch = "wasm32"))]

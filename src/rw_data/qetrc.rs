@@ -23,9 +23,10 @@ struct Root {
     // qetrc_version: String,
     #[serde(rename = "trains")]
     services: Vec<Service>,
-    // qETRC has the line field and the lines array, both contains line data
-    // but for some unknown(tm) reason sometimes the `lines` field is missing
-    // hence Option<T>
+    // qETRC has the line field and the lines array, both contains line data.
+    // pyETRC only has the `line` field, while qETRC uses both to support multiple lines.
+    // To keep compatibility with pyETRC, we keep the `line` field as is,
+    // The lines would be chained together later with std::iter::once and chain
     /// A single line
     line: Line,
     /// Additional lines. This field does not exist in pyETRC, only in qETRC.

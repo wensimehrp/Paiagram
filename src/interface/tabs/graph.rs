@@ -510,8 +510,8 @@ fn show_graph(
 
             state.zoom = new_zoom;
             state.translation = Vec2::new(new_translation_x, new_translation_y);
+            let zoom = state.zoom;
+            state.translation -= (translation_delta + response.drag_delta()) / zoom;
         }
-        let zoom = state.zoom;
-        state.translation -= (translation_delta + response.drag_delta()) / zoom;
     });
 }
