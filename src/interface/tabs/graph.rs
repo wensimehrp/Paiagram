@@ -9,6 +9,7 @@ use egui::{Color32, Pos2, Rect, Sense, Stroke, Ui, UiBuilder, Vec2};
 use egui_i18n::tr;
 use either::Either::{Left, Right};
 use emath::{self, RectTransform};
+use moonshine_core::kind::Instance;
 use petgraph::Direction::Outgoing;
 use petgraph::dot;
 use petgraph::visit::EdgeRef;
@@ -161,7 +162,7 @@ fn display_displayed_line(
     };
     ui.heading(name.as_str());
     for (i, (station_entity, _)) in line.stations().iter().enumerate() {
-        let Some(station_name) = stations.get(*station_entity).ok() else {
+        let Some(station_name) = stations.get(station_entity.entity()).ok() else {
             continue;
         };
         ui.horizontal(|ui| {
@@ -177,18 +178,18 @@ fn auto_arrange_graph(graph: Res<Graph>, mut stations: Query<&mut Station>) {
     let layout = force_directed_layout(&inner, 3000, 0.1);
     for node in inner.node_indices() {
         let pos = layout(node);
-        if let Ok(mut station) = stations.get_mut(graph.entity(node).unwrap()) {
+        if let Ok(mut station) = stations.get_mut(graph.entity(node).unwrap().entity()) {
             station.0 = Pos2::new(pos.0 * SHIFT_FACTOR, pos.1 * SHIFT_FACTOR);
         }
     }
 }
 
 fn make_dot_string(InMut(buffer): InMut<String>, graph: Res<Graph>, names: Query<&Name>) {
-    let get_node_attr = |_, (_, entity): (_, &Entity)| {
+    let get_node_attr = |_, (_, entity): (_, &Instance<Station>)| {
         format!(
             r#"label = "{}""#,
             names
-                .get(*entity)
+                .get(entity.entity())
                 .map_or("<Unknown>".to_string(), |name| name.to_string())
         )
     };
@@ -207,7 +208,7 @@ fn draw_line_spline(
     painter: &egui::Painter,
     to_screen: RectTransform,
     viewport: Rect,
-    stations_list: &[(Entity, f32)],
+    stations_list: &[(Instance<Station>, f32)],
     stations: &Query<(&Name, &Station)>,
 ) {
     let n = stations_list.len();
@@ -219,7 +220,7 @@ fn draw_line_spline(
     let mut first_visible = None;
     let mut last_visible = None;
     for (i, (entity, _)) in stations_list.iter().enumerate() {
-        if let Ok((_, s)) = stations.get(*entity) {
+        if let Ok((_, s)) = stations.get(entity.entity()) {
             if viewport.expand(100.0).contains(to_screen * s.0) {
                 if first_visible.is_none() {
                     first_visible = Some(i);
@@ -238,24 +239,24 @@ fn draw_line_spline(
     let render_end = (end_idx + 3).min(n - 1);
 
     let mut previous = stations
-        .get(stations_list[render_start].0)
+        .get(stations_list[render_start].0.entity())
         .map(|(_, s)| to_screen * s.0)
         .unwrap_or(Pos2::ZERO);
 
     for i in render_start..render_end {
         let p1_world = stations
-            .get(stations_list[i].0)
+            .get(stations_list[i].0.entity())
             .map(|(_, s)| s.0)
             .unwrap_or(Pos2::ZERO);
         let p2_world = stations
-            .get(stations_list[i + 1].0)
+            .get(stations_list[i + 1].0.entity())
             .map(|(_, s)| s.0)
             .unwrap_or(Pos2::ZERO);
 
         let p0 = if i > 0 {
             to_screen
                 * stations
-                    .get(stations_list[i - 1].0)
+                    .get(stations_list[i - 1].0.entity())
                     .map(|(_, s)| s.0)
                     .unwrap_or(Pos2::ZERO)
         } else {
@@ -266,7 +267,7 @@ fn draw_line_spline(
         let p3 = if i + 2 < n {
             to_screen
                 * stations
-                    .get(stations_list[i + 2].0)
+                    .get(stations_list[i + 2].0.entity())
                     .map(|(_, s)| s.0)
                     .unwrap_or(Pos2::ZERO)
         } else {
@@ -348,10 +349,10 @@ fn show_graph(
                 )
             })
         }) {
-            let Ok((_, from_station)) = stations.get(from) else {
+            let Ok((_, from_station)) = stations.get(from.entity()) else {
                 continue;
             };
-            let Ok((_, to_station)) = stations.get(to) else {
+            let Ok((_, to_station)) = stations.get(to.entity()) else {
                 continue;
             };
             let from = from_station.0;
@@ -373,7 +374,7 @@ fn show_graph(
             .node_indices()
             .map(|n| graph.entity(n).unwrap())
         {
-            let Ok((name, mut station)) = stations.get_mut(node) else {
+            let Ok((name, mut station)) = stations.get_mut(node.entity()) else {
                 continue;
             };
             let pos = &mut station.0;
@@ -404,7 +405,7 @@ fn show_graph(
                     match (state.edit_mode, resp.clicked()) {
                         (_, false) => {}
                         (None, true) => {
-                            state.selected_item = Some(SelectedItem::Node(node));
+                            state.selected_item = Some(SelectedItem::Node(node.entity()));
                         }
                         (Some(EditMode::EditDisplayedLine(e)), true) => {
                             if let Ok((_, mut line)) = displayed_lines.get_mut(e) {
@@ -412,7 +413,7 @@ fn show_graph(
                             }
                         }
                     }
-                    if matches!(state.selected_item, Some(SelectedItem::Node(n)) if n == node) {
+                    if matches!(state.selected_item, Some(SelectedItem::Node(n)) if n == node.entity()) {
                         focused_pos = Some((*pos, Pos2::ZERO));
                     }
                     ui.painter().circle_filled(to_screen * *pos, 10.0, fill);

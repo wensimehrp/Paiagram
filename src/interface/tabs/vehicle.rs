@@ -76,7 +76,7 @@ impl<'a> TableCache<'a> {
                 continue;
             };
             let station_name = names
-                .get(entry.station)
+                .get(entry.station.entity())
                 .ok()
                 .and_then(|(_, name)| Some(name.as_str()));
             let service_name = match entry.service {

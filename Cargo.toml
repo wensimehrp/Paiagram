@@ -14,6 +14,7 @@ bevy = { version = "0.17.3", default-features = false, features = [
     "bevy_scene",
     "serialize",
     "reflect_auto_register",
+    "http"
 ] }
 # local path to egui_dock
 egui_dock = { path = "./egui_dock", features = ["serde"] }

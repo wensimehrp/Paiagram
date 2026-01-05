@@ -5,17 +5,18 @@ use bevy::ecs::{
     system::{In, InMut, Query},
 };
 use egui::Ui;
+use moonshine_core::kind::Instance;
 
 use crate::intervals::Station;
 
 pub fn show_station_stats(
-    (InMut(ui), In(station_entity)): (InMut<Ui>, In<Entity>),
+    (InMut(ui), In(station_entity)): (InMut<Ui>, In<Instance<Station>>),
     station_name: Query<&Name, With<Station>>,
 ) {
     // Display basic statistics and edit functions
     ui.heading(
         station_name
-            .get(station_entity)
+            .get(station_entity.entity())
             .map_or("Unknown", Name::as_str),
     );
 }

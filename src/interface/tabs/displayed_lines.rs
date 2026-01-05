@@ -106,7 +106,7 @@ pub fn show_line<'a, F>(
                 for (station_entity, station_name, _) in line
                     .stations()
                     .iter()
-                    .filter_map(|(e, _)| get_station_info(*e))
+                    .filter_map(|(e, _)| get_station_info(e.entity()))
                 {
                     if full_width_button(ui, station_name.as_str()).clicked() {
                         *selected_station = Some(station_entity);

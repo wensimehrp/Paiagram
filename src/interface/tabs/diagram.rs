@@ -17,6 +17,7 @@ use egui::{
     Color32, CornerRadius, FontId, Frame, Margin, Painter, Popup, Pos2, Rect, RichText, Sense,
     Shape, Stroke, Ui, UiBuilder, Vec2, response, vec2,
 };
+use moonshine_core::kind::Instance;
 use serde::{Deserialize, Serialize};
 use strum::EnumCount;
 use strum_macros::EnumCount;
@@ -29,9 +30,12 @@ const TICKS_PER_SECOND: i64 = 100;
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub enum SelectedEntityType {
     Vehicle(Entity),
-    TimetableEntry { entry: Entity, vehicle: Entity },
-    Interval((Entity, Entity)),
-    Station(Entity),
+    TimetableEntry {
+        entry: Entity,
+        vehicle: Entity,
+    },
+    Interval((Instance<Station>, Instance<Station>)),
+    Station(Instance<Station>),
     Map(Entity),
 }
 
@@ -41,7 +45,8 @@ pub struct DiagramPageCache {
     stroke: Stroke,
     tick_offset: i64,
     vertical_offset: f32,
-    heights: Option<Vec<(Entity, f32)>>,
+    #[serde(with = "crate::intervals::vec_instance_f32_serde")]
+    heights: Option<Vec<(Instance<Station>, f32)>>,
     zoom: Vec2,
     vehicle_entities: Vec<Entity>,
     vehicle_set: Option<Entity>,
@@ -49,7 +54,7 @@ pub struct DiagramPageCache {
 
 impl DiagramPageCache {
     // linear search is quicker for a small data set
-    fn get_visible_stations(&self, range: std::ops::Range<f32>) -> &[(Entity, f32)] {
+    fn get_visible_stations(&self, range: std::ops::Range<f32>) -> &[(Instance<Station>, f32)] {
         let Some(heights) = &self.heights else {
             return &[];
         };
@@ -247,7 +252,7 @@ fn show_diagram(
     mut selected_element: ResMut<SelectedElement>,
     mut timetable_adjustment_writer: MessageWriter<AdjustTimetableEntry>,
     // Buffer used between all calls to avoid repeated allocations
-    mut visible_stations_scratch: Local<Vec<(Entity, f32)>>,
+    mut visible_stations_scratch: Local<Vec<(Instance<Station>, f32)>>,
     vehicle_sets: Query<&Children, With<VehicleSet>>,
     mut previous_vehicle_set: Local<Option<Entity>>,
 ) {
@@ -264,7 +269,7 @@ fn show_diagram(
             .stations()
             .iter()
             .copied()
-            .any(|(s, _)| station_updated.get(s).is_ok())
+            .any(|(s, _)| station_updated.get(s.entity()).is_ok())
         || previous_vehicle_set.as_ref() != state.vehicle_set.as_ref();
 
     if entries_updated {
@@ -278,7 +283,7 @@ fn show_diagram(
         for station in displayed_line
             .stations()
             .iter()
-            .filter_map(|(s, _)| station_caches.get(*s).ok())
+            .filter_map(|(s, _)| station_caches.get(s.entity()).ok())
         {
             station.passing_vehicles(&mut state.vehicle_entities, |e| entry_parents.get(e).ok());
         }
@@ -317,7 +322,7 @@ fn show_diagram(
             visible_stations_scratch.clear();
             visible_stations_scratch
                 .extend_from_slice(state.get_visible_stations(vertical_visible.clone()));
-            let visible_stations: &[(Entity, f32)] = visible_stations_scratch.as_slice();
+            let visible_stations: &[(Instance<Station>, f32)] = visible_stations_scratch.as_slice();
 
             draw_station_lines(
                 state.vertical_offset,
@@ -470,7 +475,7 @@ fn calculate_visible_ranges(
 fn collect_rendered_vehicles<'a, F, G>(
     get_timetable_entries: F,
     get_vehicles: G,
-    visible_stations: &[(Entity, f32)],
+    visible_stations: &[(Instance<Station>, f32)],
     horizontal_visible: &std::ops::Range<i64>,
     ticks_per_screen_unit: f64,
     state: &DiagramPageCache,
@@ -701,7 +706,7 @@ where
 fn handle_input_selection(
     pointer_pos: Pos2,
     rendered_vehicles: &[RenderedVehicle],
-    visible_stations: &[(Entity, f32)],
+    visible_stations: &[(Instance<Station>, f32)],
     screen_rect: &Rect,
     vertical_offset: f32,
     zoom_y: f32,
@@ -1017,7 +1022,7 @@ fn draw_vehicle_selection_overlay(
                     ui.label(entry_cache.estimate.as_ref().unwrap().arrival.to_string());
                     ui.label(
                         station_names
-                            .get(entry.station)
+                            .get(entry.station.entity())
                             .map_or("??", |s| s.as_str()),
                     );
                 });
@@ -1139,7 +1144,7 @@ fn draw_vehicle_selection_overlay(
                     ui.label(entry_cache.estimate.as_ref().unwrap().departure.to_string());
                     ui.label(
                         station_names
-                            .get(entry.station)
+                            .get(entry.station.entity())
                             .map_or("??", |s| s.as_str()),
                     );
                 });
@@ -1172,8 +1177,8 @@ fn draw_station_selection_overlay(
     screen_rect: Rect,
     vertical_offset: f32,
     zoom_y: f32,
-    station_entity: Entity,
-    visible_stations: &[(Entity, f32)],
+    station_entity: Instance<Station>,
+    visible_stations: &[(Instance<Station>, f32)],
 ) {
     let stations = visible_stations
         .iter()
@@ -1208,8 +1213,8 @@ fn draw_interval_selection_overlay(
     screen_rect: Rect,
     vertical_offset: f32,
     zoom_y: f32,
-    (s1, s2): (Entity, Entity),
-    visible_stations: &[(Entity, f32)],
+    (s1, s2): (Instance<Station>, Instance<Station>),
+    visible_stations: &[(Instance<Station>, f32)],
 ) {
     for w in visible_stations.windows(2) {
         let [(e1, h1), (e2, h2)] = w else { continue };
@@ -1303,7 +1308,7 @@ fn draw_station_lines<'a, F>(
     painter: &mut Painter,
     screen_rect: &Rect,
     zoom: f32,
-    to_draw: &[(Entity, f32)],
+    to_draw: &[(Instance<Station>, f32)],
     pixels_per_point: f32,
     text_color: Color32,
     mut get_station_name: F,
@@ -1319,7 +1324,7 @@ fn draw_station_lines<'a, F>(
             draw_height,
             stroke,
         );
-        let Some(station_name) = get_station_name(entity) else {
+        let Some(station_name) = get_station_name(*entity) else {
             continue;
         };
         let layout = painter.layout_no_wrap(

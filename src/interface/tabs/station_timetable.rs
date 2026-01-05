@@ -28,11 +28,13 @@ use bevy::{
 };
 use egui::{Button, Frame, Label, Rect, RichText, Sense, Separator, UiBuilder, Widget, vec2};
 use egui_table::{Column, Table, TableDelegate};
+use moonshine_core::kind::Instance;
 use serde::{Deserialize, Serialize};
 
 #[derive(PartialEq, Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct StationTimetableTab {
-    pub station_entity: Entity,
+    #[serde(with = "crate::intervals::instance_serde")]
+    pub station_entity: Instance<Station>,
 }
 
 impl Tab for StationTimetableTab {
@@ -45,7 +47,7 @@ impl Tab for StationTimetableTab {
         }
     }
     fn id(&self) -> egui::Id {
-        egui::Id::new(self.station_entity)
+        egui::Id::new(self.station_entity.entity())
     }
 }
 
@@ -157,7 +159,7 @@ impl Default for PageSettings {
 
 /// Display station times in Japanese style timetable
 pub fn show_station_timetable(
-    (InMut(ui), In(station)): (InMut<egui::Ui>, In<Entity>),
+    (InMut(ui), In(station)): (InMut<egui::Ui>, In<Instance<Station>>),
     vehicle_sets: Query<(Entity, &Children, &Name), With<VehicleSet>>,
     vehicles: Query<(Entity, &Name, &VehicleScheduleCache, &VehicleSchedule), With<Vehicle>>,
     station_names: Query<&Name, With<Station>>,
@@ -197,7 +199,7 @@ pub fn show_station_timetable(
         "Show terminus station",
     );
     let mut times: Vec<Vec<(&str, &str, TimetableTime, Entity)>> = vec![Vec::new(); 24];
-    if let Ok(station_cache) = station_caches.get(station) {
+    if let Ok(station_cache) = station_caches.get(station.entity()) {
         for (entry, entry_cache, parent) in station_cache
             .passing_entries
             .iter()
@@ -222,7 +224,7 @@ pub fn show_station_timetable(
                     .get_service_last_entry(entry_service)
                     .map(ActualRouteEntry::inner)
                 && let Ok((last_entry, _, _)) = timetable_entries.get(last_entry_entity)
-                && let Ok(name) = station_names.get(last_entry.station)
+                && let Ok(name) = station_names.get(last_entry.station.entity())
             {
                 terminal_name = name
             }

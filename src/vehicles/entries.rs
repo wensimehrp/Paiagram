@@ -1,11 +1,12 @@
 use crate::{
-    intervals::{Graph, Interval},
+    intervals::{Graph, Interval, Station},
     units::time::{Duration, TimetableTime},
     vehicles::AdjustTimetableEntry,
 };
 use bevy::platform::collections::HashSet;
 use bevy::prelude::*;
 use either::Either;
+use moonshine_core::kind::Instance;
 use petgraph::algo::astar;
 use smallvec::{SmallVec, smallvec};
 
@@ -54,7 +55,7 @@ pub struct TimetableEntry {
     /// How would the vehicle depart from a station. A `None` value means that the vehicle does not stop at the station.
     pub departure: Option<TravelMode>,
     /// The node the vehicle stops at or passes.
-    pub station: Entity,
+    pub station: Instance<Station>,
     /// The service the entry belongs to.
     pub service: Option<Entity>,
     /// The track/platform/dock/berth etc. at the station.
@@ -62,7 +63,7 @@ pub struct TimetableEntry {
 }
 
 impl TimetableEntry {
-    fn new_derived(station: Entity, service: Option<Entity>) -> Self {
+    fn new_derived(station: Instance<Station>, service: Option<Entity>) -> Self {
         Self {
             arrival: TravelMode::Flexible,
             departure: None,
@@ -147,19 +148,19 @@ impl VehicleScheduleCache {
         let (this_entry, this_cache) = get_info(actual_route[i].inner())?;
         let this_times = this_cache.estimate.as_ref()?;
         if this_times.arrival.0 <= (time as i32) && (time as i32) <= this_times.departure.0 {
-            return Some(Either::Right(this_entry.station));
+            return Some(Either::Right(this_entry.station.entity()));
         }
         let (next_entry, next_cache) = get_info(actual_route.get(i + 1)?.inner())?;
         let next_times = next_cache.estimate.as_ref()?;
         let duration = next_times.arrival - this_times.departure;
         let elapsed = time - this_times.departure.0 as f32;
         if duration.0 <= 0 {
-            return Some(Either::Right(next_entry.station));
+            return Some(Either::Right(next_entry.station.entity()));
         }
         let factor = elapsed / (duration.0 as f32);
         Some(Either::Left((
-            this_entry.station,
-            next_entry.station,
+            this_entry.station.entity(),
+            next_entry.station.entity(),
             factor,
         )))
     }
@@ -174,7 +175,7 @@ pub fn calculate_actual_route(
     graph: Res<Graph>,
     intervals: Query<&Interval>,
     mut actual_route_list: Local<Vec<ActualRouteEntry>>,
-    mut warned_pairs: Local<HashSet<(Entity, Entity)>>,
+    mut warned_pairs: Local<HashSet<(Instance<Station>, Instance<Station>)>>,
     mut processed: Local<Vec<Entity>>,
 ) {
     processed.clear();
@@ -238,12 +239,12 @@ pub fn calculate_actual_route(
                 let pair = (prev.station, entry.station);
                 if warned_pairs.insert(pair) {
                     let prev_name = names
-                        .get(prev.station)
+                        .get(prev.station.entity())
                         .ok()
                         .map(Name::as_str)
                         .unwrap_or("<unnamed>");
                     let next_name = names
-                        .get(entry.station)
+                        .get(entry.station.entity())
                         .ok()
                         .map(Name::as_str)
                         .unwrap_or("<unnamed>");
@@ -261,7 +262,7 @@ pub fn calculate_actual_route(
                 graph.node_index(prev.station).unwrap(),
                 |finish| finish == graph.node_index(entry.station).unwrap(),
                 |edge| {
-                    if let Ok(interval) = intervals.get(*edge.weight()) {
+                    if let Ok(interval) = intervals.get(edge.weight().entity()) {
                         interval.length.0
                     } else {
                         i32::MAX
@@ -274,12 +275,12 @@ pub fn calculate_actual_route(
                 let pair = (prev.station, entry.station);
                 if warned_pairs.insert(pair) {
                     let prev_name = names
-                        .get(prev.station)
+                        .get(prev.station.entity())
                         .ok()
                         .map(Name::as_str)
                         .unwrap_or("<unnamed>");
                     let next_name = names
-                        .get(entry.station)
+                        .get(entry.station.entity())
                         .ok()
                         .map(Name::as_str)
                         .unwrap_or("<unnamed>");
@@ -295,7 +296,7 @@ pub fn calculate_actual_route(
                 for &node_index in &path[1..path.len() - 1] {
                     let station_entity = graph.entity(node_index).unwrap();
                     let station_name = names
-                        .get(station_entity)
+                        .get(station_entity.entity())
                         .ok()
                         .map(Name::as_str)
                         .unwrap_or("<unnamed>");

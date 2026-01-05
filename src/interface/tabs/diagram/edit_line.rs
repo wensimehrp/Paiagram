@@ -8,6 +8,7 @@ use bevy::{
     log::info,
 };
 use egui::{Color32, Popup, Pos2, ScrollArea, Sense, Stroke, Ui, UiBuilder, Vec2};
+use moonshine_core::kind::Instance;
 
 use crate::intervals::Station;
 
@@ -16,7 +17,7 @@ pub fn edit_line(
     stations: Query<(Entity, &Name), With<Station>>,
     mut displayed_lines: Query<&mut super::DisplayedLine>,
 ) {
-    let mut insertion: Option<(usize, Entity)> = None;
+    let mut insertion: Option<(usize, Instance<Station>)> = None;
     let mut deletion: Option<usize> = None;
     let Ok(mut displayed_line) = displayed_lines.get_mut(displayed_line_entity) else {
         ui.label("Error: Displayed line not found.");
@@ -79,7 +80,7 @@ pub fn edit_line(
             ScrollArea::vertical().show(ui, |ui| {
                 for (entity, name) in stations.iter() {
                     if ui.button(name.as_str()).clicked() {
-                        insertion = Some((index, entity));
+                        insertion = Some((index, unsafe { Instance::from_entity_unchecked(entity) }));
                     }
                 }
             });
@@ -90,7 +91,7 @@ pub fn edit_line(
         .stations()
         .iter()
         .copied()
-        .map(|(e, _)| stations.get(e).map_or("<Unknown>", |(_, n)| n.as_str()));
+        .map(|(e, _)| stations.get(e.entity()).map_or("<Unknown>", |(_, n)| n.as_str()));
     add_station_between(ui, 0);
     for (i, name) in station_names.enumerate() {
         let (rect, resp) = ui.allocate_exact_size(

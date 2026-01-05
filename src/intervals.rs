@@ -5,14 +5,81 @@ use crate::{
         entries::{ActualRouteEntry, TimetableEntry, VehicleScheduleCache},
     },
 };
-use bevy::{
-    ecs::entity::{EntityHash, EntityHashMap},
-    prelude::*,
-};
+use bevy::{ecs::entity::EntityHashMap, prelude::*};
+use moonshine_core::kind::*;
 use petgraph::prelude::*;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-pub type IntervalGraphType = StableDiGraph<Entity, Entity>;
+pub mod instance_serde {
+    use super::*;
+
+    pub fn serialize<S, T: Kind>(instance: &Instance<T>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        instance.entity().serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D, T: Kind>(deserializer: D) -> Result<Instance<T>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let entity = Entity::deserialize(deserializer)?;
+        Ok(unsafe { Instance::from_entity_unchecked(entity) })
+    }
+}
+
+pub mod option_instance_serde {
+    use super::*;
+
+    pub fn serialize<S, T: Kind>(
+        instance: &Option<Instance<T>>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        instance.map(|i| i.entity()).serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D, T: Kind>(deserializer: D) -> Result<Option<Instance<T>>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let entity = Option::<Entity>::deserialize(deserializer)?;
+        Ok(entity.map(|e| unsafe { Instance::from_entity_unchecked(e) }))
+    }
+}
+
+pub mod vec_instance_f32_serde {
+    use super::*;
+
+    pub fn serialize<S, T: Kind>(
+        vec: &Option<Vec<(Instance<T>, f32)>>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        vec.as_ref()
+            .map(|v| v.iter().map(|(i, f)| (i.entity(), *f)).collect::<Vec<_>>())
+            .serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D, T: Kind>(deserializer: D) -> Result<Option<Vec<(Instance<T>, f32)>>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let vec = Option::<Vec<(Entity, f32)>>::deserialize(deserializer)?;
+        Ok(vec.map(|v| {
+            v.into_iter()
+                .map(|(e, f)| (unsafe { Instance::from_entity_unchecked(e) }, f))
+                .collect()
+        }))
+    }
+}
+
+pub type IntervalGraphType = StableDiGraph<Instance<Station>, Instance<Interval>>;
 
 /// A graph representing the transportation network
 #[derive(Resource, Default, Debug)]
@@ -29,53 +96,62 @@ impl Graph {
         self.inner.clear();
         self.indices.clear();
     }
-    pub fn edge_weight(&self, a: Entity, b: Entity) -> Option<&Entity> {
-        let &a_index = self.indices.get(&a)?;
-        let &b_index = self.indices.get(&b)?;
+    pub fn edge_weight(
+        &self,
+        a: Instance<Station>,
+        b: Instance<Station>,
+    ) -> Option<&Instance<Interval>> {
+        let &a_index = self.indices.get(&a.entity())?;
+        let &b_index = self.indices.get(&b.entity())?;
         self.inner
             .edge_weight(self.inner.find_edge(a_index, b_index)?)
     }
-    pub fn contains_edge(&self, a: Entity, b: Entity) -> bool {
-        let Some(&a_index) = self.indices.get(&a) else {
+    pub fn contains_edge(&self, a: Instance<Station>, b: Instance<Station>) -> bool {
+        let Some(&a_index) = self.indices.get(&a.entity()) else {
             return false;
         };
-        let Some(&b_index) = self.indices.get(&b) else {
+        let Some(&b_index) = self.indices.get(&b.entity()) else {
             return false;
         };
         self.inner.find_edge(a_index, b_index).is_some()
     }
-    pub fn contains_node(&self, a: Entity) -> bool {
-        self.indices.contains_key(&a)
+    pub fn contains_node(&self, a: Instance<Station>) -> bool {
+        self.indices.contains_key(&a.entity())
     }
-    pub fn node_index(&self, a: Entity) -> Option<NodeIndex> {
-        self.indices.get(&a).cloned()
+    pub fn node_index(&self, a: Instance<Station>) -> Option<NodeIndex> {
+        self.indices.get(&a.entity()).cloned()
     }
-    pub fn entity(&self, index: NodeIndex) -> Option<Entity> {
+    pub fn entity(&self, index: NodeIndex) -> Option<Instance<Station>> {
         self.inner.node_weight(index).cloned()
     }
-    pub fn add_edge(&mut self, a: Entity, b: Entity, edge: Entity) {
-        let a_index = if let Some(&index) = self.indices.get(&a) {
+    pub fn add_edge(
+        &mut self,
+        a: Instance<Station>,
+        b: Instance<Station>,
+        edge: Instance<Interval>,
+    ) {
+        let a_index = if let Some(&index) = self.indices.get(&a.entity()) {
             index
         } else {
             let index = self.inner.add_node(a);
-            self.indices.insert(a, index);
+            self.indices.insert(a.entity(), index);
             index
         };
-        let b_index = if let Some(&index) = self.indices.get(&b) {
+        let b_index = if let Some(&index) = self.indices.get(&b.entity()) {
             index
         } else {
             let index = self.inner.add_node(b);
-            self.indices.insert(b, index);
+            self.indices.insert(b.entity(), index);
             index
         };
         self.inner.add_edge(a_index, b_index, edge);
     }
-    pub fn add_node(&mut self, a: Entity) {
-        if self.indices.contains_key(&a) {
+    pub fn add_node(&mut self, a: Instance<Station>) {
+        if self.indices.contains_key(&a.entity()) {
             return;
         }
         let index = self.inner.add_node(a);
-        self.indices.insert(a, index);
+        self.indices.insert(a.entity(), index);
     }
 }
 
@@ -182,7 +258,7 @@ fn update_station_cache(
         let Ok(entry) = timetable_entries.get(msg.entity) else {
             continue;
         };
-        let Ok(mut current_station_cache) = station_caches.get_mut(entry.station) else {
+        let Ok(mut current_station_cache) = station_caches.get_mut(entry.station.entity()) else {
             continue;
         };
         let index = current_station_cache
@@ -208,7 +284,7 @@ fn update_station_cache(
         }
     }) {
         if let Ok(entry) = timetable_entries.get(entity)
-            && let Ok(mut station_cache) = station_caches.get_mut(entry.station)
+            && let Ok(mut station_cache) = station_caches.get_mut(entry.station.entity())
             && let Ok(index) = station_cache.passing_entries.binary_search(&entity)
         {
             station_cache.passing_entries.remove(index);
@@ -239,15 +315,15 @@ pub fn update_interval_cache(
             let Some(&edge) = graph.edge_weight(beg_entry.station, end_entry.station) else {
                 continue;
             };
-            let Ok(mut cache) = intervals.get_mut(edge) else {
+            let Ok(mut cache) = intervals.get_mut(edge.entity()) else {
                 continue;
             };
             // now that we have the cache, invalidate the cache first
-            if !invalidated.contains(&edge) {
+            if !invalidated.contains(&edge.entity()) {
                 cache
                     .passing_entries
                     .retain(|e| matches!(e, ActualRouteEntry::Nominal(_)));
-                invalidated.push(edge)
+                invalidated.push(edge.entity())
             }
             cache.passing_entries.push(*end);
         }

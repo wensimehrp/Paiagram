@@ -1,15 +1,13 @@
 use bevy::{platform::collections::HashMap, prelude::*};
+use moonshine_core::kind::*;
 use serde::Deserialize;
 use serde_json;
 
 use crate::{
-    intervals::{Graph, Interval},
+    intervals::{Graph, Interval, Station as IntervalStation},
     lines::DisplayedLine,
     rw_data::ModifyData,
-    units::{
-        distance::Distance,
-        time::{Duration, TimetableTime},
-    },
+    units::{distance::Distance, time::TimetableTime},
     vehicles::{
         entries::{TravelMode, VehicleSchedule},
         services::VehicleService,
@@ -88,7 +86,7 @@ struct VehicleServiceEntry {
 struct ProcessedEntry {
     arrival: TimetableTime,
     departure: TimetableTime,
-    station_entity: Entity,
+    station_entity: Instance<IntervalStation>,
     service_entity: Entity,
 }
 
@@ -117,28 +115,26 @@ pub fn load_qetrc(
         }
     };
     let lines_iter = std::iter::once(root.line).chain(root.lines.into_iter().flatten());
-    let mut station_map: HashMap<String, Entity> = HashMap::new();
+    let mut station_map: HashMap<String, Instance<crate::intervals::Station>> = HashMap::new();
     fn make_station(
         name: String,
         commands: &mut Commands,
-        station_map: &mut HashMap<String, Entity>,
+        station_map: &mut HashMap<String, Instance<crate::intervals::Station>>,
         graph: &mut Graph,
-    ) -> Entity {
+    ) -> Instance<crate::intervals::Station> {
         if let Some(&entity) = station_map.get(&name) {
             return entity;
         }
         let station_entity = commands
-            .spawn((
-                crate::intervals::Station::default(),
-                Name::new(name.clone()),
-            ))
-            .id();
+            .spawn(Name::new(name.clone()))
+            .insert_instance(crate::intervals::Station::default())
+            .into();
         station_map.insert(name, station_entity);
         graph.add_node(station_entity);
         station_entity
     }
     for line in lines_iter {
-        let mut entity_heights: Vec<(Entity, f32)> = Vec::with_capacity(line.stations.len());
+        let mut entity_heights: Vec<(Instance<crate::intervals::Station>, f32)> = Vec::with_capacity(line.stations.len());
         for station in line.stations {
             let e = make_station(station.name, &mut commands, &mut station_map, &mut graph);
             entity_heights.push((e, station.distance));
@@ -149,17 +145,17 @@ pub fn load_qetrc(
             };
             // TODO: handle one way stations and intervals
             let e1 = commands
-                .spawn(Interval {
+                .spawn_instance(Interval {
                     speed_limit: None,
                     length: Distance::from_km((this_d - prev_d).abs()),
                 })
-                .id();
+                .into();
             let e2 = commands
-                .spawn(Interval {
+                .spawn_instance(Interval {
                     speed_limit: None,
                     length: Distance::from_km((this_d - prev_d).abs()),
                 })
-                .id();
+                .into();
             graph.add_edge(*prev, *this, e1);
             graph.add_edge(*this, *prev, e2);
         }
@@ -170,7 +166,15 @@ pub fn load_qetrc(
             previous_distance = current_distance;
         }
         // create a new displayed line
-        commands.spawn((Name::new(line.name), DisplayedLine::new(entity_heights)));
+        commands.spawn((
+            Name::new(line.name),
+            DisplayedLine::new(
+                entity_heights
+                    .into_iter()
+                    .map(|(e, d)| (e, d))
+                    .collect(),
+            ),
+        ));
     }
     let mut service_pool: HashMap<String, Vec<ProcessedEntry>> =
         HashMap::with_capacity(root.services.len());

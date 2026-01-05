@@ -1,3 +1,5 @@
+//! Module for reading and writing various data formats.
+
 pub mod custom;
 pub mod oudiasecond;
 pub mod qetrc;
@@ -5,6 +7,7 @@ pub mod write;
 pub mod save;
 
 use bevy::prelude::*;
+use serde::Deserialize;
 
 use crate::units::time::{Duration, TimetableTime};
 
@@ -26,12 +29,20 @@ impl Plugin for RwDataPlugin {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DataType {
+    QETRC,
+    OuDiaSecond,
+    Custom,
+}
+
 #[derive(Message)]
 pub enum ModifyData {
     ClearAllData,
     LoadQETRC(String),
     LoadOuDiaSecond(String),
     LoadCustom(String),
+    LoadOnlineData(String, DataType)
 }
 
 fn clear_resources(
@@ -74,6 +85,9 @@ fn normalize_times<'a>(mut time_iter: impl Iterator<Item = &'a mut TimetableTime
     }
 }
 
-fn load_online_data() {
-    todo!("Finish this fucking mess")
+#[derive(Asset, TypePath, Debug, Deserialize)]
+pub struct UnparsedOnlineData(String);
+
+fn load_online_data(url: In<String>, asset_server: Res<AssetServer>) {
+    let handle: Handle<UnparsedOnlineData> = asset_server.load(url.0);
 }

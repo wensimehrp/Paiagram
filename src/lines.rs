@@ -1,5 +1,5 @@
 use crate::{
-    intervals::StationCache,
+    intervals::{Station, StationCache},
     units::{canvas::CanvasLength, time::TimetableTime},
     vehicles::{
         AdjustTimetableEntry, TimetableAdjustment,
@@ -7,14 +7,15 @@ use crate::{
     },
 };
 use bevy::prelude::*;
+use moonshine_core::kind::Instance;
 
 /// Displayed line type:
 /// A list of (station entity, size of the interval on canvas in mm)
 /// The first entry is the starting station, where the canvas distance is simply omitted.
 /// Each entry afterwards represents the interval from the previous station to this station.
-pub type DisplayedLineType = Vec<(Entity, f32)>;
+pub type DisplayedLineType = Vec<(Instance<Station>, f32)>;
 
-pub type RulerLineType = Vec<(Entity, TimetableTime)>;
+pub type RulerLineType = Vec<(Instance<Station>, TimetableTime)>;
 
 #[derive(Debug, Default)]
 pub enum ScaleMode {
@@ -28,7 +29,7 @@ pub enum ScaleMode {
 #[derive(Component, Debug)]
 #[require(Name)]
 pub struct DisplayedLine {
-    stations: Vec<(Entity, f32)>,
+    stations: Vec<(Instance<Station>, f32)>,
     pub scale_mode: ScaleMode,
 }
 
@@ -54,7 +55,7 @@ impl DisplayedLine {
     pub unsafe fn stations_mut(&mut self) -> &mut DisplayedLineType {
         &mut self.stations
     }
-    pub fn insert(&mut self, index: usize, (station, height): (Entity, f32)) -> Result<(), DisplayedLineError> {
+    pub fn insert(&mut self, index: usize, (station, height): (Instance<Station>, f32)) -> Result<(), DisplayedLineError> {
         // Two same intervals cannot be neighbours
         // an interval is defined by (prev_entity, this_entity)
         if index > self.stations.len() {
@@ -73,10 +74,10 @@ impl DisplayedLine {
         let next = self.stations.get(index).map(|(e, _)| *e);
         let next_next = self.stations.get(index + 1).map(|(e, _)| *e);
         if let Some(prev_prev) = prev_prev && prev_prev == station {
-            return Err(DisplayedLineError::AdjacentIntervals((prev_prev, prev.unwrap())))
+            return Err(DisplayedLineError::AdjacentIntervals((prev_prev.entity(), prev.unwrap().entity())))
         };
         if let Some(next_next) = next_next && next_next == station {
-            return Err(DisplayedLineError::AdjacentIntervals((next.unwrap(), next_next)))
+            return Err(DisplayedLineError::AdjacentIntervals((next.unwrap().entity(), next_next.entity())))
         };
         if let Some(prev) = prev && prev == station {
             return Err(DisplayedLineError::SameStationAsNeighbor);
@@ -87,7 +88,7 @@ impl DisplayedLine {
         self.stations.insert(index, (station, height));
         Ok(())
     }
-    pub fn push(&mut self, station: (Entity, f32)) -> Result<(), DisplayedLineError>{
+    pub fn push(&mut self, station: (Instance<Station>, f32)) -> Result<(), DisplayedLineError>{
         self.insert(self.stations.len(), station)
     }
 }

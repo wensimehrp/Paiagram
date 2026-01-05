@@ -1,10 +1,11 @@
 use super::AdjustTimetableEntry;
 use super::entries::{self, TravelMode};
-use crate::intervals::{self, Graph};
+use crate::intervals::{self, Graph, Station};
 use crate::units::distance::Distance;
 use crate::units::time::{Duration, TimetableTime};
 use crate::vehicles::entries::{TimeEstimate, TimetableEntry, TimetableEntryCache};
 use bevy::prelude::*;
+use moonshine_core::kind::Instance;
 
 pub fn calculate_estimates(
     mut msg_reader: MessageReader<AdjustTimetableEntry>,
@@ -36,9 +37,12 @@ pub fn calculate_estimates(
             continue;
         };
         stack.clear();
-        let mut stable_time_and_station: Option<(TimetableTime, Entity)> = None;
-        let mut pending_time_and_station: Option<(TimetableTime, Entity)> = None;
-        let mut unwind_params: Option<(Option<(TimetableTime, Entity)>, Option<Duration>)> = None;
+        let mut stable_time_and_station: Option<(TimetableTime, Instance<Station>)> = None;
+        let mut pending_time_and_station: Option<(TimetableTime, Instance<Station>)> = None;
+        let mut unwind_params: Option<(
+            Option<(TimetableTime, Instance<Station>)>,
+            Option<Duration>,
+        )> = None;
         'iter_timetable: for timetable_entry_entity in
             schedule.actual_route.iter().flatten().map(|e| e.inner())
         {
@@ -181,7 +185,7 @@ pub fn calculate_estimates(
                 } else {
                     match graph.edge_weight(previous_station, station) {
                         Some(w) => {
-                            if let Ok(interval) = intervals.get(*w) {
+                            if let Ok(interval) = intervals.get(w.entity()) {
                                 Some(interval.length)
                             } else {
                                 clear_estimates(&mut entries, &mut stack);
@@ -206,7 +210,7 @@ pub fn calculate_estimates(
             distances.push(if time_offset.is_none() {
                 match graph.edge_weight(previous_station, current_station) {
                     Some(w) => {
-                        if let Ok(interval) = intervals.get(*w) {
+                        if let Ok(interval) = intervals.get(w.entity()) {
                             Some(interval.length)
                         } else {
                             clear_estimates(&mut entries, &mut stack);

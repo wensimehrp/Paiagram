@@ -2,10 +2,7 @@ use crate::{
     intervals::{Graph, Interval},
     lines::DisplayedLine,
     rw_data::ModifyData,
-    units::{
-        distance::Distance,
-        time::{Duration, TimetableTime},
-    },
+    units::{distance::Distance, time::TimetableTime},
     vehicles::{
         Vehicle,
         entries::{TravelMode, VehicleSchedule},
@@ -14,6 +11,7 @@ use crate::{
 };
 use bevy::prelude::*;
 use egui_i18n::tr;
+use moonshine_core::kind::*;
 use pest::Parser;
 use pest_derive::Parser;
 
@@ -103,25 +101,23 @@ pub fn load_oud2(
     let ast = parse_oud2_to_ast(str).expect("Failed to parse OUD2 file");
     let root = parse_ast(&ast).expect("Failed to convert OUD2 AST to internal representation");
     for line in root.lines {
-        let mut stations: Vec<(Entity, bool)> = Vec::new();
+        let mut stations: Vec<(Instance<crate::intervals::Station>, bool)> = Vec::new();
         for station in line.stations.iter() {
             let station_entity = commands
-                .spawn((
-                    Name::new(station.name.clone()),
-                    crate::intervals::Station::default(),
-                ))
-                .id();
+                .spawn(Name::new(station.name.clone()))
+                .insert_instance(crate::intervals::Station::default())
+                .into();
             stations.push((station_entity, station.break_interval));
         }
         for (i, station) in line.stations.iter().enumerate() {
             if let Some(branch_index) = station.branch_index {
                 let (e, _) = stations[i];
-                commands.entity(e).despawn();
+                commands.entity(e.entity()).despawn();
                 stations[i].0 = stations[branch_index].0;
             }
             if let Some(loop_index) = station.loop_index {
                 let (e, _) = stations[i];
-                commands.entity(e).despawn();
+                commands.entity(e.entity()).despawn();
                 stations[i].0 = stations[loop_index].0;
             }
         }
@@ -131,24 +127,24 @@ pub fn load_oud2(
         ));
         for w in stations.windows(2) {
             let [(prev, break_interval), (next, _)] = w else {
-                continue;
+                unreachable!()
             };
             // create new intervals
             if *break_interval {
                 continue;
             }
             let e1 = commands
-                .spawn(Interval {
+                .spawn_instance(Interval {
                     length: Distance::from_m(1000),
                     speed_limit: None,
                 })
-                .id();
+                .into();
             let e2 = commands
-                .spawn(Interval {
+                .spawn_instance(Interval {
                     length: Distance::from_m(1000),
                     speed_limit: None,
                 })
-                .id();
+                .into();
             graph.add_edge(*prev, *next, e1);
             graph.add_edge(*next, *prev, e2);
         }

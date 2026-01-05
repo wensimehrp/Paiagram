@@ -1,5 +1,5 @@
 use crate::{
-    intervals::Graph,
+    intervals::{Graph, Station},
     rw_data::ModifyData,
     units::{distance::Distance, time::TimetableTime},
     vehicles::{
@@ -8,6 +8,7 @@ use crate::{
     },
 };
 use bevy::{platform::collections::HashMap, prelude::*};
+use moonshine_core::kind::*;
 use serde::Deserialize;
 use serde_json;
 
@@ -48,46 +49,48 @@ pub fn load_qetrc(
         }
     };
     info!("Reading...");
-    let mut station_map: HashMap<String, Entity> = HashMap::new();
+    let mut station_map: HashMap<String, Instance<Station>> = HashMap::new();
     let vehicle_set: Entity = commands
         .spawn((VehicleSet, Name::new("New vehicle set")))
         .id();
     for (line_name, line_meta) in root.weekday.into_iter().chain(root.holiday.into_iter()) {
         for (train_number, train_info) in line_meta.0.into_iter().flat_map(|(_, d)| d.into_iter()) {
-            let get_interval =
-                |commands: &mut Commands, graph: &mut Graph, from: Entity, to: Entity| {
-                    if let Some(&weight) = graph.edge_weight(from, to) {
-                        return weight;
-                    };
-                    let interval_entity = commands
-                        .spawn((
-                            crate::intervals::Interval {
-                                length: Distance(1000),
-                                speed_limit: None,
-                            },
-                            Name::new(format!("Interval {} - {}", from.index(), to.index())),
-                        ))
-                        .id();
-                    graph.add_edge(from, to, interval_entity);
-                    interval_entity
+            let get_interval = |commands: &mut Commands,
+                                graph: &mut Graph,
+                                from: Instance<Station>,
+                                to: Instance<Station>| {
+                if let Some(&weight) = graph.edge_weight(from, to) {
+                    return weight;
                 };
+                let interval_entity = commands
+                    .spawn(Name::new(format!(
+                        "Interval {} - {}",
+                        from.entity().index(),
+                        to.entity().index()
+                    )))
+                    .insert_instance(crate::intervals::Interval {
+                        length: Distance(1000),
+                        speed_limit: None,
+                    })
+                    .into();
+                graph.add_edge(from, to, interval_entity);
+                interval_entity
+            };
             let mut get_station = |commands: &mut Commands, graph: &mut Graph, name: String| {
                 if let Some(&entity) = station_map.get(&name) {
                     return entity;
                 }
                 let station_entity = commands
-                    .spawn((
-                        crate::intervals::Station::default(),
-                        Name::new(name.clone()),
-                    ))
-                    .id();
+                    .spawn(Name::new(name.clone()))
+                    .insert_instance(crate::intervals::Station::default())
+                    .into();
                 station_map.insert(name, station_entity);
                 graph.add_node(station_entity);
                 station_entity
             };
             let mut vehicle_schedule: Vec<Entity> = Vec::new();
             let mut times: Vec<(String, TimetableTime)> = Vec::new();
-            let mut previous_station: Option<Entity> = None;
+            let mut previous_station: Option<Instance<Station>> = None;
             let vehicle_entity = commands
                 .spawn((crate::vehicles::Vehicle, Name::new(train_number)))
                 .id();

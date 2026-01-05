@@ -8,6 +8,7 @@ use bevy::ecs::{
     world::Ref,
 };
 use egui::Ui;
+use moonshine_core::kind::Instance;
 
 use crate::{
     interface::tabs::PageCache,
@@ -16,7 +17,7 @@ use crate::{
 };
 
 pub fn show_interval_stats(
-    (InMut(ui), In((s1, s2))): (InMut<Ui>, In<(Entity, Entity)>),
+    (InMut(ui), In((s1, s2))): (InMut<Ui>, In<(Instance<Station>, Instance<Station>)>),
     mut interval_string: Local<String>,
     station_name: Query<&Name, With<Station>>,
     intervals: Query<(Ref<IntervalCache>, &Interval)>,
@@ -26,15 +27,23 @@ pub fn show_interval_stats(
 ) {
     // Display basic statistics and edit functions
     interval_string.clear();
-    interval_string.push_str(station_name.get(s1).map_or("Unknown", Name::as_str));
+    interval_string.push_str(
+        station_name
+            .get(s1.entity())
+            .map_or("Unknown", Name::as_str),
+    );
     interval_string.push_str(" ⇆ ");
-    interval_string.push_str(station_name.get(s2).map_or("Unknown", Name::as_str));
+    interval_string.push_str(
+        station_name
+            .get(s2.entity())
+            .map_or("Unknown", Name::as_str),
+    );
     ui.heading(interval_string.as_str());
     let Some(&edge) = graph.edge_weight(s1, s2) else {
         ui.label("Interval not found.");
         return;
     };
-    let Ok((cache, info)) = intervals.get(edge) else {
+    let Ok((cache, info)) = intervals.get(edge.entity()) else {
         ui.label("Interval not found");
         return;
     };
@@ -45,7 +54,7 @@ pub fn show_interval_stats(
         buffer.sort_unstable();
         buffer.dedup();
     };
-    let passing_vehicles_buffer = panel_buffer.get_mut_or_insert_with(edge, || {
+    let passing_vehicles_buffer = panel_buffer.get_mut_or_insert_with(edge.entity(), || {
         let mut new_buffer = Vec::new();
         update_vehicle_buffer(&mut new_buffer);
         new_buffer

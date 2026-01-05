@@ -1,5 +1,6 @@
-use crate::vehicles::entries::TimetableEntry;
+use crate::{intervals::Station, vehicles::entries::TimetableEntry};
 use bevy::prelude::*;
+use moonshine_core::kind::Instance;
 use smallvec::{SmallVec, smallvec};
 mod calculate_estimates;
 pub mod entries;
@@ -34,7 +35,7 @@ pub enum TimetableAdjustment {
     AdjustArrivalTime(crate::units::time::Duration),
     SetDepartureType(Option<entries::TravelMode>),
     AdjustDepartureTime(crate::units::time::Duration),
-    SetStation(Entity),
+    SetStation(Instance<Station>),
     SetService(Option<Entity>),
     SetTrack(Option<Entity>),
     SetNote(Option<String>),
