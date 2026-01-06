@@ -1,5 +1,5 @@
 # Misc
-program-name = Paiagram
+-program-name = Paiagram
 
 # Settings
 settings-enable-romaji-search = Enable Romaji search
@@ -37,7 +37,7 @@ tab-graph-auto-arrange-desc = Automatically arrange the current graph.
 tab-graph-auto-arrange-iterations = Iterations
 tab-graph-arrange-via-osm = Arrange
 # tip: use local examples of area names
-tab-graph-arrange-via-osm-desc = Use online sources to arrange the current the graph. This leverages OpenStreetMap data, and by clicking this button you agree to OpenStreetMap's Terms of Use. You can query with an optional area name to limit the scope (e.g., Vancouver, Halifax).
+tab-graph-arrange-via-osm-desc = Use online sources to arrange the current the graph. This leverages OpenStreetMap data, and by clicking "{ tab-graph-arrange-via-osm }" you agree to OpenStreetMap's Terms of Use. You can query with an optional area name to limit the scope (e.g., Vancouver, Halifax).
 tab-graph-arrange-via-osm-terms = Terms of Use
 tab-graph-osm-area-name = Area filter:
 tab-graph-animation = Animation controls

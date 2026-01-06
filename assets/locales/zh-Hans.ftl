@@ -1,5 +1,5 @@
 # Misc
-program-name = 派途
+-program-name = 派途
 
 # Settings
 settings-enable-romaji-search = 启用日语罗马字搜索
@@ -36,7 +36,7 @@ tab-graph-auto-arrange = 自动整理线路网
 tab-graph-auto-arrange-desc = 自动整理当前线路网
 tab-graph-auto-arrange-iterations = 迭代次数
 tab-graph-arrange-via-osm = 整理线路网
-tab-graph-arrange-via-osm-desc = 利用在线资源整理当前线路网。本功能使用 OpenStreetMap 数据，点击此按钮即表示您同意 OpenStreetMap 的使用条款。可以填写一个区域名称以限制查询范围（如：北京市、温州市）。
+tab-graph-arrange-via-osm-desc = 利用在线资源整理当前线路网。本功能使用 OpenStreetMap 数据，点击「{ tab-graph-arrange-via-osm }」即表示同意 OpenStreetMap 的使用条款。可以填写一个区域名称以限制查询范围（如：北京市、温州市）。
 tab-graph-arrange-via-osm-terms = 使用条款
 tab-graph-osm-area-name = 过滤区域：
 tab-graph-animation = 动画控制
