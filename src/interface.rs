@@ -6,7 +6,8 @@ mod widgets;
 use crate::{
     colors,
     interface::tabs::{
-        Tab, all_tabs::*, diagram::SelectedEntityType, minesweeper::MinesweeperData,
+        Tab, all_tabs::*, diagram::SelectedEntityType, graph::apply_graph_layout,
+        minesweeper::MinesweeperData,
     },
     settings::ApplicationSettings,
 };
@@ -35,7 +36,13 @@ impl Plugin for InterfacePlugin {
             .init_resource::<SidePanelState>()
             .insert_resource(UiState::new())
             .insert_resource(StatusBarState::default())
-            .add_systems(Update, modify_dock_state.run_if(on_message::<UiCommand>));
+            .add_systems(
+                Update,
+                (
+                    modify_dock_state.run_if(on_message::<UiCommand>),
+                    apply_graph_layout,
+                ),
+            );
     }
 }
 

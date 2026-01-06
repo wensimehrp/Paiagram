@@ -15,70 +15,91 @@ use crate::{
     },
 };
 
+/// The root structure of the qETRC JSON data
 #[derive(Deserialize)]
 struct Root {
     // qetrc_release: u32,
     // qetrc_version: String,
+    /// Trains in the original qETRC data. Each "train" corresponds to a [`VehicleService`] in Paiagram.
     #[serde(rename = "trains")]
     services: Vec<Service>,
     // qETRC has the line field and the lines array, both contains line data.
     // pyETRC only has the `line` field, while qETRC uses both to support multiple lines.
     // To keep compatibility with pyETRC, we keep the `line` field as is,
     // The lines would be chained together later with std::iter::once and chain
-    /// A single line
+    /// A single [`Line`]
     line: Line,
-    /// Additional lines. This field does not exist in pyETRC, only in qETRC.
+    /// Additional [`Line`]s. This field does not exist in pyETRC, only in qETRC.
     lines: Option<Vec<Line>>,
+    /// Vehicles in the qETRC data.
+    /// They are named "circuits" in the original qETRC data. A "circuit" refers to a train that runs a set of services
+    /// in a given period, which matches the concept of [`Vehicle`] or [`VehicleSchedule`] in Paiagram.
     #[serde(rename = "circuits")]
     vehicles: Vec<Vehicle>,
 }
 
+/// A line that is used as the foundation of connection in qETRC data
 #[derive(Deserialize)]
 struct Line {
+    /// The name of the line
     name: String,
+    /// [`Station`]s on the line.
     stations: Vec<Station>,
 }
 
 #[derive(Deserialize)]
 struct Station {
+    /// Station name
     #[serde(rename = "zhanming")]
     name: String,
+    /// Distance from the start of the line, in kilometers
     #[serde(rename = "licheng")]
-    distance: f32,
+    distance_km: f32,
 }
 
 #[derive(Deserialize)]
 struct Service {
+    /// Each service may have multiple service numbers.
+    /// In qETRC's case, the first service number is always the main one, and we use that one in Paiagram.
     #[serde(rename = "checi")]
     service_number: Vec<String>,
     // #[serde(rename = "type")]
     // service_type: String,
+    /// The timetable entries of the service
     timetable: Vec<TimetableEntry>,
 }
 
 #[derive(Deserialize)]
 struct TimetableEntry {
+    /// Whether the train would stop and load/unload passengers or freight at the station.
     #[serde(rename = "business")]
     stops: Option<bool>,
+    /// Arrival time in "HH:MM" format. "ddsj" in the original qETRC data refers to "到达时间".
     #[serde(rename = "ddsj")]
     arrival: String,
+    /// Departure time in "HH:MM" format. "cfsj" in the original qETRC data refers to "出发时间".
     #[serde(rename = "cfsj")]
     departure: String,
+    /// Station name
     #[serde(rename = "zhanming")]
     station_name: String,
 }
 
 #[derive(Deserialize)]
 struct Vehicle {
+    /// Vehicle model
     #[serde(rename = "model")]
     make: String,
+    /// Vehicle name
     name: String,
+    /// Services that the vehicle runs.
     #[serde(rename = "order")]
     services: Vec<VehicleServiceEntry>,
 }
 
 #[derive(Deserialize)]
 struct VehicleServiceEntry {
+    /// Service number of the service
     #[serde(rename = "checi")]
     service_number: String,
 }
@@ -87,7 +108,7 @@ struct ProcessedEntry {
     arrival: TimetableTime,
     departure: TimetableTime,
     station_entity: Instance<IntervalStation>,
-    service_entity: Entity,
+    service_entity: Instance<VehicleService>,
 }
 
 pub fn load_qetrc(
@@ -134,12 +155,13 @@ pub fn load_qetrc(
         station_entity
     }
     for line in lines_iter {
-        let mut entity_heights: Vec<(Instance<crate::intervals::Station>, f32)> = Vec::with_capacity(line.stations.len());
+        let mut entity_distances: Vec<(Instance<crate::intervals::Station>, f32)> =
+            Vec::with_capacity(line.stations.len());
         for station in line.stations {
             let e = make_station(station.name, &mut commands, &mut station_map, &mut graph);
-            entity_heights.push((e, station.distance));
+            entity_distances.push((e, station.distance_km));
         }
-        for w in entity_heights.windows(2) {
+        for w in entity_distances.windows(2) {
             let [(prev, prev_d), (this, this_d)] = w else {
                 unreachable!()
             };
@@ -159,21 +181,16 @@ pub fn load_qetrc(
             graph.add_edge(*prev, *this, e1);
             graph.add_edge(*this, *prev, e2);
         }
-        let mut previous_distance = entity_heights.first().map_or(0.0, |(_, d)| *d);
-        for (_, distance) in entity_heights.iter_mut().skip(1) {
-            let current_distance = *distance;
-            *distance -= previous_distance;
-            previous_distance = current_distance;
+        let mut previous_distance_km = entity_distances.first().map_or(0.0, |(_, d)| *d);
+        for (_, distance_km) in entity_distances.iter_mut().skip(1) {
+            let current_distance_km = *distance_km;
+            *distance_km -= previous_distance_km;
+            previous_distance_km = current_distance_km;
         }
         // create a new displayed line
         commands.spawn((
             Name::new(line.name),
-            DisplayedLine::new(
-                entity_heights
-                    .into_iter()
-                    .map(|(e, d)| (e, d))
-                    .collect(),
-            ),
+            DisplayedLine::new(entity_distances.into_iter().map(|(e, d)| (e, d)).collect()),
         ));
     }
     let mut service_pool: HashMap<String, Vec<ProcessedEntry>> =
@@ -186,11 +203,9 @@ pub fn load_qetrc(
             .unwrap_or("<Unnamed>".into());
         // TODO: handle class
         let service_entity = commands
-            .spawn((
-                Name::new(service_name.clone()),
-                VehicleService { class: None },
-            ))
-            .id();
+            .spawn((Name::new(service_name.clone()),))
+            .insert_instance(VehicleService { class: None })
+            .into();
         let mut processed_entries: Vec<ProcessedEntry> =
             Vec::with_capacity(service.timetable.len());
         for entry in service.timetable {

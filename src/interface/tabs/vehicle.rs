@@ -81,7 +81,7 @@ impl<'a> TableCache<'a> {
                 .and_then(|(_, name)| Some(name.as_str()));
             let service_name = match entry.service {
                 Some(service_entity) => names
-                    .get(service_entity)
+                    .get(service_entity.entity())
                     .ok()
                     .and_then(|(_, name)| Some(name.as_str())),
                 None => None,

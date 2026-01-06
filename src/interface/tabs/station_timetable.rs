@@ -229,7 +229,7 @@ pub fn show_station_timetable(
                 terminal_name = name
             }
             if let Some(entry_service) = entry.service
-                && let Ok(name) = service_names.get(entry_service)
+                && let Ok(name) = service_names.get(entry_service.entity())
             {
                 service_name = name;
             }

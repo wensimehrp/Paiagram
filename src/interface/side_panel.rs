@@ -1,11 +1,10 @@
-use bevy::ecs::system::{InMut, Local};
-use egui::{CornerRadius, RichText, Ui, vec2};
+use egui::{RichText, Ui, vec2};
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
-pub mod vehicle_stats;
-pub mod station_stats;
 pub mod interval_stats;
+pub mod station_stats;
+pub mod vehicle_stats;
 
 #[derive(PartialEq, Eq, Clone, Copy, Default, EnumIter)]
 pub enum CurrentTab {

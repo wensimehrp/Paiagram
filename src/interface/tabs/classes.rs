@@ -1,6 +1,6 @@
+use super::Tab;
 use egui::Ui;
 use serde::{Deserialize, Serialize};
-use super::Tab;
 
 #[derive(PartialEq, Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct ClassesTab;

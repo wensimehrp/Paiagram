@@ -30,10 +30,7 @@ const TICKS_PER_SECOND: i64 = 100;
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub enum SelectedEntityType {
     Vehicle(Entity),
-    TimetableEntry {
-        entry: Entity,
-        vehicle: Entity,
-    },
+    TimetableEntry { entry: Entity, vehicle: Entity },
     Interval((Instance<Station>, Instance<Station>)),
     Station(Instance<Station>),
     Map(Entity),

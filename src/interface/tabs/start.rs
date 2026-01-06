@@ -1,13 +1,13 @@
 use crate::interface::tabs::tree_view;
 
 use super::Tab;
-use bevy::ecs::system::{In, InMut};
+use bevy::ecs::system::InMut;
 use bevy::log::prelude::*;
 use egui::{Frame, Label, Response, ScrollArea, Sense, Ui, UiBuilder, Vec2, vec2};
+use egui_i18n::tr;
 use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
-use egui_i18n::tr;
 
 #[derive(Debug, Default, Clone, Copy, EnumIter, PartialEq, Serialize, Deserialize)]
 enum CurrentField {

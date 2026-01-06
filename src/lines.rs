@@ -39,6 +39,24 @@ pub enum DisplayedLineError {
     AdjacentIntervals((Entity, Entity)),
 }
 
+impl std::fmt::Debug for DisplayedLineError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DisplayedLineError::InvalidIndex => write!(f, "Invalid index for inserting station"),
+            DisplayedLineError::SameStationAsNeighbor => {
+                write!(f, "Cannot insert the same station as a neighbor")
+            }
+            DisplayedLineError::AdjacentIntervals((e1, e2)) => {
+                write!(
+                    f,
+                    "Cannot insert station that would create adjacent identical intervals: ({:?}, {:?})",
+                    e1, e2
+                )
+            }
+        }
+    }
+}
+
 impl DisplayedLine {
     pub fn new(stations: DisplayedLineType) -> Self {
         Self {
@@ -55,7 +73,11 @@ impl DisplayedLine {
     pub unsafe fn stations_mut(&mut self) -> &mut DisplayedLineType {
         &mut self.stations
     }
-    pub fn insert(&mut self, index: usize, (station, height): (Instance<Station>, f32)) -> Result<(), DisplayedLineError> {
+    pub fn insert(
+        &mut self,
+        index: usize,
+        (station, height): (Instance<Station>, f32),
+    ) -> Result<(), DisplayedLineError> {
         // Two same intervals cannot be neighbours
         // an interval is defined by (prev_entity, this_entity)
         if index > self.stations.len() {
@@ -73,22 +95,36 @@ impl DisplayedLine {
         };
         let next = self.stations.get(index).map(|(e, _)| *e);
         let next_next = self.stations.get(index + 1).map(|(e, _)| *e);
-        if let Some(prev_prev) = prev_prev && prev_prev == station {
-            return Err(DisplayedLineError::AdjacentIntervals((prev_prev.entity(), prev.unwrap().entity())))
+        if let Some(prev_prev) = prev_prev
+            && prev_prev == station
+        {
+            return Err(DisplayedLineError::AdjacentIntervals((
+                prev_prev.entity(),
+                prev.unwrap().entity(),
+            )));
         };
-        if let Some(next_next) = next_next && next_next == station {
-            return Err(DisplayedLineError::AdjacentIntervals((next.unwrap().entity(), next_next.entity())))
+        if let Some(next_next) = next_next
+            && next_next == station
+        {
+            return Err(DisplayedLineError::AdjacentIntervals((
+                next.unwrap().entity(),
+                next_next.entity(),
+            )));
         };
-        if let Some(prev) = prev && prev == station {
+        if let Some(prev) = prev
+            && prev == station
+        {
             return Err(DisplayedLineError::SameStationAsNeighbor);
         };
-        if let Some(next) = next && next == station {
+        if let Some(next) = next
+            && next == station
+        {
             return Err(DisplayedLineError::SameStationAsNeighbor);
         };
         self.stations.insert(index, (station, height));
         Ok(())
     }
-    pub fn push(&mut self, station: (Instance<Station>, f32)) -> Result<(), DisplayedLineError>{
+    pub fn push(&mut self, station: (Instance<Station>, f32)) -> Result<(), DisplayedLineError> {
         self.insert(self.stations.len(), station)
     }
 }

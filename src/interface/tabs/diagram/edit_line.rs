@@ -3,7 +3,7 @@ use bevy::{
         entity::Entity,
         name::Name,
         query::With,
-        system::{In, InMut, Local, Query},
+        system::{In, InMut, Query},
     },
     log::info,
 };
@@ -80,18 +80,19 @@ pub fn edit_line(
             ScrollArea::vertical().show(ui, |ui| {
                 for (entity, name) in stations.iter() {
                     if ui.button(name.as_str()).clicked() {
-                        insertion = Some((index, unsafe { Instance::from_entity_unchecked(entity) }));
+                        insertion =
+                            Some((index, unsafe { Instance::from_entity_unchecked(entity) }));
                     }
                 }
             });
         });
     };
 
-    let station_names = displayed_line
-        .stations()
-        .iter()
-        .copied()
-        .map(|(e, _)| stations.get(e.entity()).map_or("<Unknown>", |(_, n)| n.as_str()));
+    let station_names = displayed_line.stations().iter().copied().map(|(e, _)| {
+        stations
+            .get(e.entity())
+            .map_or("<Unknown>", |(_, n)| n.as_str())
+    });
     add_station_between(ui, 0);
     for (i, name) in station_names.enumerate() {
         let (rect, resp) = ui.allocate_exact_size(

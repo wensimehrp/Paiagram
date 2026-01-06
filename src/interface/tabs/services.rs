@@ -5,8 +5,8 @@ use bevy::ecs::{
 use egui::Ui;
 use serde::{Deserialize, Serialize};
 
-use crate::vehicles::entries::{VehicleSchedule, VehicleScheduleCache};
 use super::Tab;
+use crate::vehicles::entries::{VehicleSchedule, VehicleScheduleCache};
 
 #[derive(PartialEq, Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct ServicesTab;
@@ -24,5 +24,4 @@ fn show_services(
     InMut(ui): InMut<Ui>,
     schedules: Query<(&Name, &VehicleSchedule, &VehicleScheduleCache)>,
 ) {
-
 }

@@ -1,7 +1,7 @@
 use crate::{
     intervals::{Graph, Interval, Station},
     units::time::{Duration, TimetableTime},
-    vehicles::AdjustTimetableEntry,
+    vehicles::{AdjustTimetableEntry, services::VehicleService},
 };
 use bevy::platform::collections::HashSet;
 use bevy::prelude::*;
@@ -57,13 +57,13 @@ pub struct TimetableEntry {
     /// The node the vehicle stops at or passes.
     pub station: Instance<Station>,
     /// The service the entry belongs to.
-    pub service: Option<Entity>,
+    pub service: Option<Instance<VehicleService>>,
     /// The track/platform/dock/berth etc. at the station.
     pub track: Option<Entity>,
 }
 
 impl TimetableEntry {
-    fn new_derived(station: Instance<Station>, service: Option<Entity>) -> Self {
+    fn new_derived(station: Instance<Station>, service: Option<Instance<VehicleService>>) -> Self {
         Self {
             arrival: TravelMode::Flexible,
             departure: None,
@@ -125,7 +125,10 @@ pub struct VehicleScheduleCache {
     pub actual_route: Option<Vec<ActualRouteEntry>>,
     /// Service entities indices. This piece of data is calculated during runtime.
     /// This should always be sorted by Entity
-    pub service_entities: Vec<(Entity, SmallVec<[std::ops::Range<usize>; 1]>)>,
+    pub service_entities: Vec<(
+        Instance<VehicleService>,
+        SmallVec<[std::ops::Range<usize>; 1]>,
+    )>,
 }
 
 // TODO: implement start times
@@ -231,7 +234,7 @@ pub fn calculate_actual_route(
             let next_in_graph = graph.contains_node(entry.station);
             let service_name = prev
                 .service
-                .map(|e| names.get(e).ok())
+                .map(|e| names.get(e.entity()).ok())
                 .flatten()
                 .map(Name::as_str)
                 .unwrap_or("<unnammed>");
@@ -330,9 +333,12 @@ pub fn populate_services(
         let Ok((mut schedule_cache, schedule)) = schedules.get_mut(parent.0) else {
             continue;
         };
-        let mut pool: Vec<(Entity, SmallVec<[std::ops::Range<usize>; 1]>)> = Vec::new();
+        let mut pool: Vec<(
+            Instance<VehicleService>,
+            SmallVec<[std::ops::Range<usize>; 1]>,
+        )> = Vec::new();
         let mut start: usize = 0;
-        let mut previous_service: Option<Entity> = None;
+        let mut previous_service: Option<Instance<VehicleService>> = None;
         for (idx, entry_entity) in schedule.entities.iter().enumerate() {
             let Ok((entry, _)) = entries.get(*entry_entity) else {
                 start = idx;
@@ -408,7 +414,7 @@ impl VehicleScheduleCache {
         };
         let i = self
             .service_entities
-            .binary_search_by_key(&service, |(e, _)| *e);
+            .binary_search_by_key(&service, |(e, _)| e.entity());
         let Ok(i) = i else { return None };
         let (_, entries) = &self.service_entities[i];
         let mut ret = Vec::with_capacity(entries.len());
@@ -423,14 +429,17 @@ impl VehicleScheduleCache {
         };
         let i = self
             .service_entities
-            .binary_search_by_key(&service, |(e, _)| *e);
+            .binary_search_by_key(&service, |(e, _)| e.entity());
         let Ok(i) = i else { return None };
         return self.service_entities[i]
             .1
             .first()
             .and_then(|e| Some(actual_route[e.start]));
     }
-    pub fn get_service_last_entry(&self, service: Entity) -> Option<ActualRouteEntry> {
+    pub fn get_service_last_entry(
+        &self,
+        service: Instance<VehicleService>,
+    ) -> Option<ActualRouteEntry> {
         let Some(actual_route) = &self.actual_route else {
             return None;
         };

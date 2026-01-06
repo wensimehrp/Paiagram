@@ -74,7 +74,7 @@ struct Cli {
         long = "open",
         help = "Path to a .paiagram file (or any other compatible file formats) to open on startup"
     )]
-open: Option<String>,
+    open: Option<String>,
 }
 
 fn handle_args(cli: In<Cli>, mut msg: MessageWriter<rw_data::ModifyData>) {

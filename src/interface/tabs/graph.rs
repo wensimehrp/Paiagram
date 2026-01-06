@@ -3,18 +3,21 @@ use crate::intervals::{Graph, Interval, Station};
 use crate::lines::DisplayedLine;
 use crate::rw_data::write::write_text_file;
 use crate::vehicles::entries::{TimetableEntry, TimetableEntryCache, VehicleScheduleCache};
+use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
-use egui::{Color32, Pos2, Rect, Sense, Stroke, Ui, Vec2};
+use bevy::tasks::{AsyncComputeTaskPool, Task};
+use egui::{Color32, Context, Pos2, Rect, Sense, Stroke, Ui, Vec2};
 use egui_i18n::tr;
 use either::Either::{Left, Right};
 use emath::{self, RectTransform};
 use moonshine_core::kind::{InsertInstanceWorld, Instance};
-use petgraph::Direction::Outgoing;
+use petgraph::Direction;
 use petgraph::dot;
 use petgraph::visit::EdgeRef;
 use serde::{Deserialize, Serialize};
 use visgraph::layout::force_directed::force_directed_layout;
 
+// TODO: display scale on ui.
 // TODO: implement snapping and alignment guides when moving stations
 #[derive(Clone, Serialize, Deserialize)]
 pub struct GraphTab {
@@ -26,6 +29,8 @@ pub struct GraphTab {
     edit_mode: Option<EditMode>,
     animation_counter: f32,
     animation_playing: bool,
+    iterations: u32,
+    query_region_buffer: String,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -49,6 +54,8 @@ impl Default for GraphTab {
             edit_mode: None,
             animation_playing: false,
             animation_counter: 0.0,
+            iterations: 3000,
+            query_region_buffer: String::new(),
         }
     }
 }
@@ -63,11 +70,66 @@ impl Tab for GraphTab {
     fn edit_display(&mut self, world: &mut World, ui: &mut Ui) {
         ui.group(|ui| {
             ui.label(tr!("tab-graph-auto-arrange-desc"));
-            if ui.button(tr!("tab-graph-auto-arrange")).clicked() {
-                if let Err(e) = world.run_system_cached(auto_arrange_graph) {
-                    error!("Error while auto-arranging graph: {}", e);
+            ui.add(
+                egui::Slider::new(&mut self.iterations, 100..=10000)
+                    .text(tr!("tab-graph-auto-arrange-iterations")),
+            );
+            ui.horizontal(|ui| {
+                if ui.button(tr!("tab-graph-auto-arrange")).clicked() {
+                    if let Err(e) = world.run_system_cached_with(
+                        auto_arrange_graph,
+                        (ui.ctx().clone(), self.iterations),
+                    ) {
+                        error!("Error while auto-arranging graph: {}", e);
+                    }
                 }
-            }
+                if world
+                    .query::<&GraphLayoutTask>()
+                    .iter(world)
+                    .next()
+                    .is_some()
+                {
+                    ui.add(egui::Spinner::new());
+                };
+            });
+            ui.separator();
+            ui.label(tr!("tab-graph-arrange-via-osm-desc"));
+            ui.horizontal(|ui| {
+                if ui.button(tr!("tab-graph-arrange-via-osm-terms")).clicked() {
+                    ui.ctx().open_url(egui::OpenUrl {
+                        url: "https://osmfoundation.org/wiki/Terms_of_Use".into(),
+                        new_tab: true,
+                    });
+                }
+                if ui.button(tr!("tab-graph-arrange-via-osm")).clicked() {
+                    if let Err(e) = world.run_system_cached_with(
+                        arrange_via_osm,
+                        (
+                            ui.ctx().clone(),
+                            if self.query_region_buffer.is_empty() {
+                                None
+                            } else {
+                                Some(self.query_region_buffer.clone())
+                            },
+                        ),
+                    ) {
+                        error!("Error while arranging graph via OSM: {}", e);
+                    }
+                }
+                // add a progress bar here
+                if world
+                    .query::<&GraphLayoutTask>()
+                    .iter(world)
+                    .next()
+                    .is_some()
+                {
+                    ui.add(egui::Spinner::new());
+                };
+            });
+            ui.horizontal(|ui| {
+                ui.label(tr!("tab-graph-osm-area-name"));
+                ui.text_edit_singleline(&mut self.query_region_buffer);
+            })
         });
         ui.group(|ui| {
             ui.label(tr!("tab-graph-animation"));
@@ -134,7 +196,7 @@ impl Tab for GraphTab {
         tr!("tab-graph").into()
     }
     fn export_display(&mut self, world: &mut World, ui: &mut egui::Ui) {
-        let mut buffer = String::with_capacity(4096);
+        let mut buffer = String::with_capacity(32768);
         if ui.button("Export Graph as DOT file").clicked() {
             if let Err(e) = world.run_system_cached_with(make_dot_string, &mut buffer) {
                 bevy::log::error!("Error while generating DOT string: {}", e);
@@ -170,16 +232,238 @@ fn display_displayed_line(
     }
 }
 
-fn auto_arrange_graph(graph: Res<Graph>, mut stations: Query<&mut Station>) {
-    const SHIFT_FACTOR: f32 = 500.0;
-    let inner = &graph.inner();
-    let layout = force_directed_layout(&inner, 3000, 0.1);
-    for node in inner.node_indices() {
-        let pos = layout(node);
-        if let Ok(mut station) = stations.get_mut(graph.entity(node).unwrap().entity()) {
-            station.0 = Pos2::new(pos.0 * SHIFT_FACTOR, pos.1 * SHIFT_FACTOR);
+#[derive(Component)]
+pub struct GraphLayoutTask(pub Task<(Vec<(Instance<Station>, Pos2)>, Vec<Instance<Station>>)>);
+
+pub fn apply_graph_layout(
+    mut commands: Commands,
+    mut tasks: Populated<(Entity, &mut GraphLayoutTask)>,
+    mut stations: Query<&mut Station>,
+    graph: Res<Graph>,
+) {
+    for (entity, mut task) in &mut tasks {
+        if let Some((found, not_found)) =
+            bevy::tasks::block_on(bevy::tasks::futures_lite::future::poll_once(&mut task.0))
+        {
+            for (station_instance, pos) in found {
+                if let Ok(mut station) = stations.get_mut(station_instance.entity()) {
+                    station.0 = pos;
+                }
+            }
+            // find the connecting edges for stations that were not found
+            // then find the average position of their connected stations
+            // then assign that position to the not found station
+            for station_instance in not_found {
+                info!(
+                    "Station {:?} is not found in database, arranging via neighbors",
+                    station_instance
+                );
+                let Some(node_index) = graph.node_index(station_instance) else {
+                    error!("Station {:?} not found in graph", station_instance);
+                    continue;
+                };
+                let neighbors: Vec<_> = graph
+                    .inner()
+                    .neighbors(node_index)
+                    .filter_map(|n| {
+                        let a = graph.entity(n);
+                        a.and_then(|e| stations.get(e.entity()).ok())
+                    })
+                    .collect();
+                let average_pos = if neighbors.is_empty() {
+                    Pos2::new(0.0, 0.0)
+                } else {
+                    let sum = neighbors
+                        .iter()
+                        .map(|s| s.0)
+                        .fold(Pos2::new(0.0, 0.0), |acc, p| acc + p.to_vec2());
+                    sum / (neighbors.len() as f32)
+                };
+                if let Ok(mut station) = stations.get_mut(station_instance.entity()) {
+                    station.0 = average_pos;
+                }
+            }
+            commands.entity(entity).despawn();
+            info!("Finished applying graph layout");
         }
     }
+}
+
+fn auto_arrange_graph(
+    (In(ctx), In(iterations)): (In<Context>, In<u32>),
+    mut commands: Commands,
+    graph: Res<Graph>,
+) {
+    let inner = graph.inner().clone();
+    let thread_pool = AsyncComputeTaskPool::get();
+    let task = thread_pool.spawn(async move {
+        let graph_ref = &inner;
+        let layout = force_directed_layout(&graph_ref, iterations, 0.1);
+        let results = inner
+            .node_indices()
+            .map(|node| {
+                let pos = layout(node);
+                (inner[node], Pos2::new(pos.0 * 500.0, pos.1 * 500.0))
+            })
+            .collect::<Vec<_>>();
+        ctx.request_repaint();
+        // No stations are "not found" in this method
+        (results, Vec::new())
+    });
+    commands.spawn(GraphLayoutTask(task));
+}
+
+#[derive(Deserialize)]
+struct OSMResponse {
+    elements: Vec<OSMElement>,
+}
+
+impl OSMResponse {
+    fn get_element_by_name(&self, name: &str) -> Option<&OSMElement> {
+        // find the element with the closest matching name
+        let mut best_match: Option<(&OSMElement, f64, &str)> = None;
+
+        for element in &self.elements {
+            for (k, v) in &element.tags {
+                if !k.starts_with("name") {
+                    continue;
+                }
+
+                if v == name {
+                    return Some(element);
+                }
+
+                let score = strsim::jaro_winkler(name, v);
+                if score > 0.9 {
+                    if best_match.as_ref().map_or(true, |&(_, s, _)| score > s) {
+                        best_match = Some((element, score, v));
+                    }
+                }
+            }
+        }
+
+        if let Some((element, score, matched_name)) = best_match {
+            info!(
+                "Fuzzy matched '{}' to '{:?}' (score: {:.2})",
+                name, matched_name, score
+            );
+            Some(element)
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct OSMElement {
+    lat: f64,
+    lon: f64,
+    tags: HashMap<String, String>,
+}
+
+impl OSMElement {
+    fn to_pos2(&self) -> Pos2 {
+        // Web Mercator projection (EPSG:3857)
+        // This preserves angles and local shapes, making the map look "natural".
+        let lat_rad = self.lat.to_radians();
+        let lon_rad = self.lon.to_radians();
+
+        const EARTH_RADIUS: f64 = 6378137.0;
+
+        let x = EARTH_RADIUS * lon_rad;
+        let y = EARTH_RADIUS * ((lat_rad / 2.0) + (std::f64::consts::PI / 4.0)).tan().ln();
+
+        // In Egui, Y increases downwards. Mapping North to smaller Y (Up)
+        // and East to larger X (Right).
+        Pos2::new(x as f32, -y as f32)
+    }
+}
+
+fn arrange_via_osm(
+    (In(ctx), In(area_name)): (In<Context>, In<Option<String>>),
+    mut commands: Commands,
+    station_names: Query<(Instance<Station>, &Name)>,
+) {
+    info!("Arranging graph via OSM with parameters...");
+    info!(?area_name);
+    let station_names: Vec<(Instance<Station>, String)> = station_names
+        .iter()
+        .map(|(instance, name)| (instance, name.to_string()))
+        .collect();
+    let thread_pool = AsyncComputeTaskPool::get();
+
+    let task = thread_pool.spawn(async move {
+        let mut found: Vec<(Instance<Station>, Pos2)> = Vec::new();
+        let mut not_found: Vec<Instance<Station>> = Vec::new();
+        // 1. Split stations into chunks of 50 to avoid "Request-URI Too Large" or timeouts
+        for chunk in station_names.chunks(50) {
+            // Build Overpass Query for the chunk
+            let names_regex = chunk
+                .iter()
+                .map(|(_, name)| name.as_str())
+                .collect::<Vec<_>>()
+                .join("|");
+
+            let (area_def, area_filter) = match area_name.as_ref() {
+                Some(area) => (
+                    format!(r#"area[name="{}"]->.searchArea;"#, area),
+                    "(area.searchArea)",
+                ),
+                None => ("".to_string(), ""),
+            };
+
+            let query = format!(
+                r#"[out:json];{}(node[~"^(railway|public_transport|station|subway|light_rail)$"~"^(station|halt|stop|tram_stop|subway_entrance|monorail_station|light_rail_station|narrow_gauge_station|funicular_station|preserved|disused_station|stop_position|platform|stop_area|subway|railway|tram|yes)$"][~"name(:.*)?"~"^({})$"]{};);out;"#,
+                area_def, names_regex, area_filter
+            );
+
+            // 2. Fetch data from Overpass API using a POST request to handle large queries
+            let url = "https://overpass.kumi.systems/api/interpreter";
+            let request = ehttp::Request::post(
+                url,
+                format!("data={}", urlencoding::encode(&query)).into_bytes(),
+            );
+
+            let response = match ehttp::fetch_async(request).await {
+                Ok(resp) => resp,
+                Err(e) => {
+                    error!("Failed to fetch OSM data for chunk: {}", e);
+                    continue;
+                }
+            };
+
+            let osm_data: OSMResponse = match response.json() {
+                Ok(data) => data,
+                Err(e) => {
+                    error!(
+                        "Failed to parse OSM data: {}, response: {:?}",
+                        e,
+                        response.text()
+                    );
+                    continue;
+                }
+            };
+
+            // 3. Match stations and get positions for this chunk
+            for (instance, name) in chunk {
+                if let Some(osm_element) = osm_data.get_element_by_name(name) {
+                    let pos = osm_element.to_pos2();
+                    found.push((*instance, pos));
+                    info!(
+                        "Matched station '{}' to OSM element at position {:?}",
+                        name, pos
+                    );
+                } else {
+                    warn!("No matching OSM element found for station: {}", name);
+                    not_found.push(*instance);
+                }
+            }
+        }
+        ctx.request_repaint();
+        (found, not_found)
+    });
+
+    commands.spawn(GraphLayoutTask(task));
 }
 
 fn make_dot_string(InMut(buffer): InMut<String>, graph: Res<Graph>, names: Query<&Name>) {
@@ -339,13 +623,16 @@ fn show_graph(
         let to_screen = RectTransform::from_to(world_rect, response.rect);
         // draw edges
         for (from, to, _weight) in graph.inner().node_indices().flat_map(|n| {
-            graph.inner().edges_directed(n, Outgoing).map(|a| {
-                (
-                    graph.entity(a.source()).unwrap(),
-                    graph.entity(a.target()).unwrap(),
-                    a.weight(),
-                )
-            })
+            graph
+                .inner()
+                .edges_directed(n, Direction::Outgoing)
+                .map(|a| {
+                    (
+                        graph.entity(a.source()).unwrap(),
+                        graph.entity(a.target()).unwrap(),
+                        a.weight(),
+                    )
+                })
         }) {
             let Ok((_, from_station)) = stations.get(from.entity()) else {
                 continue;
@@ -407,7 +694,9 @@ fn show_graph(
                         }
                         (Some(EditMode::EditDisplayedLine(e)), true) => {
                             if let Ok((_, mut line)) = displayed_lines.get_mut(e.entity()) {
-                                line.push((node, 0.0));
+                                if let Err(e) = line.push((node, 0.0)) {
+                                    error!("Failed to add station to line: {:?}", e);
+                                }
                             }
                         }
                     }
@@ -462,7 +751,7 @@ fn show_graph(
                             Color32::from_rgb(100, 200, 100),
                         );
                     }
-                    Right(station_pos) => {}
+                    Right(_station_pos) => {}
                 };
             }
         }

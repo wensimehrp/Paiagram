@@ -1,4 +1,4 @@
-use crate::{intervals::Station, vehicles::entries::TimetableEntry};
+use crate::{intervals::Station, vehicles::services::VehicleService};
 use bevy::prelude::*;
 use moonshine_core::kind::Instance;
 use smallvec::{SmallVec, smallvec};
@@ -36,7 +36,7 @@ pub enum TimetableAdjustment {
     SetDepartureType(Option<entries::TravelMode>),
     AdjustDepartureTime(crate::units::time::Duration),
     SetStation(Instance<Station>),
-    SetService(Option<Entity>),
+    SetService(Option<Instance<VehicleService>>),
     SetTrack(Option<Entity>),
     SetNote(Option<String>),
     PassThrough,

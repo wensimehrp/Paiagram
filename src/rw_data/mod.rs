@@ -3,8 +3,8 @@
 pub mod custom;
 pub mod oudiasecond;
 pub mod qetrc;
-pub mod write;
 pub mod save;
+pub mod write;
 
 use bevy::prelude::*;
 use serde::Deserialize;
@@ -42,7 +42,7 @@ pub enum ModifyData {
     LoadQETRC(String),
     LoadOuDiaSecond(String),
     LoadCustom(String),
-    LoadOnlineData(String, DataType)
+    LoadOnlineData(String, DataType),
 }
 
 fn clear_resources(

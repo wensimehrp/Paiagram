@@ -66,7 +66,9 @@ pub mod vec_instance_f32_serde {
             .serialize(serializer)
     }
 
-    pub fn deserialize<'de, D, T: Kind>(deserializer: D) -> Result<Option<Vec<(Instance<T>, f32)>>, D::Error>
+    pub fn deserialize<'de, D, T: Kind>(
+        deserializer: D,
+    ) -> Result<Option<Vec<(Instance<T>, f32)>>, D::Error>
     where
         D: Deserializer<'de>,
     {

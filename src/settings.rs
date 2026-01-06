@@ -1,7 +1,7 @@
+pub use crate::i18n::Language;
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use strum_macros::EnumIter;
-pub use crate::i18n::Language;
 
 pub struct SettingsPlugin;
 impl Plugin for SettingsPlugin {
