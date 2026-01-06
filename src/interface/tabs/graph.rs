@@ -1,44 +1,43 @@
 use super::Tab;
-use crate::intervals::{Graph, IntervalGraphType, Station};
+use crate::intervals::{Graph, Interval, Station};
 use crate::lines::DisplayedLine;
 use crate::rw_data::write::write_text_file;
-use crate::units::time::{Duration, TimetableTime};
 use crate::vehicles::entries::{TimetableEntry, TimetableEntryCache, VehicleScheduleCache};
 use bevy::prelude::*;
-use egui::{Color32, Pos2, Rect, Sense, Stroke, Ui, UiBuilder, Vec2};
+use egui::{Color32, Pos2, Rect, Sense, Stroke, Ui, Vec2};
 use egui_i18n::tr;
 use either::Either::{Left, Right};
 use emath::{self, RectTransform};
-use moonshine_core::kind::Instance;
+use moonshine_core::kind::{InsertInstanceWorld, Instance};
 use petgraph::Direction::Outgoing;
 use petgraph::dot;
 use petgraph::visit::EdgeRef;
 use serde::{Deserialize, Serialize};
-use visgraph::Orientation::TopToBottom;
 use visgraph::layout::force_directed::force_directed_layout;
-use visgraph::layout::hierarchical::hierarchical_layout;
 
 // TODO: implement snapping and alignment guides when moving stations
 #[derive(Clone, Serialize, Deserialize)]
 pub struct GraphTab {
     zoom: f32,
     translation: Vec2,
+    #[serde(skip)]
     selected_item: Option<SelectedItem>,
+    #[serde(skip)]
     edit_mode: Option<EditMode>,
     animation_counter: f32,
     animation_playing: bool,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy)]
 enum EditMode {
-    EditDisplayedLine(Entity),
+    EditDisplayedLine(Instance<DisplayedLine>),
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy)]
 enum SelectedItem {
-    Node(Entity),
-    Edge(Entity),
-    DisplayedLine(Entity),
+    Node(Instance<Station>),
+    Edge(Instance<Interval>),
+    DisplayedLine(Instance<DisplayedLine>),
 }
 
 impl Default for GraphTab {
@@ -100,11 +99,9 @@ impl Tab for GraphTab {
                         return;
                     }
                     let new_displayed_line = world
-                        .spawn((
-                            DisplayedLine::new(vec![]),
-                            Name::new(tr!("new-displayed-line")),
-                        ))
-                        .id();
+                        .spawn((Name::new(tr!("new-displayed-line")),))
+                        .insert_instance(DisplayedLine::new(vec![]))
+                        .into();
                     self.edit_mode = Some(EditMode::EditDisplayedLine(new_displayed_line));
                     self.selected_item = Some(SelectedItem::DisplayedLine(new_displayed_line));
                 });
@@ -117,11 +114,12 @@ impl Tab for GraphTab {
                     if ui.button(tr!("done")).clicked() {
                         // check if the displayed line is empty
                         // if so, delete it
-                        if let Ok((_, line)) =
-                            world.query::<(&Name, &DisplayedLine)>().get(world, e)
+                        if let Ok((_, line)) = world
+                            .query::<(&Name, &DisplayedLine)>()
+                            .get(world, e.entity())
                         {
                             if line.stations().is_empty() {
-                                world.entity_mut(e).despawn();
+                                world.entity_mut(e.entity()).despawn();
                             }
                         }
                         self.edit_mode = None;
@@ -153,11 +151,11 @@ impl Tab for GraphTab {
 }
 
 fn display_displayed_line(
-    (InMut(ui), In(entity)): (InMut<Ui>, In<Entity>),
+    (InMut(ui), In(entity)): (InMut<Ui>, In<Instance<DisplayedLine>>),
     displayed_lines: Query<(&Name, &DisplayedLine)>,
     stations: Query<&Name, With<Station>>,
 ) {
-    let Ok((name, line)) = displayed_lines.get(entity) else {
+    let Ok((name, line)) = displayed_lines.get(entity.entity()) else {
         return;
     };
     ui.heading(name.as_str());
@@ -405,10 +403,10 @@ fn show_graph(
                     match (state.edit_mode, resp.clicked()) {
                         (_, false) => {}
                         (None, true) => {
-                            state.selected_item = Some(SelectedItem::Node(node.entity()));
+                            state.selected_item = Some(SelectedItem::Node(node));
                         }
                         (Some(EditMode::EditDisplayedLine(e)), true) => {
-                            if let Ok((_, mut line)) = displayed_lines.get_mut(e) {
+                            if let Ok((_, mut line)) = displayed_lines.get_mut(e.entity()) {
                                 line.push((node, 0.0));
                             }
                         }
