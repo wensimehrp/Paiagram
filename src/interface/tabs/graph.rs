@@ -299,7 +299,7 @@ fn draw_line_spline(
 fn show_graph(
     (InMut(ui), mut state): (InMut<egui::Ui>, InMut<GraphTab>),
     graph: Res<Graph>,
-    mut displayed_lines: Query<(Entity, &mut DisplayedLine)>,
+    mut displayed_lines: Query<(Instance<DisplayedLine>, &mut DisplayedLine)>,
     mut stations: Query<(&Name, &mut Station)>,
     schedules: Query<&VehicleScheduleCache>,
     timetable_entries: Query<(&TimetableEntry, &TimetableEntryCache)>,
@@ -338,7 +338,7 @@ fn show_graph(
         }
         let to_screen = RectTransform::from_to(world_rect, response.rect);
         // draw edges
-        for (from, to, weight) in graph.inner().node_indices().flat_map(|n| {
+        for (from, to, _weight) in graph.inner().node_indices().flat_map(|n| {
             graph.inner().edges_directed(n, Outgoing).map(|a| {
                 (
                     graph.entity(a.source()).unwrap(),
@@ -393,7 +393,7 @@ fn show_graph(
             ui.place(
                 Rect::from_pos(to_screen * *pos).expand(10.0),
                 |ui: &mut Ui| {
-                    let (rect, resp) =
+                    let (_rect, resp) =
                         ui.allocate_exact_size(ui.available_size(), Sense::click_and_drag());
                     let fill = if resp.hovered() {
                         Color32::YELLOW
@@ -411,7 +411,7 @@ fn show_graph(
                             }
                         }
                     }
-                    if matches!(state.selected_item, Some(SelectedItem::Node(n)) if n == node.entity()) {
+                    if matches!(state.selected_item, Some(SelectedItem::Node(n)) if n == node) {
                         focused_pos = Some((*pos, Pos2::ZERO));
                     }
                     ui.painter().circle_filled(to_screen * *pos, 10.0, fill);

@@ -21,8 +21,8 @@ side-panel-export-fallback-2 = 太可恶了这个作者怎么什么都没有做
 # Tabs
 # Start tab
 tab-start = 开始
-tab-start-version = Version: {$version}
-tab-start-revision = Revision: {$revision}
+tab-start-version = 版本：{$version}
+tab-start-revision = 开发号：{$revision}
 tab-start-description = A high-performance transport timetable diagramming and analysis tool built with egui and Bevy.
 # Settings tab
 tab-settings = 设置
@@ -45,3 +45,7 @@ done = 完成
 
 # RW data
 oud2-default-line = OUD2 默认运行线
+oud2-unnamed-line = 未命名路线 {$number}
+oud2-unnamed-station = 未命名车站 {$number}
+oud2-unnamed-diagram = 未命名运行图 {$number}
+oud2-unnamed-train = 未命名列车 {$number}
