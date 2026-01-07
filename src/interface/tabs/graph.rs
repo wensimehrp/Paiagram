@@ -3,6 +3,7 @@ use crate::intervals::{Graph, Interval, Station};
 use crate::lines::DisplayedLine;
 use crate::rw_data::write::write_text_file;
 use crate::vehicles::entries::{TimetableEntry, TimetableEntryCache, VehicleScheduleCache};
+use bevy::ecs::entity::EntityHashSet;
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use bevy::tasks::{AsyncComputeTaskPool, Task};
@@ -15,6 +16,7 @@ use petgraph::Direction;
 use petgraph::dot;
 use petgraph::visit::EdgeRef;
 use serde::{Deserialize, Serialize};
+use std::collections::{HashSet, VecDeque};
 use visgraph::layout::force_directed::force_directed_layout;
 
 // TODO: display scale on ui.
@@ -68,6 +70,11 @@ impl Tab for GraphTab {
         }
     }
     fn edit_display(&mut self, world: &mut World, ui: &mut Ui) {
+        let show_spinner = world
+            .query::<&GraphLayoutTask>()
+            .iter(world)
+            .next()
+            .is_some();
         ui.group(|ui| {
             ui.label(tr!("tab-graph-auto-arrange-desc"));
             ui.add(
@@ -83,12 +90,7 @@ impl Tab for GraphTab {
                         error!("Error while auto-arranging graph: {}", e);
                     }
                 }
-                if world
-                    .query::<&GraphLayoutTask>()
-                    .iter(world)
-                    .next()
-                    .is_some()
-                {
+                if show_spinner {
                     ui.add(egui::Spinner::new());
                 };
             });
@@ -117,12 +119,7 @@ impl Tab for GraphTab {
                     }
                 }
                 // add a progress bar here
-                if world
-                    .query::<&GraphLayoutTask>()
-                    .iter(world)
-                    .next()
-                    .is_some()
-                {
+                if show_spinner {
                     ui.add(egui::Spinner::new());
                 };
             });
@@ -238,57 +235,79 @@ pub struct GraphLayoutTask(pub Task<(Vec<(Instance<Station>, Pos2)>, Vec<Instanc
 pub fn apply_graph_layout(
     mut commands: Commands,
     mut tasks: Populated<(Entity, &mut GraphLayoutTask)>,
-    mut stations: Query<&mut Station>,
+    mut stations: Query<(NameOrEntity, &mut Station)>,
     graph: Res<Graph>,
 ) {
     for (entity, mut task) in &mut tasks {
-        if let Some((found, not_found)) =
+        let Some((found, not_found)) =
             bevy::tasks::block_on(bevy::tasks::futures_lite::future::poll_once(&mut task.0))
-        {
-            for (station_instance, pos) in found {
-                if let Ok(mut station) = stations.get_mut(station_instance.entity()) {
-                    station.0 = pos;
-                }
+        else {
+            continue;
+        };
+        for (station_instance, pos) in found {
+            if let Ok((_, mut station)) = stations.get_mut(station_instance.entity()) {
+                station.0 = pos;
             }
-            // find the connecting edges for stations that were not found
-            // then find the average position of their connected stations
-            // then assign that position to the not found station
-            for station_instance in not_found {
-                info!(
-                    "Station {:?} is not found in database, arranging via neighbors",
-                    station_instance
-                );
-                let Some(node_index) = graph.node_index(station_instance) else {
-                    error!("Station {:?} not found in graph", station_instance);
-                    continue;
-                };
-                let neighbors: Vec<_> = graph
-                    .inner()
-                    .neighbors(node_index)
-                    .filter_map(|n| {
-                        let a = graph.entity(n);
-                        a.and_then(|e| stations.get(e.entity()).ok())
-                    })
-                    .collect();
-                let average_pos = if neighbors.is_empty() {
-                    Pos2::new(0.0, 0.0)
-                } else {
-                    let sum = neighbors
-                        .iter()
-                        .map(|s| s.0)
-                        .fold(Pos2::new(0.0, 0.0), |acc, p| acc + p.to_vec2());
-                    sum / (neighbors.len() as f32)
-                };
-                if let Ok(mut station) = stations.get_mut(station_instance.entity()) {
-                    station.0 = average_pos;
-                }
-            }
-            commands.entity(entity).despawn();
-            info!("Finished applying graph layout");
         }
+        let not_found_entities: EntityHashSet = not_found.iter().map(|s| s.entity()).collect();
+        // find the connecting edges for stations that were not found
+        // then find the average position of their connected stations
+        // then assign that position to the not found station
+        for station_instance in not_found.iter().copied() {
+            info!(
+                "Station {:?} is not found in database, arranging via neighbors",
+                stations
+                    .get(station_instance.entity())
+                    .map_or("<Unknown>".to_string(), |(name, _)| name.to_string())
+            );
+            let Some(node_index) = graph.node_index(station_instance) else {
+                error!("Station {:?} not found in graph", station_instance);
+                continue;
+            };
+
+            let mut valid_neighbor_positions = Vec::new();
+            let mut visited = HashSet::new();
+            visited.insert(node_index);
+
+            let mut queue = VecDeque::new();
+            queue.push_back(node_index);
+
+            while let Some(current_node) = queue.pop_front() {
+                for neighbor_index in graph.inner().neighbors_undirected(current_node) {
+                    if !visited.insert(neighbor_index) {
+                        continue;
+                    }
+                    let Some(stn_instance) = graph.entity(neighbor_index) else {
+                        continue;
+                    };
+                    if not_found_entities.contains(&stn_instance.entity()) {
+                        queue.push_back(neighbor_index);
+                    } else if let Ok((_, stn)) = stations.get(stn_instance.entity()) {
+                        valid_neighbor_positions.push(stn.0);
+                    }
+                }
+            }
+
+            let average_pos = if valid_neighbor_positions.is_empty() {
+                Pos2::new(0.0, 0.0)
+            } else {
+                let sum_x: f32 = valid_neighbor_positions.iter().map(|p| p.x).sum();
+                let sum_y: f32 = valid_neighbor_positions.iter().map(|p| p.y).sum();
+                Pos2::new(
+                    sum_x / valid_neighbor_positions.len() as f32,
+                    sum_y / valid_neighbor_positions.len() as f32,
+                )
+            };
+            if let Ok((_, mut station)) = stations.get_mut(station_instance.entity()) {
+                station.0 = average_pos;
+            }
+        }
+        commands.entity(entity).despawn();
+        info!("Finished applying graph layout");
     }
 }
 
+// TODO: move layout algorithms to a separate module
 fn auto_arrange_graph(
     (In(ctx), In(iterations)): (In<Context>, In<u32>),
     mut commands: Commands,
@@ -379,26 +398,37 @@ impl OSMElement {
     }
 }
 
+// TODO: move all OSM reading related stuff into a separate module
 fn arrange_via_osm(
     (In(ctx), In(area_name)): (In<Context>, In<Option<String>>),
     mut commands: Commands,
     station_names: Query<(Instance<Station>, &Name)>,
 ) {
+    const MAX_RETRY_COUNT: usize = 3;
     info!("Arranging graph via OSM with parameters...");
     info!(?area_name);
-    let station_names: Vec<(Instance<Station>, String)> = station_names
+    let mut task_queue: VecDeque<(_, usize)> = station_names
         .iter()
         .map(|(instance, name)| (instance, name.to_string()))
+        .collect::<Vec<_>>()
+        .chunks(50)
+        .map(|chunk| (chunk.to_vec(), 0))
         .collect();
     let thread_pool = AsyncComputeTaskPool::get();
 
     let task = thread_pool.spawn(async move {
         let mut found: Vec<(Instance<Station>, Pos2)> = Vec::new();
         let mut not_found: Vec<Instance<Station>> = Vec::new();
-        // 1. Split stations into chunks of 50 to avoid "Request-URI Too Large" or timeouts
-        for chunk in station_names.chunks(50) {
+        while let Some((task, retry_count)) = task_queue.pop_front() {
+            if retry_count >= MAX_RETRY_COUNT {
+                error!("Max retry count reached for chunk: {:?}", task);
+                for (instance, _) in task {
+                    not_found.push(instance);
+                }
+                continue;
+            }
             // Build Overpass Query for the chunk
-            let names_regex = chunk
+            let names_regex = task
                 .iter()
                 .map(|(_, name)| name.as_str())
                 .collect::<Vec<_>>()
@@ -418,7 +448,7 @@ fn arrange_via_osm(
             );
 
             // 2. Fetch data from Overpass API using a POST request to handle large queries
-            let url = "https://overpass.kumi.systems/api/interpreter";
+            let url = "https://maps.mail.ru/osm/tools/overpass/api/interpreter";
             let request = ehttp::Request::post(
                 url,
                 format!("data={}", urlencoding::encode(&query)).into_bytes(),
@@ -428,6 +458,7 @@ fn arrange_via_osm(
                 Ok(resp) => resp,
                 Err(e) => {
                     error!("Failed to fetch OSM data for chunk: {}", e);
+                    task_queue.push_back((task, retry_count + 1));
                     continue;
                 }
             };
@@ -440,22 +471,23 @@ fn arrange_via_osm(
                         e,
                         response.text()
                     );
+                    task_queue.push_back((task, retry_count + 1));
                     continue;
                 }
             };
 
             // 3. Match stations and get positions for this chunk
-            for (instance, name) in chunk {
-                if let Some(osm_element) = osm_data.get_element_by_name(name) {
+            for (instance, name) in task {
+                if let Some(osm_element) = osm_data.get_element_by_name(&name) {
                     let pos = osm_element.to_pos2();
-                    found.push((*instance, pos));
+                    found.push((instance, pos));
                     info!(
                         "Matched station '{}' to OSM element at position {:?}",
                         name, pos
                     );
                 } else {
                     warn!("No matching OSM element found for station: {}", name);
-                    not_found.push(*instance);
+                    not_found.push(instance);
                 }
             }
         }
@@ -712,6 +744,7 @@ fn show_graph(
             );
         }
 
+        /*
         let stations_readonly = stations.as_readonly();
         displayed_lines
             .as_readonly()
@@ -725,6 +758,7 @@ fn show_graph(
                     &stations_readonly,
                 );
             });
+        */
         if state.animation_playing {
             for section in schedules.iter().filter_map(|s| {
                 s.position(state.animation_counter, |e| timetable_entries.get(e).ok())
