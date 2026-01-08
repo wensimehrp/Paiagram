@@ -315,6 +315,24 @@ impl<'w> egui_dock::TabViewer for SidePanelViewer<'w> {
             ui.label("No tabs focused. Open a tab to see its properties.");
             return;
         };
+        use egui::NumExt;
+        let dt = ui.ctx().input(|input| input.stable_dt).at_most(0.1);
+        let t = egui::emath::exponential_smooth_factor(0.9, 0.2, dt);
+        let mut repaint = false;
+        let opacity = ui.ctx().data_mut(|map| {
+            let opacity: &mut f32 = map.get_temp_mut_or(Id::new("side panel opacity"), 0.0);
+            if *opacity > 0.99 {
+                *opacity = 1.0;
+            } else {
+                *opacity = emath::lerp(*opacity..=1.0, t);
+                repaint = true;
+            }
+            *opacity
+        });
+        if repaint {
+            ui.ctx().request_repaint();
+        }
+        ui.multiply_opacity(opacity);
         match tab {
             SidePanelTab::Edit => {
                 for_all_tabs!(focused_tab, t, { t.edit_display(self.world, ui) })
@@ -326,6 +344,31 @@ impl<'w> egui_dock::TabViewer for SidePanelViewer<'w> {
                 for_all_tabs!(focused_tab, t, { t.export_display(self.world, ui) })
             }
         }
+    }
+    fn on_tab_button(&mut self, _tab: &mut Self::Tab, response: &egui::Response) {
+        if !response.clicked() {
+            return;
+        }
+        // we split the check into two parts. The first part is the new tab check
+        let reload = response.ctx.data_mut(|map| {
+            // store the previous tab id
+            let previous_tab =
+                map.get_temp_mut_or(Id::new("side panel previous tab id"), response.id);
+            if *previous_tab != response.id {
+                *previous_tab = response.id;
+                true
+            } else {
+                false
+            }
+        });
+        if !reload {
+            return;
+        }
+        // reset the animation
+        response.ctx.data_mut(|map| {
+            let opacity: &mut f32 = map.get_temp_mut_or(Id::new("side panel opacity"), 0.0);
+            *opacity = 0.0;
+        });
     }
     fn title(&mut self, tab: &mut Self::Tab) -> egui::WidgetText {
         match tab {
