@@ -11,7 +11,7 @@ const PANEL_DEFAULT_SIZE: f32 = 20.0;
 
 use crate::{
     interface::tabs::{PageCache, Tab},
-    graph::{Station, StationCache},
+    graph::{Station, StationEntries},
     lines::DisplayedLine,
 };
 
@@ -57,7 +57,7 @@ fn full_width_button(ui: &mut Ui, text: &str) -> Response {
 fn show_displayed_lines(
     InMut(ui): InMut<Ui>,
     displayed_lines: Query<(Entity, &mut DisplayedLine, &Name)>,
-    station_names: Query<(Entity, &Name, &StationCache), With<Station>>,
+    station_names: Query<(Entity, &Name, &StationEntries), With<Station>>,
     mut selected_line: Local<Option<Entity>>,
     mut selected_station_cache: Local<PageCache<Entity, Option<Entity>>>,
 ) {
@@ -96,7 +96,7 @@ pub fn show_line<'a, F>(
     selected_station: &mut Option<Entity>,
     get_station_info: F,
 ) where
-    F: Fn(Entity) -> Option<(Entity, &'a Name, &'a StationCache)> + Copy + 'a,
+    F: Fn(Entity) -> Option<(Entity, &'a Name, &'a StationEntries)> + Copy + 'a,
 {
     egui::SidePanel::left("inner_left_panel")
         .resizable(true)

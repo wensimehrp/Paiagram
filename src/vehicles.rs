@@ -1,4 +1,4 @@
-use crate::{graph::Station, vehicles::services::VehicleService};
+use crate::{graph::Station, vehicles::{entries::TimetableEntry, services::VehicleService}};
 use bevy::prelude::*;
 use moonshine_core::kind::Instance;
 use smallvec::{SmallVec, smallvec};
@@ -64,31 +64,33 @@ pub struct AdjustVehicle {
 pub fn adjust_timetable_entry(
     mut commands: Commands,
     mut reader: MessageReader<AdjustTimetableEntry>,
-    mut entries: Populated<&mut entries::TimetableEntry>,
+    entries: Populated<&entries::TimetableEntry>,
 ) {
     for msg in reader.read() {
         let AdjustTimetableEntry { entity, adjustment } = msg;
-        let mut entry = match entries.get_mut(*entity) {
+        let entry = match entries.get(*entity) {
             Ok(a) => a,
             Err(e) => {
                 warn!("Failed to adjust timetable entry {entity:?}: {e:?}");
                 continue;
             }
         };
+        let mut new_entry = entry.clone();
 
         use TimetableAdjustment::*;
         match adjustment {
-            AdjustArrivalTime(dt) => entry.arrival.adjust_time(*dt),
-            SetArrivalType(nt) => entry.arrival = *nt,
+            AdjustArrivalTime(dt) => new_entry.arrival.adjust_time(*dt),
+            SetArrivalType(nt) => new_entry.arrival = *nt,
             AdjustDepartureTime(dt) => {
-                entry.departure.as_mut().map(|d| d.adjust_time(*dt));
+                new_entry.departure.as_mut().map(|d| d.adjust_time(*dt));
             }
-            SetDepartureType(nt) => entry.departure = *nt,
-            SetStation(ns) => entry.station = *ns,
-            SetService(ns) => entry.service = *ns,
-            SetTrack(nt) => entry.track = *nt,
+            SetDepartureType(nt) => new_entry.departure = *nt,
+            SetStation(ns) => new_entry.station = ns.entity(),
+            SetService(ns) => new_entry.service = *ns,
+            SetTrack(nt) => new_entry.track = *nt,
             SetNote(note) => {}
-            PassThrough => (),
+            PassThrough => return,
         }
+        commands.entity(*entity).insert(new_entry);
     }
 }

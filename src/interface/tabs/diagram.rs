@@ -4,7 +4,7 @@ use crate::vehicles::entries::{ActualRouteEntry, VehicleScheduleCache};
 use crate::vehicles::vehicle_set::VehicleSet;
 use crate::{
     interface::widgets::{buttons, timetable_popup},
-    graph::{Station, StationCache},
+    graph::{Station, StationEntries},
     lines::DisplayedLine,
     units::time::{Duration, TimetableTime},
     vehicles::{
@@ -244,8 +244,8 @@ fn show_diagram(
     entry_parents: Query<&ChildOf, With<TimetableEntry>>,
     timetable_entries: Query<(&TimetableEntry, &TimetableEntryCache)>,
     station_names: Query<&Name, With<Station>>,
-    station_updated: Query<&StationCache, Changed<StationCache>>,
-    station_caches: Query<&StationCache, With<Station>>,
+    station_updated: Query<&StationEntries, Changed<StationEntries>>,
+    station_caches: Query<&StationEntries, With<Station>>,
     mut selected_element: ResMut<SelectedElement>,
     mut timetable_adjustment_writer: MessageWriter<AdjustTimetableEntry>,
     // Buffer used between all calls to avoid repeated allocations

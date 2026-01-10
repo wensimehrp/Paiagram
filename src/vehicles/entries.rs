@@ -1,5 +1,5 @@
 use crate::{
-    graph::{Graph, Interval, Station},
+    graph::{Graph, Interval, Station, StationEntries},
     units::time::{Duration, TimetableTime},
     vehicles::{AdjustTimetableEntry, services::VehicleService},
 };
@@ -11,7 +11,7 @@ use petgraph::algo::astar;
 use smallvec::{SmallVec, smallvec};
 
 /// How the vehicle travels from/to the station.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy)]
 pub enum TravelMode {
     /// The vehicle travels to or stops at the station at a determined time.
     At(TimetableTime),
@@ -19,6 +19,7 @@ pub enum TravelMode {
     For(Duration),
     /// The time is flexible and calculated.
     /// This could be e.g. for flyover stops or less important intermediate stations.
+    #[default]
     Flexible,
 }
 
@@ -47,15 +48,17 @@ impl std::fmt::Display for TravelMode {
 }
 
 /// An entry in the timetable
-#[derive(Debug, Component)]
+#[derive(Debug, Component, Clone)]
 #[require(TimetableEntryCache)]
+#[relationship(relationship_target = StationEntries)]
 pub struct TimetableEntry {
+    /// The node the vehicle stops at or passes.
+    #[relationship]
+    pub station: Entity,
     /// How would the vehicle arrive at a station.
     pub arrival: TravelMode,
     /// How would the vehicle depart from a station. A `None` value means that the vehicle does not stop at the station.
     pub departure: Option<TravelMode>,
-    /// The node the vehicle stops at or passes.
-    pub station: Instance<Station>,
     /// The service the entry belongs to.
     pub service: Option<Instance<VehicleService>>,
     /// The track/platform/dock/berth etc. at the station.
@@ -63,14 +66,9 @@ pub struct TimetableEntry {
 }
 
 impl TimetableEntry {
-    fn new_derived(station: Instance<Station>, service: Option<Instance<VehicleService>>) -> Self {
-        Self {
-            arrival: TravelMode::Flexible,
-            departure: None,
-            station,
-            service,
-            track: None,
-        }
+    pub fn station(&self) -> Instance<Station> {
+        // SAFETY: station is always a valid Station entity
+        unsafe { Instance::from_entity_unchecked(self.station) }
     }
 }
 
@@ -101,7 +99,7 @@ pub struct VehicleSchedule {
     /// This should always be sorted
     /// In this case, this stores the departure time relative to the starting time.
     pub departures: Vec<Duration>,
-    /// The timetable entities the schedule holds.
+    /// The timetable entities the schedule holds, in order.
     pub entities: Vec<Entity>,
 }
 
@@ -219,19 +217,19 @@ pub fn calculate_actual_route(
                 actual_route_list.push(entity);
                 continue;
             };
-            if prev.station == entry.station {
+            if prev.station() == entry.station() {
                 actual_route_list.push(entity);
                 continue;
             }
-            if graph.contains_edge(prev.station, entry.station) {
+            if graph.contains_edge(prev.station(), entry.station()) {
                 actual_route_list.push(entity);
                 continue;
             }
 
             // If either station isn't in the graph at all (e.g. schedule-only stations), routing
             // is expected to fail. Don't spam warnings or run astar in this case.
-            let prev_in_graph = graph.contains_node(prev.station);
-            let next_in_graph = graph.contains_node(entry.station);
+            let prev_in_graph = graph.contains_node(prev.station());
+            let next_in_graph = graph.contains_node(entry.station());
             let service_name = prev
                 .service
                 .map(|e| names.get(e.entity()).ok())
@@ -239,21 +237,22 @@ pub fn calculate_actual_route(
                 .map(Name::as_str)
                 .unwrap_or("<unnammed>");
             if !(prev_in_graph && next_in_graph) {
-                let pair = (prev.station, entry.station);
+                let pair = (prev.station(), entry.station());
                 if warned_pairs.insert(pair) {
                     let prev_name = names
-                        .get(prev.station.entity())
+                        .get(prev.station().entity())
                         .ok()
                         .map(Name::as_str)
                         .unwrap_or("<unnamed>");
                     let next_name = names
-                        .get(entry.station.entity())
+                        .get(entry.station().entity())
                         .ok()
                         .map(Name::as_str)
                         .unwrap_or("<unnamed>");
                     warn!(
                         "Skipping routing for timetable stations of {service_name} not in graph: {prev_name}({:?}) -> {next_name}({:?}); nodes_in_graph=({prev_in_graph},{next_in_graph})",
-                        prev.station, entry.station
+                        prev.station(),
+                        entry.station()
                     );
                 }
                 actual_route_list.push(entity);
@@ -262,8 +261,8 @@ pub fn calculate_actual_route(
             // compare the stuff between the last and current entries
             let Some((_, path)) = astar(
                 &graph.inner(),
-                graph.node_index(prev.station).unwrap(),
-                |finish| finish == graph.node_index(entry.station).unwrap(),
+                graph.node_index(prev.station()).unwrap(),
+                |finish| finish == graph.node_index(entry.station()).unwrap(),
                 |edge| {
                     if let Ok(interval) = intervals.get(edge.weight().entity()) {
                         interval.length.0
@@ -275,21 +274,22 @@ pub fn calculate_actual_route(
             ) else {
                 // This can happen if the graph is disconnected or if station names don't match
                 // between timetable and line data. Log a single warning per pair per rebuild.
-                let pair = (prev.station, entry.station);
+                let pair = (prev.station(), entry.station());
                 if warned_pairs.insert(pair) {
                     let prev_name = names
-                        .get(prev.station.entity())
+                        .get(prev.station().entity())
                         .ok()
                         .map(Name::as_str)
                         .unwrap_or("<unnamed>");
                     let next_name = names
-                        .get(entry.station.entity())
+                        .get(entry.station().entity())
                         .ok()
                         .map(Name::as_str)
                         .unwrap_or("<unnamed>");
                     warn!(
                         "No route in graph between consecutive timetable stations: {prev_name}({:?}) -> {next_name}({:?})",
-                        prev.station, entry.station
+                        prev.station(),
+                        entry.station()
                     );
                 }
                 actual_route_list.push(entity);
@@ -305,7 +305,13 @@ pub fn calculate_actual_route(
                         .unwrap_or("<unnamed>");
                     info!(?station_name, ?service_name);
                     let derived_entity = commands
-                        .spawn(TimetableEntry::new_derived(station_entity, prev.service))
+                        .spawn((TimetableEntry {
+                            station: station_entity.entity(),
+                            service: prev.service,
+                            arrival: TravelMode::Flexible,
+                            departure: None,
+                            track: None,
+                        },))
                         .id();
                     commands.entity(vehicle_entity).add_child(derived_entity);
                     actual_route_list.push(ActualRouteEntry::Derived(derived_entity));

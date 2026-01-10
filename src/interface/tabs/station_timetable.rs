@@ -1,5 +1,5 @@
 use crate::{
-    graph::{Depot, Station, StationCache},
+    graph::{Depot, Station, StationEntries},
     interface::{
         AppTab, UiCommand,
         tabs::{Tab, vehicle},
@@ -163,7 +163,7 @@ pub fn show_station_timetable(
     vehicle_sets: Query<(Entity, &Children, &Name), With<VehicleSet>>,
     vehicles: Query<(Entity, &Name, &VehicleScheduleCache, &VehicleSchedule), With<Vehicle>>,
     station_names: Query<&Name, With<Station>>,
-    station_caches: Query<&StationCache>,
+    station_caches: Query<&StationEntries>,
     service_names: Query<&Name, With<VehicleService>>,
     timetable_entries: Query<(&TimetableEntry, &TimetableEntryCache, &ChildOf)>,
     msg_open_ui: MessageWriter<UiCommand>,
@@ -201,7 +201,7 @@ pub fn show_station_timetable(
     let mut times: Vec<Vec<(&str, &str, TimetableTime, Entity)>> = vec![Vec::new(); 24];
     if let Ok(station_cache) = station_caches.get(station.entity()) {
         for (entry, entry_cache, parent) in station_cache
-            .passing_entries
+            .entries()
             .iter()
             .filter_map(|e| timetable_entries.get(*e).ok())
         {
@@ -224,7 +224,7 @@ pub fn show_station_timetable(
                     .get_service_last_entry(entry_service)
                     .map(ActualRouteEntry::inner)
                 && let Ok((last_entry, _, _)) = timetable_entries.get(last_entry_entity)
-                && let Ok(name) = station_names.get(last_entry.station.entity())
+                && let Ok(name) = station_names.get(last_entry.station)
             {
                 terminal_name = name
             }

@@ -10,7 +10,7 @@ use moonshine_core::kind::Instance;
 pub fn calculate_estimates(
     mut msg_reader: MessageReader<AdjustTimetableEntry>,
     mut entries: Populated<(&TimetableEntry, &mut TimetableEntryCache)>,
-    intervals: Populated<&graph::Interval>,
+    mut intervals: Query<&graph::Interval>,
     parents: Populated<&ChildOf>,
     schedules: Populated<&entries::VehicleScheduleCache>,
     graph: Res<Graph>,
@@ -28,7 +28,13 @@ pub fn calculate_estimates(
         }
         stack.clear();
     }
-    for msg in msg_reader.read() {
+
+    let mut messages = msg_reader.read().collect::<Vec<_>>();
+    if messages.is_empty() {
+        return;
+    }
+
+    for msg in messages {
         let AdjustTimetableEntry { entity, .. } = msg;
         let Ok(entry) = parents.get(*entity) else {
             continue;
@@ -50,7 +56,7 @@ pub fn calculate_estimates(
                 let Ok((tte, _)) = entries.get(timetable_entry_entity) else {
                     continue;
                 };
-                (tte.arrival, tte.departure, tte.station)
+                (tte.arrival, tte.departure, tte.station())
             };
 
             if let Some(v) = pending_time_and_station.take() {
@@ -178,7 +184,7 @@ pub fn calculate_estimates(
                         clear_estimates(&mut entries, &mut stack);
                         continue 'iter_timetable;
                     };
-                    tte.station
+                    tte.station()
                 };
                 let interval_distance = if previous_station == station || arr_dur.is_some() {
                     None

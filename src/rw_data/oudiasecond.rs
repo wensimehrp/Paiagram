@@ -185,7 +185,8 @@ pub fn load_oud2(
                                 Direction::Down => i,
                                 Direction::Up => stations.len() - 1 - i,
                             }]
-                            .0,
+                            .0
+                            .entity(),
                             service: None,
                             track: None,
                         })

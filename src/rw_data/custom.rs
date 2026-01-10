@@ -115,7 +115,7 @@ pub fn load_qetrc(
                 previous_station = Some(station_entity);
                 let entry_entity = commands
                     .spawn((TimetableEntry {
-                        station: station_entity,
+                        station: station_entity.entity(),
                         arrival: TravelMode::At(timetable_time),
                         departure: Some(TravelMode::Flexible),
                         service: None,

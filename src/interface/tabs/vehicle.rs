@@ -3,15 +3,13 @@ use crate::interface::{
     AppTab, UiCommand,
     tabs::{Tab, station_timetable::StationTimetableTab},
 };
-use crate::units::time::{Duration, TimetableTime};
 use crate::vehicles::entries::{ActualRouteEntry, TimetableEntryCache, VehicleScheduleCache};
 use crate::vehicles::{
     AdjustTimetableEntry, TimetableAdjustment,
-    entries::{TimetableEntry, TravelMode, VehicleSchedule},
-    services::VehicleService,
+    entries::{TimetableEntry, VehicleSchedule},
 };
 use bevy::prelude::*;
-use egui::{Color32, Label, Popup, Sense, Separator, Stroke, Ui, Vec2};
+use egui::{Popup, Ui};
 use egui_table::{CellInfo, HeaderCellInfo, Table, TableDelegate, columns::Column};
 use serde::{Deserialize, Serialize};
 
@@ -137,7 +135,7 @@ impl<'a> TableDelegate for TableCache<'a> {
                     self.msg_open_ui
                         .write(UiCommand::OpenOrFocusTab(AppTab::StationTimetable(
                             StationTimetableTab {
-                                station_entity: self.entries[i].entry.station,
+                                station_entity: self.entries[i].entry.station(),
                             },
                         )));
                 }

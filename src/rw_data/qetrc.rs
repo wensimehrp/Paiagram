@@ -279,7 +279,7 @@ fn make_vehicle(
             .spawn(crate::vehicles::entries::TimetableEntry {
                 arrival: arrival_mode,
                 departure: departure_mode,
-                station: ps.station_entity,
+                station: ps.station_entity.entity(),
                 service: Some(ps.service_entity),
                 track: None,
             })
