@@ -50,4 +50,5 @@ fn show_settings(InMut(ui): InMut<Ui>, mut settings: ResMut<ApplicationSettings>
                 ui.selectable_value(&mut settings.terminology_scheme, scheme, scheme.name());
             }
         });
+    ui.text_edit_multiline(&mut settings.remarks);
 }

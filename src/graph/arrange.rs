@@ -62,16 +62,22 @@ pub(super) fn apply_graph_layout(
     mut stations: Query<(NameOrEntity, &mut Station)>,
     mut commands: Commands,
     graph: Res<Graph>,
+    mut settings: ResMut<crate::settings::ApplicationSettings>,
 ) {
     let Some((found, not_found)) =
         bevy::tasks::block_on(bevy::tasks::futures_lite::future::poll_once(&mut task.task))
     else {
         return;
     };
+    let mut mapped = false;
     for (station_instance, pos) in found {
         if let Ok((_, mut station)) = stations.get_mut(station_instance.entity()) {
             station.0 = pos;
+            mapped = true;
         }
+    }
+    if mapped {
+        settings.authors.0.push(crate::settings::Author::OpenStreetMapContributors);
     }
     let not_found_entities: EntityHashSet = not_found.iter().map(|s| s.entity()).collect();
     // find the connecting edges for stations that were not found
