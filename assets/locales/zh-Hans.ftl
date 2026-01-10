@@ -11,11 +11,11 @@ side-panel-details = 信息
 side-panel-export = 导出
 
 # Fallback messages
-side-panel-edit-fallback-1 = 当前选中的页面尚未实现「编辑」功能栏
+side-panel-edit-fallback-1 = 当前选中的页面尚未实现「{side-panel-edit}」功能栏
 side-panel-edit-fallback-2 = 等俺实现先，当然也请请您在 GitHub 上开个 issue 反馈一下这个问题！
-side-panel-details-fallback-1 = 当前选中的页面尚未实现「信息」功能栏
-side-panel-details-fallback-2 = 等俺实现先，当然也请请您在 GitHub 上开个 issue 反馈一下这个问题！
-side-panel-export-fallback-1 = 当前选中的页面尚未实现「导出」功能栏
+side-panel-details-fallback-1 = 当前选中的页面尚未实现「{side-panel-details}」功能栏
+side-panel-details-fallback-2 = {side-panel-edit-fallback-2}
+side-panel-export-fallback-1 = 当前选中的页面尚未实现「{side-panel-export}」功能栏
 side-panel-export-fallback-2 = 太可恶了这个作者怎么什么都没有做
 
 # Tabs
@@ -36,7 +36,8 @@ tab-graph-auto-arrange = 自动整理线路网
 tab-graph-auto-arrange-desc = 自动整理当前线路网
 tab-graph-auto-arrange-iterations = 迭代次数
 tab-graph-arrange-via-osm = 整理线路网
-tab-graph-arrange-via-osm-desc = 利用在线资源整理当前线路网。本功能使用 OpenStreetMap 数据，点击「{ tab-graph-arrange-via-osm }」即表示同意 OpenStreetMap 的使用条款。可以填写一个区域名称以限制查询范围（如：北京市、温州市）。
+tab-graph-arrange-via-osm-desc = 利用在线资源整理当前线路网。本功能使用 OpenStreetMap 数据，点击「{tab-graph-arrange-via-osm}」即表示同意 OpenStreetMap 的使用条款。
+    可以填写一个区域名称以限制查询范围（如：北京市、温州市）。
 tab-graph-arrange-via-osm-terms = 使用条款
 tab-graph-osm-area-name = 过滤区域：
 tab-graph-animation = 动画控制

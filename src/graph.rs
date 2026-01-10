@@ -1,6 +1,5 @@
 use crate::{
-    units::speed::Velocity,
-    vehicles::entries::{ActualRouteEntry, TimetableEntry},
+    graph::arrange::GraphLayoutTask, units::speed::Velocity, vehicles::entries::{ActualRouteEntry, TimetableEntry}
 };
 use bevy::{ecs::entity::EntityHashMap, prelude::*};
 use moonshine_core::kind::*;
@@ -204,6 +203,9 @@ pub struct Interval {
 pub struct GraphPlugin;
 impl Plugin for GraphPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(Graph::default());
+        app.insert_resource(Graph::default()).add_systems(
+            Update,
+            arrange::apply_graph_layout.run_if(resource_exists::<GraphLayoutTask>),
+        );
     }
 }

@@ -4,7 +4,7 @@ use crate::lines::DisplayedLine;
 use crate::rw_data::write::write_text_file;
 use crate::vehicles::entries::{TimetableEntry, TimetableEntryCache, VehicleScheduleCache};
 use bevy::prelude::*;
-use egui::{Color32, Pos2, Rect, Sense, Stroke, Ui, Vec2};
+use egui::{Color32, Painter, Pos2, Rect, Sense, Stroke, Ui, Vec2};
 use egui_i18n::tr;
 use either::Either::{Left, Right};
 use emath::{self, RectTransform};
@@ -375,6 +375,7 @@ fn show_graph(
             state.selected_item = None;
         }
         let to_screen = RectTransform::from_to(world_rect, response.rect);
+        draw_world_grid(&painter, response.rect, state.translation, state.zoom);
         // draw edges
         for (from, to, _weight) in graph.inner().node_indices().flat_map(|n| {
             graph
@@ -466,7 +467,6 @@ fn show_graph(
             );
         }
 
-        /*
         let stations_readonly = stations.as_readonly();
         displayed_lines
             .as_readonly()
@@ -480,7 +480,7 @@ fn show_graph(
                     &stations_readonly,
                 );
             });
-        */
+
         if state.animation_playing {
             for section in schedules.iter().filter_map(|s| {
                 s.position(state.animation_counter, |e| timetable_entries.get(e).ok())
@@ -558,4 +558,59 @@ fn show_graph(
             state.translation -= (translation_delta + response.drag_delta()) / zoom;
         }
     });
+}
+
+fn draw_world_grid(painter: &Painter, viewport: Rect, offset: Vec2, zoom: f32) {
+    if zoom <= 0.0 {
+        return;
+    }
+
+    // Transitions like diagram.rs: Linear fade between MIN and MAX screen spacing
+    const MIN_WIDTH: f32 = 32.0;
+    const MAX_WIDTH: f32 = 120.0;
+
+    // Use a neutral gray without querying visuals
+    let base_color = Color32::from_gray(160);
+
+    for p in ((-5)..=5).rev() {
+        let spacing = 10.0f32.powi(p);
+        let screen_spacing = spacing * zoom;
+
+        // Strength calculation identical to diagram.rs (1.5 scaling factor)
+        let strength =
+            ((screen_spacing * 1.5 - MIN_WIDTH) / (MAX_WIDTH - MIN_WIDTH)).clamp(0.0, 1.0);
+        if strength <= 0.0 {
+            continue;
+        }
+
+        let stroke = Stroke::new(0.6, base_color.gamma_multiply(strength));
+
+        // Vertical lines
+        let mut n = (offset.x / spacing).floor();
+        loop {
+            let world_x = n * spacing;
+            let screen_x_rel = (world_x - offset.x) * zoom;
+            if screen_x_rel > viewport.width() {
+                break;
+            }
+            if screen_x_rel >= 0.0 {
+                painter.vline(viewport.left() + screen_x_rel, viewport.y_range(), stroke);
+            }
+            n += 1.0;
+        }
+
+        // Horizontal lines
+        let mut m = (offset.y / spacing).floor();
+        loop {
+            let world_y = m * spacing;
+            let screen_y_rel = (world_y - offset.y) * zoom;
+            if screen_y_rel > viewport.height() {
+                break;
+            }
+            if screen_y_rel >= 0.0 {
+                painter.hline(viewport.x_range(), viewport.top() + screen_y_rel, stroke);
+            }
+            m += 1.0;
+        }
+    }
 }

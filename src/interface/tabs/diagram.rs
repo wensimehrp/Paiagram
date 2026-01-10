@@ -38,9 +38,14 @@ pub enum SelectedEntityType {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DiagramPageCache {
+    /// The previous total drag delta, used for dragging time points on the canvas
     previous_total_drag_delta: Option<f32>,
+    /// The stroke style used for drawing lines on the diagram
+    /// TODO: make this adapt to dark and light mode, and train settings
     stroke: Stroke,
+    /// Horizontal tick offset for panning
     tick_offset: i64,
+    /// Vertical offset for panning
     vertical_offset: f32,
     #[serde(with = "crate::graph::vec_instance_f32_serde")]
     heights: Option<Vec<(Instance<Station>, f32)>>,

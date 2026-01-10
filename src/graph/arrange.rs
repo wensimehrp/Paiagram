@@ -137,6 +137,7 @@ pub fn auto_arrange_graph(
     mut commands: Commands,
     graph: Res<Graph>,
 ) {
+    info!("Auto arranging graph with {} iterations", iterations);
     let inner = graph.inner().clone();
     let thread_pool = AsyncComputeTaskPool::get();
     let task = thread_pool.spawn(async move {
