@@ -11,7 +11,7 @@ const PANEL_DEFAULT_SIZE: f32 = 20.0;
 
 use crate::{
     interface::tabs::{PageCache, Tab},
-    intervals::{Station, StationCache},
+    graph::{Station, StationCache},
     lines::DisplayedLine,
 };
 

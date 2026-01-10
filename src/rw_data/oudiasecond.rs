@@ -1,5 +1,5 @@
 use crate::{
-    intervals::{Graph, Interval},
+    graph::{Graph, Interval},
     lines::DisplayedLine,
     rw_data::ModifyData,
     units::{distance::Distance, time::TimetableTime},
@@ -101,11 +101,11 @@ pub fn load_oud2(
     let ast = parse_oud2_to_ast(str).expect("Failed to parse OUD2 file");
     let root = parse_ast(&ast).expect("Failed to convert OUD2 AST to internal representation");
     for line in root.lines {
-        let mut stations: Vec<(Instance<crate::intervals::Station>, bool)> = Vec::new();
+        let mut stations: Vec<(Instance<crate::graph::Station>, bool)> = Vec::new();
         for station in line.stations.iter() {
             let station_entity = commands
                 .spawn(Name::new(station.name.clone()))
-                .insert_instance(crate::intervals::Station::default())
+                .insert_instance(crate::graph::Station::default())
                 .into();
             stations.push((station_entity, station.break_interval));
         }

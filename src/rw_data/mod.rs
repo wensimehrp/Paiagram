@@ -1,6 +1,7 @@
 //! Module for reading and writing various data formats.
 
 pub mod custom;
+pub mod load_osm;
 pub mod oudiasecond;
 pub mod qetrc;
 pub mod save;
@@ -49,8 +50,8 @@ fn clear_resources(
     mut commands: Commands,
     mut reader: MessageReader<ModifyData>,
     vehicles: Query<Entity, With<crate::vehicles::Vehicle>>,
-    intervals: Query<Entity, With<crate::intervals::Interval>>,
-    stations: Query<Entity, With<crate::intervals::Station>>,
+    intervals: Query<Entity, With<crate::graph::Interval>>,
+    stations: Query<Entity, With<crate::graph::Station>>,
 ) {
     let mut delete = false;
     for modification in reader.read() {

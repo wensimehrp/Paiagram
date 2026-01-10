@@ -1,4 +1,4 @@
-use crate::{intervals::Station, vehicles::services::VehicleService};
+use crate::{graph::Station, vehicles::services::VehicleService};
 use bevy::prelude::*;
 use moonshine_core::kind::Instance;
 use smallvec::{SmallVec, smallvec};

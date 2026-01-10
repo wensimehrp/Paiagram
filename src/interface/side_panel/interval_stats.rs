@@ -12,7 +12,7 @@ use moonshine_core::kind::Instance;
 
 use crate::{
     interface::tabs::PageCache,
-    intervals::{Graph, Interval, IntervalCache, Station},
+    graph::{Graph, Interval, IntervalCache, Station},
     vehicles::entries::TimetableEntry,
 };
 

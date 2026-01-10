@@ -4,7 +4,7 @@ use crate::vehicles::entries::{ActualRouteEntry, VehicleScheduleCache};
 use crate::vehicles::vehicle_set::VehicleSet;
 use crate::{
     interface::widgets::{buttons, timetable_popup},
-    intervals::{Station, StationCache},
+    graph::{Station, StationCache},
     lines::DisplayedLine,
     units::time::{Duration, TimetableTime},
     vehicles::{
@@ -42,7 +42,7 @@ pub struct DiagramPageCache {
     stroke: Stroke,
     tick_offset: i64,
     vertical_offset: f32,
-    #[serde(with = "crate::intervals::vec_instance_f32_serde")]
+    #[serde(with = "crate::graph::vec_instance_f32_serde")]
     heights: Option<Vec<(Instance<Station>, f32)>>,
     zoom: Vec2,
     vehicle_entities: Vec<Entity>,

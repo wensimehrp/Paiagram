@@ -7,7 +7,7 @@ use bevy::ecs::{
 use egui::Ui;
 use moonshine_core::kind::Instance;
 
-use crate::intervals::Station;
+use crate::graph::Station;
 
 pub fn show_station_stats(
     (InMut(ui), In(station_entity)): (InMut<Ui>, In<Instance<Station>>),

@@ -6,8 +6,7 @@ mod widgets;
 use crate::{
     colors,
     interface::tabs::{
-        Tab, all_tabs::*, diagram::SelectedEntityType, graph::apply_graph_layout,
-        minesweeper::MinesweeperData,
+        Tab, all_tabs::*, diagram::SelectedEntityType, minesweeper::MinesweeperData,
     },
     settings::ApplicationSettings,
 };
@@ -36,13 +35,7 @@ impl Plugin for InterfacePlugin {
             .init_resource::<SidePanelState>()
             .insert_resource(UiState::new())
             .insert_resource(StatusBarState::default())
-            .add_systems(
-                Update,
-                (
-                    modify_dock_state.run_if(on_message::<UiCommand>),
-                    apply_graph_layout,
-                ),
-            );
+            .add_systems(Update, (modify_dock_state.run_if(on_message::<UiCommand>),));
     }
 }
 
@@ -586,6 +579,18 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
                         .dock_state
                         .find_active_focused()
                         .map(|(_, tab)| tab.id());
+                    ui.ctx().data_mut(|map| {
+                        let previously_focused =
+                            map.get_temp_mut_or(Id::new("previously focused leaf"), focused_id);
+                        if *previously_focused == focused_id {
+                            return;
+                        } else {
+                            *previously_focused = focused_id;
+                            let opacity: &mut f32 =
+                                map.get_temp_mut_or(Id::new("side panel opacity"), 0.0);
+                            *opacity = 0.0;
+                        }
+                    });
                     let mut tab_viewer = AppTabViewer {
                         world,
                         ctx,

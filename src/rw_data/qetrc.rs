@@ -4,7 +4,7 @@ use serde::Deserialize;
 use serde_json;
 
 use crate::{
-    intervals::{Graph, Interval, Station as IntervalStation},
+    graph::{Graph, Interval, Station as IntervalStation},
     lines::DisplayedLine,
     rw_data::ModifyData,
     units::{distance::Distance, time::TimetableTime},
@@ -136,26 +136,26 @@ pub fn load_qetrc(
         }
     };
     let lines_iter = std::iter::once(root.line).chain(root.lines.into_iter().flatten());
-    let mut station_map: HashMap<String, Instance<crate::intervals::Station>> = HashMap::new();
+    let mut station_map: HashMap<String, Instance<crate::graph::Station>> = HashMap::new();
     fn make_station(
         name: String,
         commands: &mut Commands,
-        station_map: &mut HashMap<String, Instance<crate::intervals::Station>>,
+        station_map: &mut HashMap<String, Instance<crate::graph::Station>>,
         graph: &mut Graph,
-    ) -> Instance<crate::intervals::Station> {
+    ) -> Instance<crate::graph::Station> {
         if let Some(&entity) = station_map.get(&name) {
             return entity;
         }
         let station_entity = commands
             .spawn(Name::new(name.clone()))
-            .insert_instance(crate::intervals::Station::default())
+            .insert_instance(crate::graph::Station::default())
             .into();
         station_map.insert(name, station_entity);
         graph.add_node(station_entity);
         station_entity
     }
     for line in lines_iter {
-        let mut entity_distances: Vec<(Instance<crate::intervals::Station>, f32)> =
+        let mut entity_distances: Vec<(Instance<crate::graph::Station>, f32)> =
             Vec::with_capacity(line.stations.len());
         for station in line.stations {
             let e = make_station(station.name, &mut commands, &mut station_map, &mut graph);

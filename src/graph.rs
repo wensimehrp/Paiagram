@@ -10,6 +10,8 @@ use moonshine_core::kind::*;
 use petgraph::prelude::*;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+pub mod arrange;
+
 pub mod instance_serde {
     use super::*;
 
@@ -222,8 +224,8 @@ impl IntervalCache {
     }
 }
 
-pub struct IntervalsPlugin;
-impl Plugin for IntervalsPlugin {
+pub struct GraphPlugin;
+impl Plugin for GraphPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(Graph::default())
             .init_resource::<IntervalsResource>()
@@ -232,6 +234,7 @@ impl Plugin for IntervalsPlugin {
                 (
                     update_station_cache.run_if(on_message::<AdjustTimetableEntry>),
                     update_interval_cache,
+                    arrange::apply_graph_layout.run_if(resource_exists::<arrange::GraphLayoutTask>),
                 ),
             );
     }

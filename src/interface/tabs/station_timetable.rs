@@ -1,9 +1,9 @@
 use crate::{
+    graph::{Depot, Station, StationCache},
     interface::{
         AppTab, UiCommand,
         tabs::{Tab, vehicle},
     },
-    intervals::{Depot, Station, StationCache},
     units::time::TimetableTime,
     vehicles::{
         AdjustTimetableEntry, TimetableAdjustment, Vehicle,
@@ -33,7 +33,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(PartialEq, Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct StationTimetableTab {
-    #[serde(with = "crate::intervals::instance_serde")]
+    #[serde(with = "crate::graph::instance_serde")]
     pub station_entity: Instance<Station>,
 }
 

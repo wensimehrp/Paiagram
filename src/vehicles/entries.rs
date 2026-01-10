@@ -1,5 +1,5 @@
 use crate::{
-    intervals::{Graph, Interval, Station},
+    graph::{Graph, Interval, Station},
     units::time::{Duration, TimetableTime},
     vehicles::{AdjustTimetableEntry, services::VehicleService},
 };

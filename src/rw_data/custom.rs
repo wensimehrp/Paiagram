@@ -1,5 +1,5 @@
 use crate::{
-    intervals::{Graph, Station},
+    graph::{Graph, Station},
     rw_data::ModifyData,
     units::{distance::Distance, time::TimetableTime},
     vehicles::{
@@ -68,7 +68,7 @@ pub fn load_qetrc(
                         from.entity().index(),
                         to.entity().index()
                     )))
-                    .insert_instance(crate::intervals::Interval {
+                    .insert_instance(crate::graph::Interval {
                         length: Distance(1000),
                         speed_limit: None,
                     })
@@ -82,7 +82,7 @@ pub fn load_qetrc(
                 }
                 let station_entity = commands
                     .spawn(Name::new(name.clone()))
-                    .insert_instance(crate::intervals::Station::default())
+                    .insert_instance(crate::graph::Station::default())
                     .into();
                 station_map.insert(name, station_entity);
                 graph.add_node(station_entity);

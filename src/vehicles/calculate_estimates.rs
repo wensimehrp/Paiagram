@@ -1,6 +1,6 @@
 use super::AdjustTimetableEntry;
 use super::entries::{self, TravelMode};
-use crate::intervals::{self, Graph, Station};
+use crate::graph::{self, Graph, Station};
 use crate::units::distance::Distance;
 use crate::units::time::{Duration, TimetableTime};
 use crate::vehicles::entries::{TimeEstimate, TimetableEntry, TimetableEntryCache};
@@ -10,7 +10,7 @@ use moonshine_core::kind::Instance;
 pub fn calculate_estimates(
     mut msg_reader: MessageReader<AdjustTimetableEntry>,
     mut entries: Populated<(&TimetableEntry, &mut TimetableEntryCache)>,
-    intervals: Populated<&intervals::Interval>,
+    intervals: Populated<&graph::Interval>,
     parents: Populated<&ChildOf>,
     schedules: Populated<&entries::VehicleScheduleCache>,
     graph: Res<Graph>,

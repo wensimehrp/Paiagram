@@ -10,7 +10,7 @@ use bevy::{
 use egui::{Color32, Popup, Pos2, ScrollArea, Sense, Stroke, Ui, UiBuilder, Vec2};
 use moonshine_core::kind::Instance;
 
-use crate::intervals::Station;
+use crate::graph::Station;
 
 pub fn edit_line(
     (InMut(ui), In(displayed_line_entity)): (InMut<Ui>, In<Entity>),

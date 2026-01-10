@@ -4,7 +4,7 @@ use clap::Parser;
 mod colors;
 mod i18n;
 mod interface;
-mod intervals;
+mod graph;
 mod lines;
 mod rw_data;
 mod search;
@@ -26,7 +26,7 @@ impl PaiagramApp {
         app.add_plugins(LogPlugin::default());
         app.add_plugins((
             interface::InterfacePlugin,
-            intervals::IntervalsPlugin,
+            graph::GraphPlugin,
             rw_data::RwDataPlugin,
             search::SearchPlugin,
             settings::SettingsPlugin,
