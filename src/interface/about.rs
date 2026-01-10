@@ -8,12 +8,6 @@ use rfd::AsyncFileDialog;
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex, OnceLock};
 
-#[cfg(not(target_arch = "wasm32"))]
-use bevy::tasks::IoTaskPool;
-
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen_futures::spawn_local;
-
 static FILE_IMPORT_QUEUE: OnceLock<Arc<Mutex<VecDeque<ModifyData>>>> = OnceLock::new();
 
 fn shared_queue() -> Arc<Mutex<VecDeque<ModifyData>>> {
@@ -48,11 +42,7 @@ fn start_file_import(
         }
     };
 
-    #[cfg(target_arch = "wasm32")]
-    spawn_local(task);
-
-    #[cfg(not(target_arch = "wasm32"))]
-    IoTaskPool::get().spawn(task).detach();
+    bevy::tasks::IoTaskPool::get().spawn(task).detach();
 }
 
 async fn pick_file_contents(

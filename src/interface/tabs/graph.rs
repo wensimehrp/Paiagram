@@ -190,9 +190,17 @@ impl Tab for GraphTab {
                 bevy::log::error!("Error while generating DOT string: {}", e);
                 return;
             }
-            if let Err(e) = write_text_file(&buffer, "transport_graph.dot") {
-                bevy::log::error!("Failed to export graph: {:?}", e);
-            }
+
+            let data = std::mem::take(&mut buffer);
+            let filename = "transport_graph.dot".to_string();
+
+            bevy::tasks::IoTaskPool::get()
+                .spawn(async move {
+                    if let Err(e) = write_text_file(data, filename).await {
+                        bevy::log::error!("Failed to export graph: {:?}", e);
+                    }
+                })
+                .detach();
         }
     }
     fn scroll_bars(&self) -> [bool; 2] {

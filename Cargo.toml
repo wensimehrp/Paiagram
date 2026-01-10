@@ -24,9 +24,9 @@ serde_json = "1.0.145"
 serde = "1.0.228"
 rand = "0.9.2"
 ib-matcher = { version = "0.4.0", features = ["pinyin", "romaji"] }
-rfd = "0.16.0"
-pest = "2.8.3"
-pest_derive = "2.8.3"
+rfd = "0.17.1"
+pest = "2.8.5"
+pest_derive = "2.8.5"
 git-version = "0.3.9"
 chrono = "0.4.42"
 clap = { version = "4.5.51", features = ["derive"] }
@@ -49,7 +49,7 @@ wgpu = { version = "*", features = ["default", "webgpu", "webgl"] }
 smallvec = { version = "1.15.1", features = ["serde"] }
 either = "1.15.0"
 egui_table = "0.6.0"
-wasm-bindgen = "0.2"
+wasm-bindgen = "0.2.106"
 fluent = "0.17.0"
 strum = "0.27.2"
 strum_macros = "0.27.2"
