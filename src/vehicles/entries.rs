@@ -7,11 +7,12 @@ use bevy::platform::collections::HashSet;
 use bevy::prelude::*;
 use either::Either;
 use moonshine_core::kind::Instance;
+use moonshine_core::save::prelude::*;
 use petgraph::algo::astar;
 use smallvec::{SmallVec, smallvec};
 
 /// How the vehicle travels from/to the station.
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Reflect, Debug, Default, Clone, Copy)]
 pub enum TravelMode {
     /// The vehicle travels to or stops at the station at a determined time.
     At(TimetableTime),
@@ -48,8 +49,9 @@ impl std::fmt::Display for TravelMode {
 }
 
 /// An entry in the timetable
-#[derive(Debug, Component, Clone)]
-#[require(TimetableEntryCache)]
+#[derive(Debug, Reflect, Component, Clone)]
+#[reflect(Component, MapEntities)]
+#[require(TimetableEntryCache, Save)]
 #[relationship(relationship_target = StationEntries)]
 pub struct TimetableEntry {
     /// The node the vehicle stops at or passes.
@@ -65,6 +67,14 @@ pub struct TimetableEntry {
     pub track: Option<Entity>,
 }
 
+impl MapEntities for TimetableEntry {
+    fn map_entities<E: EntityMapper>(&mut self, entity_mapper: &mut E) {
+        self.station.map_entities(entity_mapper);
+        self.track.map_entities(entity_mapper);
+        self.service.map_entities(entity_mapper);
+    }
+}
+
 impl TimetableEntry {
     pub fn station(&self) -> Instance<Station> {
         // SAFETY: station is always a valid Station entity
@@ -72,12 +82,13 @@ impl TimetableEntry {
     }
 }
 
-#[derive(Debug, Component, Default)]
+#[derive(Reflect, Debug, Component, Default)]
+#[reflect(Component)]
 pub struct TimetableEntryCache {
     pub estimate: Option<TimeEstimate>,
 }
 
-#[derive(Debug)]
+#[derive(Reflect, Debug)]
 pub struct TimeEstimate {
     /// Estimate of the arrival time. This would be filled in during runtime. An estimate of `None` means that the
     /// arrival time cannot be determined.
@@ -88,7 +99,9 @@ pub struct TimeEstimate {
 }
 
 /// A vehicle's schedule and departure pattern
-#[derive(Debug, Component)]
+#[derive(Reflect, Debug, Component)]
+#[component(map_entities)]
+#[reflect(Component, MapEntities)]
 #[require(VehicleScheduleCache)]
 pub struct VehicleSchedule {
     /// When would the schedule start.
@@ -103,7 +116,15 @@ pub struct VehicleSchedule {
     pub entities: Vec<Entity>,
 }
 
-#[derive(Debug, Clone, Copy)]
+impl MapEntities for VehicleSchedule {
+    fn map_entities<E: EntityMapper>(&mut self, entity_mapper: &mut E) {
+        for e in self.entities.iter_mut() {
+            e.map_entities(entity_mapper);
+        }
+    }
+}
+
+#[derive(Reflect, Debug, Clone, Copy)]
 pub enum ActualRouteEntry {
     Nominal(Entity),
     Derived(Entity),
@@ -118,18 +139,19 @@ impl ActualRouteEntry {
     }
 }
 
-#[derive(Debug, Default, Component)]
+#[derive(Reflect, Debug, Default, Component, MapEntities)]
+#[reflect(Component, MapEntities)]
 pub struct VehicleScheduleCache {
     pub actual_route: Option<Vec<ActualRouteEntry>>,
     /// Service entities indices. This piece of data is calculated during runtime.
     /// This should always be sorted by Entity
+    #[reflect(ignore)]
     pub service_entities: Vec<(
         Instance<VehicleService>,
         SmallVec<[std::ops::Range<usize>; 1]>,
     )>,
 }
 
-// TODO: implement start times
 impl VehicleScheduleCache {
     pub fn position<'a>(
         &self,

@@ -1,8 +1,7 @@
-use crate::interface::tabs::tree_view;
-
 use super::Tab;
+use crate::interface::tabs::tree_view;
 use bevy::ecs::system::InMut;
-use bevy::log::prelude::*;
+use bevy::prelude::*;
 use egui::{Frame, Label, Response, ScrollArea, Sense, Ui, UiBuilder, Vec2, vec2};
 use egui_i18n::tr;
 use serde::{Deserialize, Serialize};
@@ -61,7 +60,7 @@ impl Tab for StartTab {
             error!("UI Error while displaying tree view: {e}")
         }
     }
-    fn display_display(&mut self, world: &mut bevy::ecs::world::World, ui: &mut Ui) {
+    fn display_display(&mut self, _world: &mut bevy::ecs::world::World, ui: &mut Ui) {
         for field in CurrentField::iter() {
             ui.add_sized(vec2(ui.available_width(), 20.0), |ui: &mut Ui| {
                 ui.selectable_value(&mut self.current_field, field, field.name())

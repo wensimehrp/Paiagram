@@ -1,17 +1,15 @@
+use crate::graph::{Station, StationEntries};
 use crate::interface::SelectedElement;
 use crate::interface::tabs::Tab;
+use crate::interface::widgets::{buttons, timetable_popup};
+use crate::lines::DisplayedLine;
+use crate::units::time::{Duration, TimetableTime};
+use crate::vehicles::AdjustTimetableEntry;
 use crate::vehicles::entries::{ActualRouteEntry, VehicleScheduleCache};
+use crate::vehicles::entries::{TimetableEntry, TimetableEntryCache, TravelMode, VehicleSchedule};
 use crate::vehicles::vehicle_set::VehicleSet;
-use crate::{
-    interface::widgets::{buttons, timetable_popup},
-    graph::{Station, StationEntries},
-    lines::DisplayedLine,
-    units::time::{Duration, TimetableTime},
-    vehicles::{
-        AdjustTimetableEntry,
-        entries::{TimetableEntry, TimetableEntryCache, TravelMode, VehicleSchedule},
-    },
-};
+
+use bevy::ecs::entity::{EntityMapper, MapEntities};
 use bevy::prelude::*;
 use egui::{
     Color32, CornerRadius, FontId, Frame, Margin, Painter, Popup, Pos2, Rect, RichText, Sense,
@@ -36,7 +34,7 @@ pub enum SelectedEntityType {
     Map(Entity),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct DiagramPageCache {
     /// The previous total drag delta, used for dragging time points on the canvas
     previous_total_drag_delta: Option<f32>,
@@ -47,11 +45,26 @@ pub struct DiagramPageCache {
     tick_offset: i64,
     /// Vertical offset for panning
     vertical_offset: f32,
-    #[serde(with = "crate::graph::vec_instance_f32_serde")]
     heights: Option<Vec<(Instance<Station>, f32)>>,
     zoom: Vec2,
     vehicle_entities: Vec<Entity>,
     vehicle_set: Option<Entity>,
+}
+
+impl MapEntities for DiagramPageCache {
+    fn map_entities<M: EntityMapper>(&mut self, entity_mapper: &mut M) {
+        if let Some(heights) = &mut self.heights {
+            for (station, _) in heights.iter_mut() {
+                station.map_entities(entity_mapper);
+            }
+        }
+        for entity in &mut self.vehicle_entities {
+            entity.map_entities(entity_mapper);
+        }
+        if let Some(vehicle_set) = &mut self.vehicle_set {
+            vehicle_set.map_entities(entity_mapper);
+        }
+    }
 }
 
 impl DiagramPageCache {
@@ -115,7 +128,15 @@ enum EditingState {
 pub struct DiagramTab {
     pub displayed_line_entity: Entity,
     editing: EditingState,
+    #[serde(skip, default)]
     state: DiagramPageCache,
+}
+
+impl MapEntities for DiagramTab {
+    fn map_entities<M: EntityMapper>(&mut self, entity_mapper: &mut M) {
+        self.displayed_line_entity.map_entities(entity_mapper);
+        self.state.map_entities(entity_mapper);
+    }
 }
 
 impl DiagramTab {

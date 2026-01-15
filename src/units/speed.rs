@@ -1,9 +1,10 @@
 use super::distance::Distance;
 use super::time::Duration;
+use bevy::prelude::Reflect;
 use derive_more::{Add, AddAssign, Sub, SubAssign};
 use std::ops;
 
-#[derive(Debug, Clone, Copy, Add, AddAssign, Sub, SubAssign)]
+#[derive(Reflect, Debug, Clone, Copy, Add, AddAssign, Sub, SubAssign)]
 pub struct Velocity(pub f32);
 
 impl ops::Mul<f32> for Velocity {

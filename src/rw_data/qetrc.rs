@@ -73,7 +73,7 @@ struct Service {
 struct TimetableEntry {
     /// Whether the train would stop and load/unload passengers or freight at the station.
     #[serde(rename = "business")]
-    stops: Option<bool>,
+    would_stop: Option<bool>,
     /// Arrival time in "HH:MM" format. "ddsj" in the original qETRC data refers to "到达时间".
     #[serde(rename = "ddsj")]
     arrival: String,

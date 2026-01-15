@@ -10,8 +10,8 @@ use serde::{Deserialize, Serialize};
 const PANEL_DEFAULT_SIZE: f32 = 20.0;
 
 use crate::{
-    interface::tabs::{PageCache, Tab},
     graph::{Station, StationEntries},
+    interface::tabs::{PageCache, Tab},
     lines::DisplayedLine,
 };
 

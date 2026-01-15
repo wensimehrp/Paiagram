@@ -1,91 +1,86 @@
-use crate::{
-    graph::arrange::GraphLayoutTask, units::speed::Velocity, vehicles::entries::{ActualRouteEntry, TimetableEntry}
-};
-use bevy::{ecs::entity::EntityHashMap, prelude::*};
-use moonshine_core::kind::*;
+use crate::graph::arrange::GraphLayoutTask;
+use crate::units::speed::Velocity;
+use crate::vehicles::entries::TimetableEntry;
+use bevy::ecs::entity::{EntityHashMap, EntityMapper, MapEntities};
+use bevy::prelude::*;
+use moonshine_core::kind::prelude::*;
+use moonshine_core::save::prelude::*;
 use petgraph::prelude::*;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 pub mod arrange;
 
-pub mod instance_serde {
-    use super::*;
-
-    pub fn serialize<S, T: Kind>(instance: &Instance<T>, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        instance.entity().serialize(serializer)
-    }
-
-    pub fn deserialize<'de, D, T: Kind>(deserializer: D) -> Result<Instance<T>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let entity = Entity::deserialize(deserializer)?;
-        Ok(unsafe { Instance::from_entity_unchecked(entity) })
-    }
-}
-
-pub mod option_instance_serde {
-    use super::*;
-
-    pub fn serialize<S, T: Kind>(
-        instance: &Option<Instance<T>>,
-        serializer: S,
-    ) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        instance.map(|i| i.entity()).serialize(serializer)
-    }
-
-    pub fn deserialize<'de, D, T: Kind>(deserializer: D) -> Result<Option<Instance<T>>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let entity = Option::<Entity>::deserialize(deserializer)?;
-        Ok(entity.map(|e| unsafe { Instance::from_entity_unchecked(e) }))
-    }
-}
-
-pub mod vec_instance_f32_serde {
-    use super::*;
-
-    pub fn serialize<S, T: Kind>(
-        vec: &Option<Vec<(Instance<T>, f32)>>,
-        serializer: S,
-    ) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        vec.as_ref()
-            .map(|v| v.iter().map(|(i, f)| (i.entity(), *f)).collect::<Vec<_>>())
-            .serialize(serializer)
-    }
-
-    pub fn deserialize<'de, D, T: Kind>(
-        deserializer: D,
-    ) -> Result<Option<Vec<(Instance<T>, f32)>>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let vec = Option::<Vec<(Entity, f32)>>::deserialize(deserializer)?;
-        Ok(vec.map(|v| {
-            v.into_iter()
-                .map(|(e, f)| (unsafe { Instance::from_entity_unchecked(e) }, f))
-                .collect()
-        }))
-    }
-}
-
+/// The graph type used for the transportation network
 pub type IntervalGraphType = StableDiGraph<Instance<Station>, Instance<Interval>>;
+/// A raw graph type used for serialization/deserialization
+#[derive(Serialize, Deserialize, MapEntities)]
+pub struct RawIntervalGraphType(StableDiGraph<Entity, Entity>);
 
 /// A graph representing the transportation network
-#[derive(Resource, Default, Debug)]
+#[derive(Reflect, Clone, Resource, Default, Debug)]
+#[reflect(Resource, opaque, Serialize, Deserialize, MapEntities)]
 pub struct Graph {
+    /// The inner graph structure
     inner: IntervalGraphType,
+    /// Mapping from station entities to their node indices in the graph
+    /// This is skipped during serialization/deserialization and rebuilt as needed
+    #[reflect(ignore)]
     indices: EntityHashMap<NodeIndex>,
+}
+
+impl From<RawIntervalGraphType> for IntervalGraphType {
+    fn from(value: RawIntervalGraphType) -> Self {
+        value.0.map(
+            |_, &node| unsafe { Instance::from_entity_unchecked(node) },
+            |_, &edge| unsafe { Instance::from_entity_unchecked(edge) },
+        )
+    }
+}
+
+impl From<IntervalGraphType> for RawIntervalGraphType {
+    fn from(value: IntervalGraphType) -> Self {
+        Self(value.map(|_, node| node.entity(), |_, edge| edge.entity()))
+    }
+}
+
+impl Serialize for Graph {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let raw: RawIntervalGraphType = self.inner.clone().into();
+        raw.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for Graph {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let raw = RawIntervalGraphType::deserialize(deserializer)?;
+        let inner: IntervalGraphType = raw.into();
+        Ok(Graph {
+            inner,
+            indices: EntityHashMap::default(),
+        })
+    }
+}
+
+impl MapEntities for Graph {
+    fn map_entities<M: EntityMapper>(&mut self, entity_mapper: &mut M) {
+        for node in self.inner.node_weights_mut() {
+            node.map_entities(entity_mapper);
+        }
+        for edge in self.inner.edge_weights_mut() {
+            edge.map_entities(entity_mapper);
+        }
+        let mut new_indices = EntityHashMap::default();
+        for (entity, index) in self.indices.drain() {
+            new_indices.insert(entity_mapper.get_mapped(entity), index);
+        }
+        self.indices = new_indices;
+    }
 }
 
 impl Graph {
@@ -164,10 +159,11 @@ pub struct Depot;
 /// A station or in the transportation network
 #[derive(Component, Default, Deref, DerefMut, Debug, Clone, Reflect, Serialize, Deserialize)]
 #[reflect(Component, opaque, Serialize, Deserialize)]
-#[require(Name, StationEntries)]
+#[require(Name, StationEntries, Save)]
 pub struct Station(pub egui::Pos2);
 
-#[derive(Component, Debug, Default)]
+#[derive(Reflect, Component, Debug, Default, MapEntities)]
+#[reflect(Component, MapEntities)]
 #[relationship_target(relationship = TimetableEntry)]
 pub struct StationEntries(Vec<Entity>);
 
@@ -191,8 +187,9 @@ impl StationEntries {
 }
 
 /// A track segment between two stations or nodes
-#[derive(Component)]
-#[require(Name)]
+#[derive(Reflect, Component)]
+#[reflect(Component)]
+#[require(Name, Save)]
 pub struct Interval {
     /// The length of the track segment
     pub length: crate::units::distance::Distance,
@@ -201,9 +198,10 @@ pub struct Interval {
 }
 
 pub struct GraphPlugin;
+
 impl Plugin for GraphPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(Graph::default()).add_systems(
+        app.init_resource::<Graph>().add_systems(
             Update,
             arrange::apply_graph_layout.run_if(resource_exists::<GraphLayoutTask>),
         );

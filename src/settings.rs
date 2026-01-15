@@ -1,7 +1,7 @@
-pub use crate::i18n::Language;
+use crate::i18n::Language;
 use bevy::prelude::*;
-use egui_i18n::tr;
-use serde::{Deserialize, Serialize};
+use egui_i18n::{set_language, tr};
+use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
 pub struct SettingsPlugin;
@@ -11,7 +11,7 @@ impl Plugin for SettingsPlugin {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, EnumIter, PartialEq, Eq)]
+#[derive(Reflect, Clone, Copy, Debug, EnumIter, PartialEq, Eq)]
 pub enum TerminologyScheme {
     Paiagram,
     ChineseRailway,
@@ -28,13 +28,13 @@ impl TerminologyScheme {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, EnumIter, PartialEq, Eq)]
+#[derive(Reflect, Clone, Copy, Debug, EnumIter, PartialEq, Eq)]
 pub enum PinyinScheme {
     Sogou,
     Microsoft,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Reflect, Clone, Debug)]
 pub enum Author {
     Unknown,
     OpenStreetMapContributors,
@@ -42,10 +42,11 @@ pub enum Author {
     Contributor(String),
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Reflect, Clone, Debug)]
 pub struct AuthorList(pub Vec<Author>);
 
-#[derive(Resource, Serialize, Deserialize)]
+#[derive(Reflect, Resource)]
+#[reflect(Resource)]
 pub struct ApplicationSettings {
     pub enable_romaji_search: bool,
     pub show_performance_stats: bool,
@@ -54,6 +55,8 @@ pub struct ApplicationSettings {
     pub language: Language,
     pub authors: AuthorList,
     pub remarks: String,
+    pub autosave_enabled: bool,
+    pub autosave_interval_minutes: u32,
 }
 
 impl Default for ApplicationSettings {
@@ -75,6 +78,46 @@ impl Default for ApplicationSettings {
                 ]
             }),
             remarks: String::new(),
+            autosave_enabled: true,
+            autosave_interval_minutes: 5,
         }
+    }
+}
+
+impl egui::Widget for &mut ApplicationSettings {
+    fn ui(self, ui: &mut egui::Ui) -> egui::Response {
+        ui.checkbox(
+            &mut self.enable_romaji_search,
+            tr!("settings-enable-romaji-search"),
+        );
+        ui.checkbox(
+            &mut self.show_performance_stats,
+            tr!("settings-show-performance-stats"),
+        );
+        egui::ComboBox::from_id_salt("Language")
+            .selected_text(self.language.name())
+            .show_ui(ui, |ui| {
+                for lang in Language::iter() {
+                    if ui
+                        .selectable_value(&mut self.language, lang, lang.name())
+                        .changed()
+                    {
+                        set_language(lang.identifier());
+                    }
+                }
+            });
+        egui::ComboBox::from_id_salt("Terminology scheme")
+            .selected_text(self.terminology_scheme.name())
+            .show_ui(ui, |ui| {
+                for scheme in TerminologyScheme::iter() {
+                    ui.selectable_value(&mut self.terminology_scheme, scheme, scheme.name());
+                }
+            });
+        ui.text_edit_multiline(&mut self.remarks);
+        ui.checkbox(&mut self.autosave_enabled, tr!("settings-enable-autosave"));
+        ui.add(
+            egui::Slider::new(&mut self.autosave_interval_minutes, 0..=10)
+                .text(tr!("settings-autosave-interval")),
+        )
     }
 }

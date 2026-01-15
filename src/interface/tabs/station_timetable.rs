@@ -18,6 +18,7 @@ use crate::{
 use bevy::{
     ecs::{
         entity::Entity,
+        entity::{EntityMapper, MapEntities},
         hierarchy::{ChildOf, Children},
         message::{MessageReader, MessageWriter},
         name::Name,
@@ -31,10 +32,37 @@ use egui_table::{Column, Table, TableDelegate};
 use moonshine_core::kind::Instance;
 use serde::{Deserialize, Serialize};
 
-#[derive(PartialEq, Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(PartialEq, Debug, Clone, Copy)]
 pub struct StationTimetableTab {
-    #[serde(with = "crate::graph::instance_serde")]
     pub station_entity: Instance<Station>,
+}
+
+impl Serialize for StationTimetableTab {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.station_entity.entity().serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for StationTimetableTab {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let entity = Entity::deserialize(deserializer)?;
+        Ok(Self {
+            // SAFETY: entity is expected to be a valid Station when loaded.
+            station_entity: unsafe { Instance::from_entity_unchecked(entity) },
+        })
+    }
+}
+
+impl MapEntities for StationTimetableTab {
+    fn map_entities<M: EntityMapper>(&mut self, entity_mapper: &mut M) {
+        self.station_entity.map_entities(entity_mapper);
+    }
 }
 
 impl Tab for StationTimetableTab {

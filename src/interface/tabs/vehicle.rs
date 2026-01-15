@@ -1,13 +1,10 @@
+use crate::interface::tabs::{Tab, station_timetable::StationTimetableTab};
 use crate::interface::widgets::timetable_popup;
-use crate::interface::{
-    AppTab, UiCommand,
-    tabs::{Tab, station_timetable::StationTimetableTab},
-};
+use crate::interface::{AppTab, UiCommand};
 use crate::vehicles::entries::{ActualRouteEntry, TimetableEntryCache, VehicleScheduleCache};
-use crate::vehicles::{
-    AdjustTimetableEntry, TimetableAdjustment,
-    entries::{TimetableEntry, VehicleSchedule},
-};
+use crate::vehicles::entries::{TimetableEntry, VehicleSchedule};
+use crate::vehicles::{AdjustTimetableEntry, TimetableAdjustment};
+use bevy::ecs::entity::MapEntities;
 use bevy::prelude::*;
 use egui::{Popup, Ui};
 use egui_table::{CellInfo, HeaderCellInfo, Table, TableDelegate, columns::Column};
@@ -15,6 +12,12 @@ use serde::{Deserialize, Serialize};
 
 #[derive(PartialEq, Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct VehicleTab(pub Entity);
+
+impl MapEntities for VehicleTab {
+    fn map_entities<E: EntityMapper>(&mut self, entity_mapper: &mut E) {
+        self.0.map_entities(entity_mapper);
+    }
+}
 
 impl Tab for VehicleTab {
     const NAME: &'static str = "Vehicle";

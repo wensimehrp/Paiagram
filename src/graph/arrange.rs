@@ -76,9 +76,6 @@ pub(super) fn apply_graph_layout(
             mapped = true;
         }
     }
-    if mapped {
-        settings.authors.0.push(crate::settings::Author::OpenStreetMapContributors);
-    }
     let not_found_entities: EntityHashSet = not_found.iter().map(|s| s.entity()).collect();
     // find the connecting edges for stations that were not found
     // then find the average position of their connected stations

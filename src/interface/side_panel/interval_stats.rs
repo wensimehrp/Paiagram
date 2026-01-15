@@ -1,11 +1,7 @@
-use bevy::ecs::{
-    name::Name,
-    query::With,
-    system::{In, InMut, Local, Query, Res},
-};
+use crate::graph::{Graph, Interval, Station};
+use bevy::prelude::*;
 use egui::Ui;
 use moonshine_core::kind::Instance;
-use crate::graph::{Graph, Interval, Station};
 
 pub fn show_interval_stats(
     (InMut(ui), In((s1, s2))): (InMut<Ui>, In<(Instance<Station>, Instance<Station>)>),

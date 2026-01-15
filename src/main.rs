@@ -1,10 +1,11 @@
 use bevy::{ecs::system::RunSystemOnce, log::LogPlugin, prelude::*};
 use clap::Parser;
+use moonshine_core::{load::load_on_default_event, save::save_on_default_event};
 
 mod colors;
+mod graph;
 mod i18n;
 mod interface;
-mod graph;
 mod lines;
 mod rw_data;
 mod search;
@@ -20,7 +21,6 @@ struct PaiagramApp {
 
 impl PaiagramApp {
     fn new(_cc: &eframe::CreationContext) -> Self {
-        // TODO: handle load from storage
         let mut app = App::new();
         app.add_plugins(MinimalPlugins);
         app.add_plugins(LogPlugin::default());
@@ -33,10 +33,24 @@ impl PaiagramApp {
             vehicles::VehiclesPlugin,
             lines::LinesPlugin,
             troubleshoot::TroubleShootPlugin,
-        ));
+        ))
+        .add_observer(save_on_default_event)
+        .add_observer(load_on_default_event);
+        info!("Initialized Bevy App.");
+        if let Err(e) = app
+            .world_mut()
+            .run_system_once(rw_data::saveload::load_autosave)
+        {
+            error!("Failed to load autosave: {:?}", e);
+        }
+        // get the world's settings resource to get the language
+        let settings = app.world().resource::<settings::ApplicationSettings>();
+        i18n::init(Some(settings.language.identifier()));
         let args = Cli::parse();
         if let Err(e) = app.world_mut().run_system_once_with(handle_args, args) {
             error!("Failed to handle command line arguments: {:?}", e);
+        } else {
+            info!("Command line arguments handled successfully.");
         }
         Self { bevy_app: app }
     }
@@ -54,13 +68,36 @@ impl eframe::App for PaiagramApp {
         }
     }
     fn persist_egui_memory(&self) -> bool {
+        // this is true regardless of settings, as we always want to persist egui memory
+        // autosave is handled separately
         true
     }
     fn auto_save_interval(&self) -> std::time::Duration {
-        std::time::Duration::from_mins(5)
+        let mins = self
+            .bevy_app
+            .world()
+            .resource::<settings::ApplicationSettings>()
+            .autosave_interval_minutes;
+        std::time::Duration::from_mins(mins as u64)
     }
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
-        if let Err(e) = rw_data::save::autosave(&mut self.bevy_app, storage) {
+        // a dummy marker for the storage system
+        // this saves stuff interval to egui e.g. window positions etc.
+        eframe::set_value(storage, "autosave_marker", &());
+        let autosave_enabled = self
+            .bevy_app
+            .world()
+            .resource::<settings::ApplicationSettings>()
+            .autosave_enabled;
+        if !autosave_enabled {
+            return;
+        }
+        // save the app state
+        if let Err(e) = self
+            .bevy_app
+            .world_mut()
+            .run_system_once(rw_data::saveload::autosave)
+        {
             error!("Autosave failed: {:?}", e);
         }
     }
@@ -77,16 +114,15 @@ struct Cli {
     open: Option<String>,
 }
 
-fn handle_args(cli: In<Cli>, mut msg: MessageWriter<rw_data::ModifyData>) {
+fn handle_args(cli: In<Cli>, mut msg: MessageWriter<rw_data::ModifyData>, mut commands: Commands) {
     if let Some(path) = &cli.open {
         use rw_data::ModifyData;
         // match the ending of the path
         match path.split('.').next_back() {
             Some("paiagram") => {
-                warn!("Opening .paiagram files is not yet implemented.");
+                rw_data::saveload::load_save(&mut commands, path.into());
             }
             Some("json") | Some("pyetgr") => {
-                // read the file
                 let file_content = std::fs::read_to_string(path).expect("Failed to read file");
                 msg.write(ModifyData::LoadQETRC(file_content));
             }
@@ -103,7 +139,6 @@ fn handle_args(cli: In<Cli>, mut msg: MessageWriter<rw_data::ModifyData>) {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result<()> {
-    i18n::init();
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("Paiagram Drawer")
@@ -131,7 +166,7 @@ pub struct WebHandle {
 // When compiling to web using trunk:
 #[cfg(target_arch = "wasm32")]
 fn main() {
-    i18n::init();
+    i18n::init(None);
     use eframe::wasm_bindgen::JsCast as _;
     use eframe::web_sys;
 

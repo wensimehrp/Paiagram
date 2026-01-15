@@ -10,8 +10,6 @@ impl Tab for ClassesTab {
     fn main_display(&mut self, _world: &mut bevy::ecs::world::World, ui: &mut Ui) {
         ui.label("Classes tab is not yet implemented.");
     }
-    fn display_display(&mut self, _world: &mut bevy::ecs::world::World, _ui: &mut Ui) {}
-    fn edit_display(&mut self, _world: &mut bevy::ecs::world::World, _ui: &mut Ui) {}
 }
 
 // TODO: add class display

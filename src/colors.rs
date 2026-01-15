@@ -10,14 +10,14 @@ pub enum DisplayColor {
 
 impl Default for DisplayColor {
     fn default() -> Self {
-        Self::Predefined(PredefinedColor::Red)
+        Self::Predefined(PredefinedColor::Neutral)
     }
 }
 
 impl DisplayColor {
-    fn get(self, light: bool) -> Color32 {
+    pub fn get(self, is_dark: bool) -> Color32 {
         match self {
-            Self::Predefined(p) => p.get(light),
+            Self::Predefined(p) => p.get(is_dark),
             Self::Custom(c) => c,
         }
     }
@@ -25,7 +25,7 @@ impl DisplayColor {
 
 impl Widget for DisplayColor {
     fn ui(self, ui: &mut egui::Ui) -> egui::Response {
-        let light = !ui.visuals().dark_mode;
+        let is_dark = ui.visuals().dark_mode;
         let a = Color32::default();
         ui.button("123")
         // TODO: finish this
@@ -61,53 +61,53 @@ pub enum PredefinedColor {
 impl PredefinedColor {
     // use 700 shade if light, otherwise use 400
     // neutral is special
-    pub const fn get(self, light: bool) -> Color32 {
+    pub const fn get(self, is_dark: bool) -> Color32 {
         #[rustfmt::skip]
-        let c = match (self, light) {
-            (Self::Red, true)       => RED_700,
-            (Self::Red, false)      => RED_400,
-            (Self::Orange, true)    => ORANGE_700,
-            (Self::Orange, false)   => ORANGE_400,
-            (Self::Amber, true)     => AMBER_700,
-            (Self::Amber, false)    => AMBER_400,
-            (Self::Yellow, true)    => YELLOW_700,
-            (Self::Yellow, false)   => YELLOW_400,
-            (Self::Lime, true)      => LIME_700,
-            (Self::Lime, false)     => LIME_400,
-            (Self::Green, true)     => GREEN_700,
-            (Self::Green, false)    => GREEN_400,
-            (Self::Emerald, true)   => EMERALD_700,
-            (Self::Emerald, false)  => EMERALD_400,
-            (Self::Teal, true)      => TEAL_700,
-            (Self::Teal, false)     => TEAL_400,
-            (Self::Cyan, true)      => CYAN_700,
-            (Self::Cyan, false)     => CYAN_400,
-            (Self::Sky, true)       => SKY_700,
-            (Self::Sky, false)      => SKY_400,
-            (Self::Blue, true)      => BLUE_700,
-            (Self::Blue, false)     => BLUE_400,
-            (Self::Indigo, true)    => INDIGO_700,
-            (Self::Indigo, false)   => INDIGO_400,
-            (Self::Violet, true)    => VIOLET_700,
-            (Self::Violet, false)   => VIOLET_400,
-            (Self::Purple, true)    => PURPLE_700,
-            (Self::Purple, false)   => PURPLE_400,
-            (Self::Fuchsia, true)   => FUCHSIA_700,
-            (Self::Fuchsia, false)  => FUCHSIA_400,
-            (Self::Pink, true)      => PINK_700,
-            (Self::Pink, false)     => PINK_400,
-            (Self::Rose, true)      => ROSE_700,
-            (Self::Rose, false)     => ROSE_400,
-            (Self::Slate, true)     => SLATE_700,
-            (Self::Slate, false)    => SLATE_400,
-            (Self::Gray, true)      => GRAY_700,
-            (Self::Gray, false)     => GRAY_400,
-            (Self::Zinc, true)      => ZINC_700,
-            (Self::Zinc, false)     => ZINC_400,
-            (Self::Neutral, true)   => NEUTRAL_700,
-            (Self::Neutral, false)  => NEUTRAL_400,
-            (Self::Stone, true)     => STONE_700,
-            (Self::Stone, false)    => STONE_400,
+        let c = match (self, is_dark) {
+            (Self::Red, true)       => RED_400,
+            (Self::Red, false)      => RED_700,
+            (Self::Orange, true)    => ORANGE_400,
+            (Self::Orange, false)   => ORANGE_700,
+            (Self::Amber, true)     => AMBER_400,
+            (Self::Amber, false)    => AMBER_700,
+            (Self::Yellow, true)    => YELLOW_400,
+            (Self::Yellow, false)   => YELLOW_700,
+            (Self::Lime, true)      => LIME_400,
+            (Self::Lime, false)     => LIME_700,
+            (Self::Green, true)     => GREEN_400,
+            (Self::Green, false)    => GREEN_700,
+            (Self::Emerald, true)   => EMERALD_400,
+            (Self::Emerald, false)  => EMERALD_700,
+            (Self::Teal, true)      => TEAL_400,
+            (Self::Teal, false)     => TEAL_700,
+            (Self::Cyan, true)      => CYAN_400,
+            (Self::Cyan, false)     => CYAN_700,
+            (Self::Sky, true)       => SKY_400,
+            (Self::Sky, false)      => SKY_700,
+            (Self::Blue, true)      => BLUE_400,
+            (Self::Blue, false)     => BLUE_700,
+            (Self::Indigo, true)    => INDIGO_400,
+            (Self::Indigo, false)   => INDIGO_700,
+            (Self::Violet, true)    => VIOLET_400,
+            (Self::Violet, false)   => VIOLET_700,
+            (Self::Purple, true)    => PURPLE_400,
+            (Self::Purple, false)   => PURPLE_700,
+            (Self::Fuchsia, true)   => FUCHSIA_400,
+            (Self::Fuchsia, false)  => FUCHSIA_700,
+            (Self::Pink, true)      => PINK_400,
+            (Self::Pink, false)     => PINK_700,
+            (Self::Rose, true)      => ROSE_400,
+            (Self::Rose, false)     => ROSE_700,
+            (Self::Slate, true)     => SLATE_400,
+            (Self::Slate, false)    => SLATE_700,
+            (Self::Gray, true)      => GRAY_400,
+            (Self::Gray, false)     => GRAY_700,
+            (Self::Zinc, true)      => ZINC_400,
+            (Self::Zinc, false)     => ZINC_700,
+            (Self::Neutral, true)   => NEUTRAL_400,
+            (Self::Neutral, false)  => NEUTRAL_700,
+            (Self::Stone, true)     => STONE_400,
+            (Self::Stone, false)    => STONE_700,
         };
         translate_srgba_to_color32(c)
     }

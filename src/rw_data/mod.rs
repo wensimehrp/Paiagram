@@ -1,10 +1,9 @@
 //! Module for reading and writing various data formats.
 
 pub mod custom;
-pub mod load_osm;
 pub mod oudiasecond;
 pub mod qetrc;
-pub mod save;
+pub mod saveload;
 pub mod write;
 
 use bevy::prelude::*;

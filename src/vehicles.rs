@@ -1,15 +1,19 @@
-use crate::{graph::Station, vehicles::{entries::TimetableEntry, services::VehicleService}};
+use crate::graph::Station;
+use crate::vehicles::{entries::TimetableEntry, services::VehicleService};
 use bevy::prelude::*;
 use moonshine_core::kind::Instance;
+use moonshine_core::save::prelude::*;
 use smallvec::{SmallVec, smallvec};
 mod calculate_estimates;
 pub mod entries;
 pub mod services;
 pub mod vehicle_set;
 
-#[derive(Debug, Component)]
-#[require(Name, entries::VehicleSchedule)]
+#[derive(Reflect, Debug, Component)]
+#[reflect(Component)]
+#[require(Name, entries::VehicleSchedule, Save)]
 pub struct Vehicle;
+
 pub struct VehiclesPlugin;
 
 impl Plugin for VehiclesPlugin {

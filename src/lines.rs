@@ -1,6 +1,8 @@
-use crate::{ graph::Station, units::time::TimetableTime};
+use crate::{graph::Station, units::time::TimetableTime};
+use bevy::ecs::entity::{EntityMapper, MapEntities};
 use bevy::prelude::*;
 use moonshine_core::kind::Instance;
+use moonshine_core::save::prelude::*;
 
 /// Displayed line type:
 /// A list of (station entity, size of the interval on canvas in mm)
@@ -10,7 +12,7 @@ pub type DisplayedLineType = Vec<(Instance<Station>, f32)>;
 
 pub type RulerLineType = Vec<(Instance<Station>, TimetableTime)>;
 
-#[derive(Debug, Default)]
+#[derive(Reflect, Debug, Default)]
 pub enum ScaleMode {
     Linear,
     #[default]
@@ -19,11 +21,21 @@ pub enum ScaleMode {
 }
 
 /// An imaginary (railway) line on the canvas, consisting of multiple segments.
-#[derive(Component, Debug)]
-#[require(Name)]
+#[derive(Reflect, Component, Debug)]
+#[component(map_entities)]
+#[reflect(Component, MapEntities)]
+#[require(Name, Save)]
 pub struct DisplayedLine {
-    stations: Vec<(Instance<Station>, f32)>,
+    pub stations: Vec<(Instance<Station>, f32)>,
     pub scale_mode: ScaleMode,
+}
+
+impl MapEntities for DisplayedLine {
+    fn map_entities<E: EntityMapper>(&mut self, entity_mapper: &mut E) {
+        for (station, _) in &mut self.stations {
+            station.map_entities(entity_mapper);
+        }
+    }
 }
 
 pub enum DisplayedLineError {

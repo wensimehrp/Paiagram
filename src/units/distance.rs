@@ -1,5 +1,6 @@
+use bevy::prelude::Reflect;
 use derive_more::{Add, AddAssign, Sub, SubAssign};
-#[derive(Debug, Clone, Copy, Add, AddAssign, Sub, SubAssign)]
+#[derive(Reflect, Debug, Clone, Copy, Add, AddAssign, Sub, SubAssign)]
 pub struct Distance(pub i32);
 
 impl Distance {

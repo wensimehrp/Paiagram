@@ -4,6 +4,8 @@
 # Settings
 settings-enable-romaji-search = Enable Romaji search
 settings-show-performance-stats = Show performance analytics
+settings-enable-autosave = Enable autosave
+settings-autosave-interval = Autosave interval (minutes)
 
 # Side panel
 side-panel-edit = Edit

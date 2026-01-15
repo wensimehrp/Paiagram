@@ -3,5 +3,6 @@
 *.json
 *.oud2
 *.kdl
+*.paiagram
 wasm-out
 web-out

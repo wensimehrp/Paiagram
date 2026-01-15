@@ -3,6 +3,7 @@ use crate::graph::{Graph, Interval, Station};
 use crate::lines::DisplayedLine;
 use crate::rw_data::write::write_text_file;
 use crate::vehicles::entries::{TimetableEntry, TimetableEntryCache, VehicleScheduleCache};
+use bevy::ecs::entity::{EntityMapper, MapEntities};
 use bevy::prelude::*;
 use egui::{Color32, Painter, Pos2, Rect, Sense, Stroke, Ui, Vec2};
 use egui_i18n::tr;
@@ -35,11 +36,29 @@ enum EditMode {
     EditDisplayedLine(Instance<DisplayedLine>),
 }
 
+impl MapEntities for EditMode {
+    fn map_entities<M: EntityMapper>(&mut self, entity_mapper: &mut M) {
+        match self {
+            EditMode::EditDisplayedLine(line) => line.map_entities(entity_mapper),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 enum SelectedItem {
     Node(Instance<Station>),
     Edge(Instance<Interval>),
     DisplayedLine(Instance<DisplayedLine>),
+}
+
+impl MapEntities for SelectedItem {
+    fn map_entities<M: EntityMapper>(&mut self, entity_mapper: &mut M) {
+        match self {
+            SelectedItem::Node(node) => node.map_entities(entity_mapper),
+            SelectedItem::Edge(edge) => edge.map_entities(entity_mapper),
+            SelectedItem::DisplayedLine(line) => line.map_entities(entity_mapper),
+        }
+    }
 }
 
 impl Default for GraphTab {
@@ -57,6 +76,16 @@ impl Default for GraphTab {
     }
 }
 
+impl MapEntities for GraphTab {
+    fn map_entities<M: EntityMapper>(&mut self, entity_mapper: &mut M) {
+        if let Some(selected_item) = &mut self.selected_item {
+            selected_item.map_entities(entity_mapper);
+        }
+        if let Some(edit_mode) = &mut self.edit_mode {
+            edit_mode.map_entities(entity_mapper);
+        }
+    }
+}
 impl Tab for GraphTab {
     const NAME: &'static str = "Graph";
     fn main_display(&mut self, world: &mut bevy::ecs::world::World, ui: &mut egui::Ui) {

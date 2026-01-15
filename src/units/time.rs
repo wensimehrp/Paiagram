@@ -1,8 +1,10 @@
-use bevy::prelude::{Deref, DerefMut, Reflect};
+use bevy::prelude::Reflect;
 use serde::{Deserialize, Serialize};
 use std::ops;
 
-#[derive(Debug, Deserialize, Serialize, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Reflect, Debug, Deserialize, Serialize, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord,
+)]
 pub struct TimetableTime(pub i32);
 
 impl TimetableTime {
@@ -126,7 +128,7 @@ impl ops::SubAssign<Duration> for TimetableTime {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Reflect, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Duration(pub i32);
 
 impl Duration {

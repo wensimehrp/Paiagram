@@ -2,24 +2,20 @@ mod about;
 mod side_panel;
 mod tabs;
 mod widgets;
-
-use crate::{
-    colors,
-    interface::tabs::{
-        Tab, all_tabs::*, diagram::SelectedEntityType, minesweeper::MinesweeperData,
-    },
-    settings::ApplicationSettings,
-};
-use bevy::{
-    color::palettes::tailwind::{EMERALD_700, EMERALD_800, GRAY_900},
-    prelude::*,
-};
+use crate::colors;
+use crate::settings::ApplicationSettings;
+use bevy::color::palettes::tailwind::{EMERALD_700, EMERALD_800, GRAY_900};
+use bevy::prelude::*;
 use egui::{self, Color32, CornerRadius, Frame, Id, Margin, Rect, Sense, Shape, Stroke, Ui};
 use egui_dock::{DockArea, DockState, TabInteractionStyle};
 use egui_i18n::tr;
+use moonshine_core::save::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use strum::{EnumCount, IntoEnumIterator};
+use tabs::diagram::SelectedEntityType;
+use tabs::minesweeper::MinesweeperData;
+use tabs::{Tab, all_tabs::*};
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::wasm_bindgen;
 
@@ -41,9 +37,17 @@ impl Plugin for InterfacePlugin {
 
 /// The state of the user interface
 #[derive(Resource, Clone, Reflect, Serialize, Deserialize)]
-#[reflect(opaque, Resource, Serialize, Deserialize)]
-struct UiState {
+#[reflect(Resource, MapEntities, Serialize, Deserialize, opaque)]
+pub struct UiState {
     dock_state: DockState<AppTab>,
+}
+
+impl MapEntities for UiState {
+    fn map_entities<M: EntityMapper>(&mut self, entity_mapper: &mut M) {
+        for (_, tab) in self.dock_state.iter_all_tabs_mut() {
+            tab.map_entities(entity_mapper);
+        }
+    }
 }
 
 #[derive(Default, Resource, Deref, DerefMut)]
@@ -160,6 +164,23 @@ pub enum AppTab {
     Graph(GraphTab),
 }
 
+impl MapEntities for AppTab {
+    fn map_entities<M: EntityMapper>(&mut self, entity_mapper: &mut M) {
+        match self {
+            AppTab::Vehicle(tab) => tab.map_entities(entity_mapper),
+            AppTab::StationTimetable(tab) => tab.map_entities(entity_mapper),
+            AppTab::Diagram(tab) => tab.map_entities(entity_mapper),
+            AppTab::Graph(tab) => tab.map_entities(entity_mapper),
+            AppTab::Start(_)
+            | AppTab::DisplayedLines(_)
+            | AppTab::Settings(_)
+            | AppTab::Classes(_)
+            | AppTab::Services(_)
+            | AppTab::Minesweeper(_) => {}
+        }
+    }
+}
+
 impl AppTab {
     pub fn id(&self) -> egui::Id {
         for_all_tabs!(self, t, t.id())
@@ -170,7 +191,7 @@ impl AppTab {
         let color = colors::PredefinedColor::iter()
             .nth(num as usize % colors::PredefinedColor::COUNT)
             .unwrap();
-        color.get(false)
+        color.get(true)
     }
 }
 
