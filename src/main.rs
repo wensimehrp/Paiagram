@@ -1,4 +1,5 @@
 use bevy::{ecs::system::RunSystemOnce, log::LogPlugin, prelude::*};
+#[cfg(not(target_arch = "wasm32"))]
 use clap::Parser;
 use moonshine_core::{load::load_on_default_event, save::save_on_default_event};
 
@@ -36,6 +37,8 @@ impl PaiagramApp {
         ))
         .add_observer(save_on_default_event)
         .add_observer(load_on_default_event);
+        #[cfg(target_arch = "wasm32")]
+        app.add_observer(rw_data::saveload::observe_autosave);
         info!("Initialized Bevy App.");
         if let Err(e) = app
             .world_mut()
@@ -46,11 +49,14 @@ impl PaiagramApp {
         // get the world's settings resource to get the language
         let settings = app.world().resource::<settings::ApplicationSettings>();
         i18n::init(Some(settings.language.identifier()));
-        let args = Cli::parse();
-        if let Err(e) = app.world_mut().run_system_once_with(handle_args, args) {
-            error!("Failed to handle command line arguments: {:?}", e);
-        } else {
-            info!("Command line arguments handled successfully.");
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let args = Cli::parse();
+            if let Err(e) = app.world_mut().run_system_once_with(handle_args, args) {
+                error!("Failed to handle command line arguments: {:?}", e);
+            } else {
+                info!("Command line arguments handled successfully.");
+            }
         }
         Self { bevy_app: app }
     }
@@ -105,6 +111,7 @@ impl eframe::App for PaiagramApp {
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
+#[cfg(not(target_arch = "wasm32"))]
 struct Cli {
     #[arg(
         short = 'o',
@@ -114,6 +121,7 @@ struct Cli {
     open: Option<String>,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn handle_args(cli: In<Cli>, mut msg: MessageWriter<rw_data::ModifyData>, mut commands: Commands) {
     if let Some(path) = &cli.open {
         use rw_data::ModifyData;

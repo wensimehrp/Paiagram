@@ -26,6 +26,12 @@ impl Plugin for RwDataPlugin {
                 .chain()
                 .run_if(on_message::<ModifyData>),
         );
+        #[cfg(target_arch = "wasm32")]
+        app.add_systems(
+            Update,
+            saveload::consume_autosave_load_task
+                .run_if(resource_exists::<saveload::AutosaveLoadTask>),
+        );
     }
 }
 
