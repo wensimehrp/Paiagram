@@ -1,6 +1,7 @@
 use crate::interface::UiCommand;
 use crate::interface::tabs::all_tabs::MinesweeperTab;
 use crate::rw_data::ModifyData;
+use crate::settings::ApplicationSettings;
 use bevy::prelude::*;
 use egui::{Id, Modal, OpenUrl};
 use rfd::AsyncFileDialog;
@@ -60,6 +61,7 @@ pub fn show_about(
     (InMut(ui), InMut(modal_open)): (InMut<egui::Ui>, InMut<bool>),
     mut msg_read_file: MessageWriter<ModifyData>,
     mut msg_open_tab: MessageWriter<UiCommand>,
+    settings: Res<ApplicationSettings>,
 ) {
     let queue = shared_queue();
     let pending: Vec<_> = {
@@ -148,6 +150,11 @@ pub fn show_about(
             if ui.button("About Paiagram").clicked() {
                 *modal_open = true;
             };
+            if settings.is_developer_mode && ui.button("Open Inspector").clicked() {
+                msg_open_tab.write(UiCommand::OpenOrFocusTab(super::AppTab::Inspector(
+                    super::tabs::inspector::InspectorTab,
+                )));
+            }
         });
     });
     if *modal_open {

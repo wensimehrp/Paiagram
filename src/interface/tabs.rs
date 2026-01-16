@@ -8,6 +8,7 @@ pub mod classes;
 pub mod diagram;
 pub mod displayed_lines;
 pub mod graph;
+pub mod inspector;
 pub mod minesweeper;
 pub mod overview;
 pub mod services;
@@ -22,6 +23,7 @@ pub mod all_tabs {
     pub use super::diagram::DiagramTab;
     pub use super::displayed_lines::DisplayedLinesTab;
     pub use super::graph::GraphTab;
+    pub use super::inspector::InspectorTab;
     pub use super::minesweeper::MinesweeperTab;
     pub use super::overview::OverviewTab;
     pub use super::services::ServicesTab;

@@ -50,9 +50,11 @@ impl MapEntities for UiState {
     }
 }
 
+// TODO: move this elsewhere
 #[derive(Default, Resource, Deref, DerefMut)]
 pub struct SelectedElement(pub Option<SelectedEntityType>);
 
+// TODO: move this UI state elsewhere
 #[derive(Resource)]
 pub struct MiscUiState {
     is_dark_mode: bool,
@@ -145,6 +147,7 @@ macro_rules! for_all_tabs {
             AppTab::Services($t) => $body,
             AppTab::Minesweeper($t) => $body,
             AppTab::Graph($t) => $body,
+            AppTab::Inspector($t) => $body,
         }
     };
 }
@@ -162,6 +165,7 @@ pub enum AppTab {
     Services(ServicesTab),
     Minesweeper(MinesweeperTab),
     Graph(GraphTab),
+    Inspector(InspectorTab),
 }
 
 impl MapEntities for AppTab {
@@ -176,6 +180,7 @@ impl MapEntities for AppTab {
             | AppTab::Settings(_)
             | AppTab::Classes(_)
             | AppTab::Services(_)
+            | AppTab::Inspector(_)
             | AppTab::Minesweeper(_) => {}
         }
     }

@@ -25,12 +25,10 @@ fn autosave_file_location() -> Result<PathBuf, std::io::Error> {
 
 /// The function to trigger the save, with filters built in.
 fn trigger_save(commands: &mut Commands, loader: SaveWorld) {
-    use crate::graph::StationEntries;
     let event = loader
         .include_resource::<crate::settings::ApplicationSettings>()
         .include_resource::<crate::interface::UiState>()
-        .include_resource::<crate::graph::Graph>()
-        .exclude_component::<StationEntries>();
+        .include_resource::<crate::graph::Graph>();
     commands.trigger_save(event)
 }
 

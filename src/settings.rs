@@ -1,5 +1,6 @@
 use crate::i18n::Language;
 use bevy::prelude::*;
+use bevy_inspector_egui::DefaultInspectorConfigPlugin;
 use egui_i18n::{set_language, tr};
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
@@ -11,7 +12,8 @@ impl Plugin for SettingsPlugin {
             .add_systems(
                 Update,
                 update_language_setting.run_if(resource_changed_or_removed::<ApplicationSettings>),
-            );
+            )
+            .add_plugins(DefaultInspectorConfigPlugin);
     }
 }
 
@@ -70,13 +72,14 @@ pub struct ApplicationSettings {
     pub remarks: String,
     pub autosave_enabled: bool,
     pub autosave_interval_minutes: u32,
+    pub is_developer_mode: bool,
 }
 
 impl Default for ApplicationSettings {
     fn default() -> Self {
         Self {
             enable_romaji_search: false,
-            show_performance_stats: false,
+            show_performance_stats: cfg!(debug_assertions),
             pinyin_scheme: vec!["quanpin".into(), "diletter_microsoft".into()],
             terminology_scheme: TerminologyScheme::Paiagram,
             language: Language::EnCA,
@@ -93,6 +96,7 @@ impl Default for ApplicationSettings {
             remarks: String::new(),
             autosave_enabled: true,
             autosave_interval_minutes: 5,
+            is_developer_mode: cfg!(debug_assertions),
         }
     }
 }
@@ -126,6 +130,10 @@ impl egui::Widget for &mut ApplicationSettings {
         ui.add(
             egui::Slider::new(&mut self.autosave_interval_minutes, 1..=10)
                 .text(tr!("settings-autosave-interval")),
+        );
+        ui.checkbox(
+            &mut self.is_developer_mode,
+            tr!("settings-enable-developer-mode"),
         )
     }
 }

@@ -6,6 +6,7 @@ settings-enable-romaji-search = 启用日语罗马字搜索
 settings-show-performance-stats = 显示性能信息
 settings-enable-autosave = 启用自动保存
 settings-autosave-interval = 自动保存间隔（分钟）
+settings-enable-developer-mode = 启用开发者模式
 
 # Side panel
 side-panel-edit = 编辑
