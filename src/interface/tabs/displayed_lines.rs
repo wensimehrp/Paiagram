@@ -2,9 +2,9 @@ use bevy::ecs::{
     entity::Entity,
     name::Name,
     query::With,
-    system::{InMut, Local, Populated, Query},
+    system::{InMut, Local, Query},
 };
-use egui::{Frame, Response, RichText, ScrollArea, Sense, Ui, UiBuilder, Vec2};
+use egui::{Frame, Response, ScrollArea, Sense, Ui, UiBuilder, Vec2};
 use serde::{Deserialize, Serialize};
 
 const PANEL_DEFAULT_SIZE: f32 = 20.0;

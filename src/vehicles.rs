@@ -1,9 +1,8 @@
 use crate::graph::Station;
-use crate::vehicles::{entries::TimetableEntry, services::VehicleService};
+use crate::vehicles::services::VehicleService;
 use bevy::prelude::*;
 use moonshine_core::kind::Instance;
 use moonshine_core::save::prelude::*;
-use smallvec::{SmallVec, smallvec};
 mod calculate_estimates;
 pub mod entries;
 pub mod services;
