@@ -152,12 +152,6 @@ impl Graph {
     }
 }
 
-/// A depot or yard in the transportation network
-/// A depot cannot be a node in the transportation network graph. Use `Station` for that.
-#[derive(Component)]
-#[require(Station)]
-pub struct Depot;
-
 /// A station or in the transportation network
 #[derive(Component, Default, Deref, DerefMut, Debug, Clone, Reflect, Serialize, Deserialize)]
 #[reflect(Component, opaque, Serialize, Deserialize)]
