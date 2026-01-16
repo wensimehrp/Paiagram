@@ -138,19 +138,37 @@ impl ActualRouteEntry {
             Self::Derived(e) => e,
         }
     }
+    pub fn inner_mut(&mut self) -> &mut Entity {
+        match self {
+            Self::Nominal(e) => e,
+            Self::Derived(e) => e,
+        }
+    }
 }
 
-#[derive(Reflect, Debug, Default, Component, MapEntities)]
+#[derive(Component, Reflect, Debug, Default)]
 #[reflect(Component, MapEntities)]
+#[component(map_entities)]
 pub struct VehicleScheduleCache {
     pub actual_route: Option<Vec<ActualRouteEntry>>,
     /// Service entities indices. This piece of data is calculated during runtime.
     /// This should always be sorted by Entity
+    // TODO: move service entities into their own component
     #[reflect(ignore)]
     pub service_entities: Vec<(
         Instance<VehicleService>,
         SmallVec<[std::ops::Range<usize>; 1]>,
     )>,
+}
+
+impl MapEntities for VehicleScheduleCache {
+    fn map_entities<E: EntityMapper>(&mut self, entity_mapper: &mut E) {
+        if let Some(actual_route) = &mut self.actual_route {
+            for entry in actual_route.iter_mut() {
+                entry.inner_mut().map_entities(entity_mapper);
+            }
+        }
+    }
 }
 
 impl VehicleScheduleCache {

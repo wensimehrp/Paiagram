@@ -1,12 +1,8 @@
+use crate::units::time::Duration;
+use crate::vehicles::AdjustTimetableEntry;
+use crate::vehicles::entries::{TimetableEntry, TimetableEntryCache, TravelMode, VehicleSchedule};
 use bevy::prelude::*;
-
-use crate::{
-    units::time::Duration,
-    vehicles::{
-        AdjustTimetableEntry,
-        entries::{TimetableEntry, TimetableEntryCache, TravelMode, VehicleSchedule},
-    },
-};
+use thiserror::Error;
 
 pub struct TroubleShootPlugin;
 
@@ -22,8 +18,11 @@ impl Plugin for TroubleShootPlugin {
 #[derive(Component)]
 #[component(storage = "SparseSet")]
 pub struct ScheduleProblem(pub Vec<ScheduleProblemType>);
+#[derive(Debug, PartialEq, Eq, Error)]
 pub enum ScheduleProblemType {
+    #[error("Schedule is too short")]
     TooShort,
+    #[error("Schedule collides with another vehicle")]
     CollidesWithAnotherVehicle {
         own_entry: Entity,
         other_entry: Entity,
@@ -34,11 +33,15 @@ pub enum ScheduleProblemType {
 #[derive(Component)]
 #[component(storage = "SparseSet")]
 pub struct EntryProblem(pub Vec<EntryProblemType>);
-#[derive(PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Error)]
 pub enum EntryProblemType {
+    #[error("No estimation available for this entry")]
     NoEstimation,
+    #[error("Travel duration is too short or negative")]
     TravelDurationTooShort,
+    #[error("Arrival is flexible but departure is at a fixed time")]
     ReversedFlexibleMode,
+    #[error("This entry collides with another entry")]
     CollidesWithAnotherEntry(Entity),
 }
 

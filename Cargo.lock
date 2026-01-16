@@ -4270,6 +4270,7 @@ dependencies = [
  "strsim",
  "strum",
  "strum_macros",
+ "thiserror 2.0.17",
  "urlencoding",
  "visgraph",
  "wasm-bindgen",

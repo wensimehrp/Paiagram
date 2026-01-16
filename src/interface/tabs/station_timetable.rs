@@ -1,5 +1,5 @@
 use crate::{
-    graph::{Depot, Station, StationEntries},
+    graph::{Station, StationEntries},
     interface::{
         AppTab, UiCommand,
         tabs::{Tab, vehicle},
