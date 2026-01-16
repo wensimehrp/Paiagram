@@ -7,9 +7,9 @@
 
 Diagrams make easy.
 
-> [!WARNING]  
+> [!WARNING]
 > Paiagram is still in development. Don't expect it to be ready for production use right now.
-> Come back in six or seven months to see how it is going. I guarentee you that there would be lots of new commits.
+> Come back in six or seven months to see how it is going. I guarantee you that there would be lots of new commits.
 
 ## Features
 
