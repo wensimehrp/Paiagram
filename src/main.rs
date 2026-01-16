@@ -40,23 +40,29 @@ impl PaiagramApp {
         #[cfg(target_arch = "wasm32")]
         app.add_observer(rw_data::saveload::observe_autosave);
         info!("Initialized Bevy App.");
-        if let Err(e) = app
-            .world_mut()
-            .run_system_once(rw_data::saveload::load_autosave)
-        {
-            error!("Failed to load autosave: {:?}", e);
-        }
+        // don't load autosave if opening a file or starting fresh
+        let mut load_autosave = true;
         // get the world's settings resource to get the language
         let settings = app.world().resource::<settings::ApplicationSettings>();
         i18n::init(Some(settings.language.identifier()));
         #[cfg(not(target_arch = "wasm32"))]
         {
             let args = Cli::parse();
+            if args.open.is_some() || args.fresh {
+                load_autosave = false;
+            }
             if let Err(e) = app.world_mut().run_system_once_with(handle_args, args) {
                 error!("Failed to handle command line arguments: {:?}", e);
             } else {
                 info!("Command line arguments handled successfully.");
             }
+        }
+        if load_autosave
+            && let Err(e) = app
+                .world_mut()
+                .run_system_once(rw_data::saveload::load_autosave)
+        {
+            error!("Failed to load autosave: {:?}", e);
         }
         Self { bevy_app: app }
     }
@@ -119,6 +125,11 @@ struct Cli {
         help = "Path to a .paiagram file (or any other compatible file formats) to open on startup"
     )]
     open: Option<String>,
+    #[arg(
+        long = "fresh",
+        help = "Start with a fresh state, ignoring any autosave"
+    )]
+    fresh: bool,
 }
 
 #[cfg(not(target_arch = "wasm32"))]

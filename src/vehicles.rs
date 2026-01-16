@@ -33,6 +33,7 @@ impl Plugin for VehiclesPlugin {
     }
 }
 
+#[derive(Debug)]
 pub enum TimetableAdjustment {
     SetArrivalType(entries::TravelMode),
     AdjustArrivalTime(crate::units::time::Duration),
@@ -45,7 +46,7 @@ pub enum TimetableAdjustment {
     PassThrough,
 }
 
-#[derive(Message)]
+#[derive(Message, Debug)]
 pub struct AdjustTimetableEntry {
     pub entity: Entity,
     pub adjustment: TimetableAdjustment,

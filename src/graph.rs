@@ -76,8 +76,10 @@ impl MapEntities for Graph {
             edge.map_entities(entity_mapper);
         }
         let mut new_indices = EntityHashMap::default();
-        for (entity, index) in self.indices.drain() {
-            new_indices.insert(entity_mapper.get_mapped(entity), index);
+        // construct the indices from the graph instead.
+        for index in self.inner.node_indices() {
+            let station = &self.inner[index];
+            new_indices.insert(station.entity(), index);
         }
         self.indices = new_indices;
     }

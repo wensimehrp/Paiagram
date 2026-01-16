@@ -10,7 +10,7 @@ use moonshine_core::kind::Instance;
 pub fn calculate_estimates(
     mut msg_reader: MessageReader<AdjustTimetableEntry>,
     mut entries: Populated<(&TimetableEntry, &mut TimetableEntryCache)>,
-    mut intervals: Query<&graph::Interval>,
+    intervals: Query<&graph::Interval>,
     parents: Populated<&ChildOf>,
     schedules: Populated<&entries::VehicleScheduleCache>,
     graph: Res<Graph>,
@@ -29,12 +29,13 @@ pub fn calculate_estimates(
         stack.clear();
     }
 
-    let mut messages = msg_reader.read().collect::<Vec<_>>();
+    let messages = msg_reader.read().collect::<Vec<_>>();
     if messages.is_empty() {
         return;
     }
 
     for msg in messages {
+        debug!(?msg);
         let AdjustTimetableEntry { entity, .. } = msg;
         let Ok(entry) = parents.get(*entity) else {
             continue;

@@ -52,6 +52,7 @@ impl std::fmt::Display for TravelMode {
 #[derive(Debug, Reflect, Component, Clone)]
 #[reflect(Component, MapEntities)]
 #[require(TimetableEntryCache, Save)]
+#[component(map_entities)]
 #[relationship(relationship_target = StationEntries)]
 pub struct TimetableEntry {
     /// The node the vehicle stops at or passes.
