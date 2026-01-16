@@ -7,10 +7,22 @@ use strum_macros::EnumIter;
 pub struct SettingsPlugin;
 impl Plugin for SettingsPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(ApplicationSettings::default());
+        app.insert_resource(ApplicationSettings::default())
+            .add_systems(
+                Update,
+                update_language_setting.run_if(resource_changed_or_removed::<ApplicationSettings>),
+            );
     }
 }
 
+/// Update the application's language when the language setting changes
+/// This function should only be called when the ApplicationSettings resource changes
+/// using Bevy's [`resource_changed_or_removed`] condition.
+fn update_language_setting(settings: Res<ApplicationSettings>) {
+    set_language(settings.language.identifier());
+}
+
+/// Different terminology schemes for railway terms
 #[derive(Reflect, Clone, Copy, Debug, EnumIter, PartialEq, Eq)]
 pub enum TerminologyScheme {
     Paiagram,
@@ -45,6 +57,7 @@ pub enum Author {
 #[derive(Reflect, Clone, Debug)]
 pub struct AuthorList(pub Vec<Author>);
 
+/// TODO: Extract user preferences from this list
 #[derive(Reflect, Resource)]
 #[reflect(Resource)]
 pub struct ApplicationSettings {
@@ -98,12 +111,7 @@ impl egui::Widget for &mut ApplicationSettings {
             .selected_text(self.language.name())
             .show_ui(ui, |ui| {
                 for lang in Language::iter() {
-                    if ui
-                        .selectable_value(&mut self.language, lang, lang.name())
-                        .changed()
-                    {
-                        set_language(lang.identifier());
-                    }
+                    ui.selectable_value(&mut self.language, lang, lang.name());
                 }
             });
         egui::ComboBox::from_id_salt("Terminology scheme")
@@ -116,7 +124,7 @@ impl egui::Widget for &mut ApplicationSettings {
         ui.text_edit_multiline(&mut self.remarks);
         ui.checkbox(&mut self.autosave_enabled, tr!("settings-enable-autosave"));
         ui.add(
-            egui::Slider::new(&mut self.autosave_interval_minutes, 0..=10)
+            egui::Slider::new(&mut self.autosave_interval_minutes, 1..=10)
                 .text(tr!("settings-autosave-interval")),
         )
     }
