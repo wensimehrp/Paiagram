@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+#[cfg(target_arch = "wasm32")]
 use moonshine_core::load::LoadInput;
 use moonshine_core::save::prelude::*;
 #[cfg(not(target_arch = "wasm32"))]
@@ -22,6 +23,17 @@ fn autosave_file_location() -> Result<PathBuf, std::io::Error> {
     })
 }
 
+/// The function to trigger the save, with filters built in.
+fn trigger_save(commands: &mut Commands, loader: SaveWorld) {
+    use crate::graph::StationEntries;
+    let event = loader
+        .include_resource::<crate::settings::ApplicationSettings>()
+        .include_resource::<crate::interface::UiState>()
+        .include_resource::<crate::graph::Graph>()
+        .exclude_component::<StationEntries>();
+    commands.trigger_save(event)
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 pub fn autosave(mut commands: Commands) {
     let path = match autosave_file_location() {
@@ -31,23 +43,16 @@ pub fn autosave(mut commands: Commands) {
             return;
         }
     };
-    commands.trigger_save(
-        SaveWorld::default_into_file(path.clone())
-            .include_resource::<crate::settings::ApplicationSettings>()
-            .include_resource::<crate::interface::UiState>()
-            .include_resource::<crate::graph::Graph>(),
-    );
+    trigger_save(&mut commands, SaveWorld::default_into_file(path.clone()));
     info!("Triggered autosave to {:?}", path);
 }
 
 #[cfg(target_arch = "wasm32")]
 pub fn autosave(mut commands: Commands) {
     use moonshine_core::save::DefaultSaveFilter;
-    commands.trigger_save(
-        SaveWorld::<DefaultSaveFilter>::new(SaveOutput::Drop)
-            .include_resource::<crate::settings::ApplicationSettings>()
-            .include_resource::<crate::interface::UiState>()
-            .include_resource::<crate::graph::Graph>(),
+    trigger_save(
+        &mut commands,
+        SaveWorld::<DefaultSaveFilter>::new(SaveOutput::Drop),
     );
     info!("Triggered autosave.");
 }
