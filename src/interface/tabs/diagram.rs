@@ -151,6 +151,7 @@ pub struct DiagramTab {
     editing: EditingState,
     #[serde(skip, default)]
     state: DiagramPageCache,
+    #[serde(skip)]
     typst_output: String,
 }
 
