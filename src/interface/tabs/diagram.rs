@@ -367,7 +367,13 @@ impl Tab for DiagramTab {
                     (
                         &mut self.typst_output,
                         &calculated_vehicles,
-                        (width as f32, height),
+                        width as f32,
+                        line_cache
+                            .heights
+                            .as_ref()
+                            .map(|h| h.iter().map(|(_, height)| *height).collect::<Vec<_>>())
+                            .as_deref()
+                            .unwrap_or(&[]),
                     ),
                 ) {
                     error!("UI Error while exporting diagram to typst: {}", e);
@@ -393,10 +399,11 @@ impl Tab for DiagramTab {
 }
 
 fn make_typst_string(
-    (InMut(buffer), InRef(calculated_vehicles), In((width, height))): (
+    (InMut(buffer), InRef(calculated_vehicles), In(width), InRef(heights)): (
         InMut<String>,
         InRef<[RenderedVehicle]>,
-        In<(f32, f32)>,
+        In<f32>,
+        InRef<[f32]>,
     ),
 ) {
     buffer.clear();
@@ -405,24 +412,30 @@ fn make_typst_string(
 #let render-diagram(
   segments,
   width: {width}pt,
-  height: {height}pt,
+  heights: ({}),
   horizontal_scale: 1,
   vertical_scale: 1,
-) = box(
-  width: width * horizontal_scale,
-  height: height * vertical_scale,
-  {{
+) = box({{
   for segment in segments {{
     let (first, ..rest) = segment
     let first = curve.move((first.at(0) * 1pt * horizontal_scale, first.at(1) * 1pt * vertical_scale))
     let a = rest.map(((x, y)) => curve.line((x * 1pt * horizontal_scale, y * 1pt * vertical_scale)))
     place(curve(first, ..a))
   }}
+  grid(
+    columns: (width * horizontal_scale / 24,) * 24,
+    rows: {{
+      let heights = heights.map(h => h * vertical_scale)
+      let (_, a) = heights.fold((0pt, (0pt,)), ((curr, acc), v) => (v, acc + (v - curr,)))
+      a
+    }},
+    stroke: 1pt,
+  )
 }})
 
 #let segments = (
-"#
-    ));
+"#, heights.iter().map(|h| format!("{}pt", h)).collect::<Vec<_>>().join(", "))
+    );
     for calculated_vehicle in calculated_vehicles {
         for segment in calculated_vehicle.segments.iter().map(|s| {
             s.iter()
