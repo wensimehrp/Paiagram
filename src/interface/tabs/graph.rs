@@ -88,6 +88,9 @@ impl MapEntities for GraphTab {
 }
 impl Tab for GraphTab {
     const NAME: &'static str = "Graph";
+    fn frame(&self) -> egui::Frame {
+        egui::Frame::default().inner_margin(egui::Margin::same(2))
+    }
     fn main_display(&mut self, world: &mut bevy::ecs::world::World, ui: &mut egui::Ui) {
         if let Err(e) = world.run_system_cached_with(show_graph, (ui, self)) {
             bevy::log::error!("UI Error while displaying graph page: {}", e)

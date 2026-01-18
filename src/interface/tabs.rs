@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use bevy::ecs::world::World;
 use egui::{Id, Response, Ui, WidgetText};
 use egui_i18n::tr;
@@ -83,8 +85,6 @@ where
 }
 
 pub trait Tab {
-    /// The icon for the tab button.
-    const ICON: &'static str = "🖳";
     /// The internal name of the tab used for identification. This must be a static string.
     /// The actual displayed name could be different based on e.g. the localization or other contents.
     const NAME: &'static str;
@@ -113,7 +113,7 @@ pub trait Tab {
             let title_text = self.title();
             let s = &mut world.resource_mut::<StatusBarState>().tooltip;
             s.clear();
-            s.push_str(Self::ICON);
+            s.push_str(self.icon().as_ref());
             s.push(' ');
             s.push_str(title_text.text());
         }
@@ -123,5 +123,11 @@ pub trait Tab {
     }
     fn scroll_bars(&self) -> [bool; 2] {
         [true; 2]
+    }
+    fn frame(&self) -> egui::Frame {
+        egui::Frame::default().inner_margin(egui::Margin::same(6))
+    }
+    fn icon(&self) -> Cow<'static, str> {
+        "🖳".into()
     }
 }

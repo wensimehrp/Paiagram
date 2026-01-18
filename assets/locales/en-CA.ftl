@@ -31,6 +31,9 @@ tab-start-description = A high-performance transport timetable diagramming and a
 tab-settings = Settings
 # Diagram tab
 tab-diagram = Diagram
+tab-diagram-export-typst = Export to Typst
+tab-diagram-export-typst-desc = Export the current diagram to a Typst document. The exported document can be further customized in your preferred editor.
+tab-diagram-export-typst-output = Typst output length: {$bytes} bytes
 # Graph tab
 tab-graph = Graph
 tab-graph-new-displayed-line = Create new displayed line
@@ -51,7 +54,9 @@ tab-graph-animation-desc = Animate trains on the graph.
 new-displayed-line = New Displayed Line
 
 # general
+copy-to-clipboard = Copy to Clipboard
 done = Done
+export = Export
 
 # RW data
 oud2-default-line = OUD2 Default Line

@@ -6,7 +6,9 @@ use crate::colors;
 use crate::settings::ApplicationSettings;
 use bevy::color::palettes::tailwind::{EMERALD_700, EMERALD_800, GRAY_900};
 use bevy::prelude::*;
-use egui::{self, Color32, CornerRadius, Frame, Id, Margin, Rect, Sense, Shape, Stroke, Ui};
+use egui::{
+    self, Color32, CornerRadius, Frame, Id, Margin, Rect, Sense, Shape, Stroke, Ui, UiBuilder,
+};
 use egui_dock::{DockArea, DockState, TabInteractionStyle};
 use egui_i18n::tr;
 use moonshine_core::save::prelude::*;
@@ -224,7 +226,11 @@ impl<'w> egui_dock::TabViewer for AppTabViewer<'w> {
     type Tab = AppTab;
 
     fn ui(&mut self, ui: &mut egui::Ui, tab: &mut Self::Tab) {
-        for_all_tabs!(tab, t, t.main_display(self.world, ui));
+        for_all_tabs!(
+            tab,
+            t,
+            t.frame().show(ui, |ui| t.main_display(self.world, ui))
+        );
 
         // focus ring
         let is_focused = self.focused_id == Some(tab.id());
@@ -623,7 +629,7 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
                         focused_id,
                     };
                     let mut style = egui_dock::Style::from_egui(ui.style());
-                    style.tab.tab_body.inner_margin = Margin::same(1);
+                    style.tab.tab_body.inner_margin = Margin::same(0);
                     style.tab.tab_body.corner_radius = CornerRadius::ZERO;
                     style.tab.tab_body.stroke.width = 0.0;
                     style.tab.active.outline_color = Color32::TRANSPARENT;
