@@ -39,10 +39,12 @@ tab-graph = 线路网
 tab-graph-new-displayed-line = 新建基线
 tab-graph-new-displayed-line-desc = 新建基线。基线可用于显示运行图
 tab-graph-auto-arrange = 自动整理线路网
-tab-graph-auto-arrange-desc = 自动整理当前线路网
+tab-graph-auto-arrange-desc = 使用力导向布局算法自动整理线路网。调整下方参数以改变布局效果。
 tab-graph-auto-arrange-iterations = 迭代次数
-tab-graph-arrange-via-osm = 整理线路网
-tab-graph-arrange-via-osm-desc = 利用在线资源整理当前线路网。本功能使用 OpenStreetMap 数据，点击「{tab-graph-arrange-via-osm}」即表示同意 OpenStreetMap 的使用条款。
+tab-graph-arrange-via-osm = 通过 OSM 整理
+tab-graph-arrange-button = 整理
+# tip: use local examples of area names
+tab-graph-arrange-via-osm-desc = 利用在线资源整理当前线路网。本功能使用 OpenStreetMap 数据，点击「{tab-graph-arrange-button}」即表示同意 OpenStreetMap 的使用条款。
     可以填写一个区域名称以限制查询范围（如：北京市、温州市）。
 tab-graph-arrange-via-osm-terms = 使用条款
 tab-graph-osm-area-name = 过滤区域：

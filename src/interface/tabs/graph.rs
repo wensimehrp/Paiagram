@@ -92,87 +92,89 @@ impl Tab for GraphTab {
         egui::Frame::default().inner_margin(egui::Margin::same(2))
     }
     fn main_display(&mut self, world: &mut bevy::ecs::world::World, ui: &mut egui::Ui) {
-        if let Err(e) = world.run_system_cached_with(show_graph, (ui, self)) {
-            bevy::log::error!("UI Error while displaying graph page: {}", e)
-        }
+        egui::Frame::canvas(&ui.style()).show(ui, |ui| {
+            if let Err(e) = world.run_system_cached_with(show_graph, (ui, self)) {
+                bevy::log::error!("UI Error while displaying graph page: {}", e)
+            }
+        });
     }
     fn edit_display(&mut self, world: &mut World, ui: &mut Ui) {
-        let show_spinner = false;
-        ui.group(|ui| {
-            ui.label(tr!("tab-graph-auto-arrange-desc"));
+        let show_spinner = world.contains_resource::<crate::graph::arrange::GraphLayoutTask>();
+        ui.strong(tr!("tab-graph-auto-arrange"));
+        ui.label(tr!("tab-graph-auto-arrange-desc"));
+        ui.add(
+            egui::Slider::new(&mut self.iterations, 100..=10000)
+                .text(tr!("tab-graph-auto-arrange-iterations")),
+        );
+        ui.horizontal(|ui| {
+            if ui.button(tr!("tab-graph-arrange-button")).clicked() {
+                if let Err(e) = world.run_system_cached_with(
+                    crate::graph::arrange::auto_arrange_graph,
+                    (ui.ctx().clone(), self.iterations),
+                ) {
+                    error!("Error while auto-arranging graph: {}", e);
+                }
+            }
+            if show_spinner {
+                ui.add(egui::Spinner::new());
+            };
+        });
+        ui.separator();
+        ui.strong(tr!("tab-graph-arrange-via-osm"));
+        ui.label(tr!("tab-graph-arrange-via-osm-desc"));
+        ui.horizontal(|ui| {
+            if ui.button(tr!("tab-graph-arrange-via-osm-terms")).clicked() {
+                ui.ctx().open_url(egui::OpenUrl {
+                    url: "https://osmfoundation.org/wiki/Terms_of_Use".into(),
+                    new_tab: true,
+                });
+            }
+            if ui.button(tr!("tab-graph-arrange-button")).clicked() {
+                if let Err(e) = world.run_system_cached_with(
+                    crate::graph::arrange::arrange_via_osm,
+                    (
+                        ui.ctx().clone(),
+                        if self.query_region_buffer.is_empty() {
+                            None
+                        } else {
+                            Some(self.query_region_buffer.clone())
+                        },
+                    ),
+                ) {
+                    error!("Error while arranging graph via OSM: {}", e);
+                }
+            }
+            // add a progress bar here
+            if show_spinner {
+                ui.add(egui::Spinner::new());
+            };
+        });
+        ui.horizontal(|ui| {
+            ui.label(tr!("tab-graph-osm-area-name"));
+            ui.text_edit_singleline(&mut self.query_region_buffer);
+        });
+        ui.strong(tr!("tab-graph-animation"));
+        ui.label(tr!("tab-graph-animation-desc"));
+        ui.horizontal(|ui| {
+            if ui
+                .button(if self.animation_playing { "⏸" } else { "►" })
+                .clicked()
+            {
+                self.animation_playing = !self.animation_playing;
+            }
+            if ui.button("⏮").clicked() {
+                self.animation_counter = 0.0;
+            }
             ui.add(
-                egui::Slider::new(&mut self.iterations, 100..=10000)
-                    .text(tr!("tab-graph-auto-arrange-iterations")),
+                egui::Slider::new(
+                    &mut self.animation_counter,
+                    (-86400.0 * 2.0)..=(86400.0 * 2.0),
+                )
+                .text("Time"),
             );
-            ui.horizontal(|ui| {
-                if ui.button(tr!("tab-graph-auto-arrange")).clicked() {
-                    if let Err(e) = world.run_system_cached_with(
-                        crate::graph::arrange::auto_arrange_graph,
-                        (ui.ctx().clone(), self.iterations),
-                    ) {
-                        error!("Error while auto-arranging graph: {}", e);
-                    }
-                }
-                if show_spinner {
-                    ui.add(egui::Spinner::new());
-                };
-            });
-            ui.separator();
-            ui.label(tr!("tab-graph-arrange-via-osm-desc"));
-            ui.horizontal(|ui| {
-                if ui.button(tr!("tab-graph-arrange-via-osm-terms")).clicked() {
-                    ui.ctx().open_url(egui::OpenUrl {
-                        url: "https://osmfoundation.org/wiki/Terms_of_Use".into(),
-                        new_tab: true,
-                    });
-                }
-                if ui.button(tr!("tab-graph-arrange-via-osm")).clicked() {
-                    if let Err(e) = world.run_system_cached_with(
-                        crate::graph::arrange::arrange_via_osm,
-                        (
-                            ui.ctx().clone(),
-                            if self.query_region_buffer.is_empty() {
-                                None
-                            } else {
-                                Some(self.query_region_buffer.clone())
-                            },
-                        ),
-                    ) {
-                        error!("Error while arranging graph via OSM: {}", e);
-                    }
-                }
-                // add a progress bar here
-                if show_spinner {
-                    ui.add(egui::Spinner::new());
-                };
-            });
-            ui.horizontal(|ui| {
-                ui.label(tr!("tab-graph-osm-area-name"));
-                ui.text_edit_singleline(&mut self.query_region_buffer);
-            })
         });
-        ui.group(|ui| {
-            ui.label(tr!("tab-graph-animation"));
-            ui.label(tr!("tab-graph-animation-desc"));
-            ui.horizontal(|ui| {
-                if ui
-                    .button(if self.animation_playing { "⏸" } else { "►" })
-                    .clicked()
-                {
-                    self.animation_playing = !self.animation_playing;
-                }
-                if ui.button("⏮").clicked() {
-                    self.animation_counter = 0.0;
-                }
-                ui.add(
-                    egui::Slider::new(
-                        &mut self.animation_counter,
-                        (-86400.0 * 2.0)..=(86400.0 * 2.0),
-                    )
-                    .text("Time"),
-                );
-            })
-        });
+        ui.strong(tr!("tab-graph-underlay-image"));
+        ui.label(tr!("tab-graph-underlay-image-desc"));
         match self.selected_item {
             None => {
                 ui.group(|ui| {
@@ -400,204 +402,203 @@ fn show_graph(
     );
     let mut focused_pos: Option<(Pos2, Pos2)> = None;
     // Iterate over the graph and see what's in it
-    egui::Frame::canvas(&ui.style()).show(ui, |ui| {
-        // Draw lines between stations with shifted positions
-        let (response, painter) =
-            ui.allocate_painter(ui.available_size_before_wrap(), Sense::click_and_drag());
-        let world_rect = Rect::from_min_size(
-            Pos2::new(state.translation.x, state.translation.y),
-            Vec2::new(
-                response.rect.width() / state.zoom,
-                response.rect.height() / state.zoom,
-            ),
-        );
-        if response.clicked() && !state.edit_mode.is_some() {
-            state.selected_item = None;
-        }
-        let to_screen = RectTransform::from_to(world_rect, response.rect);
-        draw_world_grid(&painter, response.rect, state.translation, state.zoom);
-        // draw edges
-        for (from, to, _weight) in graph.inner().node_indices().flat_map(|n| {
-            graph
-                .inner()
-                .edges_directed(n, Direction::Outgoing)
-                .map(|a| {
-                    (
-                        graph.entity(a.source()).unwrap(),
-                        graph.entity(a.target()).unwrap(),
-                        a.weight(),
-                    )
-                })
-        }) {
-            let Ok((_, from_station)) = stations.get(from.entity()) else {
-                continue;
-            };
-            let Ok((_, to_station)) = stations.get(to.entity()) else {
-                continue;
-            };
-            let from = from_station.0;
-            let to = to_station.0;
-            // shift the two points to its left by EDGE_OFFSET pixels
-            let direction = (to - from).normalized();
-            let angle = direction.y.atan2(direction.x) + std::f32::consts::FRAC_PI_2;
-            let offset = Vec2::new(angle.cos(), angle.sin()) * EDGE_OFFSET / state.zoom;
-            let from = from + offset;
-            let to = to + offset;
-            painter.line_segment(
-                [to_screen * from, to_screen * to],
-                Stroke::new(1.0, Color32::LIGHT_BLUE),
-            );
-        }
-        // draw nodes after edges
-        for node in graph
+    // Draw lines between stations with shifted positions
+    let (response, painter) =
+        ui.allocate_painter(ui.available_size_before_wrap(), Sense::click_and_drag());
+    let world_rect = Rect::from_min_size(
+        Pos2::new(state.translation.x, state.translation.y),
+        Vec2::new(
+            response.rect.width() / state.zoom,
+            response.rect.height() / state.zoom,
+        ),
+    );
+    if response.clicked() && !state.edit_mode.is_some() {
+        state.selected_item = None;
+    }
+    let to_screen = RectTransform::from_to(world_rect, response.rect);
+    draw_world_grid(&painter, response.rect, state.translation, state.zoom);
+    // draw edges
+    for (from, to, _weight) in graph.inner().node_indices().flat_map(|n| {
+        graph
             .inner()
-            .node_indices()
-            .map(|n| graph.entity(n).unwrap())
-        {
-            let Ok((name, mut station)) = stations.get_mut(node.entity()) else {
-                continue;
-            };
-            let pos = &mut station.0;
-            let galley = painter.layout_no_wrap(
-                name.to_string(),
-                egui::FontId::proportional(13.0),
-                ui.visuals().text_color(),
-            );
-            painter.galley(
-                {
-                    let pos = to_screen * *pos;
-                    let offset = Vec2::new(15.0, -galley.size().y / 2.0);
-                    pos + offset
-                },
-                galley,
-                ui.visuals().text_color(),
-            );
-            ui.place(
-                Rect::from_pos(to_screen * *pos).expand(10.0),
-                |ui: &mut Ui| {
-                    let (_rect, resp) =
-                        ui.allocate_exact_size(ui.available_size(), Sense::click_and_drag());
-                    let fill = if resp.hovered() {
-                        Color32::YELLOW
-                    } else {
-                        Color32::LIGHT_GREEN
-                    };
-                    match (state.edit_mode, resp.clicked()) {
-                        (_, false) => {}
-                        (None, true) => {
-                            state.selected_item = Some(SelectedItem::Node(node));
-                        }
-                        (Some(EditMode::EditDisplayedLine(e)), true) => {
-                            if let Ok((_, mut line)) = displayed_lines.get_mut(e.entity()) {
-                                if let Err(e) = line.push((node, 0.0)) {
-                                    error!("Failed to add station to line: {:?}", e);
-                                }
+            .edges_directed(n, Direction::Outgoing)
+            .map(|a| {
+                (
+                    graph.entity(a.source()).unwrap(),
+                    graph.entity(a.target()).unwrap(),
+                    a.weight(),
+                )
+            })
+    }) {
+        let Ok((_, from_station)) = stations.get(from.entity()) else {
+            continue;
+        };
+        let Ok((_, to_station)) = stations.get(to.entity()) else {
+            continue;
+        };
+        let from = from_station.0;
+        let to = to_station.0;
+        // shift the two points to its left by EDGE_OFFSET pixels
+        let direction = (to - from).normalized();
+        let angle = direction.y.atan2(direction.x) + std::f32::consts::FRAC_PI_2;
+        let offset = Vec2::new(angle.cos(), angle.sin()) * EDGE_OFFSET / state.zoom;
+        let from = from + offset;
+        let to = to + offset;
+        painter.line_segment(
+            [to_screen * from, to_screen * to],
+            Stroke::new(1.0, Color32::LIGHT_BLUE),
+        );
+    }
+    // draw nodes after edges
+    for node in graph
+        .inner()
+        .node_indices()
+        .map(|n| graph.entity(n).unwrap())
+    {
+        let Ok((name, mut station)) = stations.get_mut(node.entity()) else {
+            continue;
+        };
+        let pos = &mut station.0;
+        let galley = painter.layout_no_wrap(
+            name.to_string(),
+            egui::FontId::proportional(13.0),
+            ui.visuals().text_color(),
+        );
+        painter.galley(
+            {
+                let pos = to_screen * *pos;
+                let offset = Vec2::new(15.0, -galley.size().y / 2.0);
+                pos + offset
+            },
+            galley,
+            ui.visuals().text_color(),
+        );
+        ui.place(
+            Rect::from_pos(to_screen * *pos).expand(10.0),
+            |ui: &mut Ui| {
+                let (_rect, resp) =
+                    ui.allocate_exact_size(ui.available_size(), Sense::click_and_drag());
+                let fill = if resp.hovered() {
+                    Color32::YELLOW
+                } else {
+                    Color32::LIGHT_GREEN
+                };
+                match (state.edit_mode, resp.clicked()) {
+                    (_, false) => {}
+                    (None, true) => {
+                        state.selected_item = Some(SelectedItem::Node(node));
+                    }
+                    (Some(EditMode::EditDisplayedLine(e)), true) => {
+                        if let Ok((_, mut line)) = displayed_lines.get_mut(e.entity()) {
+                            if let Err(e) = line.push((node, 0.0)) {
+                                error!("Failed to add station to line: {:?}", e);
                             }
                         }
                     }
-                    if matches!(state.selected_item, Some(SelectedItem::Node(n)) if n == node) {
-                        focused_pos = Some((*pos, Pos2::ZERO));
-                    }
-                    ui.painter().circle_filled(to_screen * *pos, 10.0, fill);
-                    if resp.dragged() {
-                        *pos += resp.drag_delta() / state.zoom;
-                    }
-                    resp
-                },
+                }
+                if matches!(state.selected_item, Some(SelectedItem::Node(n)) if n == node) {
+                    focused_pos = Some((*pos, Pos2::ZERO));
+                }
+                ui.painter().circle_filled(to_screen * *pos, 10.0, fill);
+                if resp.dragged() {
+                    *pos += resp.drag_delta() / state.zoom;
+                }
+                resp
+            },
+        );
+    }
+
+    let stations_readonly = stations.as_readonly();
+    displayed_lines
+        .as_readonly()
+        .par_iter()
+        .for_each(|(_line_entity, line)| {
+            draw_line_spline(
+                &painter,
+                to_screen,
+                response.rect,
+                line.stations(),
+                &stations_readonly,
             );
-        }
-
-        let stations_readonly = stations.as_readonly();
-        displayed_lines
-            .as_readonly()
-            .par_iter()
-            .for_each(|(_line_entity, line)| {
-                draw_line_spline(
-                    &painter,
-                    to_screen,
-                    response.rect,
-                    line.stations(),
-                    &stations_readonly,
-                );
-            });
-
-        if state.animation_playing {
-            for section in schedules.iter().filter_map(|s| {
-                s.position(state.animation_counter, |e| timetable_entries.get(e).ok())
-            }) {
-                match section {
-                    Left((from_entity, to_entity, progress)) => {
-                        let Ok((_, from_station)) = stations.get(from_entity) else {
-                            continue;
-                        };
-                        let Ok((_, to_station)) = stations.get(to_entity) else {
-                            continue;
-                        };
-                        let from_pos = to_screen * from_station.0;
-                        let to_pos = to_screen * to_station.0;
-                        // shift the from and to positions to its left by EDGE_OFFSET pixels
-                        let direction = (to_pos - from_pos).normalized();
-                        let angle = direction.y.atan2(direction.x) + std::f32::consts::FRAC_PI_2;
-                        let offset = Vec2::new(angle.cos(), angle.sin()) * EDGE_OFFSET;
-                        let from_pos = from_pos + offset;
-                        let to_pos = to_pos + offset;
-                        painter.circle_filled(
-                            from_pos.lerp(to_pos, progress),
-                            6.0,
-                            Color32::from_rgb(100, 200, 100),
-                        );
-                    }
-                    Right(_station_pos) => {}
-                };
-            }
-        }
-        painter.rect_filled(response.rect, 0, {
-            let amt = (selected_strength * 180.0) as u8;
-            if ui.ctx().theme().default_visuals().dark_mode {
-                Color32::from_black_alpha(amt)
-            } else {
-                Color32::from_white_alpha(amt)
-            }
         });
-        if let (Some(SelectedItem::Node(_)), Some((station_pos, _))) =
-            (state.selected_item, focused_pos)
+
+    if state.animation_playing {
+        for section in schedules
+            .iter()
+            .filter_map(|s| s.position(state.animation_counter, |e| timetable_entries.get(e).ok()))
         {
-            painter.circle(
-                to_screen * station_pos,
-                12.0 + 10.0 * (1.0 - selected_strength_ease),
-                Color32::RED.gamma_multiply(0.5 * selected_strength_ease),
-                Stroke::new(2.0, Color32::RED.gamma_multiply(selected_strength_ease)),
-            );
-            painter.circle_filled(to_screen * station_pos, 10.0, Color32::LIGHT_RED);
+            match section {
+                Left((from_entity, to_entity, progress)) => {
+                    let Ok((_, from_station)) = stations.get(from_entity) else {
+                        continue;
+                    };
+                    let Ok((_, to_station)) = stations.get(to_entity) else {
+                        continue;
+                    };
+                    let from_pos = to_screen * from_station.0;
+                    let to_pos = to_screen * to_station.0;
+                    // shift the from and to positions to its left by EDGE_OFFSET pixels
+                    let direction = (to_pos - from_pos).normalized();
+                    let angle = direction.y.atan2(direction.x) + std::f32::consts::FRAC_PI_2;
+                    let offset = Vec2::new(angle.cos(), angle.sin()) * EDGE_OFFSET;
+                    let from_pos = from_pos + offset;
+                    let to_pos = to_pos + offset;
+                    painter.circle_filled(
+                        from_pos.lerp(to_pos, progress),
+                        6.0,
+                        Color32::from_rgb(100, 200, 100),
+                    );
+                }
+                Right(_station_pos) => {}
+            };
         }
-        // handle zooming and panning
-        let mut zoom_delta: f32 = 1.0;
-        let mut translation_delta: Vec2 = Vec2::default();
-        ui.input(|input| {
-            zoom_delta = input.zoom_delta();
-            translation_delta = input.translation_delta();
-        });
-        if let Some(pos) = response.hover_pos() {
-            let old_zoom = state.zoom;
-            let new_zoom = state.zoom * zoom_delta;
-            let rel_pos = (pos - response.rect.min) / response.rect.size();
-
-            let world_width_before = response.rect.width() / old_zoom;
-            let world_width_after = response.rect.width() / new_zoom;
-            let world_pos_before_x = state.translation.x + rel_pos.x * world_width_before;
-            let new_translation_x = world_pos_before_x - rel_pos.x * world_width_after;
-
-            let world_height_before = response.rect.height() / old_zoom;
-            let world_height_after = response.rect.height() / new_zoom;
-            let world_pos_before_y = state.translation.y + rel_pos.y * world_height_before;
-            let new_translation_y = world_pos_before_y - rel_pos.y * world_height_after;
-
-            state.zoom = new_zoom;
-            state.translation = Vec2::new(new_translation_x, new_translation_y);
-            let zoom = state.zoom;
-            state.translation -= (translation_delta + response.drag_delta()) / zoom;
+    }
+    painter.rect_filled(response.rect, 0, {
+        let amt = (selected_strength * 180.0) as u8;
+        if ui.ctx().theme().default_visuals().dark_mode {
+            Color32::from_black_alpha(amt)
+        } else {
+            Color32::from_white_alpha(amt)
         }
     });
+    if let (Some(SelectedItem::Node(_)), Some((station_pos, _))) =
+        (state.selected_item, focused_pos)
+    {
+        painter.circle(
+            to_screen * station_pos,
+            12.0 + 10.0 * (1.0 - selected_strength_ease),
+            Color32::RED.gamma_multiply(0.5 * selected_strength_ease),
+            Stroke::new(2.0, Color32::RED.gamma_multiply(selected_strength_ease)),
+        );
+        painter.circle_filled(to_screen * station_pos, 10.0, Color32::LIGHT_RED);
+    }
+    // handle zooming and panning
+    let mut zoom_delta: f32 = 1.0;
+    let mut translation_delta: Vec2 = Vec2::default();
+    ui.input(|input| {
+        zoom_delta = input.zoom_delta();
+        translation_delta = input.translation_delta();
+    });
+    if let Some(pos) = response.hover_pos() {
+        let old_zoom = state.zoom;
+        let new_zoom = state.zoom * zoom_delta;
+        let rel_pos = (pos - response.rect.min) / response.rect.size();
+
+        let world_width_before = response.rect.width() / old_zoom;
+        let world_width_after = response.rect.width() / new_zoom;
+        let world_pos_before_x = state.translation.x + rel_pos.x * world_width_before;
+        let new_translation_x = world_pos_before_x - rel_pos.x * world_width_after;
+
+        let world_height_before = response.rect.height() / old_zoom;
+        let world_height_after = response.rect.height() / new_zoom;
+        let world_pos_before_y = state.translation.y + rel_pos.y * world_height_before;
+        let new_translation_y = world_pos_before_y - rel_pos.y * world_height_after;
+
+        state.zoom = new_zoom;
+        state.translation = Vec2::new(new_translation_x, new_translation_y);
+        let zoom = state.zoom;
+        state.translation -= (translation_delta + response.drag_delta()) / zoom;
+    }
 }
 
 fn draw_world_grid(painter: &Painter, viewport: Rect, offset: Vec2, zoom: f32) {

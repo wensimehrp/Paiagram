@@ -360,13 +360,25 @@ impl<'w> egui_dock::TabViewer for SidePanelViewer<'w> {
         ui.multiply_opacity(opacity);
         match tab {
             SidePanelTab::Edit => {
-                for_all_tabs!(focused_tab, t, { t.edit_display(self.world, ui) })
+                for_all_tabs!(focused_tab, t, {
+                    egui::Frame::new()
+                        .inner_margin(4)
+                        .show(ui, |ui| t.edit_display(self.world, ui));
+                })
             }
             SidePanelTab::Details => {
-                for_all_tabs!(focused_tab, t, { t.display_display(self.world, ui) })
+                for_all_tabs!(focused_tab, t, {
+                    egui::Frame::new()
+                        .inner_margin(4)
+                        .show(ui, |ui| t.display_display(self.world, ui));
+                })
             }
             SidePanelTab::Export => {
-                for_all_tabs!(focused_tab, t, { t.export_display(self.world, ui) })
+                for_all_tabs!(focused_tab, t, {
+                    egui::Frame::new()
+                        .inner_margin(4)
+                        .show(ui, |ui| t.export_display(self.world, ui));
+                })
             }
         }
     }

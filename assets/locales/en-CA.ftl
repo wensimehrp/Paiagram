@@ -39,12 +39,12 @@ tab-graph = Graph
 tab-graph-new-displayed-line = Create new displayed line
 tab-graph-new-displayed-line-desc = Create a new displayed line. The new line would be used as the foundation of a diagram.
 tab-graph-auto-arrange = Auto-arrange graph
-tab-graph-auto-arrange-desc = Automatically arrange the current graph.
+tab-graph-auto-arrange-desc = Automatically arrange the graph using a force-directed layout algorithm. You can tweak the parameters below to adjust the layout.
 tab-graph-auto-arrange-iterations = Iterations
-tab-graph-arrange-via-osm = Arrange
+tab-graph-arrange-via-osm = Arrange via OSM
+tab-graph-arrange-button = Arrange
 # tip: use local examples of area names
-tab-graph-arrange-via-osm-desc = Use online sources to arrange the current the graph. This leverages OpenStreetMap data, and by clicking "{tab-graph-arrange-via-osm}" you agree to OpenStreetMap's Terms of Use.
-    You can query with an optional area name to limit the scope (e.g., Vancouver, Halifax).
+tab-graph-arrange-via-osm-desc = Use online sources to arrange the current the graph. This leverages OpenStreetMap data, and by clicking "{tab-graph-arrange-button}" you agree to OpenStreetMap's Terms of Use. You can query with an optional area name to limit the scope (e.g., Vancouver, Halifax).
 tab-graph-arrange-via-osm-terms = Terms of Use
 tab-graph-osm-area-name = Area filter:
 tab-graph-animation = Animation controls
