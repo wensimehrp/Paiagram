@@ -21,22 +21,49 @@
         pkgs = import nixpkgs {
           inherit system overlays;
         };
+
+        # Define the runtime dependencies needed by Bevy
+        runtimeLibs = with pkgs; [
+          vulkan-loader
+          xorg.libX11
+          xorg.libXcursor
+          xorg.libXi
+          xorg.libXrandr
+          libxkbcommon
+          wayland
+          libGL
+          libudev-zero
+          alsa-lib
+        ];
+
+        rustToolchain = pkgs.rust-bin.stable.latest.default.override {
+          extensions = [ "rust-src" ];
+          targets = [ "x86_64-unknown-linux-gnu" "wasm32-unknown-unknown" ];
+        };
+
       in
       {
+        packages.default = pkgs.rustPlatform.buildRustPackage {
+          pname = "paiagram";
+          version = "0.1.0";
+          src = ./.;
+
+          cargoLock.lockFile = ./Cargo.lock;
+          nativeBuildInputs = [ pkgs.pkg-config pkgs.makeWrapper ];
+          buildInputs = runtimeLibs;
+          postInstall = ''
+            wrapProgram $out/bin/paiagram \
+              --prefix LD_LIBRARY_PATH : "${pkgs.lib.makeLibraryPath runtimeLibs}"
+          '';
+        };
+
         devShells.default =
           with pkgs;
           mkShell {
             buildInputs = [
-              # Rust dependencies
-              (rust-bin.stable.latest.default.override {
-                extensions = [ "rust-src" ];
-                targets = [
-                  "x86_64-unknown-linux-gnu"
-                  "wasm32-unknown-unknown"
-                ];
-              })
+              rustToolchain
               pkg-config
-              wasm-bindgen-cli_0_2_106
+              wasm-bindgen-cli
               typst
               just
               wget
@@ -45,42 +72,10 @@
               trunk
               cargo-about
               gitui
-            ]
-            ++ lib.optionals (lib.strings.hasInfix "linux" system) [
-              # for Linux
-              # Audio (Linux only)
-              alsa-lib
-              # Cross Platform 3D Graphics API
-              vulkan-loader
-              # For debugging around vulkan
-              vulkan-tools
-              # Other dependencies
-              libudev-zero
-              xorg.libX11
-              xorg.libXcursor
-              xorg.libXi
-              xorg.libXrandr
-              libxkbcommon
-              wayland
-              libGL
-              # linking
-              mold
-              clang
-              stdenv.cc.cc
-            ];
+            ] ++ runtimeLibs ++ [ mold clang stdenv.cc.cc ];
+
             RUST_SRC_PATH = "${pkgs.rust.packages.stable.rustPlatform.rustLibSrc}";
-            LD_LIBRARY_PATH = lib.makeLibraryPath [
-              vulkan-loader
-              xorg.libX11
-              xorg.libXi
-              xorg.libXcursor
-              libxkbcommon
-              wayland
-              libGL
-              libudev-zero
-              alsa-lib
-              stdenv.cc.cc
-            ];
+            LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath (runtimeLibs ++ [ stdenv.cc.cc ]);
           };
       }
     );
