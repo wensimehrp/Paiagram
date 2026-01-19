@@ -104,32 +104,32 @@ pub trait Navigatable {
         let scroll_delta = ui.input(|input| input.smooth_scroll_delta);
         let zooming = (zoom_delta.x - 1.0).abs() > 0.001 || (zoom_delta.y - 1.0).abs() > 0.001;
 
-        if zooming && ui.ui_contains_pointer() {
-            if let Some(pos) = response.hover_pos() {
-                let old_zoom_x = self.zoom_x();
-                let old_zoom_y = self.zoom_y();
-                let mut new_zoom_x = old_zoom_x * zoom_delta.x;
-                let mut new_zoom_y = old_zoom_y * zoom_delta.y;
-                let (clamped_x, clamped_y) = self.clamp_zoom(new_zoom_x, new_zoom_y);
-                new_zoom_x = clamped_x;
-                new_zoom_y = clamped_y;
+        if zooming
+            && ui.ui_contains_pointer()
+            && let Some(pos) = response.hover_pos()
+        {
+            let old_zoom_x = self.zoom_x();
+            let old_zoom_y = self.zoom_y();
+            let mut new_zoom_x = old_zoom_x * zoom_delta.x;
+            let mut new_zoom_y = old_zoom_y * zoom_delta.y;
+            let (clamped_x, clamped_y) = self.clamp_zoom(new_zoom_x, new_zoom_y);
+            new_zoom_x = clamped_x;
+            new_zoom_y = clamped_y;
 
-                let rel_pos = (pos - response.rect.min) / response.rect.size();
-                let world_width_before = response.rect.width() as f64 / old_zoom_x as f64;
-                let world_width_after = response.rect.width() as f64 / new_zoom_x as f64;
-                let world_pos_before_x = self.offset_x() + rel_pos.x as f64 * world_width_before;
-                let new_offset_x = world_pos_before_x - rel_pos.x as f64 * world_width_after;
+            let rel_pos = (pos - response.rect.min) / response.rect.size();
+            let world_width_before = response.rect.width() as f64 / old_zoom_x as f64;
+            let world_width_after = response.rect.width() as f64 / new_zoom_x as f64;
+            let world_pos_before_x = self.offset_x() + rel_pos.x as f64 * world_width_before;
+            let new_offset_x = world_pos_before_x - rel_pos.x as f64 * world_width_after;
 
-                let world_height_before = response.rect.height() as f64 / old_zoom_y as f64;
-                let world_height_after = response.rect.height() as f64 / new_zoom_y as f64;
-                let world_pos_before_y =
-                    self.offset_y() as f64 + rel_pos.y as f64 * world_height_before;
-                let new_offset_y =
-                    (world_pos_before_y - rel_pos.y as f64 * world_height_after) as f32;
+            let world_height_before = response.rect.height() as f64 / old_zoom_y as f64;
+            let world_height_after = response.rect.height() as f64 / new_zoom_y as f64;
+            let world_pos_before_y =
+                self.offset_y() as f64 + rel_pos.y as f64 * world_height_before;
+            let new_offset_y = (world_pos_before_y - rel_pos.y as f64 * world_height_after) as f32;
 
-                self.set_zoom(new_zoom_x, new_zoom_y);
-                self.set_offset(new_offset_x, new_offset_y);
-            }
+            self.set_zoom(new_zoom_x, new_zoom_y);
+            self.set_offset(new_offset_x, new_offset_y);
         } else if ui.ui_contains_pointer() || ui.input(|r| r.any_touches()) {
             let ticks_per_screen_unit = 1.0 / self.zoom_x() as f64;
             let pan_delta = response.drag_delta() + scroll_delta;
