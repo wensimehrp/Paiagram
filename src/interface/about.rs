@@ -118,6 +118,11 @@ pub fn show_about(
             );
         });
         ui.menu_button("Help", |ui| {
+            if ui.button("Start").clicked() {
+                msg_open_tab.write(UiCommand::OpenOrFocusTab(super::AppTab::Start(
+                    super::tabs::start::StartTab::default(),
+                )));
+            }
             if ui.button("Minesweeper").clicked() {
                 msg_open_tab.write(UiCommand::OpenOrFocusTab(super::AppTab::Minesweeper(
                     MinesweeperTab,
