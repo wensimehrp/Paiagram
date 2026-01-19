@@ -132,7 +132,7 @@ struct Cli {
     fresh: bool,
     #[arg(
         long = "jgrpp",
-        help = "Path to a set of OpenTTD JGRPP .json timetable export files.",
+        help = "Path to a set of OpenTTD JGRPP .json timetable export files. You may specify multiple by using the * syntax (usually this is expanded by your shell). Example: --jgrpp ~/.local/share/openttd/orderlist/*.json",
         num_args = 1..
     )]
     jgrpp_paths: Option<Vec<String>>,
