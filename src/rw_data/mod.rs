@@ -5,6 +5,7 @@ pub mod oudiasecond;
 pub mod qetrc;
 pub mod saveload;
 pub mod write;
+pub mod jgrpp;
 
 use bevy::prelude::*;
 use serde::Deserialize;
@@ -22,6 +23,7 @@ impl Plugin for RwDataPlugin {
                 qetrc::load_qetrc,
                 oudiasecond::load_oud2,
                 custom::load_qetrc,
+                jgrpp::load_jgrpp_timetable_export,
             )
                 .chain()
                 .run_if(on_message::<ModifyData>),
@@ -42,12 +44,14 @@ pub enum DataType {
     Custom,
 }
 
+// TODO: make this an Event instead
 #[derive(Message)]
 pub enum ModifyData {
     ClearAllData,
     LoadQETRC(String),
     LoadOuDiaSecond(String),
     LoadCustom(String),
+    LoadJGRPP(Vec<String>),
     LoadOnlineData(String, DataType),
 }
 

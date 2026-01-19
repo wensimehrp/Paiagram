@@ -130,12 +130,18 @@ struct Cli {
         help = "Start with a fresh state, ignoring any autosave"
     )]
     fresh: bool,
+    #[arg(
+        long = "jgrpp",
+        help = "Path to a set of OpenTTD JGRPP .json timetable export files.",
+        num_args = 1..
+    )]
+    jgrpp_paths: Option<Vec<String>>,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 fn handle_args(cli: In<Cli>, mut msg: MessageWriter<rw_data::ModifyData>, mut commands: Commands) {
+    use rw_data::ModifyData;
     if let Some(path) = &cli.open {
-        use rw_data::ModifyData;
         // match the ending of the path
         match path.split('.').next_back() {
             Some("paiagram") => {
@@ -153,6 +159,14 @@ fn handle_args(cli: In<Cli>, mut msg: MessageWriter<rw_data::ModifyData>, mut co
                 warn!("Unsupported file format: {}", path);
             }
         }
+        return;
+    }
+    if let Some(paths) = &cli.jgrpp_paths {
+        let mut contents = Vec::with_capacity(paths.len());
+        for path in paths {
+            contents.push(std::fs::read_to_string(path).expect("Failed to read file"));
+        }
+        msg.write(ModifyData::LoadJGRPP(contents));
     }
 }
 

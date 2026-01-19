@@ -1,7 +1,9 @@
+use crate::graph::Interval;
+use crate::units::distance::Distance;
 use crate::{graph::Station, units::time::TimetableTime};
 use bevy::ecs::entity::{EntityMapper, MapEntities};
 use bevy::prelude::*;
-use moonshine_core::kind::Instance;
+use moonshine_core::kind::{Instance, SpawnInstance};
 use moonshine_core::save::prelude::*;
 
 /// Displayed line type:
@@ -131,6 +133,55 @@ impl DisplayedLine {
     }
     pub fn push(&mut self, station: (Instance<Station>, f32)) -> Result<(), DisplayedLineError> {
         self.insert(self.stations.len(), station)
+    }
+}
+
+pub fn create_intervals_from_displayed_line(
+    In(line_entity): In<Entity>,
+    displayed_lines: Query<&DisplayedLine>,
+    mut graph: ResMut<crate::graph::Graph>,
+    mut commands: Commands,
+    stations: Query<&Station>,
+) {
+    let line = match displayed_lines.get(line_entity) {
+        Ok(l) => l,
+        Err(e) => {
+            error!("Could not find displayed line: {:?}", e);
+            return;
+        }
+    };
+    // TODO: switch to array_windows in the future
+    for w in line.stations.windows(2) {
+        let [(prev, _), (curr, _)] = w else {
+            unreachable!()
+        };
+        let length = {
+            let Ok(p) = stations.get(prev.entity()) else {
+                return;
+            };
+            let Ok(c) = stations.get(curr.entity()) else {
+                return;
+            };
+            Distance(p.0.distance(c.0) as i32)
+        };
+        if !graph.contains_edge(*prev, *curr) {
+            let i1 = commands
+                .spawn_instance(Interval {
+                    length,
+                    speed_limit: None,
+                })
+                .instance();
+            graph.add_edge(*prev, *curr, i1);
+        }
+        if !graph.contains_edge(*curr, *prev) {
+            let i2 = commands
+                .spawn_instance(Interval {
+                    length,
+                    speed_limit: None,
+                })
+                .instance();
+            graph.add_edge(*curr, *prev, i2);
+        }
     }
 }
 
