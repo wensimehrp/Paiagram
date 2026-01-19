@@ -1,4 +1,4 @@
-use super::Tab;
+use super::{Navigatable, Tab};
 use crate::graph::{Graph, Interval, Station};
 use crate::lines::DisplayedLine;
 use crate::rw_data::write::write_text_file;
@@ -84,6 +84,36 @@ impl MapEntities for GraphTab {
         if let Some(edit_mode) = &mut self.edit_mode {
             edit_mode.map_entities(entity_mapper);
         }
+    }
+}
+
+impl Navigatable for GraphTab {
+    fn zoom_x(&self) -> f32 {
+        self.zoom
+    }
+
+    fn zoom_y(&self) -> f32 {
+        self.zoom
+    }
+
+    fn set_zoom(&mut self, zoom_x: f32, _zoom_y: f32) {
+        self.zoom = zoom_x;
+    }
+
+    fn offset_x(&self) -> f64 {
+        self.translation.x as f64
+    }
+
+    fn offset_y(&self) -> f32 {
+        self.translation.y
+    }
+
+    fn set_offset(&mut self, offset_x: f64, offset_y: f32) {
+        self.translation = Vec2::new(offset_x as f32, offset_y);
+    }
+
+    fn clamp_zoom(&self, zoom_x: f32, _zoom_y: f32) -> (f32, f32) {
+        (zoom_x, zoom_x)
     }
 }
 impl Tab for GraphTab {
@@ -405,6 +435,7 @@ fn show_graph(
     // Draw lines between stations with shifted positions
     let (response, painter) =
         ui.allocate_painter(ui.available_size_before_wrap(), Sense::click_and_drag());
+    state.handle_navigation(ui, &response);
     let world_rect = Rect::from_min_size(
         Pos2::new(state.translation.x, state.translation.y),
         Vec2::new(
@@ -571,33 +602,6 @@ fn show_graph(
             Stroke::new(2.0, Color32::RED.gamma_multiply(selected_strength_ease)),
         );
         painter.circle_filled(to_screen * station_pos, 10.0, Color32::LIGHT_RED);
-    }
-    // handle zooming and panning
-    let mut zoom_delta: f32 = 1.0;
-    let mut translation_delta: Vec2 = Vec2::default();
-    ui.input(|input| {
-        zoom_delta = input.zoom_delta();
-        translation_delta = input.translation_delta();
-    });
-    if let Some(pos) = response.hover_pos() {
-        let old_zoom = state.zoom;
-        let new_zoom = state.zoom * zoom_delta;
-        let rel_pos = (pos - response.rect.min) / response.rect.size();
-
-        let world_width_before = response.rect.width() / old_zoom;
-        let world_width_after = response.rect.width() / new_zoom;
-        let world_pos_before_x = state.translation.x + rel_pos.x * world_width_before;
-        let new_translation_x = world_pos_before_x - rel_pos.x * world_width_after;
-
-        let world_height_before = response.rect.height() / old_zoom;
-        let world_height_after = response.rect.height() / new_zoom;
-        let world_pos_before_y = state.translation.y + rel_pos.y * world_height_before;
-        let new_translation_y = world_pos_before_y - rel_pos.y * world_height_after;
-
-        state.zoom = new_zoom;
-        state.translation = Vec2::new(new_translation_x, new_translation_y);
-        let zoom = state.zoom;
-        state.translation -= (translation_delta + response.drag_delta()) / zoom;
     }
 }
 

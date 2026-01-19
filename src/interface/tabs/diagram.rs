@@ -1,6 +1,6 @@
 use crate::graph::Station;
 use crate::interface::SelectedElement;
-use crate::interface::tabs::Tab;
+use crate::interface::tabs::{Navigatable, Tab};
 use crate::interface::widgets::{buttons, timetable_popup};
 use crate::lines::DisplayedLine;
 use crate::units::time::{Duration, TimetableTime};
@@ -173,6 +173,68 @@ impl DiagramTab {
     }
 }
 
+impl Navigatable for DiagramTab {
+    fn zoom_x(&self) -> f32 {
+        self.state.zoom.x
+    }
+
+    fn zoom_y(&self) -> f32 {
+        self.state.zoom.y
+    }
+
+    fn set_zoom(&mut self, zoom_x: f32, zoom_y: f32) {
+        self.state.zoom = vec2(zoom_x, zoom_y);
+    }
+
+    fn offset_x(&self) -> f64 {
+        self.state.tick_offset as f64
+    }
+
+    fn offset_y(&self) -> f32 {
+        self.state.vertical_offset
+    }
+
+    fn set_offset(&mut self, offset_x: f64, offset_y: f32) {
+        self.state.tick_offset = offset_x.round() as i64;
+        self.state.vertical_offset = offset_y;
+    }
+
+    fn allow_axis_zoom(&self) -> bool {
+        true
+    }
+
+    fn clamp_zoom(&self, zoom_x: f32, zoom_y: f32) -> (f32, f32) {
+        (zoom_x.clamp(0.00001, 0.4), zoom_y.clamp(0.025, 2048.0))
+    }
+
+    fn post_navigation(&mut self, response: &egui::Response) {
+        self.state.tick_offset = self.state.tick_offset.clamp(
+            -366 * 86400 * TICKS_PER_SECOND,
+            366 * 86400 * TICKS_PER_SECOND
+                - (response.rect.width() as f64 / self.state.zoom.x as f64) as i64,
+        );
+        const TOP_BOTTOM_PADDING: f32 = 30.0;
+        let max_height = self
+            .state
+            .line_cache
+            .heights
+            .as_ref()
+            .and_then(|h| h.last().map(|(_, h)| *h))
+            .unwrap_or(0.0);
+        self.state.vertical_offset = if response.rect.height() / self.state.zoom.y
+            > (max_height + TOP_BOTTOM_PADDING * 2.0 / self.state.zoom.y)
+        {
+            (-response.rect.height() / self.state.zoom.y + max_height) / 2.0
+        } else {
+            self.state.vertical_offset.clamp(
+                -TOP_BOTTOM_PADDING / self.state.zoom.y,
+                max_height - response.rect.height() / self.state.zoom.y
+                    + TOP_BOTTOM_PADDING / self.state.zoom.y,
+            )
+        }
+    }
+}
+
 impl PartialEq for DiagramTab {
     fn eq(&self, other: &Self) -> bool {
         self.displayed_line_entity == other.displayed_line_entity
@@ -193,7 +255,7 @@ impl Tab for DiagramTab {
                 let (response, mut painter) =
                     ui.allocate_painter(ui.available_size_before_wrap(), Sense::click_and_drag());
 
-                handle_navigation(ui, &response, &mut self.state);
+                self.handle_navigation(ui, &response);
 
                 let (vertical_visible, horizontal_visible, ticks_per_screen_unit) =
                     calculate_visible_ranges(&self.state, &response.rect);
@@ -648,64 +710,6 @@ fn calculate_visible_ranges(
     let ticks_per_screen_unit =
         (horizontal_visible.end - horizontal_visible.start) as f64 / rect.width() as f64;
     (vertical_visible, horizontal_visible, ticks_per_screen_unit)
-}
-
-fn handle_navigation(ui: &mut Ui, response: &response::Response, state: &mut DiagramPageCache) {
-    let mut zoom_delta: Vec2 = Vec2::default();
-    let mut translation_delta: Vec2 = Vec2::default();
-    ui.input(|input| {
-        zoom_delta = input.zoom_delta_2d();
-        translation_delta = input.translation_delta();
-    });
-    if let Some(pos) = response.hover_pos() {
-        let old_zoom = state.zoom;
-        let mut new_zoom = state.zoom * zoom_delta;
-        new_zoom.x = new_zoom.x.clamp(0.00001, 0.4);
-        new_zoom.y = new_zoom.y.clamp(0.025, 2048.0);
-        let rel_pos = (pos - response.rect.min) / response.rect.size();
-        let world_width_before = response.rect.width() as f64 / old_zoom.x as f64;
-        let world_width_after = response.rect.width() as f64 / new_zoom.x as f64;
-        let world_pos_before_x = state.tick_offset as f64 + rel_pos.x as f64 * world_width_before;
-        let new_tick_offset =
-            (world_pos_before_x - rel_pos.x as f64 * world_width_after).round() as i64;
-        let world_height_before = response.rect.height() as f64 / old_zoom.y as f64;
-        let world_height_after = response.rect.height() as f64 / new_zoom.y as f64;
-        let world_pos_before_y =
-            state.vertical_offset as f64 + rel_pos.y as f64 * world_height_before;
-        let new_vertical_offset =
-            (world_pos_before_y - rel_pos.y as f64 * world_height_after) as f32;
-        state.zoom = new_zoom;
-        state.tick_offset = new_tick_offset;
-        state.vertical_offset = new_vertical_offset;
-    }
-
-    let ticks_per_screen_unit = 1.0 / state.zoom.x as f64;
-
-    state.tick_offset -=
-        (ticks_per_screen_unit * (response.drag_delta().x + translation_delta.x) as f64) as i64;
-    state.vertical_offset -= (response.drag_delta().y + translation_delta.y) / state.zoom.y;
-    state.tick_offset = state.tick_offset.clamp(
-        -366 * 86400 * TICKS_PER_SECOND,
-        366 * 86400 * TICKS_PER_SECOND
-            - (response.rect.width() as f64 / state.zoom.x as f64) as i64,
-    );
-    const TOP_BOTTOM_PADDING: f32 = 30.0;
-    let max_height = state
-        .line_cache
-        .heights
-        .as_ref()
-        .and_then(|h| h.last().map(|(_, h)| *h))
-        .unwrap_or(0.0);
-    state.vertical_offset = if response.rect.height() / state.zoom.y
-        > (max_height + TOP_BOTTOM_PADDING * 2.0 / state.zoom.y)
-    {
-        (-response.rect.height() / state.zoom.y + max_height) / 2.0
-    } else {
-        state.vertical_offset.clamp(
-            -TOP_BOTTOM_PADDING / state.zoom.y,
-            max_height - response.rect.height() / state.zoom.y + TOP_BOTTOM_PADDING / state.zoom.y,
-        )
-    }
 }
 
 fn handle_input_selection(
