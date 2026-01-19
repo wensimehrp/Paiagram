@@ -246,7 +246,20 @@ impl Tab for DiagramTab {
             world.run_system_cached_with(
                 select_vehicle_set,
                 (ui, &mut self.state.line_cache.vehicle_set),
-            )
+            );
+            if ui
+                .button("Generate intervals from displayed line")
+                .clicked()
+                && let Err(e) = world.run_system_once_with(
+                    crate::lines::create_intervals_from_displayed_line,
+                    self.displayed_line_entity,
+                )
+            {
+                error!(
+                    "Error while generating intervals from displayed line: {:?}",
+                    e
+                )
+            }
         });
         // edit line, edit stations on line, etc.
         let width = ui.available_width();
