@@ -136,6 +136,50 @@ impl DisplayedLine {
     }
 }
 
+pub fn adjust_intervals_length(
+    In(entity): In<Entity>,
+    graph: Res<crate::graph::Graph>,
+    intervals: Query<&Interval>,
+    mut displayed_lines: Query<&mut DisplayedLine>,
+    names: Query<&Name>,
+) {
+    let mut displayed_line = match displayed_lines.get_mut(entity) {
+        Ok(l) => l,
+        Err(e) => {
+            error!("Could not get displayed line: {:?}", e);
+            return;
+        }
+    };
+    let mut stations_iter = displayed_line.stations.iter_mut();
+    let Some((prev, _)) = stations_iter.next() else {
+        warn!(
+            "Displayed line {} is empty, skipping...",
+            names.get(entity).map_or("<unknown>", Name::as_str)
+        );
+        return;
+    };
+    let mut prev = *prev;
+    for (curr, height) in stations_iter {
+        let (count, acc) = graph
+            .edges_connecting(prev, *curr)
+            .filter_map(|r| intervals.get(r.weight.entity()).ok())
+            .fold((0i32, Distance(0)), |(count, len), i| {
+                (count + 1, len + i.length)
+            });
+        if count == 0 {
+            warn!(
+                "There are no intervals connecting between {} and {}, skipping",
+                names.get(prev.entity()).map_or("<unknown>", Name::as_str),
+                names.get(curr.entity()).map_or("<unknown>", Name::as_str)
+            );
+            continue;
+        }
+        let average_length = acc / count;
+        *height = average_length.0 as f32;
+        prev = *curr;
+    }
+}
+
 pub fn create_intervals_from_displayed_line(
     In(line_entity): In<Entity>,
     displayed_lines: Query<&DisplayedLine>,

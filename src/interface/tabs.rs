@@ -130,7 +130,8 @@ pub trait Navigatable {
 
             self.set_zoom(new_zoom_x, new_zoom_y);
             self.set_offset(new_offset_x, new_offset_y);
-        } else if ui.ui_contains_pointer() || ui.input(|r| r.any_touches()) {
+        }
+        if ui.ui_contains_pointer() || ui.input(|r| r.any_touches()) {
             let ticks_per_screen_unit = 1.0 / self.zoom_x() as f64;
             let pan_delta = response.drag_delta() + scroll_delta;
             let new_offset_x = self.offset_x() - ticks_per_screen_unit * pan_delta.x as f64;

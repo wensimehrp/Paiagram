@@ -1,7 +1,7 @@
 use super::{Navigatable, Tab};
 use crate::graph::{Graph, Interval, Station};
 use crate::lines::DisplayedLine;
-use crate::rw_data::write::write_text_file;
+use crate::rw_data::write::write_file;
 use crate::vehicles::entries::{TimetableEntry, TimetableEntryCache, VehicleScheduleCache};
 use bevy::ecs::entity::{EntityMapper, MapEntities};
 use bevy::prelude::*;
@@ -260,7 +260,7 @@ impl Tab for GraphTab {
 
             bevy::tasks::IoTaskPool::get()
                 .spawn(async move {
-                    if let Err(e) = write_text_file(data, filename).await {
+                    if let Err(e) = write_file(data.into_bytes(), filename).await {
                         bevy::log::error!("Failed to export graph: {:?}", e);
                     }
                 })

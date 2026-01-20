@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 static FILE_IMPORT_QUEUE: OnceLock<Arc<Mutex<VecDeque<ModifyData>>>> = OnceLock::new();
 
+// TODO: use a resource instead of a shared queue
 fn shared_queue() -> Arc<Mutex<VecDeque<ModifyData>>> {
     FILE_IMPORT_QUEUE
         .get_or_init(|| Arc::new(Mutex::new(VecDeque::new())))

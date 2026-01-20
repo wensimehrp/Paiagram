@@ -245,6 +245,9 @@ impl Eq for DiagramTab {}
 
 impl Tab for DiagramTab {
     const NAME: &'static str = "Diagram";
+    fn title(&self) -> egui::WidgetText {
+        tr!("tab-diagram").into()
+    }
     fn main_display(&mut self, world: &mut World, ui: &mut Ui) {
         let mut calculated_vehicles: Vec<RenderedVehicle> = Vec::new();
         Frame::canvas(ui.style())
@@ -322,6 +325,16 @@ impl Tab for DiagramTab {
                     e
                 )
             }
+            if ui
+                .button("Automatically adjust intervals' length")
+                .clicked()
+                && let Err(e) = world.run_system_once_with(
+                    crate::lines::adjust_intervals_length,
+                    self.displayed_line_entity,
+                )
+            {
+                error!("Error while automatically adjusting intervals: {:?}", e)
+            }
         });
         // edit line, edit stations on line, etc.
         let width = ui.available_width();
@@ -398,8 +411,8 @@ impl Tab for DiagramTab {
     }
     fn export_display(&mut self, world: &mut World, ui: &mut Ui) {
         ui.group(|ui| {
-            ui.strong(tr!("tab-diagram-export-typst"));
-            ui.label(tr!("tab-diagram-export-typst-desc"));
+            ui.strong(tr!("tab-diagram-export-typst-diagram"));
+            ui.label(tr!("tab-diagram-export-typst-diagram-desc"));
             // TODO: make the export range configurable
             if ui.button(tr!("export")).clicked() {
                 let mut calculated_vehicles: Vec<RenderedVehicle> = Vec::new();
@@ -457,10 +470,12 @@ impl Tab for DiagramTab {
             if ui.button(tr!("copy-to-clipboard")).clicked() {
                 ui.ctx().copy_text(self.typst_output.clone());
             }
-            ui.label(tr!("tab-diagram-export-typst-output", {
+            ui.label(tr!("tab-diagram-export-typst-diagram-output", {
                 bytes: self.typst_output.len()
             }));
         });
+        ui.strong(tr!("tab-diagram-export-typst-timetable"));
+        ui.strong(tr!("tab-diagram-export-typst-timetable-desc"));
     }
     fn id(&self) -> egui::Id {
         egui::Id::new(self.displayed_line_entity)

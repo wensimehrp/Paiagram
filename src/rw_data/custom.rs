@@ -1,3 +1,6 @@
+// TODO: currently this module contains the processing functions for Beijing Subway sim,
+// and is not "custom" at all.
+// Replace this with a QuickJS based script loader in the future.
 use crate::{
     graph::{Graph, Station},
     rw_data::ModifyData,

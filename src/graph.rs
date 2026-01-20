@@ -3,6 +3,7 @@ use crate::units::speed::Velocity;
 use crate::vehicles::entries::TimetableEntry;
 use bevy::ecs::entity::{EntityHashMap, EntityMapper, MapEntities};
 use bevy::prelude::*;
+use either::Either;
 use moonshine_core::kind::prelude::*;
 use moonshine_core::save::prelude::*;
 use petgraph::prelude::*;
@@ -65,6 +66,12 @@ impl<'de> Deserialize<'de> for Graph {
             indices: EntityHashMap::default(),
         })
     }
+}
+
+pub struct EdgeReference {
+    pub weight: Instance<Interval>,
+    pub source: Instance<Station>,
+    pub target: Instance<Station>,
 }
 
 impl MapEntities for Graph {
@@ -149,6 +156,29 @@ impl Graph {
         }
         let index = self.inner.add_node(a);
         self.indices.insert(a.entity(), index);
+    }
+    pub fn edges_connecting(
+        &self,
+        a: Instance<Station>,
+        b: Instance<Station>,
+    ) -> impl Iterator<Item = EdgeReference> {
+        let a_idx = match self.indices.get(&a.entity()) {
+            None => return Either::Left(std::iter::empty()),
+            Some(i) => i.clone(),
+        };
+        let b_idx = match self.indices.get(&b.entity()) {
+            None => return Either::Left(std::iter::empty()),
+            Some(i) => i.clone(),
+        };
+        let edge = self
+            .inner
+            .edges_connecting(a_idx, b_idx)
+            .map(|e| EdgeReference {
+                weight: *e.weight(),
+                source: self.inner[e.source()],
+                target: self.inner[e.target()],
+            });
+        Either::Right(edge)
     }
 }
 

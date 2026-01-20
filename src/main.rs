@@ -4,6 +4,7 @@ use clap::Parser;
 use moonshine_core::{load::load_on_default_event, save::save_on_default_event};
 
 mod colors;
+mod export;
 mod graph;
 mod i18n;
 mod interface;
@@ -21,7 +22,13 @@ struct PaiagramApp {
 }
 
 impl PaiagramApp {
-    fn new(_cc: &eframe::CreationContext) -> Self {
+    fn new(cc: &eframe::CreationContext) -> Self {
+        cc.egui_ctx.style_mut(|style| {
+            style.spacing.window_margin = egui::Margin::same(2);
+            style.interaction.selectable_labels = false;
+        });
+        interface::apply_custom_fonts(&cc.egui_ctx);
+        // set up bevy world
         let mut app = App::new();
         app.add_plugins(MinimalPlugins);
         app.add_plugins(LogPlugin::default());
@@ -174,7 +181,8 @@ fn handle_args(cli: In<Cli>, mut msg: MessageWriter<rw_data::ModifyData>, mut co
 fn main() -> eframe::Result<()> {
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("Paiagram Drawer")
+            .with_title("Drawer")
+            .with_app_id("Paiagram")
             .with_inner_size([1280.0, 720.0]),
         ..default()
     };

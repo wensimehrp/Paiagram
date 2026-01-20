@@ -459,14 +459,6 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
         .world_mut()
         .remove_resource::<SidePanelState>()
         .unwrap();
-    if !mus.initialized {
-        ctx.style_mut(|style| {
-            style.spacing.window_margin = egui::Margin::same(2);
-            style.interaction.selectable_labels = false;
-        });
-        apply_custom_fonts(&ctx);
-        mus.initialized = true;
-    }
     let frame_time = mus.mean_frame_time();
     app.bevy_app
         .world_mut()
@@ -700,7 +692,7 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
 }
 
 /// Apply custom fonts to the egui context
-fn apply_custom_fonts(ctx: &egui::Context) {
+pub fn apply_custom_fonts(ctx: &egui::Context) {
     let mut fonts = egui::FontDefinitions::default();
 
     fonts.font_data.insert(

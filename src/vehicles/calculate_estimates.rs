@@ -35,7 +35,6 @@ pub fn calculate_estimates(
     }
 
     for msg in messages {
-        debug!(?msg);
         let AdjustTimetableEntry { entity, .. } = msg;
         let Ok(entry) = parents.get(*entity) else {
             continue;

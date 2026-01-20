@@ -31,9 +31,9 @@ tab-start-description = A high-performance transport timetable diagramming and a
 tab-settings = 设置
 # Diagram tab
 tab-diagram = 运行图
-tab-diagram-export-typst = 导出为 Typst 文档
-tab-diagram-export-typst-desc = 将当前运行图导出为 Typst 文档。导出的文档可在文本编辑器中进一步编辑。
-tab-diagram-export-typst-output = Typst 输出长度：{$bytes} 字节
+tab-diagram-export-typst-diagram = 导出为运行图 (Typst)
+tab-diagram-export-typst-diagram-desc = 将当前运行图导出为 Typst 运行图。导出的运行图可在文本编辑器中进一步编辑。
+tab-diagram-export-typst-diagram-output = Typst 输出长度：{$bytes} 字节
 # Graph tab
 tab-graph = 线路网
 tab-graph-new-displayed-line = 新建基线

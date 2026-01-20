@@ -4,10 +4,15 @@ use egui::Pos2;
 use crate::graph::{Station, StationEntries};
 use crate::lines::DisplayedLine;
 use crate::units::time::TimetableTime;
-use crate::vehicles::entries::{TimetableEntry, TimetableEntryCache, VehicleSchedule, VehicleScheduleCache};
+use crate::vehicles::entries::{
+    TimetableEntry, TimetableEntryCache, VehicleSchedule, VehicleScheduleCache,
+};
 use crate::vehicles::vehicle_set::VehicleSet;
 
-use super::{ensure_heights, DiagramLineCache, DiagramLineParams, PointData, RenderedVehicle, TICKS_PER_SECOND, ticks_to_screen_x};
+use super::{
+    DiagramLineCache, DiagramLineParams, PointData, RenderedVehicle, TICKS_PER_SECOND,
+    ensure_heights, ticks_to_screen_x,
+};
 
 pub fn calculate_lines(
     (In(displayed_line_entity), InMut(mut line_cache), InMut(buffer), In(line_params)): (
@@ -57,7 +62,9 @@ pub fn calculate_lines(
         // filter out those not in the vehicle set, if any
         if let Some(vehicle_set_entity) = line_cache.vehicle_set {
             if let Ok(vehicle_set) = vehicle_sets.get(vehicle_set_entity) {
-                line_cache.vehicle_entities.retain(|e| vehicle_set.contains(e));
+                line_cache
+                    .vehicle_entities
+                    .retain(|e| vehicle_set.contains(e));
             }
         }
         line_cache.vehicle_entities.dedup();
@@ -75,9 +82,14 @@ pub fn calculate_lines(
 
     let visible_stations = match line_cache.heights.as_ref() {
         Some(heights) => {
-            let first_visible = heights.iter().position(|(_, h)| *h > render_context.vertical_visible.start);
-            let last_visible = heights.iter().rposition(|(_, h)| *h < render_context.vertical_visible.end);
-            if let (Some(mut first_visible), Some(mut last_visible)) = (first_visible, last_visible) {
+            let first_visible = heights
+                .iter()
+                .position(|(_, h)| *h > render_context.vertical_visible.start);
+            let last_visible = heights
+                .iter()
+                .rposition(|(_, h)| *h < render_context.vertical_visible.end);
+            if let (Some(mut first_visible), Some(mut last_visible)) = (first_visible, last_visible)
+            {
                 first_visible = first_visible.saturating_sub(2);
                 last_visible = (last_visible + 1).min(heights.len() - 1);
                 &heights[first_visible..=last_visible]

@@ -1,11 +1,11 @@
 #[cfg(not(target_arch = "wasm32"))]
-pub async fn write_text_file(data: String, filename: String) -> Result<(), std::io::Error> {
+pub async fn write_file(data: Vec<u8>, filename: String) -> Result<(), std::io::Error> {
     let file = rfd::AsyncFileDialog::new()
         .set_file_name(&filename)
         .save_file()
         .await;
     if let Some(file) = file {
-        file.write(data.as_bytes()).await?;
+        file.write(&data).await?;
         bevy::log::info!("File saved to {:?}", file.path());
     }
     Ok(())
@@ -27,12 +27,12 @@ export function download_text_file(data, filename) {
 }
 "#)]
 extern "C" {
-    fn download_text_file(data: &str, filename: &str);
+    fn download_text_file(data: &[u8], filename: &str);
 }
 
 /// let the browser download a text file
 #[cfg(target_arch = "wasm32")]
-pub async fn write_text_file(data: String, filename: String) -> Result<(), String> {
+pub async fn write_file(data: Vec<u8>, filename: String) -> Result<(), String> {
     download_text_file(&data, &filename);
     Ok(())
 }

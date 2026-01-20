@@ -31,9 +31,13 @@ tab-start-description = A high-performance transport timetable diagramming and a
 tab-settings = Settings
 # Diagram tab
 tab-diagram = Diagram
-tab-diagram-export-typst = Export to Typst
-tab-diagram-export-typst-desc = Export the current diagram to a Typst document. The exported document can be further customized in your preferred editor.
-tab-diagram-export-typst-output = Typst output length: {$bytes} bytes
+tab-diagram-export-typst-diagram = Export to diagram (Typst)
+tab-diagram-export-typst-diagram-desc = Export the current diagram to a Typst diagram. The exported diagram can be further customized in your preferred editor.
+tab-diagram-export-typst-diagram-output = Typst output length: {$bytes} bytes
+tab-diagram-export-typst-timetable = Export to timetable (Typst)
+tab-diagram-export-typst-timetable-desc = Export the current diagram's timetable to a Typst timetable. The exported timetable can be further customized in your preferred editor.
+tab-diagram-export-json-timetable = Export to timetable (JSON)
+tab-diagram-export-json-timetable-desc = Export the current diagram's timetable to a JSON file. The exported timetable can be further processed with other tools.
 # Graph tab
 tab-graph = Graph
 tab-graph-new-displayed-line = Create new displayed line
