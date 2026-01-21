@@ -23,19 +23,9 @@
   set par(justify: true, justification-limits: (
     tracking: (min: -0.02em, max: 0.03em),
   ))
-  show <wip>: it => context {
-    (
-      counter(heading).display("1.")
-        + h(
-          .3em,
-        )
-        + it.body
-        + pdf.artifact[~🚧]
-    )
-  }
-  set text(lang: "en", region: "CA", font: ("Noto Serif", "Noto Serif CJK SC"))
+  set text(lang: "en", region: "CA", font: "Merriweather")
   show heading: it => {
-    set text(font: "Fira Sans")
+    set text(font: "Merriweather Sans")
     grid(
       columns: (auto, 1fr),
       gutter: 5pt,
@@ -54,7 +44,7 @@
     background: true,
     offset: -.5pt,
     evade: false,
-    text(font: "Fira Sans", it, weight: "bold"),
+    text(font: "Merriweather Sans", it, weight: "bold"),
   )
   page-content
 }

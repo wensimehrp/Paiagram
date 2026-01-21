@@ -18,9 +18,11 @@ If you see the sign 🚧, this chapter is a work in progress!
 
 Text boxes that #kbd[look][like][this] stand for keyboard shortcuts. For example: #kbd[Ctrl][Alt][F2]
 
-Text that #link("https://example.com")[looks like this] are links. You can click them to open the link in your default web browser.
+Text that #link("https://example.com")[looks like this] are links. You can click them to open the link in your default
+web browser.
 
-Text boxes that #path[look][like][this] stand for file paths or directory paths. For example: #path[\~][.local][.config][Paiagram]
+Text boxes that #path[look][like][this] stand for file paths or directory paths. For example:
+#path[\~][.local][.config][Paiagram]
 
 You can also read this manual in this language:
 

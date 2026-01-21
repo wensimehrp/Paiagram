@@ -1,13 +1,17 @@
 #import "mod.typ": *
-= Interface <wip>
+= Interface
 
-The interface is designed to be intuitive and user-friendly. The workspace is split into two parts: the properties panel on the left and the main canvas on the right.
+The interface is designed to be intuitive and user-friendly. The workspace is split into two parts: the properties panel
+on the left and the main canvas on the right.
 
-The properties panel contains information and setting for the currently selected object. You can also multi-select objects to edit their properties in bulk. Nevertheless, objects that don't share common properties cannot be edited in bulk.
+The properties panel contains information and setting for the currently selected object. You can also multi-select
+objects to edit their properties in bulk. Nevertheless, objects that don't share common properties cannot be edited in
+bulk.
 
-The main canvas is where you can visualize and edit your timetable graph. You can dock and undock, add or remove tabs as needed. However, you cannot add or remove tabs from the properties panel.
+The main canvas is where you can visualize and edit your timetable graph. You can dock and undock, add or remove tabs as
+needed. However, you cannot add or remove tabs from the properties panel.
 
-== Overview <wip>
+== Overview
 
 The overview tab provides statistics and general information about the current file opened, including:
 
@@ -16,43 +20,47 @@ The overview tab provides statistics and general information about the current f
 - Amount of stations.
 - Amount of intervals.
 
-== Searching <wip>
+== Searching
 
 Each table would feature a search bar at the top. You can use it to filter the table entries based on your input.
 
-The search bar currently supports matching Pinyin, Double Pinyin (Microsoft scheme) and Romaji for Chinese and Japanese text.
+The search bar currently supports matching Pinyin, Double Pinyin (Microsoft scheme) and Romaji for Chinese and Japanese
+text.
 
-== Diagnostics <wip>
+== Diagnostics
 
-The diagnostics tab provides information about potential issues in the current file opened. You can also access the tab from the #link(<status-bar>)[status bar]
+The diagnostics tab provides information about potential issues in the current file opened. You can also access the tab
+from the #link(<status-bar>)[status bar]
 
 == Status Bar <status-bar>
 
-The status bar is located at the bottom of the window. It provides quick access to various functions and information, including:
+The status bar is located at the bottom of the window. It provides quick access to various functions and information,
+including:
 
 - Tooltips.
 - Diagnostics.
 
-== Vehicle <wip>
+== Vehicle
 
-The vehicle view tab is opened upon selecting a vehicle from the main canvas. You can edit the vehicle's timetable entries, services, stops, and other properties here.
+The vehicle view tab is opened upon selecting a vehicle from the main canvas. You can edit the vehicle's timetable
+entries, services, stops, and other properties here.
 
-== All Vehicles <wip>
+== All Vehicles
 
-== All Services <wip>
+== All Services
 
-== Global Search <wip>
+== Global Search
 
-The global search window allows you to search for various objects in the current file opened.
-You can use the #kbd[Ctrl][Shift][F] shortcut to open the global search window.
+The global search window allows you to search for various objects in the current file opened. You can use the
+#kbd[Ctrl][Shift][F] shortcut to open the global search window.
 
-== Station <wip>
+== Station
 
-== Route <wip>
+== Route
 
-== Route Diagram <wip>
+== Route Diagram
 
-== Shortcuts <wip>
+== Shortcuts
 
 Shortcuts are what makes power users. Here are all shortcuts listed out:
 
