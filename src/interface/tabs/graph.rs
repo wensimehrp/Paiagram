@@ -1,7 +1,7 @@
 use super::{Navigatable, Tab};
+use crate::export::ExportObject;
 use crate::graph::{Graph, Interval, Station};
 use crate::lines::DisplayedLine;
-use crate::rw_data::write::write_file;
 use crate::vehicles::entries::{TimetableEntry, TimetableEntryCache, VehicleScheduleCache};
 use bevy::ecs::entity::{EntityMapper, MapEntities};
 use bevy::prelude::*;
@@ -11,7 +11,6 @@ use either::Either::{Left, Right};
 use emath::{self, RectTransform};
 use moonshine_core::kind::{InsertInstanceWorld, Instance};
 use petgraph::Direction;
-use petgraph::dot;
 use petgraph::visit::EdgeRef;
 use serde::{Deserialize, Serialize};
 
@@ -249,22 +248,10 @@ impl Tab for GraphTab {
     }
     fn export_display(&mut self, world: &mut World, ui: &mut egui::Ui) {
         let mut buffer = String::with_capacity(32768);
-        if ui.button("Export Graph as DOT file").clicked() {
-            if let Err(e) = world.run_system_cached_with(make_dot_string, &mut buffer) {
-                bevy::log::error!("Error while generating DOT string: {}", e);
-                return;
-            }
-
-            let data = std::mem::take(&mut buffer);
-            let filename = "transport_graph.dot".to_string();
-
-            bevy::tasks::IoTaskPool::get()
-                .spawn(async move {
-                    if let Err(e) = write_file(data.into_bytes(), filename).await {
-                        bevy::log::error!("Failed to export graph: {:?}", e);
-                    }
-                })
-                .detach();
+        if ui.button("Export Graph as DOT file").clicked()
+            && let Err(e) = crate::export::graphviz::Graphviz.export_to_file(world, ())
+        {
+            error!("Error while exporting graph as DOT file: {:?}", e)
         }
     }
     fn scroll_bars(&self) -> [bool; 2] {
@@ -290,26 +277,6 @@ fn display_displayed_line(
             ui.label(station_name.as_str());
         });
     }
-}
-
-fn make_dot_string(InMut(buffer): InMut<String>, graph: Res<Graph>, names: Query<&Name>) {
-    let get_node_attr = |_, (_, entity): (_, &Instance<Station>)| {
-        format!(
-            r#"label = "{}""#,
-            names
-                .get(entity.entity())
-                .map_or("<Unknown>".to_string(), |name| name.to_string())
-        )
-    };
-    let get_edge_attr = |_, _| String::new();
-    let dot_string = dot::Dot::with_attr_getters(
-        graph.inner(),
-        &[dot::Config::EdgeNoLabel, dot::Config::NodeNoLabel],
-        &get_edge_attr,
-        &get_node_attr,
-    );
-    buffer.clear();
-    buffer.push_str(&format!("{:?}", dot_string));
 }
 
 fn draw_line_spline(

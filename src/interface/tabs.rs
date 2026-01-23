@@ -151,6 +151,10 @@ pub trait Tab {
     /// The internal name of the tab used for identification. This must be a static string.
     /// The actual displayed name could be different based on e.g. the localization or other contents.
     const NAME: &'static str;
+    /// Called before rendering the tab.
+    fn pre_render(&mut self, _world: &mut World) {}
+    /// Called after rendering the tab.
+    fn post_render(&mut self, _world: &mut World) {}
     /// The main display of the tab.
     fn main_display(&mut self, world: &mut World, ui: &mut Ui);
     fn edit_display(&mut self, _world: &mut World, ui: &mut Ui) {

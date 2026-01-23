@@ -1,3 +1,4 @@
+use crate::export::ExportObject;
 use crate::graph::Station;
 use crate::interface::SelectedElement;
 use crate::interface::tabs::{Navigatable, Tab};
@@ -153,6 +154,8 @@ pub struct DiagramTab {
     state: DiagramPageCache,
     #[serde(skip)]
     typst_output: String,
+    #[serde(skip)]
+    rendered_vehicles_cache: Vec<RenderedVehicle>,
 }
 
 impl MapEntities for DiagramTab {
@@ -169,6 +172,7 @@ impl DiagramTab {
             editing: EditingState::default(),
             state: DiagramPageCache::default(),
             typst_output: String::new(),
+            rendered_vehicles_cache: Vec::new(),
         }
     }
 }
@@ -245,11 +249,14 @@ impl Eq for DiagramTab {}
 
 impl Tab for DiagramTab {
     const NAME: &'static str = "Diagram";
+    fn pre_render(&mut self, world: &mut World) {}
+    fn post_render(&mut self, _world: &mut World) {
+        self.rendered_vehicles_cache.clear();
+    }
     fn title(&self) -> egui::WidgetText {
         tr!("tab-diagram").into()
     }
     fn main_display(&mut self, world: &mut World, ui: &mut Ui) {
-        let mut calculated_vehicles: Vec<RenderedVehicle> = Vec::new();
         Frame::canvas(ui.style())
             .inner_margin(Margin::ZERO)
             .show(ui, |ui| {
@@ -276,13 +283,12 @@ impl Tab for DiagramTab {
                     zoom_y: self.state.zoom.y,
                     stroke: self.state.stroke.clone(),
                 };
-
                 if let Err(e) = world.run_system_cached_with(
                     calculate_lines::calculate_lines,
                     (
                         self.displayed_line_entity,
                         &mut self.state.line_cache,
-                        &mut calculated_vehicles,
+                        &mut self.rendered_vehicles_cache,
                         line_params,
                     ),
                 ) {
@@ -294,7 +300,7 @@ impl Tab for DiagramTab {
                     (
                         ui,
                         &mut self.state,
-                        &calculated_vehicles,
+                        &self.rendered_vehicles_cache,
                         &mut painter,
                         &response,
                     ),
@@ -476,6 +482,17 @@ impl Tab for DiagramTab {
         });
         ui.strong(tr!("tab-diagram-export-typst-timetable"));
         ui.strong(tr!("tab-diagram-export-typst-timetable-desc"));
+        if ui.button("Export").clicked()
+            && let Err(e) = crate::export::typst_timetable::TypstTimetable.export_to_file(
+                world,
+                (
+                    self.state.line_cache.vehicle_entities.iter().cloned(),
+                    self.displayed_line_entity,
+                ),
+            )
+        {
+            error!("Error exporting typst timetable: {:?}", e)
+        }
     }
     fn id(&self) -> egui::Id {
         egui::Id::new(self.displayed_line_entity)
@@ -972,52 +989,52 @@ fn draw_vehicle_selection_overlay(
                 ui.place(Rect::from_pos(arrival_pos).expand(5.2), |ui: &mut Ui| {
                     let (rect, resp) =
                         ui.allocate_exact_size(ui.available_size(), Sense::click_and_drag());
-                    ui
-                        .scope_builder(
-                            UiBuilder::new()
-                                .sense(resp.sense)
-                                .max_rect(rect)
-                                .id(entry_entity.inner().to_bits() as u128
-                                    | (line_index as u128) << 64),
-                            |ui| {
-                                ui.set_min_size(ui.available_size());
-                                let response = ui.response();
-                                let fill = if response.hovered() {
-                                    Color32::GRAY
-                                } else {
-                                    Color32::WHITE
-                                }
-                                .linear_multiply(button_strength);
-                                let handle_stroke = Stroke {
-                                    width: 2.5,
-                                    color: stroke.color.linear_multiply(button_strength),
-                                };
-                                match entry.arrival {
-                                    TravelMode::At(_) => buttons::circle_button_shape(
-                                        painter,
-                                        arrival_pos,
-                                        CIRCLE_HANDLE_SIZE,
-                                        handle_stroke,
-                                        fill,
-                                    ),
-                                    TravelMode::For(_) => buttons::dash_button_shape(
-                                        painter,
-                                        arrival_pos,
-                                        DASH_HANDLE_SIZE,
-                                        handle_stroke,
-                                        fill,
-                                    ),
-                                    TravelMode::Flexible => buttons::triangle_button_shape(
-                                        painter,
-                                        arrival_pos,
-                                        TRIANGLE_HANDLE_SIZE,
-                                        handle_stroke,
-                                        fill,
-                                    ),
-                                };
-                            },
-                        )
-                        .response
+                    ui.scope_builder(
+                        UiBuilder::new()
+                            .sense(resp.sense)
+                            .max_rect(rect)
+                            .id(ui.id().with(
+                                entry_entity.inner().to_bits() as u128 | (line_index as u128) << 64,
+                            )),
+                        |ui| {
+                            ui.set_min_size(ui.available_size());
+                            let response = ui.response();
+                            let fill = if response.hovered() {
+                                Color32::GRAY
+                            } else {
+                                Color32::WHITE
+                            }
+                            .linear_multiply(button_strength);
+                            let handle_stroke = Stroke {
+                                width: 2.5,
+                                color: stroke.color.linear_multiply(button_strength),
+                            };
+                            match entry.arrival {
+                                TravelMode::At(_) => buttons::circle_button_shape(
+                                    painter,
+                                    arrival_pos,
+                                    CIRCLE_HANDLE_SIZE,
+                                    handle_stroke,
+                                    fill,
+                                ),
+                                TravelMode::For(_) => buttons::dash_button_shape(
+                                    painter,
+                                    arrival_pos,
+                                    DASH_HANDLE_SIZE,
+                                    handle_stroke,
+                                    fill,
+                                ),
+                                TravelMode::Flexible => buttons::triangle_button_shape(
+                                    painter,
+                                    arrival_pos,
+                                    TRIANGLE_HANDLE_SIZE,
+                                    handle_stroke,
+                                    fill,
+                                ),
+                            };
+                        },
+                    )
+                    .response
                 });
 
             if arrival_point_response.drag_started() {

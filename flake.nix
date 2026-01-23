@@ -38,7 +38,10 @@
 
         rustToolchain = pkgs.rust-bin.stable.latest.default.override {
           extensions = [ "rust-src" ];
-          targets = [ "x86_64-unknown-linux-gnu" "wasm32-unknown-unknown" ];
+          targets = [
+            "x86_64-unknown-linux-gnu"
+            "wasm32-unknown-unknown"
+          ];
         };
 
       in
@@ -49,7 +52,10 @@
           src = ./.;
 
           cargoLock.lockFile = ./Cargo.lock;
-          nativeBuildInputs = [ pkgs.pkg-config pkgs.makeWrapper ];
+          nativeBuildInputs = [
+            pkgs.pkg-config
+            pkgs.makeWrapper
+          ];
           buildInputs = runtimeLibs;
           postInstall = ''
             wrapProgram $out/bin/paiagram \
@@ -72,7 +78,13 @@
               trunk
               cargo-about
               gitui
-            ] ++ runtimeLibs ++ [ mold clang stdenv.cc.cc ];
+            ]
+            ++ runtimeLibs
+            ++ [
+              mold
+              clang
+              stdenv.cc.cc
+            ];
 
             RUST_SRC_PATH = "${pkgs.rust.packages.stable.rustPlatform.rustLibSrc}";
             LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath (runtimeLibs ++ [ stdenv.cc.cc ]);

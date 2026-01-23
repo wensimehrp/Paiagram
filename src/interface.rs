@@ -463,6 +463,9 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
     app.bevy_app
         .world_mut()
         .resource_scope(|world, mut ui_state: Mut<UiState>| {
+            for (_, tab) in ui_state.dock_state.iter_all_tabs_mut() {
+                for_all_tabs!(tab, t, t.pre_render(world));
+            }
             egui::TopBottomPanel::top("menu_bar")
                 .frame(Frame::side_top_panel(&ctx.style()))
                 .show(&ctx, |ui| {
@@ -685,6 +688,9 @@ pub fn show_ui(app: &mut super::PaiagramApp, ctx: &egui::Context) -> Result<()> 
                             !mus.supplementary_panel_state.expanded;
                     }
                 });
+            for (_, tab) in ui_state.dock_state.iter_all_tabs_mut() {
+                for_all_tabs!(tab, t, t.post_render(world));
+            }
         });
     app.bevy_app.world_mut().insert_resource(mus);
     app.bevy_app.world_mut().insert_resource(side_panel_state);

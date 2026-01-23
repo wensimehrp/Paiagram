@@ -324,5 +324,5 @@ pub fn arrange_via_osm(
     };
 
     let task = thread_pool.spawn(async_task);
-    commands.insert_resource(GraphLayoutTask::new(task, station_names.iter().len()));
+    commands.insert_resource(GraphLayoutTask::new(task, station_names.iter().count()));
 }
