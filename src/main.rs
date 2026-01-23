@@ -162,6 +162,10 @@ fn handle_args(cli: In<Cli>, mut msg: MessageWriter<rw_data::ModifyData>, mut co
                 let file_content = std::fs::read_to_string(path).expect("Failed to read file");
                 msg.write(ModifyData::LoadOuDiaSecond(file_content));
             }
+            Some("zip") => {
+                let file_content = std::fs::read(path).expect("Failed to read file");
+                commands.trigger(rw_data::gtfs::GtfsLoaded(file_content));
+            }
             _ => {
                 warn!("Unsupported file format: {}", path);
             }

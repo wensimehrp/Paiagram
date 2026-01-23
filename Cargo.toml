@@ -65,6 +65,8 @@ thiserror = "2.0.17"
 bevy-inspector-egui = {version = "0.36.0", default-features = false}
 ureq = { version = "3.1.4", features = ["_tls"] }
 itertools = "0.14.0"
+gtfs-structures = {version = "0.46.1", default-features = false}
+utm = "0.1.6"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.3.*", features = ["wasm_js"] }

@@ -1,11 +1,12 @@
 //! Module for reading and writing various data formats.
 
 pub mod custom;
+pub mod gtfs;
+pub mod jgrpp;
 pub mod oudiasecond;
 pub mod qetrc;
 pub mod saveload;
 pub mod write;
-pub mod jgrpp;
 
 use bevy::prelude::*;
 use serde::Deserialize;
@@ -28,6 +29,7 @@ impl Plugin for RwDataPlugin {
                 .chain()
                 .run_if(on_message::<ModifyData>),
         );
+        app.add_observer(gtfs::load_gtfs_static);
         #[cfg(target_arch = "wasm32")]
         app.add_systems(
             Update,
