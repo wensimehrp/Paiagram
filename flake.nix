@@ -69,7 +69,7 @@
             buildInputs = [
               rustToolchain
               pkg-config
-              wasm-bindgen-cli
+              wasm-bindgen-cli_0_2_108
               typst
               just
               wget
