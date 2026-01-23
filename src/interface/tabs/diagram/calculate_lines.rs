@@ -49,10 +49,8 @@ pub fn calculate_lines(
     if entries_updated {
         info!("Updating vehicle entities for diagram display");
 
-        for station in displayed_line
-            .stations()
-            .iter()
-            .filter_map(|(s, _)| station_caches.get(s.entity()).ok())
+        for station in
+            station_caches.iter_many(displayed_line.stations().iter().map(|(e, _)| e.entity()))
         {
             station.passing_vehicles(&mut line_cache.vehicle_entities, |e| {
                 entry_parents.get(e).ok()
