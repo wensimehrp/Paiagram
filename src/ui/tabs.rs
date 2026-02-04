@@ -3,85 +3,38 @@ use std::borrow::Cow;
 use bevy::ecs::world::World;
 use egui::{Id, Response, Ui, WidgetText};
 use egui_i18n::tr;
+use moonshine_core::prelude::MapEntities;
 
-use crate::interface::StatusBarState;
+// use crate::interface::StatusBarState;
 
-pub mod classes;
+// pub mod classes;
+// pub mod diagram;
 pub mod diagram;
-pub mod displayed_lines;
-pub mod graph;
+// pub mod displayed_lines;
+// pub mod graph;
 pub mod inspector;
-pub mod minesweeper;
-pub mod overview;
-pub mod services;
+// pub mod minesweeper;
+// pub mod overview;
+// pub mod services;
 pub mod settings;
 pub mod start;
-pub mod station_timetable;
-pub mod tree_view;
-pub mod vehicle;
+// pub mod station_timetable;
+// pub mod tree_view;
+// pub mod vehicle;
 
 pub mod all_tabs {
-    pub use super::classes::ClassesTab;
+    // pub use super::classes::ClassesTab;
     pub use super::diagram::DiagramTab;
-    pub use super::displayed_lines::DisplayedLinesTab;
-    pub use super::graph::GraphTab;
+    // pub use super::displayed_lines::DisplayedLinesTab;
+    // pub use super::graph::GraphTab;
     pub use super::inspector::InspectorTab;
-    pub use super::minesweeper::MinesweeperTab;
-    pub use super::overview::OverviewTab;
-    pub use super::services::ServicesTab;
+    // pub use super::minesweeper::MinesweeperTab;
+    // pub use super::overview::OverviewTab;
+    // pub use super::services::ServicesTab;
     pub use super::settings::SettingsTab;
     pub use super::start::StartTab;
-    pub use super::station_timetable::StationTimetableTab;
-    pub use super::vehicle::VehicleTab;
-}
-
-/// The page cache. Lots of r/w, few insertions, good locality, fast executions.
-#[derive(Debug)]
-pub struct PageCache<K, V>
-where
-    K: PartialEq + Ord,
-{
-    keys: Vec<K>,
-    vals: Vec<V>,
-}
-
-const LINEAR_THRESHOLD: usize = 64;
-
-impl<K, V> PageCache<K, V>
-where
-    K: PartialEq + Ord,
-{
-    /// Get the page cache or insert with a custom value.
-    pub fn get_mut_or_insert_with<F>(&mut self, query_key: K, make_val: F) -> &mut V
-    where
-        F: FnOnce() -> V,
-    {
-        if self.keys.len() < LINEAR_THRESHOLD
-            && let Some(idx) = self.keys.iter().position(|e| *e == query_key)
-        {
-            return &mut self.vals[idx];
-        }
-        return match self.keys.binary_search(&query_key) {
-            Ok(idx) => &mut self.vals[idx],
-            Err(idx) => {
-                self.keys.insert(idx, query_key);
-                self.vals.insert(idx, make_val());
-                return &mut self.vals[idx];
-            }
-        };
-    }
-}
-
-impl<K, V> Default for PageCache<K, V>
-where
-    K: PartialEq + Ord,
-{
-    fn default() -> Self {
-        Self {
-            keys: Vec::new(),
-            vals: Vec::new(),
-        }
-    }
+    // pub use super::station_timetable::StationTimetableTab;
+    // pub use super::vehicle::VehicleTab;
 }
 
 pub trait Navigatable {
@@ -147,7 +100,7 @@ pub trait Navigatable {
     fn post_navigation(&mut self, _response: &Response) {}
 }
 
-pub trait Tab {
+pub trait Tab: MapEntities {
     /// The internal name of the tab used for identification. This must be a static string.
     /// The actual displayed name could be different based on e.g. the localization or other contents.
     const NAME: &'static str;
@@ -176,14 +129,14 @@ pub trait Tab {
         Self::NAME.into()
     }
     fn on_tab_button(&self, world: &mut World, response: &Response) {
-        if response.hovered() {
-            let title_text = self.title();
-            let s = &mut world.resource_mut::<StatusBarState>().tooltip;
-            s.clear();
-            s.push_str(self.icon().as_ref());
-            s.push(' ');
-            s.push_str(title_text.text());
-        }
+        // if response.hovered() {
+        //     let title_text = self.title();
+        //     let s = &mut world.resource_mut::<StatusBarState>().tooltip;
+        //     s.clear();
+        //     s.push_str(self.icon().as_ref());
+        //     s.push(' ');
+        //     s.push_str(title_text.text());
+        // }
     }
     fn id(&self) -> Id {
         Id::new(Self::NAME)

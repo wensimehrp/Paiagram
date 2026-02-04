@@ -1,235 +1,266 @@
-use crate::graph::arrange::GraphLayoutTask;
-use crate::units::speed::Velocity;
-use crate::vehicles::entries::TimetableEntry;
-use bevy::ecs::entity::{EntityHashMap, EntityMapper, MapEntities};
-use bevy::prelude::*;
-use either::Either;
-use moonshine_core::kind::prelude::*;
-use moonshine_core::save::prelude::*;
-use petgraph::prelude::*;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::ops::AddAssign;
 
-pub mod arrange;
+use crate::interval::Interval;
+use crate::interval::IntervalQuery;
+use crate::station::Station;
+use bevy::ecs::entity::EntityHashSet;
+use bevy::{ecs::entity::EntityHash, prelude::*};
+use moonshine_core::prelude::MapEntities;
+use petgraph::prelude::DiGraphMap;
+use petgraph::{algo::astar, visit::EdgeRef};
+use serde::{Deserialize, Serialize};
 
-/// The graph type used for the transportation network
-pub type IntervalGraphType = StableDiGraph<Instance<Station>, Instance<Interval>>;
-/// A raw graph type used for serialization/deserialization
-#[derive(Serialize, Deserialize, MapEntities)]
-pub struct RawIntervalGraphType(StableDiGraph<Entity, Entity>);
+pub struct GraphPlugin;
+impl Plugin for GraphPlugin {
+    fn build(&self, app: &mut App) {
+        app.init_resource::<Graph>()
+            .add_observer(update_graph_on_station_removal)
+            .add_observer(update_graph_on_interval_removal);
+        #[cfg(debug_assertions)]
+        {
+            use bevy::time::common_conditions::on_real_timer;
+            app.add_systems(
+                PostUpdate,
+                check_stations_in_graph.run_if(on_real_timer(std::time::Duration::from_secs(10))),
+            );
+        }
+    }
+}
 
-/// A graph representing the transportation network
-#[derive(Reflect, Clone, Resource, Default, Debug)]
-#[reflect(Resource, opaque, Serialize, Deserialize, MapEntities)]
+#[derive(Reflect, Clone, Resource, Serialize, Deserialize, Default, Deref, DerefMut)]
+#[reflect(Resource, opaque, Serialize, Deserialize)]
 pub struct Graph {
-    /// The inner graph structure
-    inner: IntervalGraphType,
-    /// Mapping from station entities to their node indices in the graph
-    /// This is skipped during serialization/deserialization and rebuilt as needed
-    #[reflect(ignore)]
-    indices: EntityHashMap<NodeIndex>,
-}
-
-impl From<RawIntervalGraphType> for IntervalGraphType {
-    fn from(value: RawIntervalGraphType) -> Self {
-        value.0.map(
-            |_, &node| unsafe { Instance::from_entity_unchecked(node) },
-            |_, &edge| unsafe { Instance::from_entity_unchecked(edge) },
-        )
-    }
-}
-
-impl From<IntervalGraphType> for RawIntervalGraphType {
-    fn from(value: IntervalGraphType) -> Self {
-        Self(value.map(|_, node| node.entity(), |_, edge| edge.entity()))
-    }
-}
-
-impl Serialize for Graph {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let raw: RawIntervalGraphType = self.inner.clone().into();
-        raw.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for Graph {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let raw = RawIntervalGraphType::deserialize(deserializer)?;
-        let inner: IntervalGraphType = raw.into();
-        Ok(Graph {
-            inner,
-            indices: EntityHashMap::default(),
-        })
-    }
-}
-
-pub struct EdgeReference {
-    pub weight: Instance<Interval>,
-    pub source: Instance<Station>,
-    pub target: Instance<Station>,
+    pub map: DiGraphMap<Entity, Entity, EntityHash>,
 }
 
 impl MapEntities for Graph {
-    fn map_entities<M: EntityMapper>(&mut self, entity_mapper: &mut M) {
-        for node in self.inner.node_weights_mut() {
-            node.map_entities(entity_mapper);
+    fn map_entities<E: EntityMapper>(&mut self, entity_mapper: &mut E) {
+        // construct a new graph instead
+        let (nodes, edges) = self.capacity();
+        let mut new_graph = DiGraphMap::with_capacity(nodes, edges);
+        for (mut source, mut target, weight) in self.all_edges() {
+            let mut weight = *weight;
+            source.map_entities(entity_mapper);
+            target.map_entities(entity_mapper);
+            weight.map_entities(entity_mapper);
+            new_graph.add_edge(source, target, weight);
         }
-        for edge in self.inner.edge_weights_mut() {
-            edge.map_entities(entity_mapper);
-        }
-        let mut new_indices = EntityHashMap::default();
-        // construct the indices from the graph instead.
-        for index in self.inner.node_indices() {
-            let station = &self.inner[index];
-            new_indices.insert(station.entity(), index);
-        }
-        self.indices = new_indices;
+        self.map = new_graph;
     }
 }
 
 impl Graph {
-    pub fn inner(&self) -> &IntervalGraphType {
-        &self.inner
-    }
-    pub fn clear(&mut self) {
-        self.inner.clear();
-        self.indices.clear();
-    }
-    pub fn edge_weight(
+    pub fn route_between<'w>(
         &self,
-        a: Instance<Station>,
-        b: Instance<Station>,
-    ) -> Option<&Instance<Interval>> {
-        let &a_index = self.indices.get(&a.entity())?;
-        let &b_index = self.indices.get(&b.entity())?;
-        self.inner
-            .edge_weight(self.inner.find_edge(a_index, b_index)?)
+        source: Entity,
+        target: Entity,
+        interval_q: &Query<'w, 'w, IntervalQuery>,
+    ) -> Option<(i32, Vec<Entity>)> {
+        astar(
+            &self.map,
+            source,
+            |f| f == target,
+            |e| {
+                let Ok(i) = interval_q.get(*e.weight()) else {
+                    return i32::MAX;
+                };
+                i.distance().0
+            },
+            |_| 0,
+        )
     }
-    pub fn contains_edge(&self, a: Instance<Station>, b: Instance<Station>) -> bool {
-        let Some(&a_index) = self.indices.get(&a.entity()) else {
-            return false;
-        };
-        let Some(&b_index) = self.indices.get(&b.entity()) else {
-            return false;
-        };
-        self.inner.find_edge(a_index, b_index).is_some()
-    }
-    pub fn contains_node(&self, a: Instance<Station>) -> bool {
-        self.indices.contains_key(&a.entity())
-    }
-    pub fn node_index(&self, a: Instance<Station>) -> Option<NodeIndex> {
-        self.indices.get(&a.entity()).cloned()
-    }
-    pub fn entity(&self, index: NodeIndex) -> Option<Instance<Station>> {
-        self.inner.node_weight(index).cloned()
-    }
-    pub fn add_edge(
-        &mut self,
-        a: Instance<Station>,
-        b: Instance<Station>,
-        edge: Instance<Interval>,
-    ) {
-        let a_index = if let Some(&index) = self.indices.get(&a.entity()) {
-            index
-        } else {
-            let index = self.inner.add_node(a);
-            self.indices.insert(a.entity(), index);
-            index
-        };
-        let b_index = if let Some(&index) = self.indices.get(&b.entity()) {
-            index
-        } else {
-            let index = self.inner.add_node(b);
-            self.indices.insert(b.entity(), index);
-            index
-        };
-        self.inner.add_edge(a_index, b_index, edge);
-    }
-    pub fn add_node(&mut self, a: Instance<Station>) {
-        if self.indices.contains_key(&a.entity()) {
-            return;
-        }
-        let index = self.inner.add_node(a);
-        self.indices.insert(a.entity(), index);
-    }
-    pub fn edges_connecting(
-        &self,
-        a: Instance<Station>,
-        b: Instance<Station>,
-    ) -> impl Iterator<Item = EdgeReference> {
-        let a_idx = match self.indices.get(&a.entity()) {
-            None => return Either::Left(std::iter::empty()),
-            Some(i) => i.clone(),
-        };
-        let b_idx = match self.indices.get(&b.entity()) {
-            None => return Either::Left(std::iter::empty()),
-            Some(i) => i.clone(),
-        };
-        let edge = self
-            .inner
-            .edges_connecting(a_idx, b_idx)
-            .map(|e| EdgeReference {
-                weight: *e.weight(),
-                source: self.inner[e.source()],
-                target: self.inner[e.target()],
-            });
-        Either::Right(edge)
+    pub fn into_graph(self) -> petgraph::Graph<Entity, Entity> {
+        self.map.into_graph()
     }
 }
 
-/// A station or in the transportation network
-#[derive(Component, Default, Deref, DerefMut, Debug, Clone, Reflect, Serialize, Deserialize)]
-#[reflect(Component, opaque, Serialize, Deserialize)]
-#[require(Name, StationEntries, Save)]
-pub struct Station(pub egui::Pos2);
+/// The position of the node
+#[derive(Reflect, Clone, Copy)]
+pub enum NodePos {
+    /// X and Y used for normal mapping
+    Xy { x: f64, y: f64 },
+    /// Longitude and Latitude. This is for GTFS
+    LonLat { lon: f64, lat: f64 },
+}
 
-#[derive(Reflect, Component, Debug, Default, MapEntities)]
-#[reflect(Component, MapEntities)]
-#[relationship_target(relationship = TimetableEntry)]
-pub struct StationEntries(Vec<Entity>);
-
-impl StationEntries {
-    pub fn entries(&self) -> &[Entity] {
-        &self.0
+impl Default for NodePos {
+    fn default() -> Self {
+        Self::new_xy(0.0, 0.0)
     }
-    /// WARNING: this method does not automatically clear vehicle entities. Clear before calling
-    /// This is for chaining
-    pub fn passing_vehicles<'a, F>(&self, buffer: &mut Vec<Entity>, mut get_parent: F)
-    where
-        F: FnMut(Entity) -> Option<&'a ChildOf>,
-    {
-        for entity in self.0.iter().cloned() {
-            let Some(vehicle) = get_parent(entity) else {
-                continue;
-            };
-            buffer.push(vehicle.0)
+}
+
+impl NodePos {
+    pub fn new_xy(x: f64, y: f64) -> Self {
+        Self::Xy { x, y }
+    }
+    pub fn new_lon_lat(lon: f64, lat: f64) -> Self {
+        Self::LonLat { lon, lat }
+    }
+    pub fn x(&self) -> f64 {
+        match *self {
+            Self::Xy { x, y: _ } => x,
+            Self::LonLat { lon, lat } => {
+                let (_northing, easting, _) = utm::to_utm_wgs84_no_zone(lat, lon);
+                easting
+            }
+        }
+    }
+    pub fn y(&self) -> f64 {
+        match *self {
+            Self::Xy { x: _, y } => y,
+            Self::LonLat { lon, lat } => {
+                let (northing, _easting, _) = utm::to_utm_wgs84_no_zone(lat, lon);
+                -northing
+            }
+        }
+    }
+    pub fn lon(&self) -> f64 {
+        match *self {
+            Self::Xy { x, y: _ } => x,
+            Self::LonLat { lon, lat: _ } => lon,
+        }
+    }
+    pub fn lat(&self) -> f64 {
+        match *self {
+            Self::Xy { x: _, y } => y,
+            Self::LonLat { lon: _, lat } => lat,
+        }
+    }
+    /// Shift the node on the canvas by x and y
+    pub fn shift(&mut self, dx: f64, dy: f64) {
+        match self {
+            Self::Xy { x, y } => {
+                *x += dx;
+                *y += dy
+            }
+            Self::LonLat { lon, lat } => {
+                let zone_num = utm::lat_lon_to_zone_number(*lat, *lon);
+                let Some(zone_letter) = utm::lat_to_zone_letter(*lat) else {
+                    return;
+                };
+                let (northing, easting, _) = utm::to_utm_wgs84(*lat, *lon, zone_num);
+                let shifted_easting = easting + dx;
+                let shifted_northing = northing - dy;
+                if let Ok((new_lat, new_lon)) = utm::wsg84_utm_to_lat_lon(
+                    shifted_easting,
+                    shifted_northing,
+                    zone_num,
+                    zone_letter,
+                ) {
+                    *lat = new_lat;
+                    *lon = new_lon;
+                }
+            }
         }
     }
 }
 
-/// A track segment between two stations or nodes
-#[derive(Reflect, Component)]
+#[derive(Default, Reflect, Component)]
 #[reflect(Component)]
-#[require(Name, Save)]
-pub struct Interval {
-    /// The length of the track segment
-    pub length: crate::units::distance::Distance,
-    /// The speed limit on the track segment, if any
-    pub speed_limit: Option<Velocity>,
+pub struct Node {
+    pos: NodePos,
 }
 
-pub struct GraphPlugin;
+fn update_graph_on_station_removal(
+    removed_station: On<Remove, Station>,
+    mut commands: Commands,
+    mut graph: ResMut<Graph>,
+) {
+    let s = removed_station.entity;
+    for e in graph
+        .neighbors_directed(s, petgraph::Direction::Incoming)
+        .chain(graph.neighbors_directed(s, petgraph::Direction::Outgoing))
+    {
+        commands.entity(e).despawn();
+    }
+    graph.remove_node(s);
+}
 
-impl Plugin for GraphPlugin {
-    fn build(&self, app: &mut App) {
-        app.init_resource::<Graph>().add_systems(
-            Update,
-            arrange::apply_graph_layout.run_if(resource_exists::<GraphLayoutTask>),
+fn update_graph_on_interval_removal(
+    removed_interval: On<Remove, Interval>,
+    mut graph: ResMut<Graph>,
+) {
+    let i = removed_interval.entity;
+    let mut source = None;
+    let mut target = None;
+    for (s, t, weight) in graph.all_edges() {
+        if i != *weight {
+            continue;
+        }
+        source = Some(s);
+        target = Some(t);
+        break;
+    }
+    let (Some(s), Some(t)) = (source, target) else {
+        return;
+    };
+    graph.remove_edge(s, t);
+}
+
+#[cfg(debug_assertions)]
+fn check_stations_in_graph(
+    graph: Res<Graph>,
+    stations: Populated<Entity, With<Station>>,
+    intervals: Populated<Entity, With<Interval>>,
+    names: Query<&Name>,
+) {
+    let queried_station_set: EntityHashSet = stations.iter().collect();
+    let queried_interval_set: EntityHashSet = intervals.iter().collect();
+    let mut graphed_station_set = EntityHashSet::new();
+    let mut graphed_interval_set = EntityHashSet::new();
+    for (_, _, w) in graph.all_edges() {
+        graphed_interval_set.insert(*w);
+    }
+    for node in graph.nodes() {
+        graphed_station_set.insert(node);
+    }
+    if queried_station_set != graphed_station_set {
+        debug_graph_set_diff(
+            "station",
+            &queried_station_set,
+            &graphed_station_set,
+            &names,
         );
     }
+    if queried_interval_set != graphed_interval_set {
+        debug_graph_set_diff(
+            "interval",
+            &queried_interval_set,
+            &graphed_interval_set,
+            &names,
+        );
+    }
+    assert_eq!(queried_station_set, graphed_station_set);
+    assert_eq!(queried_interval_set, graphed_interval_set);
+}
+
+#[cfg(debug_assertions)]
+fn debug_graph_set_diff(
+    label: &str,
+    queried: &EntityHashSet,
+    graphed: &EntityHashSet,
+    names: &Query<&Name>,
+) {
+    let intersection: EntityHashSet = queried.intersection(graphed).copied().collect();
+    let only_queried: EntityHashSet = queried.difference(graphed).copied().collect();
+    let only_graphed: EntityHashSet = graphed.difference(queried).copied().collect();
+
+    let list_with_names = |set: &EntityHashSet| -> Vec<String> {
+        let mut out: Vec<String> = set
+            .iter()
+            .map(|e| match names.get(*e) {
+                Ok(name) => format!("{} ({})", name.as_str(), e.index()),
+                Err(_) => format!("<unnamed> ({})", e.index()),
+            })
+            .collect();
+        out.sort_unstable();
+        out
+    };
+
+    warn!(
+        "Graph {label} set mismatch: intersection={:#?} | only_queried={:#?} | only_graphed={:#?}",
+        list_with_names(&intersection),
+        list_with_names(&only_queried),
+        list_with_names(&only_graphed)
+    );
 }

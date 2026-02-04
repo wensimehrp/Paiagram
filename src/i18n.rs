@@ -1,37 +1,44 @@
 use bevy::prelude::*;
 use egui_i18n::*;
-use serde::{Deserialize, Serialize};
 use strum_macros::EnumIter;
 
 /// Languages
 /// Sorted alphabetically
-#[derive(Reflect, Clone, Copy, Debug, EnumIter, PartialEq, Eq)]
+#[derive(Reflect, Clone, Copy, Debug, EnumIter, PartialEq, Eq, Default)]
 pub enum Language {
+    #[default]
     EnCA,
-    ZhHans,
     JaJP,
+    ZhHans,
 }
 
 impl Language {
+    /// The native name of the language.
     pub fn name(self) -> &'static str {
         match self {
             Self::EnCA => "English (Canada)",
-            Self::ZhHans => "中文（简体）",
             Self::JaJP => "Japanese",
+            Self::ZhHans => "中文（简体）",
         }
     }
+    /// The identifier of the language.
     pub fn identifier(self) -> &'static str {
         match self {
             Self::EnCA => "en-CA",
-            Self::ZhHans => "zh-Hans",
             Self::JaJP => "ja-JP",
+            Self::ZhHans => "zh-Hans",
         }
     }
 }
 
 pub fn init(default_language: Option<&str>) {
-    load_translations_from_text("en-CA", include_str!("../assets/locales/en-CA.ftl")).unwrap();
+    let default_identifier = Language::default().identifier();
+    load_translations_from_text(
+        default_identifier,
+        include_str!("../assets/locales/en-CA.ftl"),
+    )
+    .unwrap();
     load_translations_from_text("zh-Hans", include_str!("../assets/locales/zh-Hans.ftl")).unwrap();
-    set_language(default_language.unwrap_or("en-CA"));
-    set_fallback("en-CA");
+    set_language(default_language.unwrap_or(default_identifier));
+    set_fallback(default_identifier);
 }

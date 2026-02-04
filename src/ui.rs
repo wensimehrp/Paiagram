@@ -1,0 +1,244 @@
+//! # UI
+//! Module for the user interface.
+
+mod tabs;
+
+use bevy::{ecs::system::RunSystemOnce, prelude::*};
+use egui::{Context, Frame, Id};
+use egui_dock::{DockArea, DockState, TabViewer};
+use moonshine_core::prelude::MapEntities;
+use serde::{Deserialize, Serialize};
+use tabs::{Tab, all_tabs::*};
+
+use crate::route::Route;
+
+pub struct UiPlugin;
+impl Plugin for UiPlugin {
+    fn build(&self, app: &mut App) {
+        app.init_resource::<MainUiState>()
+            .init_resource::<AdditionalUiState>()
+            .add_plugins(bevy_inspector_egui::DefaultInspectorConfigPlugin)
+            .add_message::<OpenTab>()
+            .add_systems(Update, open_tab.run_if(on_message::<OpenTab>));
+    }
+}
+
+macro_rules! for_all_tabs {
+    ($tab:expr, $t:ident, $body:expr) => {
+        match $tab {
+            MainTab::Start($t) => $body,
+            // MainTab::Vehicle($t) => $body,
+            // MainTab::StationTimetable($t) => $body,
+            MainTab::Diagram($t) => $body,
+            // MainTab::DisplayedLines($t) => $body,
+            MainTab::Settings($t) => $body,
+            // MainTab::Classes($t) => $body,
+            // MainTab::Services($t) => $body,
+            // MainTab::Minesweeper($t) => $body,
+            // MainTab::Graph($t) => $body,
+            MainTab::Inspector($t) => $body,
+        }
+    };
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub enum MainTab {
+    Start(StartTab),
+    // Vehicle(VehicleTab),
+    // StationTimetable(StationTimetableTab),
+    Diagram(DiagramTab),
+    // DisplayedLines(DisplayedLinesTab),
+    Settings(SettingsTab),
+    // Classes(ClassesTab),
+    // Services(ServicesTab),
+    // Minesweeper(MinesweeperTab),
+    // Graph(GraphTab),
+    Inspector(InspectorTab),
+}
+
+impl MapEntities for MainTab {
+    fn map_entities<E: EntityMapper>(&mut self, entity_mapper: &mut E) {
+        for_all_tabs!(self, t, t.map_entities(entity_mapper))
+    }
+}
+
+#[derive(Reflect, Resource, Serialize, Deserialize, Clone, Deref, DerefMut)]
+#[reflect(opaque, Resource, Serialize, Deserialize)]
+struct MainUiState(DockState<MainTab>);
+
+impl Default for MainUiState {
+    fn default() -> Self {
+        Self(DockState::new(vec![MainTab::Start(StartTab::default())]))
+    }
+}
+
+impl MapEntities for MainUiState {
+    fn map_entities<E: EntityMapper>(&mut self, entity_mapper: &mut E) {
+        for (_, tab) in self.0.iter_all_tabs_mut() {
+            tab.map_entities(entity_mapper);
+        }
+    }
+}
+
+#[derive(Message)]
+struct OpenTab(MainTab);
+
+fn open_tab(mut tab: MessageReader<OpenTab>, mut state: ResMut<MainUiState>) {
+    for msg in tab.read() {
+        state.push_to_focused_leaf(msg.0.clone());
+    }
+}
+
+struct MainTabViewer<'w> {
+    world: &'w mut World,
+}
+
+impl<'w> TabViewer for MainTabViewer<'w> {
+    type Tab = MainTab;
+    fn title(&mut self, tab: &mut Self::Tab) -> egui::WidgetText {
+        for_all_tabs!(tab, t, t.title())
+    }
+    fn ui(&mut self, ui: &mut egui::Ui, tab: &mut Self::Tab) {
+        for_all_tabs!(tab, t, t.main_display(self.world, ui));
+    }
+    fn id(&mut self, tab: &mut Self::Tab) -> Id {
+        for_all_tabs!(tab, t, t.id())
+    }
+    fn add_popup(
+        &mut self,
+        ui: &mut egui::Ui,
+        _surface: egui_dock::SurfaceIndex,
+        _node: egui_dock::NodeIndex,
+    ) {
+        for (s, t) in [
+            ("Start", MainTab::Start(StartTab::default())),
+            ("Inspector", MainTab::Inspector(InspectorTab::default())),
+            ("Settings", MainTab::Settings(SettingsTab::default())),
+        ] {
+            if ui.button(s).clicked() {
+                self.world.write_message(OpenTab(t));
+                ui.close();
+            }
+        }
+        ui.menu_button("Diagrams", |ui| {
+            let selected = self
+                .world
+                .run_system_once_with(show_name_button::<Route>, ui)
+                .unwrap();
+            if let Some(e) = selected {
+                self.world
+                    .write_message(OpenTab(MainTab::Diagram(DiagramTab::new(e))));
+            }
+        });
+    }
+}
+
+fn show_name_button<T: Component>(
+    InMut(ui): InMut<egui::Ui>,
+    names: Query<(Entity, &Name), With<T>>,
+) -> Option<Entity> {
+    if ui.button("New Route").clicked() {
+        // return a new route instead
+    }
+    for (e, name) in names {
+        if ui.button(name.as_str()).clicked() {
+            ui.close();
+            return Some(e);
+        }
+    }
+    return None;
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy)]
+enum AdditionalTab {
+    Edit,
+    Properties,
+    Export,
+}
+
+#[derive(Reflect, Resource, Serialize, Deserialize, Clone, Deref, DerefMut)]
+#[reflect(opaque, Resource, Serialize, Deserialize)]
+struct AdditionalUiState(DockState<AdditionalTab>);
+
+impl Default for AdditionalUiState {
+    fn default() -> Self {
+        Self(DockState::new(vec![
+            AdditionalTab::Edit,
+            AdditionalTab::Properties,
+            AdditionalTab::Export,
+        ]))
+    }
+}
+
+struct AdditionalTabViewer<'w> {
+    world: &'w mut World,
+}
+
+impl<'w> TabViewer for AdditionalTabViewer<'w> {
+    type Tab = AdditionalTab;
+    fn title(&mut self, tab: &mut Self::Tab) -> egui::WidgetText {
+        match *tab {
+            AdditionalTab::Edit => "Edit",
+            AdditionalTab::Properties => "Properties",
+            AdditionalTab::Export => "Export",
+        }
+        .into()
+    }
+    fn ui(&mut self, ui: &mut egui::Ui, tab: &mut Self::Tab) {
+        ui.label("Hello");
+    }
+}
+
+pub fn show_ui(ctx: &Context, world: &mut World) {
+    egui::TopBottomPanel::top("top panel").show(ctx, |ui| {
+        ui.horizontal(|ui| {
+            ui.button("More...");
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.button("R");
+                ui.button("B");
+            });
+        })
+    });
+    world.resource_scope(|mut world, mut aus: Mut<AdditionalUiState>| {
+        let mut tab_viewer = AdditionalTabViewer { world: &mut world };
+        egui::SidePanel::right("right panel")
+            .frame(Frame::default())
+            .show(ctx, |ui| {
+                DockArea::new(&mut aus)
+                    .show_close_buttons(false)
+                    .show_leaf_close_all_buttons(false)
+                    .show_leaf_collapse_buttons(false)
+                    .id(Id::new("right panel content"))
+                    .show_inside(ui, &mut tab_viewer);
+            });
+    });
+    world.resource_scope(|mut world, mut mus: Mut<MainUiState>| {
+        let mut tab_viewer = MainTabViewer { world: &mut world };
+        egui::CentralPanel::default()
+            .frame(Frame::default())
+            .show(ctx, |ui| {
+                DockArea::new(&mut mus)
+                    .show_leaf_close_all_buttons(false)
+                    .id(Id::new("main panel content"))
+                    .show_add_buttons(true)
+                    .show_add_popup(true)
+                    .show_inside(ui, &mut tab_viewer);
+            });
+    });
+}
+
+pub fn apply_custom_fonts(ctx: &Context) {
+    let mut fonts = egui::FontDefinitions::default();
+    fonts.font_data.insert(
+        "my_font".to_owned(),
+        std::sync::Arc::new(egui::FontData::from_static(include_bytes!(
+            "../assets/fonts/SarasaUiSC-Regular.ttf"
+        ))),
+    );
+    fonts
+        .families
+        .get_mut(&egui::FontFamily::Proportional)
+        .unwrap()
+        .insert(0, "my_font".to_owned());
+    ctx.set_fonts(fonts);
+}

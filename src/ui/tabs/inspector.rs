@@ -1,9 +1,14 @@
 use super::Tab;
 use bevy::prelude::*;
+use moonshine_core::prelude::MapEntities;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Default, Clone, Serialize, Deserialize)]
 pub struct InspectorTab;
+
+impl MapEntities for InspectorTab {
+    fn map_entities<E: EntityMapper>(&mut self, _entity_mapper: &mut E) {}
+}
 
 impl Tab for InspectorTab {
     const NAME: &'static str = "Inspector";

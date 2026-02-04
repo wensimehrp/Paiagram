@@ -1,11 +1,16 @@
+use crate::{
+    interval::IntervalQuery,
+    station::{PlatformQuery, StationQuery},
+    trip::TripQuery,
+    vehicle::VehicleQuery,
+};
+
 use super::Tab;
-use crate::interface::tabs::tree_view;
-use bevy::ecs::system::InMut;
 use bevy::prelude::*;
-use egui::{Frame, Label, Response, ScrollArea, Sense, Ui, UiBuilder, Vec2, vec2};
+use egui::{Frame, Label, Response, ScrollArea, Sense, Ui, UiBuilder, Vec2};
 use egui_i18n::tr;
+use moonshine_core::prelude::MapEntities;
 use serde::{Deserialize, Serialize};
-use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
 #[derive(Debug, Default, Clone, Copy, EnumIter, PartialEq, Serialize, Deserialize)]
@@ -26,15 +31,27 @@ impl CurrentField {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct StartTab {
     current_field: CurrentField,
+}
+
+impl Default for StartTab {
+    fn default() -> Self {
+        Self {
+            current_field: CurrentField::default(),
+        }
+    }
 }
 
 impl PartialEq for StartTab {
     fn eq(&self, _other: &Self) -> bool {
         true
     }
+}
+
+impl MapEntities for StartTab {
+    fn map_entities<E: EntityMapper>(&mut self, entity_mapper: &mut E) {}
 }
 
 impl Tab for StartTab {
@@ -56,64 +73,49 @@ impl Tab for StartTab {
         tr!("tab-start").into()
     }
     fn edit_display(&mut self, world: &mut bevy::ecs::world::World, ui: &mut Ui) {
-        if let Err(e) = world.run_system_cached_with(tree_view::show_tree_view, ui) {
-            error!("UI Error while displaying tree view: {e}")
-        }
+        // if let Err(e) = world.run_system_cached_with(tree_view::show_tree_view, ui) {
+        //     error!("UI Error while displaying tree view: {e}")
+        // }
     }
     fn display_display(&mut self, _world: &mut bevy::ecs::world::World, ui: &mut Ui) {
-        for field in CurrentField::iter() {
-            ui.add_sized(vec2(ui.available_width(), 20.0), |ui: &mut Ui| {
-                ui.selectable_value(&mut self.current_field, field, field.name())
-            });
-        }
+        // for field in CurrentField::iter() {
+        //     ui.add_sized(vec2(ui.available_width(), 20.0), |ui: &mut Ui| {
+        //         ui.selectable_value(&mut self.current_field, field, field.name())
+        //     });
+        // }
     }
     fn scroll_bars(&self) -> [bool; 2] {
         [false, true]
     }
 }
 
-fn show_start(InMut(ui): InMut<Ui>) {
-    const CARD_SPACING: f32 = 10.0;
-    ui.spacing_mut().item_spacing.x = CARD_SPACING;
-    ui.spacing_mut().item_spacing.y = CARD_SPACING;
-    ui.vertical_centered(|ui| {
-        ui.horizontal_wrapped(|ui| {
-            for _ in 0..=100 {
-                diagram_card(ui, "Create new diagram", None);
-            }
+fn show_start(
+    InMut(ui): InMut<Ui>,
+    vehicles: Query<VehicleQuery>,
+    trips: Query<TripQuery>,
+    stations: Query<StationQuery>,
+    platforms: Query<PlatformQuery>,
+    intervals: Query<IntervalQuery>,
+) {
+    ui.heading("Paiagram");
+    egui::Grid::new("start info grid")
+        .num_columns(2)
+        .show(ui, |ui| {
+            ui.label("Amount of vehicles:");
+            ui.label(vehicles.count().to_string());
+            ui.end_row();
+            ui.label("Amount of trips:");
+            ui.label(trips.count().to_string());
+            ui.end_row();
+            ui.label("Amount of stations:");
+            ui.label(stations.count().to_string());
+            ui.end_row();
+            ui.label("Amount of platforms:");
+            ui.label(platforms.count().to_string());
+            ui.end_row();
+            ui.label("Amount of intervals:");
+            ui.label(intervals.count().to_string());
         });
-    });
-}
-
-fn diagram_card(ui: &mut Ui, title: &str, image: Option<i32>) -> Response {
-    // the image is handled later.
-    const CARD_WIDTH: f32 = 150.0;
-    const CARD_SIZE: Vec2 = Vec2 {
-        x: CARD_WIDTH,
-        y: CARD_WIDTH / 2.0 * 3.0,
-    };
-
-    let (rect, resp) = ui.allocate_exact_size(CARD_SIZE, Sense::click());
-    ui.scope_builder(UiBuilder::new().max_rect(rect).sense(resp.sense), |ui| {
-        let visuals = ui.style().interact(&ui.response());
-        let stroke = {
-            let mut a = visuals.bg_stroke;
-            a.width = 1.5;
-            a
-        };
-        Frame::new()
-            .fill(visuals.bg_fill)
-            .stroke(stroke)
-            .inner_margin(3)
-            .corner_radius(3)
-            .show(ui, |ui| {
-                ui.set_min_size(ui.available_size());
-                ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
-                    ui.add(Label::new(title).truncate())
-                });
-            });
-    })
-    .response
 }
 
 fn show_about(ui: &mut Ui) {

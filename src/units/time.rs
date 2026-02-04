@@ -132,6 +132,8 @@ impl ops::SubAssign<Duration> for TimetableTime {
 pub struct Duration(pub i32);
 
 impl Duration {
+    pub const ZERO: Self = Self(0);
+    pub const MAX: Self = Self(i32::MAX);
     #[inline]
     pub fn to_hms(self) -> (i32, i32, i32) {
         let hours = self.0 / 3600;
@@ -141,7 +143,20 @@ impl Duration {
     }
 }
 
+impl std::iter::Sum for Duration {
+    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
+        let mut s = Duration::ZERO;
+        for i in iter {
+            s += i
+        }
+        s
+    }
+}
+
 impl Duration {
+    pub fn from_secs(s: i32) -> Self {
+        Self(s)
+    }
     #[inline]
     pub fn from_str(s: &str) -> Option<Self> {
         let parts: Vec<&str> = s.split(':').collect();

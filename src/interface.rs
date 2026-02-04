@@ -3,7 +3,7 @@ mod side_panel;
 mod tabs;
 mod widgets;
 use crate::colors;
-use crate::settings::ApplicationSettings;
+use crate::settings::UserPreferences;
 use bevy::color::palettes::tailwind::{EMERALD_700, EMERALD_800, GRAY_900};
 use bevy::prelude::*;
 use egui::{
@@ -22,20 +22,20 @@ use tabs::{Tab, all_tabs::*};
 use wasm_bindgen::prelude::wasm_bindgen;
 
 /// Plugin that sets up the user interface
-pub struct InterfacePlugin;
-
-impl Plugin for InterfacePlugin {
-    fn build(&self, app: &mut App) {
-        app.add_message::<UiCommand>()
-            .init_resource::<MiscUiState>()
-            .init_resource::<SelectedElement>()
-            .init_resource::<MinesweeperData>()
-            .init_resource::<SidePanelState>()
-            .insert_resource(UiState::new())
-            .insert_resource(StatusBarState::default())
-            .add_systems(Update, (modify_dock_state.run_if(on_message::<UiCommand>),));
-    }
-}
+// pub struct InterfacePlugin;
+//
+// impl Plugin for InterfacePlugin {
+//     fn build(&self, app: &mut App) {
+//         app.add_message::<UiCommand>()
+//             .init_resource::<MiscUiState>()
+//             .init_resource::<SelectedElement>()
+//             .init_resource::<MinesweeperData>()
+//             .init_resource::<SidePanelState>()
+//             .insert_resource(UiState::new())
+//             .insert_resource(StatusBarState::default())
+//             .add_systems(Update, (modify_dock_state.run_if(on_message::<UiCommand>),));
+//     }
+// }
 
 /// The state of the user interface
 #[derive(Resource, Clone, Reflect, Serialize, Deserialize)]
@@ -209,7 +209,7 @@ impl PartialEq for AppTab {
 }
 
 /// User interface commands sent between systems
-#[derive(Message)]
+#[derive(Event)]
 pub enum UiCommand {
     OpenOrFocusTab(AppTab),
 }

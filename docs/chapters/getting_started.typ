@@ -4,7 +4,7 @@
 You can download Paiagram from #link("https://github.com/wensimerhp/paiagram/releases")[Github releases] or #link(
   "https://wensimehrp.github.io/Paiagram",
 )[try it online]. The online version's performance would be worse compared to native versions, but the difference is
-usually acceptable. You can also download the webpage and run it locally in your browser.
+usually acceptable for smaller datasets. You can also download the webpage and run it locally in your browser.
 
 == The Model
 

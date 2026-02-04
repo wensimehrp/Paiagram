@@ -4,5 +4,6 @@
 *.oud2
 *.kdl
 *.paiagram
+*.pyetgr
 wasm-out
 web-out

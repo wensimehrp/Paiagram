@@ -1,36 +1,49 @@
-= Importing Foreign Files
+= Loading Files
 
-Paiagram supports importing diagram data from foreign formats including:
+Paiagram supports loading from these file formats:
 
-- qETRC
-- OuDiaSecond
+- Native `.paiagram`,
+- qETRC/pyETRC `.pyetgr`,
+- OuDiaSecond `.oud2`,
+- OpenTTD JGRPP `.json` timetable exports,
+- GTFS `.zip`. Note that you must pass in a zip archive that includes all information.
 
-Data specific to one application, e.g. window placement settings in OuDiaSecond, will not be respected.
+You can also import files of other file formats by using a custom JavaScript import script.
 
-== qETRC
+== Using the CLI
 
-Importing qETRC data is straightforward: import and it should just work. Train classes, services, trains (交路),
-stations, and station intervals are all handled correctly in Paiagram.
+You can use the CLI (command line interface) to import files:
 
-== OuDiaSecond
+```sh
+$ paiagram -o <YOUR FILE>
+```
 
-OuDiaSecond's internal structure is very different, and it misses some basic features in Paiagram.
+This works for all file formats except OpenTTD JGRPP timetable exports. For timetable export files, you muse use the
+`--jgrpp` command line argument:
 
-- Stations
+```sh
+$ paiagram --jgrpp ~/.local/share/openttd/orderlist/*.json
+```
 
-  Importing stations is fine
+You could import multiple timetable exports by specifying multiple paths, or using the `*` syntax. In the example above,
+Paiagram reads all `.json` files from the default orderlist export location.
 
-- Intervals
+== Using the GUI
 
-  OuDiaSecond provides minimal information about intervals connecting stations, only the stations the interval connects.
-  Due to this lack of information, intervals imported would always have a length of 1.00km.
+You can also import from the GUI.
 
-- Services
+== Nuances
 
-  Most services should work fine.
+=== qETRC/pyETRC
 
+Paiagram does not retain the classes of trains
 
-== OpenTTD JGRPP Orders Exports
+=== OuDiaSecond
 
-Importing JGRPP orders exports is fairly limited, since it could contain _conditional_ orders that cannot be known by
-Paiagram. The only condition Paiagram understands and can adapt from the export is the time.
+Paiagram does not keep station actions, and won't create new vehicles.
+
+=== JGRPP orderlists
+
+Paiagram does not keep tags, conditional orders, "go to nearest depot" commands, or load specifications. Orderlists containing conditionals will be omitted when importing.
+
+You would have to do manual wiring and connect stations manually.

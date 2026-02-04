@@ -1,8 +1,11 @@
 use bevy::color::{Srgba, palettes::tailwind::*};
-use egui::{Color32, Widget};
+use bevy::prelude::*;
+use egui::Color32;
+use serde::{Deserialize, Serialize};
 use strum_macros::{EnumCount, EnumIter};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Reflect, Debug, Clone, Copy, Serialize, Deserialize)]
+#[reflect(opaque, Serialize, Deserialize)]
 pub enum DisplayColor {
     Predefined(PredefinedColor),
     Custom(Color32),
@@ -15,6 +18,7 @@ impl Default for DisplayColor {
 }
 
 impl DisplayColor {
+    /// get the color as [`Color32`]
     pub fn get(self, is_dark: bool) -> Color32 {
         match self {
             Self::Predefined(p) => p.get(is_dark),
@@ -23,16 +27,7 @@ impl DisplayColor {
     }
 }
 
-impl Widget for DisplayColor {
-    fn ui(self, ui: &mut egui::Ui) -> egui::Response {
-        let is_dark = ui.visuals().dark_mode;
-        let a = Color32::default();
-        ui.button("123")
-        // TODO: finish this
-    }
-}
-
-#[derive(Debug, Clone, Copy, EnumIter, EnumCount)]
+#[derive(Debug, Clone, Copy, EnumIter, EnumCount, Serialize, Deserialize)]
 pub enum PredefinedColor {
     Red,
     Orange,

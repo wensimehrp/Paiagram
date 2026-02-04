@@ -4,6 +4,7 @@ use derive_more::{Add, AddAssign, Sub, SubAssign};
 pub struct Distance(pub i32);
 
 impl Distance {
+    pub const ZERO: Self = Distance(0);
     #[inline]
     pub fn from_km(km: f32) -> Self {
         Distance((km * 1000.0).round() as i32)
@@ -11,6 +12,16 @@ impl Distance {
     #[inline]
     pub fn from_m(m: i32) -> Self {
         Distance(m)
+    }
+}
+
+impl std::iter::Sum for Distance {
+    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
+        let mut s = Distance::ZERO;
+        for i in iter {
+            s += i
+        }
+        s
     }
 }
 
