@@ -157,6 +157,11 @@ pub fn load_qetrc(event: On<super::LoadQETRC>, mut commands: Commands, mut graph
                 unreachable!()
             };
             // TODO: handle one way stations and intervals
+            if graph.contains_edge(prev.entity(), this.entity())
+                || graph.contains_edge(this.entity(), prev.entity())
+            {
+                continue;
+            }
             let e1: Instance<Interval> = commands
                 .spawn_instance(Interval {
                     length: Distance::from_km((this_d - prev_d).abs()),
@@ -217,6 +222,9 @@ pub fn load_qetrc(event: On<super::LoadQETRC>, mut commands: Commands, mut graph
             ))
             .with_children(|bundle| {
                 for (arr, dep, stop) in entries {
+                    if dep < arr {
+                        info!(?arr, ?dep, ?service.service_number)
+                    }
                     debug_assert!(dep >= arr);
                     let dep = (dep != arr).then(|| TravelMode::At(dep));
                     let arr = TravelMode::At(arr);
@@ -235,7 +243,7 @@ pub fn load_qetrc(event: On<super::LoadQETRC>, mut commands: Commands, mut graph
         for number in vehicle.services.iter().map(|it| &it.service_number) {
             let Some(&e) = trip_pool.get(number) else {
                 warn!(
-                    "Vehicle {} as trip {} but the trip isn't in pool",
+                    "Vehicle {} has trip {} but the trip isn't in pool",
                     vehicle_name, number
                 );
                 continue;

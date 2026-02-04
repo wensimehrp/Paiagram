@@ -11,7 +11,7 @@ impl Plugin for SettingsPlugin {
             .init_resource::<ProjectSettings>()
             .add_systems(
                 Update,
-                sync_language.run_if(resource_changed::<UserPreferences>),
+                sync_preferences.run_if(resource_changed::<UserPreferences>),
             );
     }
 }
@@ -24,7 +24,7 @@ pub struct UserPreferences {
 }
 
 /// Only run when the preferences change
-fn sync_language(preferences: Res<UserPreferences>) {
+fn sync_preferences(preferences: Res<UserPreferences>) {
     egui_i18n::set_language(preferences.lang.identifier());
 }
 
@@ -41,7 +41,7 @@ impl Default for ProjectSettings {
         Self {
             remarks: String::new(),
             authors: Vec::new(),
-            repeat_frequency: Duration::from_secs(86400)
+            repeat_frequency: Duration::from_secs(86400),
         }
     }
 }

@@ -30,7 +30,7 @@ fn normalize_times<'a>(mut time_iter: impl Iterator<Item = &'a mut TimetableTime
         return;
     };
     for time in time_iter {
-        if *time < previous_time {
+        while *time < previous_time {
             *time += Duration(86400);
         }
         previous_time = *time;

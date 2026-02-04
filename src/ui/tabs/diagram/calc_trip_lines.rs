@@ -110,9 +110,6 @@ pub fn calc(
         has_departure: bool,
     }
 
-    let repeat_freq_ticks =
-        settings.repeat_frequency.0 as i64 * super::TICKS_PER_SECOND;
-
     for trip_entity in tab.trips.iter().copied() {
         let Ok(trip) = trips.get(trip_entity) else {
             continue;
@@ -165,6 +162,7 @@ pub fn calc(
             continue;
         };
 
+        let repeat_freq_ticks = settings.repeat_frequency.0 as i64 * super::TICKS_PER_SECOND;
         let (repeat_start, repeat_end) = if repeat_freq_ticks > 0 {
             let start = (visible_ticks.start - base_max).div_euclid(repeat_freq_ticks);
             let end = (visible_ticks.end - base_min).div_euclid(repeat_freq_ticks);
@@ -172,6 +170,9 @@ pub fn calc(
         } else {
             (0, 0)
         };
+
+        let mut drawn_segments = Vec::new();
+        let mut drawn_entries = Vec::new();
 
         for repeat in repeat_start..=repeat_end {
             let repeat_offset = repeat * repeat_freq_ticks;
@@ -374,32 +375,15 @@ pub fn calc(
                 continue;
             }
 
-            let mut drawn_segments = Vec::new();
-            let mut drawn_entries = Vec::new();
-
             for segment in segments {
-                let mut points = Vec::new();
-                let mut point_entries = Vec::new();
+                let mut cubics = Vec::new();
+                let mut segment_entries = Vec::new();
+
                 for point in segment {
-                    points.push(point.arrival);
-                    point_entries.push(point.entry);
-                    if let Some(dep) = point.departure {
-                        points.push(dep);
-                        point_entries.push(point.entry);
-                    }
-                }
+                    let dep = point.departure.unwrap_or(point.arrival);
 
-                if points.len() < 2 {
-                    continue;
-                }
-
-                let mut cubics = Vec::with_capacity(points.len().saturating_sub(1));
-                let mut segment_entries = Vec::with_capacity(points.len().saturating_sub(1));
-                for idx in 0..points.len().saturating_sub(1) {
-                    let p0 = points[idx];
-                    let p1 = points[idx + 1];
-                    cubics.push([p0, p0, p1, p1]);
-                    segment_entries.push(point_entries[idx]);
+                    cubics.push([point.arrival, point.arrival, dep, dep]);
+                    segment_entries.push(point.entry);
                 }
 
                 if !cubics.is_empty() {
@@ -407,17 +391,17 @@ pub fn calc(
                     drawn_entries.push(segment_entries);
                 }
             }
-
-            if drawn_segments.is_empty() {
-                continue;
-            }
-
-            buf.push(super::DrawnTrip {
-                entity: trip_entity,
-                stroke,
-                points: drawn_segments,
-                entries: drawn_entries,
-            });
         }
+
+        if drawn_segments.is_empty() {
+            continue;
+        }
+
+        buf.push(super::DrawnTrip {
+            entity: trip_entity,
+            stroke,
+            points: drawn_segments,
+            entries: drawn_entries,
+        });
     }
 }

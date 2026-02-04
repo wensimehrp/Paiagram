@@ -1,18 +1,15 @@
-use crate::{
-    route::Route,
-    trip::class::DisplayedStroke,
-};
+use crate::{route::Route, trip::class::DisplayedStroke};
 
 use super::{Navigatable, Tab};
-use bevy::prelude::*;
-use egui::{Margin, Painter, Pos2, Sense, Ui, Vec2};
+use bevy::{ecs::system::RunSystemOnce, prelude::*};
+use egui::{Color32, Margin, Painter, Pos2, Rect, Sense, Ui, Vec2};
 use moonshine_core::prelude::MapEntities;
 use serde::{Deserialize, Serialize};
 
 mod calc_trip_lines;
 mod draw_lines;
 
-#[derive(Serialize, Deserialize, Clone, Copy)]
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
 enum SelectedItem {
     TimetableEntry { entry: Entity, parent: Entity },
     Interval(Entity, Entity),
@@ -175,20 +172,102 @@ impl Tab for DiagramTab {
                         ),
                     )
                     .unwrap();
-                world
-                    .run_system_cached_with(draw_lines, (&trip_line_buf, ui, &mut painter))
+                if response.clicked()
+                    && let Some(pos) = response.interact_pointer_pos()
+                {
+                    if self.selected.is_some() {
+                        self.selected = None
+                    } else {
+                        self.selected = handle_selection(&trip_line_buf, pos);
+                    }
+                }
+                match self.selected {
+                    Some(SelectedItem::TimetableEntry { entry, parent }) => {}
+                    _ => {}
+                }
+                let selection_strength = ui
+                    .ctx()
+                    .animate_bool(ui.id().with("selection"), self.selected.is_some());
+                let selected_idx_rect = world
+                    .run_system_once_with(
+                        draw_lines,
+                        (&trip_line_buf, ui, &mut painter, self.selected),
+                    )
                     .unwrap();
+                let s = (selection_strength * 0.5 * u8::MAX as f32) as u8;
+                painter.rect_filled(
+                    response.rect,
+                    0,
+                    if ui.visuals().dark_mode {
+                        Color32::from_black_alpha(s)
+                    } else {
+                        Color32::from_white_alpha(s)
+                    },
+                );
+                if let Some((idx, rects)) = selected_idx_rect {
+                    let trip = &trip_line_buf[idx];
+                    let stroke = egui::Stroke {
+                        width: trip.stroke.width + 3.0 * selection_strength * trip.stroke.width,
+                        color: trip.stroke.color.get(ui.visuals().dark_mode),
+                    };
+                    for group in &trip.points {
+                        let mut points = Vec::with_capacity(group.len() * 4);
+                        for segment in group {
+                            points.extend(segment.iter().copied());
+                        }
+                        if points.len() >= 2 {
+                            painter.line(points, stroke);
+                        }
+                    }
+                    for rect in rects {
+                        painter.rect(
+                            rect,
+                            8,
+                            Color32::BLUE.gamma_multiply(0.5),
+                            egui::Stroke {
+                                width: 1.0,
+                                color: Color32::BLUE,
+                            },
+                            egui::StrokeKind::Middle,
+                        );
+                    }
+                }
             });
     }
 }
 
 /// Takes a buffer the calculate trains
 
-fn draw_lines(
-    (InRef(trips), InMut(ui), InMut(painter)): (InRef<[DrawnTrip]>, InMut<Ui>, InMut<Painter>),
-) {
+fn draw_lines<'a>(
+    (InRef(trips), InMut(ui), InMut(painter), In(selected)): (
+        InRef<[DrawnTrip]>,
+        InMut<Ui>,
+        InMut<Painter>,
+        In<Option<SelectedItem>>,
+    ),
+) -> Option<(usize, Vec<Rect>)> {
     let is_dark = ui.visuals().dark_mode;
-    for trip in trips {
+    let mut ret = None;
+    for (idx, trip) in trips.iter().enumerate() {
+        if let Some(SelectedItem::TimetableEntry { entry, parent }) = selected
+            && trip.entity == parent
+        {
+            let rects = trip
+                .points
+                .iter()
+                .flatten()
+                .zip(trip.entries.iter().flatten())
+                .filter_map(|(p, e)| {
+                    if *e == entry {
+                        Some(Rect::from_two_pos(p[1], p[2]).expand(8.0))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            ret = Some((idx, rects));
+            continue;
+        }
         let stroke = egui::Stroke {
             width: trip.stroke.width,
             color: trip.stroke.color.get(is_dark),
@@ -203,4 +282,43 @@ fn draw_lines(
             }
         }
     }
+    ret
+}
+
+fn handle_selection(drawn_trips: &[DrawnTrip], pos: Pos2) -> Option<SelectedItem> {
+    const VEHICLE_SELECTION_RADIUS: f32 = 7.0;
+    const STATION_SELECTION_RADIUS: f32 = VEHICLE_SELECTION_RADIUS;
+    for trip in drawn_trips {
+        for (points, entries) in trip.points.iter().zip(trip.entries.iter()) {
+            let entries_iter = entries
+                .iter()
+                .flat_map(|it| std::iter::repeat(it).take(4))
+                .copied();
+            for (w, e) in points.as_flattened().windows(2).zip(entries_iter) {
+                let [curr, next] = w else { unreachable!() };
+                let a = pos.x - curr.x;
+                let b = pos.y - curr.y;
+                let c = next.x - curr.x;
+                let d = next.y - curr.y;
+                let dot = a * c + b * d;
+                let len_sq = c * c + d * d;
+                if len_sq == 0.0 {
+                    continue;
+                }
+                let t = (dot / len_sq).clamp(0.0, 1.0);
+                let px = curr.x + t * c;
+                let py = curr.y + t * d;
+                let dx = pos.x - px;
+                let dy = pos.y - py;
+
+                if dx * dx + dy * dy < VEHICLE_SELECTION_RADIUS.powi(2) {
+                    return Some(SelectedItem::TimetableEntry {
+                        entry: e,
+                        parent: trip.entity,
+                    });
+                }
+            }
+        }
+    }
+    return None;
 }

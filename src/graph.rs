@@ -230,8 +230,8 @@ fn check_stations_in_graph(
             &names,
         );
     }
-    assert_eq!(queried_station_set, graphed_station_set);
-    assert_eq!(queried_interval_set, graphed_interval_set);
+    debug_assert_eq!(queried_station_set, graphed_station_set);
+    debug_assert_eq!(queried_interval_set, graphed_interval_set);
 }
 
 #[cfg(debug_assertions)]

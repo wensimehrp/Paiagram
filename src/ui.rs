@@ -4,13 +4,13 @@
 mod tabs;
 
 use bevy::{ecs::system::RunSystemOnce, prelude::*};
-use egui::{Context, Frame, Id};
+use egui::{Context, Frame, Id, ScrollArea};
 use egui_dock::{DockArea, DockState, TabViewer};
 use moonshine_core::prelude::MapEntities;
 use serde::{Deserialize, Serialize};
 use tabs::{Tab, all_tabs::*};
 
-use crate::route::Route;
+use crate::{route::Route, settings::UserPreferences};
 
 pub struct UiPlugin;
 impl Plugin for UiPlugin {
@@ -140,13 +140,17 @@ fn show_name_button<T: Component>(
     if ui.button("New Route").clicked() {
         // return a new route instead
     }
-    for (e, name) in names {
-        if ui.button(name.as_str()).clicked() {
-            ui.close();
-            return Some(e);
+    let mut ret = None;
+    ScrollArea::vertical().show(ui, |ui| {
+        for (e, name) in names {
+            if ui.button(name.as_str()).clicked() {
+                ui.close();
+                ret = Some(e);
+                return;
+            }
         }
-    }
-    return None;
+    });
+    return ret;
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
@@ -190,6 +194,7 @@ impl<'w> TabViewer for AdditionalTabViewer<'w> {
 }
 
 pub fn show_ui(ctx: &Context, world: &mut World) {
+    world.run_system_once_with(sync_ui, ctx).unwrap();
     egui::TopBottomPanel::top("top panel").show(ctx, |ui| {
         ui.horizontal(|ui| {
             ui.button("More...");
@@ -225,6 +230,17 @@ pub fn show_ui(ctx: &Context, world: &mut World) {
                     .show_inside(ui, &mut tab_viewer);
             });
     });
+}
+
+fn sync_ui(InRef(ctx): InRef<Context>, preferences: Res<UserPreferences>) {
+    if !preferences.is_changed() {
+        return;
+    }
+    if preferences.dark_mode {
+        ctx.set_theme(egui::Theme::Dark);
+    } else {
+        ctx.set_theme(egui::Theme::Light);
+    }
 }
 
 pub fn apply_custom_fonts(ctx: &Context) {
