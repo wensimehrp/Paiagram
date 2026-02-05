@@ -1,4 +1,8 @@
-use crate::{route::Route, trip::class::DisplayedStroke};
+use crate::{
+    entry::{EntryQuery, TravelMode},
+    route::Route,
+    trip::class::DisplayedStroke,
+};
 
 use super::{Navigatable, Tab};
 use bevy::{ecs::system::RunSystemOnce, prelude::*};
@@ -28,6 +32,12 @@ pub struct DiagramTab {
     // cache zone
     max_height: f32,
     trips: Vec<Entity>,
+}
+
+impl PartialEq for DiagramTab {
+    fn eq(&self, other: &Self) -> bool {
+        self.route_entity == other.route_entity
+    }
 }
 
 impl DiagramTab {
@@ -210,13 +220,18 @@ impl Tab for DiagramTab {
                         width: trip.stroke.width + 3.0 * selection_strength * trip.stroke.width,
                         color: trip.stroke.color.get(ui.visuals().dark_mode),
                     };
-                    for group in &trip.points {
-                        let mut points = Vec::with_capacity(group.len() * 4);
-                        for segment in group {
+                    for (p_group, e_group) in trip.points.iter().zip(trip.entries.iter()) {
+                        let mut points = Vec::with_capacity(p_group.len() * 4);
+                        for segment in p_group.iter() {
                             points.extend(segment.iter().copied());
                         }
                         if points.len() >= 2 {
                             painter.line(points, stroke);
+                        }
+                        for (points, e) in p_group.iter().zip(e_group.iter().copied()) {
+                            world
+                                .run_system_once_with(draw_handles, (points, e, &mut painter))
+                                .unwrap();
                         }
                     }
                     for rect in rects {
@@ -321,4 +336,43 @@ fn handle_selection(drawn_trips: &[DrawnTrip], pos: Pos2) -> Option<SelectedItem
         }
     }
     return None;
+}
+
+fn draw_handles(
+    (InRef(p), In(e), InMut(painter)): (InRef<[Pos2]>, In<Entity>, InMut<Painter>),
+    entry_q: Query<EntryQuery>,
+) {
+    let entry = entry_q.get(e).unwrap();
+    if entry.is_derived() {
+        return;
+    }
+    painter.circle(
+        p[1],
+        4.0,
+        if matches!(entry.mode.arr, TravelMode::Flexible) {
+            Color32::YELLOW
+        } else {
+            Color32::WHITE
+        },
+        egui::Stroke {
+            width: 1.0,
+            color: Color32::BLACK,
+        },
+    );
+    painter.circle(
+        p[2],
+        4.0,
+        if matches!(
+            entry.mode.dep.unwrap_or(TravelMode::Flexible),
+            TravelMode::Flexible
+        ) {
+            Color32::YELLOW
+        } else {
+            Color32::WHITE
+        },
+        egui::Stroke {
+            width: 1.0,
+            color: Color32::BLACK,
+        },
+    );
 }

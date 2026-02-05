@@ -14,6 +14,12 @@ use strum::IntoEnumIterator;
 #[derive(Serialize, Deserialize, Clone, Default, MapEntities)]
 pub struct SettingsTab;
 
+impl PartialEq for SettingsTab {
+    fn eq(&self, other: &Self) -> bool {
+        true
+    }
+}
+
 impl Tab for SettingsTab {
     const NAME: &'static str = "Settings";
     fn main_display(&mut self, world: &mut World, ui: &mut Ui) {

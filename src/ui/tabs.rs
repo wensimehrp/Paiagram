@@ -18,6 +18,7 @@ pub mod inspector;
 // pub mod services;
 pub mod settings;
 pub mod start;
+pub mod trip;
 // pub mod station_timetable;
 // pub mod tree_view;
 // pub mod vehicle;
@@ -33,6 +34,7 @@ pub mod all_tabs {
     // pub use super::services::ServicesTab;
     pub use super::settings::SettingsTab;
     pub use super::start::StartTab;
+    pub use super::trip::TripTab;
     // pub use super::station_timetable::StationTimetableTab;
     // pub use super::vehicle::VehicleTab;
 }

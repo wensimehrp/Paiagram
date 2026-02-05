@@ -2,13 +2,10 @@ use bevy::prelude::*;
 use itertools::Itertools;
 
 use crate::{
-    entry::{
-        ChangeEntryStop, EntryBundle, EntryEstimate, EntryMode, EntryQuery, EntryStop,
-        IsDerivedEntry, TravelMode,
-    },
+    entry::{EntryBundle, EntryEstimate, EntryMode, EntryQuery, EntryStop, IsDerivedEntry, TravelMode},
     graph::Graph,
     interval::IntervalQuery,
-    trip::{TripClass, TripQuery, TripSchedule},
+    trip::{Trip, TripClass, TripQuery, TripSchedule},
     units::{
         distance::Distance,
         time::{Duration, TimetableTime},
@@ -19,66 +16,50 @@ pub struct RoutingPlugin;
 
 impl Plugin for RoutingPlugin {
     fn build(&self, app: &mut App) {
-        app.add_observer(recalculate_route_on_stop_change)
-            .add_systems(PostUpdate, recalculate_estimate);
+        app.add_systems(
+            PostUpdate,
+            (recalculate_route_on_new_trip, recalculate_estimate).chain(),
+        );
     }
 }
 
-/// Recalculate the route when [`EntryStop`] changes.
-pub fn recalculate_route_on_stop_change(
-    e: On<ChangeEntryStop>,
+/// Recalculate the route when a new trip is created.
+pub fn recalculate_route_on_new_trip(
+    new_trips: Query<Entity, (Added<Trip>, With<TripClass>)>,
     graph: Res<Graph>,
     entry_q: Query<EntryQuery>,
-    entry_parent_q: Query<&ChildOf, With<EntryStop>>,
     interval_q: Query<IntervalQuery>,
-    mut trip_q: Query<&TripSchedule, With<TripClass>>,
+    trip_q: Query<&TripSchedule, With<TripClass>>,
     mut commands: Commands,
 ) {
-    let parent = entry_parent_q
-        .get(e.entity)
-        .expect("The entry passed in must have an entry stop component")
-        .parent();
-    let schedule = trip_q
-        .get_mut(parent)
-        .expect("The parent of the entry must contain a schedule");
-    // run the calculation twice
-    let pos = schedule
-        .iter()
-        .position(|p| p == e.entity)
-        .expect("The entry must be in a parent schedule");
-    let before_slice = &schedule[..pos];
-    if let Some(i) = before_slice.iter().copied().rposition(|e| {
-        let Ok(q) = entry_q.get(e) else { return false };
-        q.is_not_derived()
-    }) {
-        let source = entry_q.get(before_slice[i]).unwrap().stop();
-        insert(
-            source,
-            e.stop,
-            &graph,
-            parent,
-            i,
-            &before_slice[i..],
-            &mut commands,
-            &interval_q,
-        );
-    }
-    let after_slice = &schedule[pos + 1..];
-    if let Some(i) = after_slice.iter().copied().position(|e| {
-        let Ok(q) = entry_q.get(e) else { return false };
-        q.is_not_derived()
-    }) {
-        let target = entry_q.get(after_slice[i]).unwrap().stop();
-        insert(
-            e.stop,
-            target,
-            &graph,
-            parent,
-            pos,
-            &after_slice[..i],
-            &mut commands,
-            &interval_q,
-        );
+    for trip_entity in new_trips.iter() {
+        let schedule = trip_q
+            .get(trip_entity)
+            .expect("New trip entity must have a schedule");
+        let original = schedule.iter().collect::<Vec<_>>();
+        let mut inserted = 0usize;
+        for (idx, (source_entry, target_entry)) in original.iter().tuple_windows().enumerate() {
+            let source = entry_q
+                .get(*source_entry)
+                .expect("Trip schedule entry must exist");
+            let target = entry_q
+                .get(*target_entry)
+                .expect("Trip schedule entry must exist");
+            if source.is_derived() || target.is_derived() {
+                continue;
+            }
+            let added = insert(
+                source.stop(),
+                target.stop(),
+                &graph,
+                trip_entity,
+                idx + 1 + inserted,
+                &[],
+                &mut commands,
+                &interval_q,
+            );
+            inserted += added;
+        }
     }
 }
 
@@ -91,8 +72,16 @@ fn insert(
     to_despawn: &[Entity],
     commands: &mut Commands,
     interval_q: &Query<IntervalQuery>,
-) {
-    let (_, route) = graph.route_between(source, target, interval_q).unwrap();
+) -> usize {
+    let Some((_, mut route)) = graph.route_between(source, target, interval_q) else {
+        return 0;
+    };
+    if route.first().copied() == Some(source) {
+        route.remove(0);
+    }
+    if route.last().copied() == Some(target) {
+        route.pop();
+    }
     let mut collected = Vec::with_capacity(route.len());
     for n in route {
         let e = commands
@@ -106,13 +95,17 @@ fn insert(
             .id();
         collected.push(e)
     }
-    commands
-        .entity(schedule)
-        .insert_children(insertion_index, &collected);
+    if !collected.is_empty() {
+        commands
+            .entity(schedule)
+            .insert_children(insertion_index, &collected);
+    }
     for e in to_despawn.iter().copied() {
         commands.entity(e).despawn();
     }
+    collected.len()
 }
+
 
 /// Parameters used for unwinding the flexible stack.
 enum UnwindParams {
@@ -122,7 +115,7 @@ enum UnwindParams {
 }
 
 /// Recalculate the estimates for updated routes.
-/// This should always run after [`recalculate_route_on_stop_change`] and related systems.
+/// This should always run after [`recalculate_route_on_new_trip`].
 fn recalculate_estimate(
     changed_trips: Query<Entity, (Changed<TripSchedule>, With<TripClass>)>,
     changed_entries: Query<&ChildOf, Changed<EntryMode>>,
@@ -141,11 +134,13 @@ fn recalculate_estimate(
     to_recalculate.dedup();
     for q in trip_q.iter_many(to_recalculate) {
         let mut flexible_stack: Vec<(Entity, Entity, Duration)> = Vec::new();
-        let mut last_stable: Option<(TimetableTime, Entity)>;
+        let mut last_stable: Option<(TimetableTime, Entity)> = None;
         let mut next_stable: Option<(TimetableTime, Entity)> = None;
         let mut unwind_params: Option<UnwindParams> = None;
         'iter_entries: for (entry_entity, mode, stop) in entry_q.iter_many(q.schedule) {
-            last_stable = next_stable.take();
+            if let Some(v) = next_stable.take() {
+                last_stable = Some(v);
+            }
             match (mode.arr, mode.dep.unwrap_or(TravelMode::Flexible)) {
                 (TravelMode::At(at), TravelMode::At(dt)) => {
                     commands
@@ -212,9 +207,9 @@ fn recalculate_estimate(
                     t - last_t - flexible_stack.iter().map(|(_, _, d)| d).copied().sum()
                 }
             };
-            if flexible_stack.is_empty() {
-                continue;
-            }
+            // if flexible_stack.is_empty() {
+            //     continue;
+            // }
             let mut distance_stack = Vec::with_capacity(flexible_stack.len());
 
             for (ps, cs) in std::iter::once(last_s)
@@ -237,12 +232,12 @@ fn recalculate_estimate(
             }
             debug_assert_eq!(distance_stack.len(), flexible_stack.len() + 1);
             let total_dis = distance_stack.iter().cloned().sum::<Distance>();
-            if total_dur.0 <= 0 || total_dis.0 <= 0 {
-                for (e, _, _) in flexible_stack.drain(..) {
-                    commands.entity(e).remove::<EntryEstimate>();
-                }
-                continue;
-            }
+            // if total_dur.0 <= 0 || total_dis.0 <= 0 {
+            //     for (e, _, _) in flexible_stack.drain(..) {
+            //         commands.entity(e).remove::<EntryEstimate>();
+            //     }
+            //     continue;
+            // }
             let mut fi = flexible_stack.drain(..);
             let mut di = distance_stack.drain(..);
             match params {

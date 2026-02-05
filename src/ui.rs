@@ -10,7 +10,7 @@ use moonshine_core::prelude::MapEntities;
 use serde::{Deserialize, Serialize};
 use tabs::{Tab, all_tabs::*};
 
-use crate::{route::Route, settings::UserPreferences};
+use crate::{route::Route, settings::UserPreferences, trip::Trip, vehicle::Vehicle};
 
 pub struct UiPlugin;
 impl Plugin for UiPlugin {
@@ -18,8 +18,8 @@ impl Plugin for UiPlugin {
         app.init_resource::<MainUiState>()
             .init_resource::<AdditionalUiState>()
             .add_plugins(bevy_inspector_egui::DefaultInspectorConfigPlugin)
-            .add_message::<OpenTab>()
-            .add_systems(Update, open_tab.run_if(on_message::<OpenTab>));
+            .add_message::<OpenOrFocus>()
+            .add_systems(Update, open_or_focus_tab.run_if(on_message::<OpenOrFocus>));
     }
 }
 
@@ -37,11 +37,12 @@ macro_rules! for_all_tabs {
             // MainTab::Minesweeper($t) => $body,
             // MainTab::Graph($t) => $body,
             MainTab::Inspector($t) => $body,
+            MainTab::Trip($t) => $body,
         }
     };
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, PartialEq)]
 pub enum MainTab {
     Start(StartTab),
     // Vehicle(VehicleTab),
@@ -54,6 +55,7 @@ pub enum MainTab {
     // Minesweeper(MinesweeperTab),
     // Graph(GraphTab),
     Inspector(InspectorTab),
+    Trip(TripTab),
 }
 
 impl MapEntities for MainTab {
@@ -81,11 +83,16 @@ impl MapEntities for MainUiState {
 }
 
 #[derive(Message)]
-struct OpenTab(MainTab);
+struct OpenOrFocus(MainTab);
 
-fn open_tab(mut tab: MessageReader<OpenTab>, mut state: ResMut<MainUiState>) {
-    for msg in tab.read() {
-        state.push_to_focused_leaf(msg.0.clone());
+fn open_or_focus_tab(mut tabs: MessageReader<OpenOrFocus>, mut state: ResMut<MainUiState>) {
+    for tab in tabs.read() {
+        if let Some((surface_index, node_index, tab_index)) = state.find_tab(&tab.0) {
+            state.set_active_tab((surface_index, node_index, tab_index));
+            state.set_focused_node_and_surface((surface_index, node_index));
+        } else {
+            state.push_to_focused_leaf(tab.0.clone());
+        }
     }
 }
 
@@ -116,19 +123,51 @@ impl<'w> TabViewer for MainTabViewer<'w> {
             ("Settings", MainTab::Settings(SettingsTab::default())),
         ] {
             if ui.button(s).clicked() {
-                self.world.write_message(OpenTab(t));
+                self.world.write_message(OpenOrFocus(t));
                 ui.close();
             }
         }
         ui.menu_button("Diagrams", |ui| {
-            let selected = self
-                .world
-                .run_system_once_with(show_name_button::<Route>, ui)
-                .unwrap();
-            if let Some(e) = selected {
-                self.world
-                    .write_message(OpenTab(MainTab::Diagram(DiagramTab::new(e))));
-            }
+            if ui.button("New Route").clicked() {}
+            ui.separator();
+            ScrollArea::vertical().show(ui, |ui| {
+                if let Some(e) = self
+                    .world
+                    .run_system_once_with(show_name_button::<Route>, ui)
+                    .unwrap()
+                {
+                    self.world
+                        .write_message(OpenOrFocus(MainTab::Diagram(DiagramTab::new(e))));
+                }
+            });
+        });
+        ui.menu_button("Trips", |ui| {
+            if ui.button("New Trip").clicked() {}
+            ui.separator();
+            ScrollArea::vertical().show(ui, |ui| {
+                if let Some(e) = self
+                    .world
+                    .run_system_once_with(show_name_button::<Trip>, ui)
+                    .unwrap()
+                {
+                    self.world
+                        .write_message(OpenOrFocus(MainTab::Trip(TripTab::new(e))));
+                }
+            });
+        });
+        ui.menu_button("Vehicles", |ui| {
+            if ui.button("New Vehicle").clicked() {}
+            ui.separator();
+            ScrollArea::vertical().show(ui, |ui| {
+                if let Some(e) = self
+                    .world
+                    .run_system_once_with(show_name_button::<Vehicle>, ui)
+                    .unwrap()
+                {
+                    // self.world
+                    //     .write_message(OpenTab(MainTab::Diagram(DiagramTab::new(e))));
+                }
+            });
         });
     }
 }
@@ -137,20 +176,13 @@ fn show_name_button<T: Component>(
     InMut(ui): InMut<egui::Ui>,
     names: Query<(Entity, &Name), With<T>>,
 ) -> Option<Entity> {
-    if ui.button("New Route").clicked() {
-        // return a new route instead
-    }
-    let mut ret = None;
-    ScrollArea::vertical().show(ui, |ui| {
-        for (e, name) in names {
-            if ui.button(name.as_str()).clicked() {
-                ui.close();
-                ret = Some(e);
-                return;
-            }
+    for (e, name) in names {
+        if ui.button(name.as_str()).clicked() {
+            ui.close();
+            return Some(e);
         }
-    });
-    return ret;
+    }
+    return None;
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy)]

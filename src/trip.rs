@@ -9,12 +9,12 @@ use moonshine_core::prelude::{MapEntities, ReflectMapEntities};
 use smallvec::SmallVec;
 
 pub mod class;
-pub mod route;
+pub mod routing;
 
 pub struct TripPlugin;
 impl Plugin for TripPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(route::RoutingPlugin)
+        app.add_plugins(routing::RoutingPlugin)
             .add_observer(update_add_trip_vehicles)
             .add_observer(update_remove_trip_vehicles)
             .add_observer(update_remove_vehicle_trips);

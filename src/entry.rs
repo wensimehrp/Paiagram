@@ -94,7 +94,7 @@ pub struct EntryBundle {
 #[derive(QueryData)]
 pub struct EntryQuery {
     pub entity: Entity,
-    pub time: &'static EntryMode,
+    pub mode: &'static EntryMode,
     pub estimate: Option<&'static EntryEstimate>,
     pub parent_schedule: &'static ChildOf,
     stop: &'static EntryStop,

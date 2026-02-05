@@ -8,7 +8,6 @@ use crate::{
     colors::DisplayColor,
     entry::{EntryBundle, EntryMode, EntryStop, TravelMode},
     graph::Graph,
-    interval::Interval,
     route::Route,
     station::Station,
     trip::{
@@ -113,7 +112,11 @@ struct Config {
     default_colors: HashMap<String, String>,
 }
 
-pub fn load_qetrc(event: On<super::LoadQETRC>, mut commands: Commands, mut graph: ResMut<Graph>) {
+pub fn load_qetrc(
+    event: On<super::LoadQETRC>,
+    mut commands: Commands,
+    mut graph: ResMut<Graph>,
+) {
     let root: Root = match serde_json::from_str(&event.content) {
         Ok(r) => r,
         // TODO: handle warning better
@@ -135,7 +138,7 @@ pub fn load_qetrc(event: On<super::LoadQETRC>, mut commands: Commands, mut graph
                 u8::from_str_radix(&color[3..=4], 16).unwrap(),
                 u8::from_str_radix(&color[5..=6], 16).unwrap(),
             );
-            make_class(&class, &mut class_map, &mut commands, || ClassBundle {
+            super::make_class(&class, &mut class_map, &mut commands, || ClassBundle {
                 class: Class::default(),
                 name: Name::new(class.clone()),
                 stroke: DisplayedStroke {
@@ -149,7 +152,7 @@ pub fn load_qetrc(event: On<super::LoadQETRC>, mut commands: Commands, mut graph
         let mut entity_distances: Vec<(Instance<Station>, f32)> =
             Vec::with_capacity(line.stations.len());
         for station in line.stations {
-            let e = make_station(&station.name, &mut station_map, &mut graph, &mut commands);
+            let e = super::make_station(&station.name, &mut station_map, &mut graph, &mut commands);
             entity_distances.push((e, station.distance_km));
         }
         for w in entity_distances.windows(2) {
@@ -157,23 +160,14 @@ pub fn load_qetrc(event: On<super::LoadQETRC>, mut commands: Commands, mut graph
                 unreachable!()
             };
             // TODO: handle one way stations and intervals
-            if graph.contains_edge(prev.entity(), this.entity())
-                || graph.contains_edge(this.entity(), prev.entity())
-            {
-                continue;
-            }
-            let e1: Instance<Interval> = commands
-                .spawn_instance(Interval {
-                    length: Distance::from_km((this_d - prev_d).abs()),
-                })
-                .into();
-            let e2: Instance<Interval> = commands
-                .spawn_instance(Interval {
-                    length: Distance::from_km((this_d - prev_d).abs()),
-                })
-                .into();
-            graph.add_edge(prev.entity(), this.entity(), e1.entity());
-            graph.add_edge(this.entity(), prev.entity(), e2.entity());
+            let length = Distance::from_km((this_d - prev_d).abs());
+            super::add_interval_pair(
+                &mut graph,
+                &mut commands,
+                prev.entity(),
+                this.entity(),
+                length,
+            );
         }
         let mut previous_distance_km = entity_distances.first().map_or(0.0, |(_, d)| *d);
         for (_, distance_km) in entity_distances.iter_mut().skip(1) {
@@ -199,7 +193,12 @@ pub fn load_qetrc(event: On<super::LoadQETRC>, mut commands: Commands, mut graph
                 (
                     TimetableTime::from_str(&e.arrival).unwrap(),
                     TimetableTime::from_str(&e.departure).unwrap(),
-                    make_station(&e.station_name, &mut station_map, &mut graph, &mut commands),
+                    super::make_station(
+                        &e.station_name,
+                        &mut station_map,
+                        &mut graph,
+                        &mut commands,
+                    ),
                 )
             })
             .collect();
@@ -208,7 +207,7 @@ pub fn load_qetrc(event: On<super::LoadQETRC>, mut commands: Commands, mut graph
                 .iter_mut()
                 .flat_map(|(a, d, _)| std::iter::once(a).chain(std::iter::once(d))),
         );
-        let trip_class = make_class(&service.service_type, &mut class_map, &mut commands, || {
+        let trip_class = super::make_class(&service.service_type, &mut class_map, &mut commands, || {
             ClassBundle {
                 class: Class::default(),
                 name: Name::new(service.service_type.clone()),
@@ -252,40 +251,4 @@ pub fn load_qetrc(event: On<super::LoadQETRC>, mut commands: Commands, mut graph
         }
         commands.spawn((Name::new(vehicle_name), v));
     }
-}
-
-fn make_station(
-    name: &str,
-    station_map: &mut HashMap<String, Instance<Station>>,
-    graph: &mut Graph,
-    commands: &mut Commands,
-) -> Instance<Station> {
-    if let Some(&entity) = station_map.get(name) {
-        return entity;
-    }
-    let station_entity = commands
-        .spawn(Name::new(name.to_string()))
-        .insert_instance(Station::default())
-        .into();
-    station_map.insert(name.to_string(), station_entity);
-    graph.add_node(station_entity.entity());
-    station_entity
-}
-
-fn make_class(
-    name: &str,
-    class_map: &mut HashMap<String, Instance<Class>>,
-    commands: &mut Commands,
-    mut make_class: impl FnMut() -> ClassBundle,
-) -> Instance<Class> {
-    if let Some(&entity) = class_map.get(name) {
-        return entity;
-    };
-    let class_bundle = make_class();
-    let class_entity = commands
-        .spawn((class_bundle.name, class_bundle.stroke))
-        .insert_instance(class_bundle.class)
-        .into();
-    class_map.insert(name.to_string(), class_entity);
-    class_entity
 }

@@ -3,7 +3,7 @@ use bevy::prelude::*;
 use moonshine_core::prelude::MapEntities;
 use serde::{Deserialize, Serialize};
 
-#[derive(Default, Clone, Serialize, Deserialize)]
+#[derive(Default, Clone, Serialize, Deserialize, PartialEq)]
 pub struct InspectorTab;
 
 impl MapEntities for InspectorTab {

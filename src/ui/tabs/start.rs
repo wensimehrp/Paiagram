@@ -36,17 +36,17 @@ pub struct StartTab {
     current_field: CurrentField,
 }
 
+impl PartialEq for StartTab {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
+
 impl Default for StartTab {
     fn default() -> Self {
         Self {
             current_field: CurrentField::default(),
         }
-    }
-}
-
-impl PartialEq for StartTab {
-    fn eq(&self, _other: &Self) -> bool {
-        true
     }
 }
 

@@ -17,6 +17,11 @@ pub fn calculate_trips(
     entries: Query<&ChildOf, With<EntryMode>>,
 ) {
     // TODO: cache trips
+    let mut update = false;
+    update |= buf.is_empty();
+    if !update {
+        return;
+    }
     buf.clear();
     let route = routes.get(route_entity).unwrap();
     let mut trips = EntityHashSet::new();
@@ -98,8 +103,8 @@ pub fn calc(
 
     #[derive(Clone, Copy)]
     struct TripPoint {
-        arrival: Pos2,
-        departure: Option<Pos2>,
+        arr: Pos2,
+        dep: Pos2,
         entry: Entity,
     }
 
@@ -133,7 +138,7 @@ pub fn calc(
                 entity: entry_entity,
                 station: station_entity,
                 estimate: entry.estimate,
-                has_departure: entry.time.dep.is_some(),
+                has_departure: entry.mode.dep.is_some(),
             });
         }
 
@@ -305,7 +310,7 @@ pub fn calc(
                     );
 
                     let departure_pos = if entry.has_departure {
-                        Some(Pos2::new(
+                        Pos2::new(
                             super::draw_lines::ticks_to_screen_x(
                                 departure_ticks,
                                 screen_rect,
@@ -313,14 +318,14 @@ pub fn calc(
                                 tab.x_offset,
                             ),
                             (height - tab.y_offset) * tab.zoom.y + screen_rect.top(),
-                        ))
+                        )
                     } else {
-                        None
+                        arrival_pos
                     };
 
                     segment.push(TripPoint {
-                        arrival: arrival_pos,
-                        departure: departure_pos,
+                        arr: arrival_pos,
+                        dep: departure_pos,
                         entry: entry.entity,
                     });
 
@@ -380,9 +385,7 @@ pub fn calc(
                 let mut segment_entries = Vec::new();
 
                 for point in segment {
-                    let dep = point.departure.unwrap_or(point.arrival);
-
-                    cubics.push([point.arrival, point.arrival, dep, dep]);
+                    cubics.push([point.arr, point.arr, point.dep, point.dep]);
                     segment_entries.push(point.entry);
                 }
 

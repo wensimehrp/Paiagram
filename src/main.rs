@@ -172,9 +172,17 @@ struct Cli {
 #[cfg(not(target_arch = "wasm32"))]
 fn handle_args(cli: In<Cli>, mut commands: Commands) {
     if let Some(path) = &cli.open {
-        use crate::import::LoadQETRC;
+        use crate::import::*;
         let content = std::fs::read_to_string(path).unwrap();
-        commands.trigger(LoadQETRC { content });
+        match path.extension().and_then(|s| s.to_str()) {
+            Some("pyetgr") | Some("json") => {
+                commands.trigger(LoadQETRC { content });
+            }
+            Some("oud2") => {
+                commands.trigger(LoadOuDiaSecond { content });
+            }
+            _ => panic!(),
+        }
     }
     // use rw_data::ModifyData;
     // if let Some(path) = &cli.open {
@@ -217,8 +225,8 @@ fn main() -> eframe::Result<()> {
             .with_title("Drawer")
             .with_app_id("Paiagram")
             .with_inner_size([1280.0, 720.0]),
-            // .with_decorations(false)
-            // .with_transparent(true),
+        // .with_decorations(false)
+        // .with_transparent(true),
         ..default()
     };
 
