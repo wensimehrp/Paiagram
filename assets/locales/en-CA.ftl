@@ -68,3 +68,27 @@ oud2-unnamed-line = Unnamed Line {$number}
 oud2-unnamed-station = Unnamed Station {$number}
 oud2-unnamed-diagram = Unnamed Diagram {$number}
 oud2-unnamed-train = Unnamed Train {$number}
+
+# Colours
+colour-red      = Red
+colour-orange   = Orange
+colour-amber    = Amber
+colour-yellow   = Yellow
+colour-lime     = Lime
+colour-green    = Green
+colour-emerald  = Emerald
+colour-teal     = Teal
+colour-cyan     = Cyan
+colour-sky      = Sky
+colour-blue     = Blue
+colour-indigo   = Indigo
+colour-violet   = Violet
+colour-purple   = Purple
+colour-fuchsia  = Fuchsia
+colour-pink     = Pink
+colour-rose     = Rose
+colour-slate    = Slate
+colour-gray     = Gray
+colour-zinc     = Zinc
+colour-neutral  = Neutral
+colour-stone    = Stone

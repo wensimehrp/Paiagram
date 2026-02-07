@@ -7,7 +7,7 @@ use moonshine_core::prelude::MapEntities;
 
 // use crate::interface::StatusBarState;
 
-// pub mod classes;
+pub mod classes;
 // pub mod diagram;
 pub mod diagram;
 // pub mod displayed_lines;
@@ -24,7 +24,7 @@ pub mod trip;
 // pub mod vehicle;
 
 pub mod all_tabs {
-    // pub use super::classes::ClassesTab;
+    pub use super::classes::ClassesTab;
     pub use super::diagram::DiagramTab;
     // pub use super::displayed_lines::DisplayedLinesTab;
     // pub use super::graph::GraphTab;

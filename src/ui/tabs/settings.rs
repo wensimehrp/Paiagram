@@ -11,14 +11,9 @@ use moonshine_core::prelude::MapEntities;
 use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
 
-#[derive(Serialize, Deserialize, Clone, Default, MapEntities)]
+#[derive(Serialize, Deserialize, Clone, Default, MapEntities, PartialEq)]
 pub struct SettingsTab;
 
-impl PartialEq for SettingsTab {
-    fn eq(&self, other: &Self) -> bool {
-        true
-    }
-}
 
 impl Tab for SettingsTab {
     const NAME: &'static str = "Settings";

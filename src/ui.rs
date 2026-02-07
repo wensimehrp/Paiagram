@@ -10,7 +10,7 @@ use moonshine_core::prelude::MapEntities;
 use serde::{Deserialize, Serialize};
 use tabs::{Tab, all_tabs::*};
 
-use crate::{route::Route, settings::UserPreferences, trip::Trip, vehicle::Vehicle};
+use crate::{import, route::Route, settings::UserPreferences, trip::Trip, vehicle::Vehicle};
 
 pub struct UiPlugin;
 impl Plugin for UiPlugin {
@@ -32,7 +32,7 @@ macro_rules! for_all_tabs {
             MainTab::Diagram($t) => $body,
             // MainTab::DisplayedLines($t) => $body,
             MainTab::Settings($t) => $body,
-            // MainTab::Classes($t) => $body,
+            MainTab::Classes($t) => $body,
             // MainTab::Services($t) => $body,
             // MainTab::Minesweeper($t) => $body,
             // MainTab::Graph($t) => $body,
@@ -50,7 +50,7 @@ pub enum MainTab {
     Diagram(DiagramTab),
     // DisplayedLines(DisplayedLinesTab),
     Settings(SettingsTab),
-    // Classes(ClassesTab),
+    Classes(ClassesTab),
     // Services(ServicesTab),
     // Minesweeper(MinesweeperTab),
     // Graph(GraphTab),
@@ -121,6 +121,7 @@ impl<'w> TabViewer for MainTabViewer<'w> {
             ("Start", MainTab::Start(StartTab::default())),
             ("Inspector", MainTab::Inspector(InspectorTab::default())),
             ("Settings", MainTab::Settings(SettingsTab::default())),
+            ("Classes", MainTab::Classes(ClassesTab::default())),
         ] {
             if ui.button(s).clicked() {
                 self.world.write_message(OpenOrFocus(t));
@@ -229,10 +230,18 @@ pub fn show_ui(ctx: &Context, world: &mut World) {
     world.run_system_once_with(sync_ui, ctx).unwrap();
     egui::TopBottomPanel::top("top panel").show(ctx, |ui| {
         ui.horizontal(|ui| {
-            ui.button("More...");
+            // TODO: add rfd file reading
+            let res = ui.button("More...");
+            egui::Popup::menu(&res).show(|ui| {
+                if ui.button("Read OUD2").clicked() {
+                    world.commands().trigger(import::LoadOuDiaSecond {
+                        content: include_str!("../sample.oud2").to_string(),
+                    });
+                }
+            });
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.button("R");
-                ui.button("B");
+                if ui.button("R").clicked() {}
+                if ui.button("B").clicked() {}
             });
         })
     });

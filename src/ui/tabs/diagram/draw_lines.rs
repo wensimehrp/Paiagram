@@ -2,7 +2,7 @@ use crate::units::time::TimetableTime;
 
 use super::TICKS_PER_SECOND;
 use bevy::prelude::*;
-use egui::{Color32, FontId, LayerId, Painter, Pos2, Rect, Stroke};
+use egui::{Color32, FontId, Painter, Pos2, Rect, Stroke};
 
 pub fn draw_station_lines<'a>(
     vertical_offset: f32,

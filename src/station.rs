@@ -1,7 +1,6 @@
 use crate::trip::class::DisplayedStroke;
 use bevy::{ecs::query::QueryData, prelude::*};
 use moonshine_core::prelude::{MapEntities, ReflectMapEntities};
-use serde::{Deserialize, Serialize};
 
 pub struct StationPlugin;
 impl Plugin for StationPlugin {

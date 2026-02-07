@@ -38,8 +38,8 @@ impl Route {
             .copied()
             .zip(self.lengths.iter().copied())
             .scan(0.0_f32, |acc, (stop, len)| {
-                let out = (stop, *acc);
                 *acc += len;
+                let out = (stop, *acc);
                 Some(out)
             })
     }

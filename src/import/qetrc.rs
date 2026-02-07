@@ -109,6 +109,7 @@ struct VehicleServiceEntry {
 
 #[derive(Deserialize)]
 struct Config {
+    #[serde(default)]
     default_colors: HashMap<String, String>,
 }
 

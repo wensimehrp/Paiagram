@@ -1,4 +1,3 @@
-use std::ops::AddAssign;
 
 use crate::interval::Interval;
 use crate::interval::IntervalQuery;

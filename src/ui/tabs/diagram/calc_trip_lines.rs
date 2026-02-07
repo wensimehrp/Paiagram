@@ -1,5 +1,7 @@
 use bevy::{ecs::entity::EntityHashSet, prelude::*};
 use egui::{Pos2, Rect};
+use rayon::prelude::*;
+use std::collections::{HashMap, HashSet};
 
 use crate::{
     entry::{EntryMode, EntryQuery},
@@ -108,13 +110,33 @@ pub fn calc(
         entry: Entity,
     }
 
-    struct TripEntry<'a> {
+    #[derive(Clone, Copy)]
+    struct TripEntryData {
         entity: Entity,
         station: Entity,
-        estimate: Option<&'a crate::entry::EntryEstimate>,
+        arr_ticks: Option<i64>,
+        dep_ticks: Option<i64>,
         has_departure: bool,
     }
 
+    struct TripData {
+        entity: Entity,
+        stroke: DisplayedStroke,
+        entries: Vec<TripEntryData>,
+    }
+
+    let use_full_trip = true;
+    let stations_for_layout = if use_full_trip { &heights[..] } else { visible_stations };
+    let visible_station_set: EntityHashSet = visible_stations.iter().map(|(s, _)| *s).collect();
+    let mut station_index_map: HashMap<Entity, Vec<usize>> = HashMap::new();
+    for (idx, (station, _)) in stations_for_layout.iter().enumerate() {
+        station_index_map
+            .entry(*station)
+            .or_default()
+            .push(idx);
+    }
+
+    let mut trip_data = Vec::with_capacity(tab.trips.len());
     for trip_entity in tab.trips.iter().copied() {
         let Ok(trip) = trips.get(trip_entity) else {
             continue;
@@ -125,7 +147,7 @@ pub fn calc(
             .copied()
             .unwrap_or_default();
 
-        let mut trip_entries_vec: Vec<TripEntry<'_>> = Vec::new();
+        let mut trip_entries_vec: Vec<TripEntryData> = Vec::new();
         for entry_entity in trip.schedule.iter() {
             let Ok(entry) = entries.get(entry_entity) else {
                 continue;
@@ -133,11 +155,19 @@ pub fn calc(
             let Some(station_entity) = resolve_stop_station(entry.stop()) else {
                 continue;
             };
+            let (arr_ticks, dep_ticks) = if let Some(estimate) = entry.estimate {
+                let arrival_ticks = estimate.arr.0 as i64 * super::TICKS_PER_SECOND;
+                let departure_ticks = estimate.dep.0 as i64 * super::TICKS_PER_SECOND;
+                (Some(arrival_ticks), Some(departure_ticks))
+            } else {
+                (None, None)
+            };
 
-            trip_entries_vec.push(TripEntry {
+            trip_entries_vec.push(TripEntryData {
                 entity: entry_entity,
                 station: station_entity,
-                estimate: entry.estimate,
+                arr_ticks,
+                dep_ticks,
                 has_departure: entry.mode.dep.is_some(),
             });
         }
@@ -146,265 +176,268 @@ pub fn calc(
             continue;
         }
 
-        let mut base_min: Option<i64> = None;
-        let mut base_max: Option<i64> = None;
-        for entry in &trip_entries_vec {
-            let Some(estimate) = entry.estimate else {
-                continue;
-            };
-            let arrival_ticks = estimate.arr.0 as i64 * super::TICKS_PER_SECOND;
-            let departure_ticks = estimate.dep.0 as i64 * super::TICKS_PER_SECOND;
-            let local_min = arrival_ticks.min(departure_ticks);
-            let local_max = arrival_ticks.max(departure_ticks);
-            base_min = Some(base_min.map_or(local_min, |v| v.min(local_min)));
-            base_max = Some(base_max.map_or(local_max, |v| v.max(local_max)));
-        }
+        trip_data.push(TripData {
+            entity: trip_entity,
+            stroke,
+            entries: trip_entries_vec,
+        });
+    }
 
-        let Some(base_min) = base_min else {
-            continue;
-        };
-        let Some(base_max) = base_max else {
-            continue;
-        };
+    let repeat_freq_ticks = settings.repeat_frequency.0 as i64 * super::TICKS_PER_SECOND;
 
-        let repeat_freq_ticks = settings.repeat_frequency.0 as i64 * super::TICKS_PER_SECOND;
-        let (repeat_start, repeat_end) = if repeat_freq_ticks > 0 {
-            let start = (visible_ticks.start - base_max).div_euclid(repeat_freq_ticks);
-            let end = (visible_ticks.end - base_min).div_euclid(repeat_freq_ticks);
-            (start, end)
-        } else {
-            (0, 0)
-        };
-
-        let mut drawn_segments = Vec::new();
-        let mut drawn_entries = Vec::new();
-
-        for repeat in repeat_start..=repeat_end {
-            let repeat_offset = repeat * repeat_freq_ticks;
-
-            let first_visible = trip_entries_vec.iter().position(|entry| {
-                let Some(estimate) = entry.estimate else {
-                    return false;
-                };
-                let arrival_ticks =
-                    estimate.arr.0 as i64 * super::TICKS_PER_SECOND + repeat_offset;
-                let departure_ticks =
-                    estimate.dep.0 as i64 * super::TICKS_PER_SECOND + repeat_offset;
-                !(departure_ticks < visible_ticks.start || arrival_ticks > visible_ticks.end)
-            });
-            let last_visible = trip_entries_vec.iter().rposition(|entry| {
-                let Some(estimate) = entry.estimate else {
-                    return false;
-                };
-                let arrival_ticks =
-                    estimate.arr.0 as i64 * super::TICKS_PER_SECOND + repeat_offset;
-                let departure_ticks =
-                    estimate.dep.0 as i64 * super::TICKS_PER_SECOND + repeat_offset;
-                !(departure_ticks < visible_ticks.start || arrival_ticks > visible_ticks.end)
-            });
-
-            let Some(first_visible) = first_visible else {
-                continue;
-            };
-            let Some(last_visible) = last_visible else {
-                continue;
-            };
-
-            let first_visible = first_visible.saturating_sub(2);
-            let last_visible = (last_visible + 2).min(trip_entries_vec.len() - 1);
-            let trip_entries = &trip_entries_vec[first_visible..=last_visible];
-
-            if trip_entries.len() < 2 {
-                continue;
-            }
-
-            let mut segments: Vec<Vec<TripPoint>> = Vec::new();
-
-            let mut local_edges: Vec<(Vec<TripPoint>, usize)> = Vec::new();
-            let mut previous_indices: Vec<usize> = Vec::new();
-
-            if let Some(first) = trip_entries.first() {
-                previous_indices = visible_stations
+    let drawn: Vec<super::DrawnTrip> = trip_data
+        .par_iter()
+        .filter_map(|trip| {
+            if use_full_trip
+                && !trip
+                    .entries
                     .iter()
-                    .enumerate()
-                    .filter_map(|(i, (s, _))| if *s == first.station { Some(i) } else { None })
-                    .collect();
+                    .any(|entry| visible_station_set.contains(&entry.station))
+            {
+                return None;
             }
 
-            for entry_idx in 0..trip_entries.len() {
-                let entry = &trip_entries[entry_idx];
-                let next = trip_entries.get(entry_idx + 1);
+            let mut base_min: Option<i64> = None;
+            let mut base_max: Option<i64> = None;
+            for entry in &trip.entries {
+                let (Some(arrival_ticks), Some(departure_ticks)) =
+                    (entry.arr_ticks, entry.dep_ticks)
+                else {
+                    continue;
+                };
+                let local_min = arrival_ticks.min(departure_ticks);
+                let local_max = arrival_ticks.max(departure_ticks);
+                base_min = Some(base_min.map_or(local_min, |v| v.min(local_min)));
+                base_max = Some(base_max.map_or(local_max, |v| v.max(local_max)));
+            }
 
-                if previous_indices.is_empty() {
-                    if let Some(next_entry) = next {
-                        previous_indices = visible_stations
-                            .iter()
-                            .enumerate()
-                            .filter_map(|(i, (s, _))| {
-                                if *s == next_entry.station {
-                                    Some(i)
-                                } else {
-                                    None
-                                }
-                            })
-                            .collect();
-                    }
-                    for (segment, _) in local_edges.drain(..) {
-                        if segment.len() >= 2 {
-                            segments.push(segment);
-                        }
-                    }
+            let Some(base_min) = base_min else {
+                return None;
+            };
+            let Some(base_max) = base_max else {
+                return None;
+            };
+
+            let (repeat_start, repeat_end) = if repeat_freq_ticks > 0 {
+                let start = (visible_ticks.start - base_max).div_euclid(repeat_freq_ticks);
+                let end = (visible_ticks.end - base_min).div_euclid(repeat_freq_ticks);
+                (start, end)
+            } else {
+                (0, 0)
+            };
+
+            let mut drawn_segments = Vec::new();
+            let mut drawn_entries = Vec::new();
+
+            for repeat in repeat_start..=repeat_end {
+                let repeat_offset = repeat * repeat_freq_ticks;
+
+                let first_visible = trip.entries.iter().position(|entry| {
+                    let (Some(arrival_ticks), Some(departure_ticks)) =
+                        (entry.arr_ticks, entry.dep_ticks)
+                    else {
+                        return false;
+                    };
+                    let arrival_ticks = arrival_ticks + repeat_offset;
+                    let departure_ticks = departure_ticks + repeat_offset;
+                    !(departure_ticks < visible_ticks.start || arrival_ticks > visible_ticks.end)
+                });
+                let last_visible = trip.entries.iter().rposition(|entry| {
+                    let (Some(arrival_ticks), Some(departure_ticks)) =
+                        (entry.arr_ticks, entry.dep_ticks)
+                    else {
+                        return false;
+                    };
+                    let arrival_ticks = arrival_ticks + repeat_offset;
+                    let departure_ticks = departure_ticks + repeat_offset;
+                    !(departure_ticks < visible_ticks.start || arrival_ticks > visible_ticks.end)
+                });
+
+                let Some(first_visible) = first_visible else {
+                    continue;
+                };
+                let Some(last_visible) = last_visible else {
+                    continue;
+                };
+
+                let trip_entries = if use_full_trip {
+                    &trip.entries[..]
+                } else {
+                    let first_visible = first_visible.saturating_sub(2);
+                    let last_visible = (last_visible + 2).min(trip.entries.len() - 1);
+                    &trip.entries[first_visible..=last_visible]
+                };
+
+                if trip_entries.len() < 2 {
                     continue;
                 }
 
-                let Some(estimate) = entry.estimate else {
-                    for (segment, _) in local_edges.drain(..) {
-                        if segment.len() >= 2 {
-                            segments.push(segment);
+                let mut segments: Vec<Vec<TripPoint>> = Vec::new();
+
+                let mut local_edges: Vec<(Vec<TripPoint>, usize)> = Vec::new();
+                let mut previous_indices: Vec<usize> = Vec::new();
+
+                if let Some(first) = trip_entries.first() {
+                    if let Some(indices) = station_index_map.get(&first.station) {
+                        previous_indices = indices.clone();
+                    }
+                }
+
+                for entry_idx in 0..trip_entries.len() {
+                    let entry = &trip_entries[entry_idx];
+                    let next = trip_entries.get(entry_idx + 1);
+
+                    if previous_indices.is_empty() {
+                        if let Some(next_entry) = next {
+                            if let Some(indices) = station_index_map.get(&next_entry.station) {
+                                previous_indices = indices.clone();
+                            }
                         }
+                        for (segment, _) in local_edges.drain(..) {
+                            if segment.len() >= 2 {
+                                segments.push(segment);
+                            }
+                        }
+                        continue;
                     }
-                    if let Some(next_entry) = next {
-                        previous_indices = visible_stations
-                            .iter()
-                            .enumerate()
-                            .filter_map(|(i, (s, _))| {
-                                if *s == next_entry.station {
-                                    Some(i)
-                                } else {
-                                    None
-                                }
-                            })
-                            .collect();
-                    }
-                    continue;
-                };
 
-                let arrival_ticks =
-                    estimate.arr.0 as i64 * super::TICKS_PER_SECOND + repeat_offset;
-                let departure_ticks =
-                    estimate.dep.0 as i64 * super::TICKS_PER_SECOND + repeat_offset;
-
-                let mut next_local_edges = Vec::new();
-
-                for &current_line_index in &previous_indices {
-                    let height = visible_stations[current_line_index].1;
-
-                    let matched_idx = local_edges
-                        .iter()
-                        .position(|(_, idx)| current_line_index.abs_diff(*idx) <= 1);
-
-                    let mut segment = if let Some(idx) = matched_idx {
-                        local_edges.swap_remove(idx).0
-                    } else {
-                        Vec::new()
+                    let (Some(arrival_ticks), Some(departure_ticks)) =
+                        (entry.arr_ticks, entry.dep_ticks)
+                    else {
+                        for (segment, _) in local_edges.drain(..) {
+                            if segment.len() >= 2 {
+                                segments.push(segment);
+                            }
+                        }
+                        if let Some(next_entry) = next {
+                            if let Some(indices) = station_index_map.get(&next_entry.station) {
+                                previous_indices = indices.clone();
+                            }
+                        }
+                        continue;
                     };
 
-                    let arrival_pos = Pos2::new(
-                        super::draw_lines::ticks_to_screen_x(
-                            arrival_ticks,
-                            screen_rect,
-                            ticks_per_screen_unit,
-                            tab.x_offset,
-                        ),
-                        (height - tab.y_offset) * tab.zoom.y + screen_rect.top(),
-                    );
+                    let arrival_ticks = arrival_ticks + repeat_offset;
+                    let departure_ticks = departure_ticks + repeat_offset;
 
-                    let departure_pos = if entry.has_departure {
-                        Pos2::new(
+                    let mut next_local_edges = Vec::new();
+
+                    for &current_line_index in &previous_indices {
+                        let Some((_, height)) = stations_for_layout.get(current_line_index) else {
+                            continue;
+                        };
+
+                        let matched_idx = local_edges
+                            .iter()
+                            .position(|(_, idx)| current_line_index.abs_diff(*idx) <= 1);
+
+                        let mut segment = if let Some(idx) = matched_idx {
+                            local_edges.swap_remove(idx).0
+                        } else {
+                            Vec::new()
+                        };
+
+                        let arrival_pos = Pos2::new(
                             super::draw_lines::ticks_to_screen_x(
-                                departure_ticks,
+                                arrival_ticks,
                                 screen_rect,
                                 ticks_per_screen_unit,
                                 tab.x_offset,
                             ),
                             (height - tab.y_offset) * tab.zoom.y + screen_rect.top(),
-                        )
-                    } else {
-                        arrival_pos
-                    };
+                        );
 
-                    segment.push(TripPoint {
-                        arr: arrival_pos,
-                        dep: departure_pos,
-                        entry: entry.entity,
-                    });
+                        let departure_pos = if entry.has_departure {
+                            Pos2::new(
+                                super::draw_lines::ticks_to_screen_x(
+                                    departure_ticks,
+                                    screen_rect,
+                                    ticks_per_screen_unit,
+                                    tab.x_offset,
+                                ),
+                                (height - tab.y_offset) * tab.zoom.y + screen_rect.top(),
+                            )
+                        } else {
+                            arrival_pos
+                        };
 
-                    let mut continued = false;
-                    if let Some(next_entry) = next {
-                        for offset in [-1, 0, 1] {
-                            let next_idx = (current_line_index as isize + offset) as usize;
-                            if let Some((s, _)) = visible_stations.get(next_idx) {
-                                if *s == next_entry.station {
-                                    next_local_edges.push((segment.clone(), next_idx));
-                                    continued = true;
-                                    break;
+                        segment.push(TripPoint {
+                            arr: arrival_pos,
+                            dep: departure_pos,
+                            entry: entry.entity,
+                        });
+
+                        let mut continued = false;
+                        if let Some(next_entry) = next {
+                            for offset in [-1, 0, 1] {
+                                let next_idx = (current_line_index as isize + offset) as usize;
+                                if let Some((s, _)) = stations_for_layout.get(next_idx) {
+                                    if *s == next_entry.station {
+                                        next_local_edges.push((segment.clone(), next_idx));
+                                        continued = true;
+                                        break;
+                                    }
                                 }
                             }
                         }
+
+                        if !continued && segment.len() >= 2 {
+                            segments.push(segment);
+                        }
                     }
 
-                    if !continued && segment.len() >= 2 {
-                        segments.push(segment);
+                    for (segment, _) in local_edges.drain(..) {
+                        if segment.len() >= 2 {
+                            segments.push(segment);
+                        }
+                    }
+
+                    local_edges = next_local_edges;
+                    if let Some(next_entry) = next {
+                        if let Some(indices) = station_index_map.get(&next_entry.station) {
+                            previous_indices = indices.clone();
+                        }
                     }
                 }
 
-                for (segment, _) in local_edges.drain(..) {
+                for (segment, _) in local_edges {
                     if segment.len() >= 2 {
                         segments.push(segment);
                     }
                 }
 
-                local_edges = next_local_edges;
-                if let Some(next_entry) = next {
-                    previous_indices = visible_stations
-                        .iter()
-                        .enumerate()
-                        .filter_map(|(i, (s, _))| {
-                            if *s == next_entry.station {
-                                Some(i)
-                            } else {
-                                None
-                            }
-                        })
-                        .collect();
+                if segments.is_empty() {
+                    continue;
+                }
+
+                for segment in segments {
+                    let mut cubics = Vec::new();
+                    let mut segment_entries = Vec::new();
+
+                    for point in segment {
+                        cubics.push([point.arr, point.arr, point.dep, point.dep]);
+                        segment_entries.push(point.entry);
+                    }
+
+                    if !cubics.is_empty() {
+                        drawn_segments.push(cubics);
+                        drawn_entries.push(segment_entries);
+                    }
                 }
             }
 
-            for (segment, _) in local_edges {
-                if segment.len() >= 2 {
-                    segments.push(segment);
-                }
+            if drawn_segments.is_empty() {
+                return None;
             }
 
-            if segments.is_empty() {
-                continue;
-            }
+            Some(super::DrawnTrip {
+                entity: trip.entity,
+                stroke: trip.stroke,
+                points: drawn_segments,
+                entries: drawn_entries,
+            })
+        })
+        .collect();
 
-            for segment in segments {
-                let mut cubics = Vec::new();
-                let mut segment_entries = Vec::new();
-
-                for point in segment {
-                    cubics.push([point.arr, point.arr, point.dep, point.dep]);
-                    segment_entries.push(point.entry);
-                }
-
-                if !cubics.is_empty() {
-                    drawn_segments.push(cubics);
-                    drawn_entries.push(segment_entries);
-                }
-            }
-        }
-
-        if drawn_segments.is_empty() {
-            continue;
-        }
-
-        buf.push(super::DrawnTrip {
-            entity: trip_entity,
-            stroke,
-            points: drawn_segments,
-            entries: drawn_entries,
-        });
-    }
+    buf.extend(drawn);
 }

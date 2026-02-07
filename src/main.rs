@@ -40,6 +40,20 @@ impl PaiagramApp {
             style.interaction.selectable_labels = false;
         });
         ui::apply_custom_fonts(&cc.egui_ctx);
+        if let Some(render_state) = cc.wgpu_render_state.as_ref() {
+            cc.egui_ctx.data_mut(|data| {
+                data.insert_temp(
+                    egui::Id::new("wgpu_adapter_info"),
+                    eframe::egui_wgpu::adapter_info_summary(&render_state.adapter.get_info()),
+                );
+                data.insert_temp(
+                    egui::Id::new("wgpu_target_format"),
+                    render_state.target_format,
+                );
+                let msaa_samples = if cfg!(target_arch = "wasm32") { 1_u32 } else { 4_u32 };
+                data.insert_temp(egui::Id::new("wgpu_msaa_samples"), msaa_samples);
+            });
+        }
         // set up bevy world
         let mut app = App::new();
         app.add_plugins(MinimalPlugins);
@@ -55,6 +69,9 @@ impl PaiagramApp {
             station::StationPlugin,
             settings::SettingsPlugin,
             problems::ProblemsPlugin,
+            class::ClassPlugin,
+            bevy::diagnostic::FrameTimeDiagnosticsPlugin::default(),
+            bevy::diagnostic::LogDiagnosticsPlugin::default(),
             // rw_data::RwDataPlugin,
             // search::SearchPlugin,
             // settings::SettingsPlugin,
@@ -99,7 +116,7 @@ impl eframe::App for PaiagramApp {
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
         egui::Rgba::TRANSPARENT.to_array() // Make sure we don't paint anything behind the rounded corners
     }
-    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // self.bevy_app
         //     .world_mut()
         //     .resource_mut::<interface::MiscUiState>()
@@ -220,11 +237,14 @@ fn handle_args(cli: In<Cli>, mut commands: Commands) {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result<()> {
+    i18n::init();
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("Drawer")
             .with_app_id("Paiagram")
             .with_inner_size([1280.0, 720.0]),
+        renderer: eframe::Renderer::Wgpu,
+        multisampling: 4,
         // .with_decorations(false)
         // .with_transparent(true),
         ..default()
@@ -240,6 +260,8 @@ fn main() -> eframe::Result<()> {
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
+use crate::trip::class;
+
 #[cfg(target_arch = "wasm32")]
 #[derive(Clone)]
 #[wasm_bindgen]
@@ -250,7 +272,7 @@ pub struct WebHandle {
 // When compiling to web using trunk:
 #[cfg(target_arch = "wasm32")]
 fn main() {
-    i18n::init(None);
+    i18n::init();
     use eframe::wasm_bindgen::JsCast as _;
     use eframe::web_sys;
 

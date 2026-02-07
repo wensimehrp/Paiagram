@@ -1,7 +1,9 @@
 use bevy::color::{Srgba, palettes::tailwind::*};
 use bevy::prelude::*;
 use egui::Color32;
+use egui_i18n::tr;
 use serde::{Deserialize, Serialize};
+use strum::IntoEnumIterator;
 use strum_macros::{EnumCount, EnumIter};
 
 #[derive(Reflect, Debug, Clone, Copy, Serialize, Deserialize)]
@@ -17,6 +19,54 @@ impl Default for DisplayColor {
     }
 }
 
+impl egui::Widget for &mut DisplayColor {
+    fn ui(self, ui: &mut egui::Ui) -> egui::Response {
+        let is_dark = ui.visuals().dark_mode;
+        let current_predefined = match *self {
+            DisplayColor::Predefined(p) => Some(p),
+            DisplayColor::Custom(_) => None,
+        };
+
+        ui.vertical(|ui| {
+            ui.label("Predefined");
+            ui.horizontal_wrapped(|ui| {
+                for predefined in PredefinedColor::iter() {
+                    let color = predefined.get(is_dark);
+                    let is_selected = current_predefined == Some(predefined);
+                    let text_color = readable_text_color(color);
+                    let label = egui::RichText::new(predefined.name().as_ref()).color(text_color);
+                    let button = egui::Button::new(label)
+                        .fill(color)
+                        .min_size(egui::vec2(56.0, 24.0))
+                        .stroke(if is_selected {
+                            ui.visuals().selection.stroke
+                        } else {
+                            ui.visuals().widgets.inactive.bg_stroke
+                        });
+
+                    if ui.add(button).clicked() {
+                        *self = DisplayColor::Predefined(predefined);
+                    }
+                }
+            });
+
+            ui.separator();
+            ui.horizontal(|ui| {
+                ui.label("Custom");
+                let mut custom_color = match *self {
+                    DisplayColor::Custom(c) => c,
+                    DisplayColor::Predefined(p) => p.get(is_dark),
+                };
+                let response = ui.color_edit_button_srgba(&mut custom_color);
+                if response.changed() {
+                    *self = DisplayColor::Custom(custom_color);
+                }
+            });
+        })
+        .response
+    }
+}
+
 impl DisplayColor {
     /// get the color as [`Color32`]
     pub fn get(self, is_dark: bool) -> Color32 {
@@ -27,7 +77,7 @@ impl DisplayColor {
     }
 }
 
-#[derive(Debug, Clone, Copy, EnumIter, EnumCount, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCount, Serialize, Deserialize)]
 pub enum PredefinedColor {
     Red,
     Orange,
@@ -54,6 +104,34 @@ pub enum PredefinedColor {
 }
 
 impl PredefinedColor {
+    #[rustfmt::skip]
+    pub fn name(self) -> impl AsRef<str> {
+        match self {
+            Self::Red       => tr!("colour-red"),
+            Self::Orange    => tr!("colour-orange"),
+            Self::Amber     => tr!("colour-amber"),
+            Self::Yellow    => tr!("colour-yellow"),
+            Self::Lime      => tr!("colour-lime"),
+            Self::Green     => tr!("colour-green"),
+            Self::Emerald   => tr!("colour-emerald"),
+            Self::Teal      => tr!("colour-teal"),
+            Self::Cyan      => tr!("colour-cyan"),
+            Self::Sky       => tr!("colour-sky"),
+            Self::Blue      => tr!("colour-blue"),
+            Self::Indigo    => tr!("colour-indigo"),
+            Self::Violet    => tr!("colour-violet"),
+            Self::Purple    => tr!("colour-purple"),
+            Self::Fuchsia   => tr!("colour-fuchsia"),
+            Self::Pink      => tr!("colour-pink"),
+            Self::Rose      => tr!("colour-rose"),
+            Self::Slate     => tr!("colour-slate"),
+            Self::Gray      => tr!("colour-gray"),
+            Self::Zinc      => tr!("colour-zinc"),
+            Self::Neutral   => tr!("colour-neutral"),
+            Self::Stone     => tr!("colour-stone"),
+        }
+    }
+
     // use 700 shade if light, otherwise use 400
     // neutral is special
     pub const fn get(self, is_dark: bool) -> Color32 {
@@ -115,4 +193,15 @@ pub const fn translate_srgba_to_color32(c: Srgba) -> Color32 {
         (c.blue * 256.0) as u8,
         (c.alpha * 256.0) as u8,
     )
+}
+
+/// Give the text colour that is readable given some background colour.
+fn readable_text_color(color: Color32) -> Color32 {
+    let [r, g, b, _] = color.to_array();
+    let luma = (0.299 * r as f32 + 0.587 * g as f32 + 0.114 * b as f32) / 255.0;
+    if luma > 0.5 {
+        Color32::BLACK
+    } else {
+        Color32::WHITE
+    }
 }

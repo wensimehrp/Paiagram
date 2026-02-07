@@ -1,11 +1,12 @@
 use crate::{
+    colors::DisplayColor,
     entry::{EntryBundle, EntryMode, EntryStop, TravelMode},
     graph::Graph,
     route::Route,
     station::Station as StationComponent,
     trip::{
         TripBundle, TripClass,
-        class::{Class, ClassBundle, DisplayedStroke},
+        class::{Class as ClassComponent, ClassBundle, ClassResource, DisplayedStroke},
     },
     units::{distance::Distance, time::TimetableTime},
 };
@@ -85,6 +86,7 @@ pub fn load_oud2(
     msg: On<super::LoadOuDiaSecond>,
     mut commands: Commands,
     mut graph: ResMut<Graph>,
+    mut class_resource: Res<ClassResource>,
 ) {
     let str = &msg.content;
     graph.clear();
@@ -92,7 +94,6 @@ pub fn load_oud2(
     let ast = parse_oud2_to_ast(str).expect("Failed to parse OUD2 file");
     let root = parse_ast(&ast).expect("Failed to convert OUD2 AST to internal representation");
     let mut station_map: HashMap<String, Instance<StationComponent>> = HashMap::new();
-    let mut class_map: HashMap<String, Instance<Class>> = HashMap::new();
     for line in root.lines {
         let mut stations: Vec<Option<Instance<StationComponent>>> = vec![None; line.stations.len()];
         let mut break_flags: Vec<bool> = Vec::with_capacity(line.stations.len());
@@ -101,6 +102,7 @@ pub fn load_oud2(
                 .branch_index
                 .or(station.loop_index)
                 .and_then(|idx| stations.get(idx).and_then(|e| *e));
+            // a bit slower but standardized
             let station_entity = referenced.unwrap_or_else(|| {
                 super::make_station(&station.name, &mut station_map, &mut graph, &mut commands)
             });
@@ -110,6 +112,22 @@ pub fn load_oud2(
 
         let station_instances: Vec<Instance<StationComponent>> =
             stations.into_iter().map(|e| e.unwrap()).collect();
+        let class_instances: Vec<Entity> = line
+            .classes
+            .into_iter()
+            .map(|it| {
+                commands
+                    .spawn(ClassBundle {
+                        class: ClassComponent::default(),
+                        name: Name::new(it.name),
+                        stroke: DisplayedStroke {
+                            color: DisplayColor::Custom(it.color),
+                            width: 1.0,
+                        },
+                    })
+                    .id()
+            })
+            .collect();
 
         commands.spawn((
             Name::new(line.name),
@@ -133,19 +151,12 @@ pub fn load_oud2(
         }
 
         for diagram in line.diagrams {
-            let trip_class = super::make_class(&diagram.name, &mut class_map, &mut commands, || {
-                ClassBundle {
-                    class: Class::default(),
-                    name: Name::new(diagram.name.clone()),
-                    stroke: DisplayedStroke::default(),
-                }
-            });
             for train in diagram.trains {
+                let trip_class = train
+                    .class_index
+                    .map_or(class_resource.default_class, |idx| class_instances[idx]);
                 commands
-                    .spawn(TripBundle::new(
-                        &train.name,
-                        TripClass(trip_class.entity()),
-                    ))
+                    .spawn(TripBundle::new(&train.name, TripClass(trip_class.entity())))
                     .with_children(|bundle| {
                         for (i, time) in train.times.into_iter().enumerate() {
                             let Some(time) = time else {
@@ -174,7 +185,10 @@ pub fn load_oud2(
                                 )
                             };
                             bundle.spawn(EntryBundle {
-                                time: EntryMode { arr: arrival, dep: departure },
+                                time: EntryMode {
+                                    arr: arrival,
+                                    dep: departure,
+                                },
                                 stop: EntryStop(stop.entity()),
                             });
                         }
@@ -196,6 +210,7 @@ struct LineMeta {
     name: String,
     stations: Vec<Station>,
     diagrams: Vec<Diagram>,
+    classes: Vec<TrainClass>,
 }
 
 #[derive(Debug)]
@@ -227,6 +242,7 @@ struct Train {
     direction: Direction,
     name: String,
     times: Vec<Option<TimetableEntry>>,
+    class_index: Option<usize>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -236,13 +252,18 @@ enum PassingMode {
     NoOperation,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy)]
 struct TimetableEntry {
     passing_mode: PassingMode,
     arrival: Option<TimetableTime>,
     departure: Option<TimetableTime>,
     track: Option<usize>,
+}
+
+#[derive(Debug, Clone)]
+struct TrainClass {
+    name: String,
+    color: egui::Color32,
 }
 
 use Structure::*;
@@ -277,6 +298,7 @@ fn parse_line_meta(
     let mut name: Option<String> = None;
     let mut stations = Vec::new();
     let mut diagrams = Vec::new();
+    let mut classes = Vec::new();
     let mut unnamed_station_counter = 0;
     let mut unnamed_diagram_counter = 0;
     let mut unnamed_train_counter = 0;
@@ -295,6 +317,7 @@ fn parse_line_meta(
                     &mut unnamed_train_counter,
                 )?);
             }
+            Struct(k, v) if *k == "Ressyasyubetsu" => classes.push(parse_class(v)),
             _ => {}
         }
     }
@@ -308,6 +331,7 @@ fn parse_line_meta(
         }),
         stations,
         diagrams,
+        classes,
     })
 }
 
@@ -438,6 +462,7 @@ fn parse_trains(
     let mut parse_trains = |fields: &[Structure]| -> Result<Train, String> {
         let mut name: Option<String> = None;
         let mut entries: Vec<Option<TimetableEntry>> = Vec::new();
+        let mut class_index: Option<usize> = None;
         for field in fields {
             match field {
                 Pair(k, Single(v)) if *k == "Ressyabangou" && !v.trim().is_empty() => {
@@ -451,6 +476,9 @@ fn parse_trains(
                     for time in times {
                         entries.push(parse_time(time)?);
                     }
+                }
+                Pair(k, Single(v)) if *k == "Syubetsu" => {
+                    class_index = Some(v.parse::<usize>().map_err(|e| e.to_string())?)
                 }
                 _ => {}
             }
@@ -473,6 +501,7 @@ fn parse_trains(
                 name
             }),
             times: entries,
+            class_index,
         })
     };
     let mut trains = Vec::new();
@@ -485,4 +514,30 @@ fn parse_trains(
         }
     }
     Ok(trains)
+}
+
+fn parse_class(fields: &[Structure]) -> TrainClass {
+    let mut name: Option<String> = None;
+    let mut color: Option<egui::Color32> = None;
+    for field in fields {
+        match field {
+            Pair(k, Single(v)) if *k == "Syubetsumei" => {
+                name = Some(v.to_string());
+            }
+            Pair(k, Single(v)) if *k == "DiagramSenColor" => {
+                // AARRGGBB
+                let (r, g, b) = (
+                    u8::from_str_radix(&v[2..=3], 16).unwrap(),
+                    u8::from_str_radix(&v[4..=5], 16).unwrap(),
+                    u8::from_str_radix(&v[6..=7], 16).unwrap(),
+                );
+                color = Some(egui::Color32::from_rgb(r, g, b))
+            }
+            _ => {}
+        }
+    }
+    TrainClass {
+        name: name.unwrap(),
+        color: color.unwrap(),
+    }
 }

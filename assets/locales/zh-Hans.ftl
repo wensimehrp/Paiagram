@@ -65,3 +65,27 @@ oud2-unnamed-line = 未命名路线 {$number}
 oud2-unnamed-station = 未命名车站 {$number}
 oud2-unnamed-diagram = 未命名运行图 {$number}
 oud2-unnamed-train = 未命名列车 {$number}
+
+# Colours
+colour-red      = 红色
+colour-orange   = 橙色
+colour-amber    = 琥珀
+colour-yellow   = 黄色
+colour-lime     = 酸橙
+colour-green    = 绿色
+colour-emerald  = 祖母绿
+colour-teal     = 蓝绿
+colour-cyan     = 青色
+colour-sky      = 天蓝
+colour-blue     = 靛蓝
+colour-indigo   = 紫色
+colour-violet   = 紫罗兰
+colour-purple   = 紫色
+colour-fuchsia  = 紫红
+colour-pink     = 粉色
+colour-rose     = 玫瑰
+colour-slate    = 板岩灰
+colour-gray     = 灰色
+colour-zinc     = 锌色
+colour-neutral  = 中性
+colour-stone    = 石色

@@ -31,7 +31,7 @@ impl Language {
     }
 }
 
-pub fn init(default_language: Option<&str>) {
+pub fn init() {
     let default_identifier = Language::default().identifier();
     load_translations_from_text(
         default_identifier,
@@ -39,6 +39,6 @@ pub fn init(default_language: Option<&str>) {
     )
     .unwrap();
     load_translations_from_text("zh-Hans", include_str!("../assets/locales/zh-Hans.ftl")).unwrap();
-    set_language(default_language.unwrap_or(default_identifier));
+    set_language(default_identifier);
     set_fallback(default_identifier);
 }

@@ -1,17 +1,16 @@
-use crate::{
-    entry::{EntryQuery, TravelMode},
-    route::Route,
-    trip::class::DisplayedStroke,
-};
-
 use super::{Navigatable, Tab};
+use crate::entry::{EntryQuery, TravelMode};
+use crate::route::Route;
+use crate::trip::class::DisplayedStroke;
 use bevy::{ecs::system::RunSystemOnce, prelude::*};
-use egui::{Color32, Margin, Painter, Pos2, Rect, Sense, Ui, Vec2};
+use egui::{Align2, Color32, FontId, Id, Margin, Painter, Pos2, Rect, Sense, Ui, Vec2};
+use instant::Instant;
 use moonshine_core::prelude::MapEntities;
 use serde::{Deserialize, Serialize};
-
+use std::sync::Arc;
 mod calc_trip_lines;
 mod draw_lines;
+mod gpu_draw;
 
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
 enum SelectedItem {
@@ -32,6 +31,16 @@ pub struct DiagramTab {
     // cache zone
     max_height: f32,
     trips: Vec<Entity>,
+    #[serde(skip, default)]
+    gpu_state: Arc<egui::mutex::Mutex<gpu_draw::GpuTripRendererState>>,
+    #[serde(skip, default)]
+    show_perf: bool,
+    #[serde(skip, default)]
+    last_frame_ms: f32,
+    #[serde(skip, default)]
+    last_draw_ms: f32,
+    #[serde(skip, default)]
+    last_gpu_prep_ms: f32,
 }
 
 impl PartialEq for DiagramTab {
@@ -45,11 +54,18 @@ impl DiagramTab {
         Self {
             x_offset: 0,
             y_offset: 0.0,
-            zoom: Vec2::splat(1.0),
+            zoom: Vec2 { x: 0.0001, y: 0.2 },
             selected: None,
             route_entity,
             max_height: 0.0,
             trips: Vec::new(),
+            gpu_state: Arc::new(egui::mutex::Mutex::new(
+                gpu_draw::GpuTripRendererState::default(),
+            )),
+            show_perf: false,
+            last_frame_ms: 0.0,
+            last_draw_ms: 0.0,
+            last_gpu_prep_ms: 0.0,
         }
     }
     pub fn time_view(&self, rect: egui::Rect) -> (std::ops::Range<i64>, f64) {
@@ -93,7 +109,7 @@ impl Navigatable for DiagramTab {
         true
     }
     fn clamp_zoom(&self, zoom_x: f32, zoom_y: f32) -> (f32, f32) {
-        (zoom_x.clamp(0.00001, 0.4), zoom_y.clamp(0.025, 2048.0))
+        (zoom_x.clamp(0.00005, 0.4), zoom_y.clamp(0.1, 2048.0))
     }
     fn post_navigation(&mut self, response: &egui::Response) {
         self.x_offset = self.x_offset.clamp(
@@ -130,9 +146,13 @@ pub struct DrawnTrip {
 impl Tab for DiagramTab {
     const NAME: &'static str = "Diagram";
     fn main_display(&mut self, world: &mut World, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            ui.checkbox(&mut self.show_perf, "Perf");
+        });
         egui::Frame::canvas(ui.style())
             .inner_margin(Margin::ZERO)
             .show(ui, |ui| {
+                let frame_start = Instant::now();
                 let route = world
                     .get::<Route>(self.route_entity)
                     .expect("Entity should have a route");
@@ -191,19 +211,37 @@ impl Tab for DiagramTab {
                         self.selected = handle_selection(&trip_line_buf, pos);
                     }
                 }
-                match self.selected {
-                    Some(SelectedItem::TimetableEntry { entry, parent }) => {}
-                    _ => {}
-                }
                 let selection_strength = ui
                     .ctx()
                     .animate_bool(ui.id().with("selection"), self.selected.is_some());
+                // let use_gpu = self.use_gpu;
                 let selected_idx_rect = world
                     .run_system_once_with(
-                        draw_lines,
+                        draw_trip_lines,
                         (&trip_line_buf, ui, &mut painter, self.selected),
                     )
                     .unwrap();
+                let mut state = self.gpu_state.lock();
+                if let Some(target_format) = ui.ctx().data(|data| {
+                    data.get_temp::<eframe::egui_wgpu::wgpu::TextureFormat>(Id::new(
+                        "wgpu_target_format",
+                    ))
+                }) {
+                    state.target_format = Some(target_format);
+                }
+                if let Some(msaa_samples) = ui
+                    .ctx()
+                    .data(|data| data.get_temp::<u32>(Id::new("wgpu_msaa_samples")))
+                {
+                    state.msaa_samples = msaa_samples;
+                }
+                let gpu_prep_start = Instant::now();
+                gpu_draw::write_vertices(&trip_line_buf, ui.visuals().dark_mode, &mut state);
+                self.last_gpu_prep_ms = gpu_prep_start.elapsed().as_secs_f32() * 1000.0;
+                let callback = gpu_draw::paint_callback(response.rect, self.gpu_state.clone());
+                painter.add(callback);
+                let draw_start = Instant::now();
+                self.last_draw_ms = draw_start.elapsed().as_secs_f32() * 1000.0;
                 let s = (selection_strength * 0.5 * u8::MAX as f32) as u8;
                 painter.rect_filled(
                     response.rect,
@@ -247,13 +285,34 @@ impl Tab for DiagramTab {
                         );
                     }
                 }
+                self.last_frame_ms = frame_start.elapsed().as_secs_f32() * 1000.0;
+                if self.show_perf {
+                    let mut text = format!(
+                        "GPU: on\nGPU prep: {:.2} ms\nDraw: {:.2} ms\nFrame: {:.2} ms",
+                        self.last_gpu_prep_ms, self.last_draw_ms, self.last_frame_ms
+                    );
+                    if let Some(info) = ui
+                        .ctx()
+                        .data(|data| data.get_temp::<String>(Id::new("wgpu_adapter_info")))
+                    {
+                        text.push_str("\n");
+                        text.push_str(&info);
+                    }
+                    let color = if ui.visuals().dark_mode {
+                        Color32::WHITE
+                    } else {
+                        Color32::BLACK
+                    };
+                    let pos = response.rect.left_top() + Vec2::new(6.0, 6.0);
+                    painter.text(pos, Align2::LEFT_TOP, text, FontId::monospace(12.0), color);
+                }
             });
     }
 }
 
 /// Takes a buffer the calculate trains
 
-fn draw_lines<'a>(
+fn draw_trip_lines<'a>(
     (InRef(trips), InMut(ui), InMut(painter), In(selected)): (
         InRef<[DrawnTrip]>,
         InMut<Ui>,
@@ -261,7 +320,6 @@ fn draw_lines<'a>(
         In<Option<SelectedItem>>,
     ),
 ) -> Option<(usize, Vec<Rect>)> {
-    let is_dark = ui.visuals().dark_mode;
     let mut ret = None;
     for (idx, trip) in trips.iter().enumerate() {
         if let Some(SelectedItem::TimetableEntry { entry, parent }) = selected
@@ -280,21 +338,7 @@ fn draw_lines<'a>(
                     }
                 })
                 .collect();
-            ret = Some((idx, rects));
-            continue;
-        }
-        let stroke = egui::Stroke {
-            width: trip.stroke.width,
-            color: trip.stroke.color.get(is_dark),
-        };
-        for group in &trip.points {
-            let mut points = Vec::with_capacity(group.len() * 4);
-            for segment in group {
-                points.extend(segment.iter().copied());
-            }
-            if points.len() >= 2 {
-                painter.line(points, stroke);
-            }
+            return Some((idx, rects));
         }
     }
     ret

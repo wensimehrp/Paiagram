@@ -7,7 +7,7 @@ use crate::{
 
 use super::Tab;
 use bevy::prelude::*;
-use egui::{Frame, Label, Response, ScrollArea, Sense, Ui, UiBuilder, Vec2};
+use egui::{ScrollArea, Ui};
 use egui_i18n::tr;
 use moonshine_core::prelude::MapEntities;
 use serde::{Deserialize, Serialize};
@@ -31,15 +31,9 @@ impl CurrentField {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub struct StartTab {
     current_field: CurrentField,
-}
-
-impl PartialEq for StartTab {
-    fn eq(&self, _other: &Self) -> bool {
-        true
-    }
 }
 
 impl Default for StartTab {
@@ -77,7 +71,7 @@ impl Tab for StartTab {
         //     error!("UI Error while displaying tree view: {e}")
         // }
     }
-    fn display_display(&mut self, _world: &mut bevy::ecs::world::World, ui: &mut Ui) {
+    fn display_display(&mut self, world: &mut bevy::ecs::world::World, ui: &mut Ui) {
         // for field in CurrentField::iter() {
         //     ui.add_sized(vec2(ui.available_width(), 20.0), |ui: &mut Ui| {
         //         ui.selectable_value(&mut self.current_field, field, field.name())
