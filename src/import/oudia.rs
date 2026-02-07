@@ -198,7 +198,6 @@ pub fn load_oud2(
     }
 }
 
-#[allow(dead_code)]
 #[derive(Debug)]
 struct Root {
     version: String,
@@ -221,7 +220,6 @@ struct Station {
     break_interval: bool,
 }
 
-#[allow(dead_code)]
 #[derive(Debug)]
 struct Diagram {
     name: String,

@@ -134,7 +134,7 @@ impl<'w> TabViewer for MainTabViewer<'w> {
             ScrollArea::vertical().show(ui, |ui| {
                 if let Some(e) = self
                     .world
-                    .run_system_once_with(show_name_button::<Route>, ui)
+                    .run_system_cached_with(show_name_button::<Route>, ui)
                     .unwrap()
                 {
                     self.world
@@ -148,7 +148,7 @@ impl<'w> TabViewer for MainTabViewer<'w> {
             ScrollArea::vertical().show(ui, |ui| {
                 if let Some(e) = self
                     .world
-                    .run_system_once_with(show_name_button::<Trip>, ui)
+                    .run_system_cached_with(show_name_button::<Trip>, ui)
                     .unwrap()
                 {
                     self.world
@@ -162,7 +162,7 @@ impl<'w> TabViewer for MainTabViewer<'w> {
             ScrollArea::vertical().show(ui, |ui| {
                 if let Some(e) = self
                     .world
-                    .run_system_once_with(show_name_button::<Vehicle>, ui)
+                    .run_system_cached_with(show_name_button::<Vehicle>, ui)
                     .unwrap()
                 {
                     // self.world
@@ -227,7 +227,7 @@ impl<'w> TabViewer for AdditionalTabViewer<'w> {
 }
 
 pub fn show_ui(ctx: &Context, world: &mut World) {
-    world.run_system_once_with(sync_ui, ctx).unwrap();
+    world.run_system_cached_with(sync_ui, ctx).unwrap();
     egui::TopBottomPanel::top("top panel").show(ctx, |ui| {
         ui.horizontal(|ui| {
             // TODO: add rfd file reading

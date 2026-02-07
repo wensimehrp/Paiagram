@@ -215,10 +215,17 @@ impl Tab for DiagramTab {
                     .ctx()
                     .animate_bool(ui.id().with("selection"), self.selected.is_some());
                 // let use_gpu = self.use_gpu;
-                let selected_idx_rect = world
-                    .run_system_once_with(
+                let mut selected_idx_rect: Option<(usize, Vec<Rect>)> = None;
+                world
+                    .run_system_cached_with(
                         draw_trip_lines,
-                        (&trip_line_buf, ui, &mut painter, self.selected),
+                        (
+                            &trip_line_buf,
+                            ui,
+                            &mut painter,
+                            self.selected,
+                            &mut selected_idx_rect,
+                        ),
                     )
                     .unwrap();
                 let mut state = self.gpu_state.lock();
@@ -268,7 +275,7 @@ impl Tab for DiagramTab {
                         }
                         for (points, e) in p_group.iter().zip(e_group.iter().copied()) {
                             world
-                                .run_system_once_with(draw_handles, (points, e, &mut painter))
+                                .run_system_cached_with(draw_handles, (points, e, &mut painter))
                                 .unwrap();
                         }
                     }
@@ -313,14 +320,14 @@ impl Tab for DiagramTab {
 /// Takes a buffer the calculate trains
 
 fn draw_trip_lines<'a>(
-    (InRef(trips), InMut(ui), InMut(painter), In(selected)): (
+    (InRef(trips), InMut(ui), InMut(painter), In(selected), InMut(ret)): (
         InRef<[DrawnTrip]>,
         InMut<Ui>,
         InMut<Painter>,
         In<Option<SelectedItem>>,
+        InMut<Option<(usize, Vec<Rect>)>>,
     ),
-) -> Option<(usize, Vec<Rect>)> {
-    let mut ret = None;
+) {
     for (idx, trip) in trips.iter().enumerate() {
         if let Some(SelectedItem::TimetableEntry { entry, parent }) = selected
             && trip.entity == parent
@@ -338,10 +345,10 @@ fn draw_trip_lines<'a>(
                     }
                 })
                 .collect();
-            return Some((idx, rects));
+            *ret = Some((idx, rects));
+            return;
         }
     }
-    ret
 }
 
 fn handle_selection(drawn_trips: &[DrawnTrip], pos: Pos2) -> Option<SelectedItem> {

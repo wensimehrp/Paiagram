@@ -11,7 +11,6 @@ pub struct GpuTripRendererState {
     pub(crate) batches: Vec<GpuTripBatch>,
     pub(crate) combined_vertices: Vec<SegmentInstance>,
     pub(crate) straight_count: u32,
-    pub(crate) ranges: Vec<DrawRange>,
     pub(crate) target_format: Option<wgpu::TextureFormat>,
     pub(crate) msaa_samples: u32,
 }
@@ -22,7 +21,6 @@ impl Default for GpuTripRendererState {
             batches: Vec::new(),
             combined_vertices: Vec::new(),
             straight_count: 0,
-            ranges: Vec::new(),
             target_format: None,
             msaa_samples: 1,
         }
@@ -55,19 +53,11 @@ pub(crate) struct SegmentInstance {
     curve: u32,
 }
 
-#[derive(Debug, Clone, Copy)]
-#[allow(dead_code)]
-pub struct DrawRange {
-    pub start: u32,
-    pub count: u32,
-}
-
 pub fn write_vertices(trips: &[DrawnTrip], is_dark: bool, state: &mut GpuTripRendererState) {
     if state.batches.len() < trips.len() {
         state.batches.resize_with(trips.len(), Default::default);
     }
     state.combined_vertices.clear();
-    state.ranges.clear();
     state.straight_count = 0;
     let mut straight_vertices: Vec<SegmentInstance> = Vec::new();
     let mut curve_vertices: Vec<SegmentInstance> = Vec::new();
