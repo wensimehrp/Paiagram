@@ -297,7 +297,7 @@ impl Tab for DiagramTab {
                                         ui,
                                         &mut painter,
                                         self.zoom.x,
-                                        button_strength,
+                                        button_strength.min(selection_strength),
                                     ),
                                 )
                                 .unwrap();
@@ -432,7 +432,7 @@ fn draw_handles(
     if entry.is_derived() || strength <= 0.1 {
         return;
     }
-    const HANDLE_SIZE: f32 = 14.0;
+    const HANDLE_SIZE: f32 = 15.0;
     const CIRCLE_HANDLE_SIZE: f32 = 7.0 / 12.0 * HANDLE_SIZE;
     const TRIANGLE_HANDLE_SIZE: f32 = 10.0 / 12.0 * HANDLE_SIZE;
     const DASH_HANDLE_SIZE: f32 = 9.0 / 12.0 * HANDLE_SIZE;
