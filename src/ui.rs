@@ -2,9 +2,10 @@
 //! Module for the user interface.
 
 mod tabs;
+mod widgets;
 
-use bevy::{ecs::system::RunSystemOnce, prelude::*};
-use egui::{Context, Frame, Id, ScrollArea};
+use bevy::prelude::*;
+use egui::{Ui, Context, CornerRadius, Frame, Id, Margin, ScrollArea};
 use egui_dock::{DockArea, DockState, TabViewer};
 use moonshine_core::prelude::MapEntities;
 use serde::{Deserialize, Serialize};
@@ -105,7 +106,7 @@ impl<'w> TabViewer for MainTabViewer<'w> {
     fn title(&mut self, tab: &mut Self::Tab) -> egui::WidgetText {
         for_all_tabs!(tab, t, t.title())
     }
-    fn ui(&mut self, ui: &mut egui::Ui, tab: &mut Self::Tab) {
+    fn ui(&mut self, ui: &mut Ui, tab: &mut Self::Tab) {
         for_all_tabs!(tab, t, t.main_display(self.world, ui));
     }
     fn id(&mut self, tab: &mut Self::Tab) -> Id {
@@ -113,7 +114,7 @@ impl<'w> TabViewer for MainTabViewer<'w> {
     }
     fn add_popup(
         &mut self,
-        ui: &mut egui::Ui,
+        ui: &mut Ui,
         _surface: egui_dock::SurfaceIndex,
         _node: egui_dock::NodeIndex,
     ) {
@@ -174,7 +175,7 @@ impl<'w> TabViewer for MainTabViewer<'w> {
 }
 
 fn show_name_button<T: Component>(
-    InMut(ui): InMut<egui::Ui>,
+    InMut(ui): InMut<Ui>,
     names: Query<(Entity, &Name), With<T>>,
 ) -> Option<Entity> {
     for (e, name) in names {
@@ -221,7 +222,7 @@ impl<'w> TabViewer for AdditionalTabViewer<'w> {
         }
         .into()
     }
-    fn ui(&mut self, ui: &mut egui::Ui, tab: &mut Self::Tab) {
+    fn ui(&mut self, ui: &mut Ui, tab: &mut Self::Tab) {
         ui.label("Hello");
     }
 }
@@ -245,6 +246,21 @@ pub fn show_ui(ctx: &Context, world: &mut World) {
             });
         })
     });
+    let make_dock_style = |ui: &Ui| {
+        let mut s = egui_dock::Style::from_egui(ui.style());
+        s.tab.tab_body.inner_margin = Margin::same(0);
+        s.tab.tab_body.corner_radius = CornerRadius::ZERO;
+        s.tab.tab_body.stroke.width = 0.0;
+        s.tab.active.corner_radius = CornerRadius::ZERO;
+        s.tab.inactive.corner_radius = CornerRadius::ZERO;
+        s.tab.focused.corner_radius = CornerRadius::ZERO;
+        s.tab.hovered.corner_radius = CornerRadius::ZERO;
+        s.tab.inactive_with_kb_focus.corner_radius = CornerRadius::ZERO;
+        s.tab.active_with_kb_focus.corner_radius = CornerRadius::ZERO;
+        s.tab.focused_with_kb_focus.corner_radius = CornerRadius::ZERO;
+        s.tab_bar.corner_radius = CornerRadius::ZERO;
+        s
+    };
     world.resource_scope(|mut world, mut aus: Mut<AdditionalUiState>| {
         let mut tab_viewer = AdditionalTabViewer { world: &mut world };
         egui::SidePanel::right("right panel")
@@ -255,6 +271,7 @@ pub fn show_ui(ctx: &Context, world: &mut World) {
                     .show_leaf_close_all_buttons(false)
                     .show_leaf_collapse_buttons(false)
                     .id(Id::new("right panel content"))
+                    .style(make_dock_style(ui))
                     .show_inside(ui, &mut tab_viewer);
             });
     });
@@ -268,6 +285,7 @@ pub fn show_ui(ctx: &Context, world: &mut World) {
                     .id(Id::new("main panel content"))
                     .show_add_buttons(true)
                     .show_add_popup(true)
+                    .style(make_dock_style(ui))
                     .show_inside(ui, &mut tab_viewer);
             });
     });

@@ -182,7 +182,7 @@ fn update_entry_mode(event: On<AdjustEntryMode>, mut entry_modes: Query<&mut Ent
             entry_mode.shift_arr(d);
         }
         ShiftDeparture(d) => {
-            entry_mode.shift_arr(d);
+            entry_mode.shift_dep(d);
         }
     }
 }

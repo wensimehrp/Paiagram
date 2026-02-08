@@ -1,8 +1,10 @@
 use super::{Navigatable, Tab};
-use crate::entry::{EntryQuery, TravelMode};
+use crate::entry::{AdjustEntryMode, EntryModeAdjustment, EntryQuery, TravelMode};
 use crate::route::Route;
 use crate::trip::class::DisplayedStroke;
-use bevy::{ecs::system::RunSystemOnce, prelude::*};
+use crate::ui::widgets::buttons;
+use crate::units::time::Duration;
+use bevy::prelude::*;
 use egui::{Align2, Color32, FontId, Id, Margin, Painter, Pos2, Rect, Sense, Ui, Vec2};
 use instant::Instant;
 use moonshine_core::prelude::MapEntities;
@@ -41,6 +43,8 @@ pub struct DiagramTab {
     last_draw_ms: f32,
     #[serde(skip, default)]
     last_gpu_prep_ms: f32,
+    #[serde(skip, default)]
+    handle_drag_delta: Option<f32>,
 }
 
 impl PartialEq for DiagramTab {
@@ -66,6 +70,7 @@ impl DiagramTab {
             last_frame_ms: 0.0,
             last_draw_ms: 0.0,
             last_gpu_prep_ms: 0.0,
+            handle_drag_delta: None,
         }
     }
     pub fn time_view(&self, rect: egui::Rect) -> (std::ops::Range<i64>, f64) {
@@ -259,13 +264,19 @@ impl Tab for DiagramTab {
                         Color32::from_white_alpha(s)
                     },
                 );
+                let show_button = self.zoom.x.min(self.zoom.y) > 0.002;
+                let button_strength = ui
+                    .ctx()
+                    .animate_bool(ui.id().with("all buttons animation"), show_button);
                 if let Some((idx, rects)) = selected_idx_rect {
                     let trip = &trip_line_buf[idx];
                     let stroke = egui::Stroke {
                         width: trip.stroke.width + 3.0 * selection_strength * trip.stroke.width,
                         color: trip.stroke.color.get(ui.visuals().dark_mode),
                     };
-                    for (p_group, e_group) in trip.points.iter().zip(trip.entries.iter()) {
+                    for (i, (p_group, e_group)) in
+                        trip.points.iter().zip(trip.entries.iter()).enumerate()
+                    {
                         let mut points = Vec::with_capacity(p_group.len() * 4);
                         for segment in p_group.iter() {
                             points.extend(segment.iter().copied());
@@ -273,9 +284,22 @@ impl Tab for DiagramTab {
                         if points.len() >= 2 {
                             painter.line(points, stroke);
                         }
-                        for (points, e) in p_group.iter().zip(e_group.iter().copied()) {
+                        for (j, (points, e)) in
+                            p_group.iter().zip(e_group.iter().copied()).enumerate()
+                        {
                             world
-                                .run_system_cached_with(draw_handles, (points, e, &mut painter))
+                                .run_system_cached_with(
+                                    draw_handles,
+                                    (
+                                        points,
+                                        e,
+                                        (i, j),
+                                        ui,
+                                        &mut painter,
+                                        self.zoom.x,
+                                        button_strength,
+                                    ),
+                                )
                                 .unwrap();
                         }
                     }
@@ -390,40 +414,190 @@ fn handle_selection(drawn_trips: &[DrawnTrip], pos: Pos2) -> Option<SelectedItem
 }
 
 fn draw_handles(
-    (InRef(p), In(e), InMut(painter)): (InRef<[Pos2]>, In<Entity>, InMut<Painter>),
+    (InRef(p), In(e), In(salt), InMut(ui), InMut(mut painter), In(zoom_x), In(strength)): (
+        InRef<[Pos2]>,
+        In<Entity>,
+        In<impl std::hash::Hash + Copy>,
+        InMut<Ui>,
+        InMut<Painter>,
+        In<f32>,
+        In<f32>,
+    ),
     entry_q: Query<EntryQuery>,
+    name_q: Query<&Name>,
+    mut commands: Commands,
+    mut prev_drag_delta: Local<Option<f32>>,
 ) {
     let entry = entry_q.get(e).unwrap();
-    if entry.is_derived() {
+    if entry.is_derived() || strength <= 0.1 {
         return;
     }
-    painter.circle(
-        p[1],
-        4.0,
-        if matches!(entry.mode.arr, TravelMode::Flexible) {
-            Color32::YELLOW
-        } else {
-            Color32::WHITE
-        },
-        egui::Stroke {
-            width: 1.0,
-            color: Color32::BLACK,
-        },
-    );
-    painter.circle(
-        p[2],
-        4.0,
-        if matches!(
-            entry.mode.dep.unwrap_or(TravelMode::Flexible),
-            TravelMode::Flexible
-        ) {
-            Color32::YELLOW
-        } else {
-            Color32::WHITE
-        },
-        egui::Stroke {
-            width: 1.0,
-            color: Color32::BLACK,
-        },
-    );
+    const HANDLE_SIZE: f32 = 14.0;
+    const CIRCLE_HANDLE_SIZE: f32 = 7.0 / 12.0 * HANDLE_SIZE;
+    const TRIANGLE_HANDLE_SIZE: f32 = 10.0 / 12.0 * HANDLE_SIZE;
+    const DASH_HANDLE_SIZE: f32 = 9.0 / 12.0 * HANDLE_SIZE;
+
+    let mut arrival_pos = p[1];
+    let departure_pos: Pos2;
+    if (p[1].x - p[2].x).abs() < HANDLE_SIZE {
+        let midpoint_x = (p[1].x + p[2].x) / 2.0;
+        arrival_pos.x = midpoint_x - HANDLE_SIZE / 2.0;
+        let mut pos = p[2];
+        pos.x = midpoint_x + HANDLE_SIZE / 2.0;
+        departure_pos = pos;
+    } else {
+        departure_pos = p[2];
+    }
+
+    let handle_stroke = egui::Stroke {
+        width: 2.5,
+        color: Color32::BLACK.linear_multiply(strength),
+    };
+
+    let arrival_rect = Rect::from_center_size(arrival_pos, Vec2::splat(HANDLE_SIZE));
+    let arrival_id = ui.id().with((e, "arr", salt));
+    let arrival_response = ui.interact(arrival_rect, arrival_id, Sense::click_and_drag());
+    let arrival_fill = if arrival_response.hovered() {
+        Color32::GRAY
+    } else {
+        Color32::WHITE
+    }
+    .linear_multiply(strength);
+    match entry.mode.arr {
+        TravelMode::At(_) => buttons::circle_button_shape(
+            &mut painter,
+            arrival_pos,
+            CIRCLE_HANDLE_SIZE,
+            handle_stroke,
+            arrival_fill,
+        ),
+        TravelMode::For(_) => buttons::dash_button_shape(
+            &mut painter,
+            arrival_pos,
+            DASH_HANDLE_SIZE,
+            handle_stroke,
+            arrival_fill,
+        ),
+        TravelMode::Flexible => buttons::triangle_button_shape(
+            &mut painter,
+            arrival_pos,
+            TRIANGLE_HANDLE_SIZE,
+            handle_stroke,
+            arrival_fill,
+        ),
+    };
+
+    if arrival_response.drag_started() {
+        *prev_drag_delta = None;
+    }
+    if let Some(total_drag_delta) = arrival_response.total_drag_delta() {
+        if zoom_x > f32::EPSILON {
+            let previous_drag_delta = prev_drag_delta.unwrap_or(0.0);
+            let duration = Duration(
+                ((total_drag_delta.x as f64 - previous_drag_delta as f64)
+                    / zoom_x as f64
+                    / TICKS_PER_SECOND as f64) as i32,
+            );
+            if duration != Duration(0) {
+                commands.trigger(AdjustEntryMode {
+                    entity: e,
+                    adj: EntryModeAdjustment::ShiftArrival(duration),
+                });
+                *prev_drag_delta = Some(
+                    previous_drag_delta
+                        + (duration.0 as f64 * TICKS_PER_SECOND as f64 * zoom_x as f64) as f32,
+                );
+            }
+        }
+    }
+    if arrival_response.drag_stopped() {
+        *prev_drag_delta = None;
+    }
+    if arrival_response.dragged() || arrival_response.hovered() {
+        arrival_response.on_hover_ui(|ui| {
+            if let Some(estimate) = entry.estimate {
+                ui.label(estimate.arr.to_string());
+            }
+            ui.label(name_q.get(entry.stop()).map_or("??", |n| n.as_str()));
+        });
+    }
+
+    let dep_sense = match entry.mode.dep {
+        Some(TravelMode::Flexible) | None => Sense::click(),
+        _ => Sense::click_and_drag(),
+    };
+    let departure_rect = Rect::from_center_size(departure_pos, Vec2::splat(HANDLE_SIZE));
+    let departure_id = ui.id().with((e, "dep", salt));
+    let departure_response = ui.interact(departure_rect, departure_id, dep_sense);
+    let departure_fill = if departure_response.hovered() {
+        Color32::GRAY
+    } else {
+        Color32::WHITE
+    }
+    .linear_multiply(strength);
+    match entry.mode.dep {
+        Some(TravelMode::At(_)) => buttons::circle_button_shape(
+            &mut painter,
+            departure_pos,
+            CIRCLE_HANDLE_SIZE,
+            handle_stroke,
+            departure_fill,
+        ),
+        Some(TravelMode::For(_)) => buttons::dash_button_shape(
+            &mut painter,
+            departure_pos,
+            DASH_HANDLE_SIZE,
+            handle_stroke,
+            departure_fill,
+        ),
+        Some(TravelMode::Flexible) => buttons::triangle_button_shape(
+            &mut painter,
+            departure_pos,
+            TRIANGLE_HANDLE_SIZE,
+            handle_stroke,
+            departure_fill,
+        ),
+        None => buttons::double_triangle(
+            &mut painter,
+            departure_pos,
+            DASH_HANDLE_SIZE,
+            handle_stroke,
+            departure_fill,
+        ),
+    };
+
+    if departure_response.drag_started() {
+        *prev_drag_delta = None;
+    }
+    if let Some(total_drag_delta) = departure_response.total_drag_delta() {
+        if zoom_x > f32::EPSILON {
+            let previous_drag_delta = prev_drag_delta.unwrap_or(0.0);
+            let duration = Duration(
+                ((total_drag_delta.x as f64 - previous_drag_delta as f64)
+                    / zoom_x as f64
+                    / TICKS_PER_SECOND as f64) as i32,
+            );
+            if duration != Duration(0) {
+                commands.trigger(AdjustEntryMode {
+                    entity: e,
+                    adj: EntryModeAdjustment::ShiftDeparture(duration),
+                });
+                *prev_drag_delta = Some(
+                    previous_drag_delta
+                        + (duration.0 as f64 * TICKS_PER_SECOND as f64 * zoom_x as f64) as f32,
+                );
+            }
+        }
+    }
+    if departure_response.drag_stopped() {
+        *prev_drag_delta = None;
+    }
+    if departure_response.dragged() || departure_response.hovered() {
+        departure_response.on_hover_ui(|ui| {
+            if let Some(estimate) = entry.estimate {
+                ui.label(estimate.dep.to_string());
+            }
+            ui.label(name_q.get(entry.stop()).map_or("??", |n| n.as_str()));
+        });
+    }
 }

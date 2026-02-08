@@ -1,4 +1,8 @@
-use crate::trip::TripQuery;
+use crate::{
+    entry::EntryQuery,
+    station::{PlatformQuery, StationQuery},
+    trip::TripQuery,
+};
 
 use super::Tab;
 use bevy::prelude::*;
@@ -31,8 +35,24 @@ impl TripTab {
     }
 }
 
-fn show_trip((InMut(ui), InMut(tab)): (InMut<Ui>, InMut<TripTab>), trip_q: Query<TripQuery>) {
+fn show_trip(
+    (InMut(ui), InMut(tab)): (InMut<Ui>, InMut<TripTab>),
+    trip_q: Query<TripQuery>,
+    entry_q: Query<EntryQuery>,
+    platform_q: Query<PlatformQuery>,
+    station_q: Query<StationQuery>,
+) {
     let trip = trip_q.get(tab.trip_entity).unwrap();
     ui.heading(trip.name.as_str());
     ui.label(trip.schedule.len().to_string());
+    egui::Grid::new(ui.id().with("lskdfjlsdkjflkdsjf"))
+        .num_columns(1)
+        .show(ui, |ui| {
+            for it in entry_q.iter_many(trip.schedule) {
+                let platform = platform_q.get(it.stop()).unwrap();
+                let station = platform.station(&station_q);
+                ui.label(station.name.as_str());
+                ui.end_row();
+            }
+        });
 }

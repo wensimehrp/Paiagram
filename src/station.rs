@@ -61,9 +61,9 @@ pub struct StationQuery {
     station: &'static Station,
     platforms: &'static Platforms,
     entries: &'static StationEntries,
-    name: &'static Name,
+    pub name: &'static Name,
     is_external_station: Option<&'static IsExternalStation>,
-    position: &'static crate::graph::Node,
+    pub position: &'static crate::graph::Node,
     stroke: &'static DisplayedStroke,
 }
 
@@ -108,9 +108,19 @@ impl<'w, 's> StationQueryItem<'w, 's> {
 #[derive(QueryData)]
 pub struct PlatformQuery {
     entity: Entity,
-    name: &'static Name,
+    pub name: &'static Name,
     station: AnyOf<(&'static Station, &'static ChildOf)>,
-    entries: &'static PlatformEntries,
+    pub entries: &'static PlatformEntries,
+}
+
+impl<'w, 'q> PlatformQueryItem<'w, 'q> {
+    pub fn station<'a>(&self, station_q: &'a Query<StationQuery>) -> StationQueryItem<'a, 'a> {
+        match self.station {
+            (Some(_), _) => station_q.get(self.entity).unwrap(),
+            (None, Some(parent)) => station_q.get(parent.parent()).unwrap(),
+            (None, None) => unreachable!(),
+        }
+    }
 }
 
 fn update_station_position(
