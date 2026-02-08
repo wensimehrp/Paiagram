@@ -72,10 +72,12 @@ pub fn calc(
         let first_visible = heights
             .iter()
             .position(|(_, h)| *h > vertical_visible.start)
-            .or_else(|| heights.iter().rposition(|(_, h)| *h <= vertical_visible.start));
-        let last_visible = heights
-            .iter()
-            .rposition(|(_, h)| *h < vertical_visible.end);
+            .or_else(|| {
+                heights
+                    .iter()
+                    .rposition(|(_, h)| *h <= vertical_visible.start)
+            });
+        let last_visible = heights.iter().rposition(|(_, h)| *h < vertical_visible.end);
         if let (Some(first_visible), Some(mut last_visible)) = (first_visible, last_visible) {
             let first_visible = first_visible.saturating_sub(2);
             last_visible = (last_visible + 1).min(heights.len() - 1);
@@ -126,14 +128,15 @@ pub fn calc(
     }
 
     let use_full_trip = true;
-    let stations_for_layout = if use_full_trip { &heights[..] } else { visible_stations };
+    let stations_for_layout = if use_full_trip {
+        &heights[..]
+    } else {
+        visible_stations
+    };
     let visible_station_set: EntityHashSet = visible_stations.iter().map(|(s, _)| *s).collect();
     let mut station_index_map: HashMap<Entity, Vec<usize>> = HashMap::new();
     for (idx, (station, _)) in stations_for_layout.iter().enumerate() {
-        station_index_map
-            .entry(*station)
-            .or_default()
-            .push(idx);
+        station_index_map.entry(*station).or_default().push(idx);
     }
 
     let mut trip_data = Vec::with_capacity(tab.trips.len());
@@ -142,10 +145,7 @@ pub fn calc(
             continue;
         };
 
-        let stroke = class_strokes
-            .get(trip.class.0)
-            .copied()
-            .unwrap_or_default();
+        let stroke = class_strokes.get(trip.class.0).copied().unwrap_or_default();
 
         let mut trip_entries_vec: Vec<TripEntryData> = Vec::new();
         for entry_entity in trip.schedule.iter() {

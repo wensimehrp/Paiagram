@@ -14,7 +14,6 @@ use strum::IntoEnumIterator;
 #[derive(Serialize, Deserialize, Clone, Default, MapEntities, PartialEq)]
 pub struct SettingsTab;
 
-
 impl Tab for SettingsTab {
     const NAME: &'static str = "Settings";
     fn main_display(&mut self, world: &mut World, ui: &mut Ui) {

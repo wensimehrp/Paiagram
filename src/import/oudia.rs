@@ -86,7 +86,7 @@ pub fn load_oud2(
     msg: On<super::LoadOuDiaSecond>,
     mut commands: Commands,
     mut graph: ResMut<Graph>,
-    mut class_resource: Res<ClassResource>,
+    class_resource: Res<ClassResource>,
 ) {
     let str = &msg.content;
     graph.clear();

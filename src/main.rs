@@ -18,8 +18,10 @@ mod ui;
 mod settings;
 // mod status_bar_text;
 mod entry;
+mod export;
 mod import;
 mod interval;
+mod rw;
 mod station;
 mod trip;
 mod vehicle;
@@ -50,7 +52,11 @@ impl PaiagramApp {
                     egui::Id::new("wgpu_target_format"),
                     render_state.target_format,
                 );
-                let msaa_samples = if cfg!(target_arch = "wasm32") { 1_u32 } else { 4_u32 };
+                let msaa_samples = if cfg!(target_arch = "wasm32") {
+                    1_u32
+                } else {
+                    4_u32
+                };
                 data.insert_temp(egui::Id::new("wgpu_msaa_samples"), msaa_samples);
             });
         }
@@ -72,6 +78,7 @@ impl PaiagramApp {
             class::ClassPlugin,
             bevy::diagnostic::FrameTimeDiagnosticsPlugin::default(),
             bevy::diagnostic::LogDiagnosticsPlugin::default(),
+            rw::read::ReadPlugin,
             // rw_data::RwDataPlugin,
             // search::SearchPlugin,
             // settings::SettingsPlugin,

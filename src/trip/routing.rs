@@ -2,7 +2,9 @@ use bevy::prelude::*;
 use itertools::Itertools;
 
 use crate::{
-    entry::{EntryBundle, EntryEstimate, EntryMode, EntryQuery, EntryStop, IsDerivedEntry, TravelMode},
+    entry::{
+        EntryBundle, EntryEstimate, EntryMode, EntryQuery, EntryStop, IsDerivedEntry, TravelMode,
+    },
     graph::Graph,
     interval::IntervalQuery,
     trip::{Trip, TripClass, TripQuery, TripSchedule},
@@ -105,7 +107,6 @@ fn insert(
     }
     collected.len()
 }
-
 
 /// Parameters used for unwinding the flexible stack.
 enum UnwindParams {

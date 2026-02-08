@@ -34,6 +34,7 @@
           libGL
           libudev-zero
           alsa-lib
+          dbus
         ];
 
         rustToolchain = pkgs.rust-bin.stable.latest.default.override {

@@ -113,11 +113,7 @@ struct Config {
     default_colors: HashMap<String, String>,
 }
 
-pub fn load_qetrc(
-    event: On<super::LoadQETRC>,
-    mut commands: Commands,
-    mut graph: ResMut<Graph>,
-) {
+pub fn load_qetrc(event: On<super::LoadQETRC>, mut commands: Commands, mut graph: ResMut<Graph>) {
     let root: Root = match serde_json::from_str(&event.content) {
         Ok(r) => r,
         // TODO: handle warning better
@@ -208,13 +204,14 @@ pub fn load_qetrc(
                 .iter_mut()
                 .flat_map(|(a, d, _)| std::iter::once(a).chain(std::iter::once(d))),
         );
-        let trip_class = super::make_class(&service.service_type, &mut class_map, &mut commands, || {
-            ClassBundle {
-                class: Class::default(),
-                name: Name::new(service.service_type.clone()),
-                stroke: DisplayedStroke::default(),
-            }
-        });
+        let trip_class =
+            super::make_class(&service.service_type, &mut class_map, &mut commands, || {
+                ClassBundle {
+                    class: Class::default(),
+                    name: Name::new(service.service_type.clone()),
+                    stroke: DisplayedStroke::default(),
+                }
+            });
         let trip_entity = commands
             .spawn(TripBundle::new(
                 &service.service_number[0],

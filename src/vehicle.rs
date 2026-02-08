@@ -12,5 +12,5 @@ pub struct Vehicle {
 #[derive(QueryData)]
 pub struct VehicleQuery {
     name: &'static Name,
-    vehicle: &'static Vehicle
+    vehicle: &'static Vehicle,
 }

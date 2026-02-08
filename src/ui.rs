@@ -5,13 +5,19 @@ mod tabs;
 mod widgets;
 
 use bevy::prelude::*;
-use egui::{Ui, Context, CornerRadius, Frame, Id, Margin, ScrollArea};
+use egui::{Context, CornerRadius, Frame, Id, Margin, ScrollArea, Ui};
 use egui_dock::{DockArea, DockState, TabViewer};
 use moonshine_core::prelude::MapEntities;
 use serde::{Deserialize, Serialize};
 use tabs::{Tab, all_tabs::*};
 
-use crate::{import, route::Route, settings::UserPreferences, trip::Trip, vehicle::Vehicle};
+use crate::{
+    import::{self, LoadOuDiaSecond, LoadQETRC},
+    route::Route,
+    settings::UserPreferences,
+    trip::Trip,
+    vehicle::Vehicle,
+};
 
 pub struct UiPlugin;
 impl Plugin for UiPlugin {
@@ -235,8 +241,31 @@ pub fn show_ui(ctx: &Context, world: &mut World) {
             let res = ui.button("More...");
             egui::Popup::menu(&res).show(|ui| {
                 if ui.button("Read OUD2").clicked() {
-                    world.commands().trigger(import::LoadOuDiaSecond {
-                        content: include_str!("../sample.oud2").to_string(),
+                    world.commands().trigger(crate::rw::read::ReadFile {
+                        title: "Load OuDiaSecond Files".to_string(),
+                        extensions: vec![(
+                            "OuDiaSecond Files".to_string(),
+                            vec!["oud2".to_string()],
+                        )],
+                        callback: |c, s| {
+                            c.trigger(LoadOuDiaSecond {
+                                content: String::from_utf8(s).unwrap(),
+                            });
+                        },
+                    });
+                }
+                if ui.button("Read qETRC").clicked() {
+                    world.commands().trigger(crate::rw::read::ReadFile {
+                        title: "Load qETRC Files".to_string(),
+                        extensions: vec![(
+                            "qETRC Files".to_string(),
+                            vec!["json".to_string(), "pyetgr".to_string()],
+                        )],
+                        callback: |c, s| {
+                            c.trigger(LoadQETRC {
+                                content: String::from_utf8(s).unwrap(),
+                            });
+                        },
                     });
                 }
             });

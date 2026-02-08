@@ -1,4 +1,3 @@
-
 use crate::interval::Interval;
 use crate::interval::IntervalQuery;
 use crate::station::Station;

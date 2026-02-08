@@ -6,18 +6,22 @@ use crate::{
     interval::Interval,
     station::Station,
     trip::class::{Class, ClassBundle},
-    units::{distance::Distance, time::{Duration, TimetableTime}},
+    units::{
+        distance::Distance,
+        time::{Duration, TimetableTime},
+    },
 };
 use bevy::{platform::collections::HashMap, prelude::*};
 use moonshine_core::kind::*;
 
-mod qetrc;
 mod oudia;
+mod qetrc;
 
 pub struct ImportPlugin;
 impl Plugin for ImportPlugin {
     fn build(&self, app: &mut App) {
-        app.add_observer(qetrc::load_qetrc).add_observer(oudia::load_oud2);
+        app.add_observer(qetrc::load_qetrc)
+            .add_observer(oudia::load_oud2);
     }
 }
 
