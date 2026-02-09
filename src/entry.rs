@@ -87,8 +87,23 @@ impl EntryEstimate {
 /// Bundle for easy spawning
 #[derive(Bundle)]
 pub struct EntryBundle {
-    pub time: EntryMode,
-    pub stop: EntryStop,
+    time: EntryMode,
+    stop: EntryStop,
+}
+
+impl EntryBundle {
+    pub fn new(arr: TravelMode, dep: Option<TravelMode>, stop: Entity) -> Self {
+        Self {
+            time: EntryMode { arr, dep },
+            stop: EntryStop(stop),
+        }
+    }
+    pub fn new_derived(stop: Entity) -> Self {
+        Self {
+            time: EntryMode::new_derived(),
+            stop: EntryStop(stop)
+        }
+    }
 }
 
 #[derive(QueryData)]

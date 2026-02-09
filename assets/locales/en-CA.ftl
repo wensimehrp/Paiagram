@@ -31,8 +31,10 @@ tab-start-description = A high-performance transport timetable diagramming and a
 tab-settings = Settings
 # Diagram tab
 tab-diagram = Diagram
-tab-diagram-export-typst-diagram = Export to diagram (Typst)
-tab-diagram-export-typst-diagram-desc = Export the current diagram to a Typst diagram. The exported diagram can be further customized in your preferred editor.
+tab-diagram-save-typst-module = Save Typst module
+tab-diagram-save-typst-module-desc = You must use the Typst module to render your JSON data.
+tab-diagram-export-json-data = Export diagram as JSON
+tab-diagram-export-json-data-desc = Export the current diagram to JSON.
 tab-diagram-export-typst-diagram-output = Typst output length: {$bytes} bytes
 tab-diagram-export-typst-timetable = Export to timetable (Typst)
 tab-diagram-export-typst-timetable-desc = Export the current diagram's timetable to a Typst timetable. The exported timetable can be further customized in your preferred editor.

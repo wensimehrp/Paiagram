@@ -1,4 +1,4 @@
-use crate::units::time::TimetableTime;
+use crate::{station::Station, units::time::TimetableTime};
 
 use super::TICKS_PER_SECOND;
 use bevy::prelude::*;
@@ -9,8 +9,9 @@ pub fn draw_station_lines<'a>(
     painter: &mut Painter,
     screen_rect: Rect,
     zoom: f32,
-    to_draw: impl Iterator<Item = (Entity, f32, &'a str)>,
+    to_draw: impl Iterator<Item = (Entity, f32)>,
     pixels_per_point: f32,
+    world: &World, // FIXME: make this a system afterwards
 ) {
     // TODO: implement per-station stroke
     let stroke = Stroke {
@@ -18,7 +19,7 @@ pub fn draw_station_lines<'a>(
         color: Color32::GRAY,
     };
     // Guard against invalid zoom
-    for (_, height, name) in to_draw {
+    for (station_entity, height) in to_draw {
         let mut draw_height = (height - vertical_offset) * zoom + screen_rect.top();
         stroke.round_center_to_pixel(pixels_per_point, &mut draw_height);
         painter.hline(
@@ -27,7 +28,9 @@ pub fn draw_station_lines<'a>(
             stroke,
         );
         let layout = painter.layout_no_wrap(
-            name.to_string(),
+            world
+                .get::<Name>(station_entity)
+                .map_or("<Unknown>".to_string(), Name::to_string),
             egui::FontId::proportional(13.0),
             Color32::WHITE,
         );

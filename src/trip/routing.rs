@@ -87,13 +87,7 @@ fn insert(
     let mut collected = Vec::with_capacity(route.len());
     for n in route {
         let e = commands
-            .spawn((
-                EntryBundle {
-                    time: EntryMode::new_derived(),
-                    stop: EntryStop(n),
-                },
-                IsDerivedEntry,
-            ))
+            .spawn((EntryBundle::new_derived(n), IsDerivedEntry))
             .id();
         collected.push(e)
     }

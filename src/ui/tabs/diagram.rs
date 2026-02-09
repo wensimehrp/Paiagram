@@ -1,24 +1,42 @@
 use super::{Navigatable, Tab};
-use crate::entry::{AdjustEntryMode, EntryModeAdjustment, EntryQuery, TravelMode};
+use crate::entry::{
+    AdjustEntryMode, EntryBundle, EntryMode, EntryModeAdjustment, EntryQuery, EntryStop, TravelMode,
+};
+use crate::export::ExportObject;
 use crate::route::Route;
+use crate::station::Station;
 use crate::trip::class::DisplayedStroke;
+use crate::trip::{Trip, TripBundle, TripClass};
 use crate::ui::widgets::buttons;
-use crate::units::time::Duration;
+use crate::units::time::{Duration, TimetableTime};
 use bevy::prelude::*;
-use egui::{Align2, Color32, FontId, Id, Margin, Painter, Pos2, Rect, Sense, Ui, Vec2};
+use egui::epaint::TextShape;
+use egui::{Align2, Color32, FontId, Id, Margin, NumExt, Painter, Pos2, Rect, Sense, Ui, Vec2};
+use egui_i18n::tr;
 use instant::Instant;
+use itertools::Itertools;
 use moonshine_core::prelude::MapEntities;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-mod calc_trip_lines;
+pub mod calc_trip_lines;
 mod draw_lines;
 mod gpu_draw;
 
+/// The current selected item
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
 enum SelectedItem {
+    /// A timetable entry
     TimetableEntry { entry: Entity, parent: Entity },
+    /// An interval connecting two stations
     Interval(Entity, Entity),
+    /// A station
     Station(Entity),
+    /// A trip
+    ExtendingTrip {
+        entry: Entity,
+        previous_pos: Option<(TimetableTime, usize)>,
+        current_entry: Option<Entity>,
+    },
 }
 
 // TODO: dt & td graphs
@@ -43,8 +61,6 @@ pub struct DiagramTab {
     last_draw_ms: f32,
     #[serde(skip, default)]
     last_gpu_prep_ms: f32,
-    #[serde(skip, default)]
-    handle_drag_delta: Option<f32>,
 }
 
 impl PartialEq for DiagramTab {
@@ -70,7 +86,6 @@ impl DiagramTab {
             last_frame_ms: 0.0,
             last_draw_ms: 0.0,
             last_gpu_prep_ms: 0.0,
-            handle_drag_delta: None,
         }
     }
     pub fn time_view(&self, rect: egui::Rect) -> (std::ops::Range<i64>, f64) {
@@ -138,18 +153,74 @@ impl Navigatable for DiagramTab {
 }
 
 /// Time and time-canvas related constant. How many ticks is a second
-const TICKS_PER_SECOND: i64 = 100;
+pub const TICKS_PER_SECOND: i64 = 100;
 
 #[derive(Debug)]
 pub struct DrawnTrip {
-    entity: Entity,
-    stroke: DisplayedStroke,
-    points: Vec<Vec<[Pos2; 4]>>,
-    entries: Vec<Vec<Entity>>,
+    pub entity: Entity,
+    pub stroke: DisplayedStroke,
+    pub points: Vec<Vec<[Pos2; 4]>>,
+    pub entries: Vec<Vec<Entity>>,
 }
 
 impl Tab for DiagramTab {
     const NAME: &'static str = "Diagram";
+    fn export_display(&mut self, world: &mut World, ui: &mut Ui) {
+        use crate::export::typst_diagram::{TypstDiagram, TypstModule};
+        ui.strong(tr!("tab-diagram-save-typst-module"));
+        ui.label(tr!("tab-diagram-save-typst-module-desc"));
+        if ui.button(tr!("export")).clicked() {
+            TypstModule.export_to_file(world, ());
+        }
+        ui.strong(tr!("tab-diagram-export-json-data"));
+        ui.label(tr!("tab-diagram-export-json-data"));
+        if ui.button(tr!("export")).clicked() {
+            TypstDiagram.export_to_file(world, (self.route_entity, &self.trips));
+        }
+    }
+    fn edit_display(&mut self, world: &mut World, ui: &mut Ui) {
+        match self.selected {
+            None => {
+                ui.strong("New Trip");
+                ui.label("Create a new trip from scratch");
+                if ui.button("Create a new trip").clicked() {
+                    let default_class = world
+                        .resource::<crate::class::ClassResource>()
+                        .default_class;
+                    let new_trip = world
+                        .commands()
+                        .spawn(TripBundle::new("New Trip", TripClass(default_class)))
+                        .id();
+                    self.trips.push(new_trip);
+                    self.selected = Some(SelectedItem::ExtendingTrip {
+                        entry: new_trip,
+                        previous_pos: None,
+                        current_entry: None,
+                    })
+                }
+            }
+            Some(SelectedItem::ExtendingTrip {
+                entry,
+                previous_pos,
+                current_entry,
+            }) => {
+                if ui.button("Complete").clicked() {
+                    self.selected = None
+                }
+            }
+            Some(SelectedItem::TimetableEntry { entry: _, parent }) => {
+                if ui.button("Extend").clicked() {
+                    self.selected = Some(SelectedItem::ExtendingTrip {
+                        entry: parent,
+                        previous_pos: None,
+                        current_entry: None,
+                    })
+                }
+            }
+            Some(SelectedItem::Interval(a, b)) => {}
+            Some(SelectedItem::Station(s)) => {}
+        }
+    }
     fn main_display(&mut self, world: &mut World, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             ui.checkbox(&mut self.show_perf, "Perf");
@@ -161,17 +232,34 @@ impl Tab for DiagramTab {
                 let route = world
                     .get::<Route>(self.route_entity)
                     .expect("Entity should have a route");
-                let station_heights: Vec<_> = route
-                    .iter()
-                    .map(|(e, h)| (e, h, world.get::<Name>(e).unwrap().as_str()))
-                    .collect();
-                self.max_height = station_heights.last().map_or(0.0, |(_, h, _)| *h);
-                let _route_name = world.get::<Name>(self.route_entity).unwrap().as_str();
                 let (response, mut painter) =
                     ui.allocate_painter(ui.available_size_before_wrap(), Sense::click_and_drag());
-                // note that order matters here: navigation must be handled before anything else is calculated
                 self.handle_navigation(ui, &response);
+                let station_heights: Vec<_> = route.iter().collect();
                 let (visible_ticks, ticks_per_screen_unit) = self.time_view(response.rect);
+                let to_screen_y = |h: f32| (h - self.y_offset) * self.zoom.y + response.rect.top();
+                let screen_x_to_seconds = |screen_x: f32| -> TimetableTime {
+                    let ticks = (screen_x - response.rect.left()) as f64 * ticks_per_screen_unit
+                        + self.x_offset as f64;
+                    TimetableTime((ticks / TICKS_PER_SECOND as f64) as i32)
+                };
+                let ticks_to_screen_x = |ticks: i64| -> f32 {
+                    let base = (ticks - self.x_offset) as f64 / ticks_per_screen_unit;
+                    response.rect.left() + base as f32
+                };
+                let station_heights_screen_iter = station_heights.iter().copied().map(|(e, h)| {
+                    let height = to_screen_y(h);
+                    (e, height)
+                });
+                if station_heights.is_empty() {
+                    return;
+                }
+                self.max_height = station_heights.last().map_or(0.0, |(_, h)| *h);
+                // note that order matters here: navigation must be handled before anything else is calculated
+                let show_button = self.zoom.x.min(self.zoom.y) > 0.0005;
+                let button_strength = ui
+                    .ctx()
+                    .animate_bool(ui.id().with("all buttons animation"), show_button);
                 draw_lines::draw_station_lines(
                     self.y_offset,
                     &mut painter,
@@ -179,6 +267,7 @@ impl Tab for DiagramTab {
                     self.zoom.y,
                     station_heights.iter().copied(),
                     ui.pixels_per_point(),
+                    &world, // FIXME: make this a system instead of passing world into it
                 );
                 draw_lines::draw_time_lines(
                     self.x_offset,
@@ -195,19 +284,118 @@ impl Tab for DiagramTab {
                     )
                     .unwrap();
                 let mut trip_line_buf = Vec::new();
+                // Calculate the visible trains
+                let calc_context = calc_trip_lines::CalcContext::from_tab(
+                    &self,
+                    response.rect,
+                    ticks_per_screen_unit,
+                    visible_ticks.clone(),
+                );
                 world
                     .run_system_cached_with(
                         calc_trip_lines::calc,
-                        (
-                            &mut trip_line_buf,
-                            &self,
-                            response.rect,
-                            ticks_per_screen_unit,
-                            visible_ticks.clone(),
-                        ),
+                        (&mut trip_line_buf, calc_context, &self.trips),
                     )
                     .unwrap();
-                if response.clicked()
+                if let Some(SelectedItem::ExtendingTrip {
+                    entry,
+                    previous_pos,
+                    current_entry,
+                }) = &mut self.selected
+                    && let Some(interact_pos) = ui.input(|r| r.pointer.hover_pos())
+                {
+                    let mut new_screen_pos: Pos2 = interact_pos;
+                    let new_station_idx: usize;
+                    let idx = station_heights_screen_iter
+                        .clone()
+                        .rposition(|(_, height)| height < interact_pos.y)
+                        .unwrap_or(0);
+                    let (_, prev_height) = station_heights[idx];
+                    let prev_height = to_screen_y(prev_height);
+                    if let Some((_, next_height)) = station_heights.get(idx + 1).copied()
+                        && interact_pos.y > (to_screen_y(next_height) + prev_height) / 2.0
+                    {
+                        new_screen_pos.y = to_screen_y(next_height);
+                        new_station_idx = idx + 1
+                    } else {
+                        new_screen_pos.y = prev_height;
+                        new_station_idx = idx;
+                    }
+                    let new_station_entity = station_heights[new_station_idx].0;
+                    // Smoothing animations
+                    // see https://github.com/rerun-io/egui_tiles/blob/f86273ba8ff9f44a9817067abbf977ba5cdcb9fa/src/tree.rs#L438-L493
+                    let mut requires_repaint = false;
+                    let dt = ui.ctx().input(|input| input.stable_dt).at_most(0.1);
+                    let smoothed_screen_pos = ui.ctx().data_mut(|data| {
+                        let smoothed: &mut Pos2 = data
+                            .get_temp_mut_or(ui.id().with("new line animation"), new_screen_pos);
+                        let t = egui::emath::exponential_smooth_factor(0.9, 0.05, dt);
+                        *smoothed = smoothed.lerp(new_screen_pos, t);
+                        let diff = smoothed.distance(new_screen_pos);
+                        if diff < 1.0 {
+                            *smoothed = new_screen_pos
+                        } else {
+                            requires_repaint = true
+                        }
+                        *smoothed
+                    });
+                    if requires_repaint {
+                        ui.ctx().request_repaint();
+                    }
+                    let stroke = DisplayedStroke::default().egui_stroke(ui.visuals().dark_mode);
+                    painter.line_segment([smoothed_screen_pos, interact_pos], stroke);
+                    let station_name = world.get::<Name>(new_station_entity).unwrap();
+                    painter.circle_filled(smoothed_screen_pos, 4.0, ui.visuals().text_color());
+                    painter.text(
+                        smoothed_screen_pos,
+                        Align2::LEFT_BOTTOM,
+                        station_name,
+                        FontId::proportional(13.0),
+                        ui.visuals().text_color(),
+                    );
+                    if let Some((t, idx)) = *previous_pos {
+                        let (_, h) = station_heights[idx];
+                        let prev_pos = Pos2::new(
+                            ticks_to_screen_x(t.0 as i64 * TICKS_PER_SECOND),
+                            to_screen_y(h),
+                        );
+                        painter.line_segment([prev_pos, smoothed_screen_pos], stroke);
+                    }
+                    if response.clicked() {
+                        let hovered_time = screen_x_to_seconds(interact_pos.x);
+                        let should_spawn = match current_entry {
+                            Some(current_entry_unwrapped) => {
+                                let stop = world
+                                    .get::<EntryStop>(*current_entry_unwrapped)
+                                    .unwrap()
+                                    .entity();
+                                if stop == new_station_entity {
+                                    let mut mode = world
+                                        .get_mut::<EntryMode>(*current_entry_unwrapped)
+                                        .unwrap();
+                                    mode.dep = Some(TravelMode::At(hovered_time));
+                                    *current_entry = None;
+                                    false
+                                } else {
+                                    true
+                                }
+                            }
+                            None => true,
+                        };
+                        if should_spawn {
+                            let new_child = world
+                                .spawn(EntryBundle::new(
+                                    TravelMode::At(hovered_time),
+                                    None,
+                                    new_station_entity,
+                                ))
+                                .id();
+                            world.entity_mut(*entry).add_child(new_child);
+                            *current_entry = Some(new_child);
+                        }
+                        *previous_pos = Some((hovered_time, new_station_idx))
+                    }
+                } else if response.clicked()
                     && let Some(pos) = response.interact_pointer_pos()
                 {
                     if self.selected.is_some() {
@@ -230,6 +418,7 @@ impl Tab for DiagramTab {
                             &mut painter,
                             self.selected,
                             &mut selected_idx_rect,
+                            button_strength,
                         ),
                     )
                     .unwrap();
@@ -264,10 +453,6 @@ impl Tab for DiagramTab {
                         Color32::from_white_alpha(s)
                     },
                 );
-                let show_button = self.zoom.x.min(self.zoom.y) > 0.002;
-                let button_strength = ui
-                    .ctx()
-                    .animate_bool(ui.id().with("all buttons animation"), show_button);
                 if let Some((idx, rects)) = selected_idx_rect {
                     let trip = &trip_line_buf[idx];
                     let stroke = egui::Stroke {
@@ -344,13 +529,15 @@ impl Tab for DiagramTab {
 /// Takes a buffer the calculate trains
 
 fn draw_trip_lines<'a>(
-    (InRef(trips), InMut(ui), InMut(painter), In(selected), InMut(ret)): (
+    (InRef(trips), InMut(ui), InMut(painter), In(selected), InMut(ret), In(strength)): (
         InRef<[DrawnTrip]>,
         InMut<Ui>,
         InMut<Painter>,
         In<Option<SelectedItem>>,
         InMut<Option<(usize, Vec<Rect>)>>,
+        In<f32>,
     ),
+    name_q: Query<&Name, With<Trip>>,
 ) {
     for (idx, trip) in trips.iter().enumerate() {
         if let Some(SelectedItem::TimetableEntry { entry, parent }) = selected
@@ -370,7 +557,39 @@ fn draw_trip_lines<'a>(
                 })
                 .collect();
             *ret = Some((idx, rects));
-            return;
+            break;
+        }
+    }
+    if strength < 0.1 {
+        return;
+    }
+    for trip in trips.iter() {
+        let draw_color = trip
+            .stroke
+            .color
+            .get(ui.visuals().dark_mode)
+            .gamma_multiply(strength);
+        let name = name_q.get(trip.entity).unwrap().to_string();
+        let galley = painter.layout_no_wrap(name, egui::FontId::proportional(14.0), draw_color);
+        for ([.., curr], [next, ..]) in trip.points.iter().filter_map(|it| {
+            if let (Some(a), Some(b)) = (it.get(0), it.get(1)) {
+                return Some((a, b));
+            } else {
+                return None;
+            }
+        }) {
+            let angle = (*next - *curr).angle();
+            let text_shape = TextShape::new(
+                *curr
+                    - Vec2 {
+                        y: galley.rect.height(),
+                        x: 0.0,
+                    },
+                galley.clone(),
+                draw_color,
+            )
+            .with_angle_and_anchor(angle, Align2::LEFT_BOTTOM);
+            painter.add(text_shape);
         }
     }
 }

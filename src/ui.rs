@@ -1,7 +1,7 @@
 //! # UI
 //! Module for the user interface.
 
-mod tabs;
+pub mod tabs;
 mod widgets;
 
 use bevy::prelude::*;
@@ -216,6 +216,7 @@ impl Default for AdditionalUiState {
 
 struct AdditionalTabViewer<'w> {
     world: &'w mut World,
+    focused_tab: Option<&'w mut MainTab>,
 }
 
 impl<'w> TabViewer for AdditionalTabViewer<'w> {
@@ -229,7 +230,21 @@ impl<'w> TabViewer for AdditionalTabViewer<'w> {
         .into()
     }
     fn ui(&mut self, ui: &mut Ui, tab: &mut Self::Tab) {
-        ui.label("Hello");
+        let Some(ref mut focused) = self.focused_tab else {
+            ui.label("Nothing focused");
+            return;
+        };
+        match *tab {
+            AdditionalTab::Edit => {
+                for_all_tabs!(focused, t, t.edit_display(self.world, ui))
+            }
+            AdditionalTab::Properties => {
+                for_all_tabs!(focused, t, t.display_display(self.world, ui))
+            }
+            AdditionalTab::Export => {
+                for_all_tabs!(focused, t, t.export_display(self.world, ui))
+            }
+        }
     }
 }
 
@@ -290,33 +305,36 @@ pub fn show_ui(ctx: &Context, world: &mut World) {
         s.tab_bar.corner_radius = CornerRadius::ZERO;
         s
     };
-    world.resource_scope(|mut world, mut aus: Mut<AdditionalUiState>| {
-        let mut tab_viewer = AdditionalTabViewer { world: &mut world };
-        egui::SidePanel::right("right panel")
-            .frame(Frame::default())
-            .show(ctx, |ui| {
-                DockArea::new(&mut aus)
-                    .show_close_buttons(false)
-                    .show_leaf_close_all_buttons(false)
-                    .show_leaf_collapse_buttons(false)
-                    .id(Id::new("right panel content"))
-                    .style(make_dock_style(ui))
-                    .show_inside(ui, &mut tab_viewer);
-            });
-    });
-    world.resource_scope(|mut world, mut mus: Mut<MainUiState>| {
-        let mut tab_viewer = MainTabViewer { world: &mut world };
-        egui::CentralPanel::default()
-            .frame(Frame::default())
-            .show(ctx, |ui| {
-                DockArea::new(&mut mus)
-                    .show_leaf_close_all_buttons(false)
-                    .id(Id::new("main panel content"))
-                    .show_add_buttons(true)
-                    .show_add_popup(true)
-                    .style(make_dock_style(ui))
-                    .show_inside(ui, &mut tab_viewer);
-            });
+    world.resource_scope(|world, mut aus: Mut<AdditionalUiState>| {
+        world.resource_scope(|mut world, mut mus: Mut<MainUiState>| {
+            let mut tab_viewer = AdditionalTabViewer {
+                world: &mut world,
+                focused_tab: mus.find_active_focused().map(|(_, f)| f),
+            };
+            egui::SidePanel::right("right panel")
+                .frame(Frame::default())
+                .show(ctx, |ui| {
+                    DockArea::new(&mut aus)
+                        .show_close_buttons(false)
+                        .show_leaf_close_all_buttons(false)
+                        .show_leaf_collapse_buttons(false)
+                        .id(Id::new("right panel content"))
+                        .style(make_dock_style(ui))
+                        .show_inside(ui, &mut tab_viewer);
+                });
+            let mut tab_viewer = MainTabViewer { world: &mut world };
+            egui::CentralPanel::default()
+                .frame(Frame::default())
+                .show(ctx, |ui| {
+                    DockArea::new(&mut mus)
+                        .show_leaf_close_all_buttons(false)
+                        .id(Id::new("main panel content"))
+                        .show_add_buttons(true)
+                        .show_add_popup(true)
+                        .style(make_dock_style(ui))
+                        .show_inside(ui, &mut tab_viewer);
+                });
+        })
     });
 }
 

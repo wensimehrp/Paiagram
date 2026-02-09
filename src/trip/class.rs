@@ -26,10 +26,16 @@ impl Default for DisplayedStroke {
 }
 
 impl DisplayedStroke {
-    fn egui_stroke(&self, is_dark: bool) -> egui::Stroke {
+    pub fn egui_stroke(&self, is_dark: bool) -> egui::Stroke {
         egui::Stroke {
             color: self.color.get(is_dark),
             width: self.width,
+        }
+    }
+    pub fn neutral(is_dark: bool) -> egui::Stroke {
+        egui::Stroke {
+            color: DisplayColor::Predefined(PredefinedColor::Neutral).get(is_dark),
+            width: 1.0
         }
     }
 }

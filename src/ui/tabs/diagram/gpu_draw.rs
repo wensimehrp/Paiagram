@@ -1,11 +1,9 @@
-use std::sync::Arc;
-
+use super::DrawnTrip;
 use bytemuck::cast_slice;
 use eframe::egui_wgpu::{self, wgpu};
 use egui::{Pos2, Rect, mutex::Mutex};
 use egui_wgpu::CallbackTrait;
-
-use super::DrawnTrip;
+use std::sync::Arc;
 
 pub struct GpuTripRendererState {
     pub(crate) batches: Vec<GpuTripBatch>,

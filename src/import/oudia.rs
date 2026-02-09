@@ -12,6 +12,7 @@ use crate::{
 };
 use bevy::{platform::collections::HashMap, prelude::*};
 use egui_i18n::tr;
+use itertools::Itertools;
 use moonshine_core::kind::*;
 use pest::Parser;
 use pest_derive::Parser;
@@ -158,39 +159,39 @@ pub fn load_oud2(
                 commands
                     .spawn(TripBundle::new(&train.name, TripClass(trip_class.entity())))
                     .with_children(|bundle| {
-                        for (i, time) in train.times.into_iter().enumerate() {
-                            let Some(time) = time else {
-                                continue;
-                            };
-                            if matches!(time.passing_mode, PassingMode::NoOperation) {
-                                continue;
-                            }
-                            let station_index = match train.direction {
-                                Direction::Down => i,
-                                Direction::Up => station_instances.len() - 1 - i,
-                            };
-                            let stop = station_instances[station_index];
-                            let arrival = if matches!(time.passing_mode, PassingMode::Pass) {
+                        for (stop, mut times) in &train
+                            .times
+                            .into_iter()
+                            .enumerate()
+                            .filter_map(|(i, time)| {
+                                let station_index = match train.direction {
+                                    Direction::Down => i,
+                                    Direction::Up => station_instances.len() - 1 - i,
+                                };
+                                let stop = station_instances[station_index];
+                                Some((stop, time?))
+                            })
+                            .chunk_by(|(s, _t)| *s)
+                        {
+                            let (_, first_time) = times.next().unwrap();
+                            let last_time = times.last().map(|(_, t)| t).unwrap_or(first_time);
+                            let arrival = if matches!(first_time.passing_mode, PassingMode::Pass) {
                                 TravelMode::Flexible
                             } else {
-                                time.arrival
+                                first_time
+                                    .arrival
                                     .map_or(TravelMode::Flexible, |t| TravelMode::At(t))
                             };
-                            let departure = if matches!(time.passing_mode, PassingMode::Pass) {
+                            let departure = if matches!(last_time.passing_mode, PassingMode::Pass) {
                                 None
                             } else {
                                 Some(
-                                    time.departure
+                                    last_time
+                                        .departure
                                         .map_or(TravelMode::Flexible, |t| TravelMode::At(t)),
                                 )
                             };
-                            bundle.spawn(EntryBundle {
-                                time: EntryMode {
-                                    arr: arrival,
-                                    dep: departure,
-                                },
-                                stop: EntryStop(stop.entity()),
-                            });
+                            bundle.spawn(EntryBundle::new(arrival, departure, stop.entity()));
                         }
                     });
             }
