@@ -26,7 +26,13 @@ impl Plugin for UiPlugin {
             .init_resource::<AdditionalUiState>()
             .add_plugins(bevy_inspector_egui::DefaultInspectorConfigPlugin)
             .add_message::<OpenOrFocus>()
-            .add_systems(Update, open_or_focus_tab.run_if(on_message::<OpenOrFocus>));
+            .add_systems(
+                Update,
+                (
+                    open_or_focus_tab.run_if(on_message::<OpenOrFocus>),
+                    reorder_tabs_by_priority,
+                ),
+            );
     }
 }
 
@@ -103,6 +109,9 @@ fn open_or_focus_tab(mut tabs: MessageReader<OpenOrFocus>, mut state: ResMut<Mai
     }
 }
 
+fn reorder_tabs_by_priority(mut state: ResMut<MainUiState>) {
+    // TODO
+}
 struct MainTabViewer<'w> {
     world: &'w mut World,
 }

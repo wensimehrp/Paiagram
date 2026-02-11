@@ -101,7 +101,7 @@ impl EntryBundle {
     pub fn new_derived(stop: Entity) -> Self {
         Self {
             time: EntryMode::new_derived(),
-            stop: EntryStop(stop)
+            stop: EntryStop(stop),
         }
     }
 }

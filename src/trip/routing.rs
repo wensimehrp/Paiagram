@@ -16,90 +16,113 @@ use crate::{
 
 pub struct RoutingPlugin;
 
+#[derive(Default, Resource)]
+struct RecalculateCandidates(Vec<Entity>);
+
 impl Plugin for RoutingPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(
-            PostUpdate,
-            (recalculate_route_on_new_trip, recalculate_estimate).chain(),
-        );
+        app.add_message::<AddEntryToTrip>()
+            .init_resource::<RecalculateCandidates>()
+            .add_observer(remove_entries)
+            .add_systems(PreUpdate, edit_entries)
+            .add_systems(Update, clear_route)
+            .add_systems(PostUpdate, recalculate_route)
+            .add_systems(Last, recalculate_estimate);
     }
 }
 
-/// Recalculate the route when a new trip is created.
-pub fn recalculate_route_on_new_trip(
-    new_trips: Query<Entity, (Added<Trip>, With<TripClass>)>,
-    graph: Res<Graph>,
-    entry_q: Query<EntryQuery>,
-    interval_q: Query<IntervalQuery>,
-    trip_q: Query<&TripSchedule, With<TripClass>>,
-    mut commands: Commands,
+#[derive(Message, Clone, Copy)]
+pub struct AddEntryToTrip {
+    pub trip: Entity,
+    pub entry: Entity,
+}
+
+fn remove_entries(
+    trigger: On<Remove, EntryMode>,
+    filter: Query<&ChildOf, Without<IsDerivedEntry>>,
+    mut recalculate_candidates: ResMut<RecalculateCandidates>,
 ) {
-    for trip_entity in new_trips.iter() {
-        let schedule = trip_q
-            .get(trip_entity)
-            .expect("New trip entity must have a schedule");
-        let original = schedule.iter().collect::<Vec<_>>();
-        let mut inserted = 0usize;
-        for (idx, (source_entry, target_entry)) in original.iter().tuple_windows().enumerate() {
-            let source = entry_q
-                .get(*source_entry)
-                .expect("Trip schedule entry must exist");
-            let target = entry_q
-                .get(*target_entry)
-                .expect("Trip schedule entry must exist");
-            if source.is_derived() || target.is_derived() {
-                continue;
-            }
-            let added = insert(
-                source.stop(),
-                target.stop(),
-                &graph,
-                trip_entity,
-                idx + 1 + inserted,
-                &[],
-                &mut commands,
-                &interval_q,
-            );
-            inserted += added;
+    if let Ok(p) = filter.get(trigger.entity) {
+        recalculate_candidates.0.push(p.parent())
+    }
+}
+
+fn edit_entries(
+    mut added_entries: MessageReader<AddEntryToTrip>,
+    mut commands: Commands,
+    mut candidates: ResMut<RecalculateCandidates>,
+) {
+    for AddEntryToTrip { trip, entry } in added_entries.read().copied() {
+        commands.entity(trip).add_child(entry);
+        candidates.0.push(trip);
+    }
+}
+
+fn clear_route(
+    added_trips: Query<Entity, (Added<TripSchedule>, With<Trip>)>,
+    changed_entries: Query<&ChildOf, (Changed<EntryStop>, Without<IsDerivedEntry>)>,
+    trips_q: Query<&TripSchedule, With<Trip>>,
+    derived_q: Query<Entity, With<IsDerivedEntry>>,
+    mut commands: Commands,
+    mut recalculate_candidates: ResMut<RecalculateCandidates>,
+) {
+    let recalculate_candidate = added_trips
+        .iter()
+        .chain(changed_entries.iter().map(|it| it.parent()));
+    recalculate_candidates.0.extend(recalculate_candidate);
+    recalculate_candidates.0.sort_unstable();
+    recalculate_candidates.0.dedup();
+    for trip_entity in recalculate_candidates.0.iter().copied() {
+        let schedule = trips_q.get(trip_entity).unwrap();
+        for e in derived_q.iter_many(schedule) {
+            commands.entity(e).despawn();
         }
     }
 }
 
-fn insert(
-    source: Entity,
-    target: Entity,
-    graph: &Graph,
-    schedule: Entity,
-    insertion_index: usize,
-    to_despawn: &[Entity],
-    commands: &mut Commands,
-    interval_q: &Query<IntervalQuery>,
-) -> usize {
-    let Some((_, mut route)) = graph.route_between(source, target, interval_q) else {
-        return 0;
-    };
-    if route.first().copied() == Some(source) {
-        route.remove(0);
+fn recalculate_route(
+    trips_q: Query<&TripSchedule, With<Trip>>,
+    entry_q: Query<EntryQuery>,
+    interval_q: Query<IntervalQuery>,
+    graph: Res<Graph>,
+    mut commands: Commands,
+    mut recalculate_candidates: ResMut<RecalculateCandidates>,
+) {
+    for trip_entity in recalculate_candidates.0.drain(..) {
+        let schedule = trips_q.get(trip_entity).unwrap();
+        let original = schedule.iter().collect::<Vec<_>>();
+        let mut inserted = 0usize;
+        for (idx, (source_entry, target_entry)) in original.iter().tuple_windows().enumerate() {
+            let source = entry_q.get(*source_entry).unwrap();
+            let target = entry_q.get(*target_entry).unwrap();
+            debug_assert!(!(source.is_derived() || target.is_derived()));
+            let Some((_, mut route)) =
+                graph.route_between(source.stop(), target.stop(), &interval_q)
+            else {
+                continue;
+            };
+            if route.first().copied() == Some(source.stop()) {
+                route.remove(0);
+            }
+            if route.last().copied() == Some(target.stop()) {
+                route.pop();
+            }
+            if route.is_empty() {
+                continue;
+            }
+            let mut collected = Vec::with_capacity(route.len());
+            for node in route {
+                let entry = commands
+                    .spawn((EntryBundle::new_derived(node), IsDerivedEntry))
+                    .id();
+                collected.push(entry);
+            }
+            commands
+                .entity(trip_entity)
+                .insert_children(idx + 1 + inserted, &collected);
+            inserted += collected.len();
+        }
     }
-    if route.last().copied() == Some(target) {
-        route.pop();
-    }
-    let mut collected = Vec::with_capacity(route.len());
-    for n in route {
-        let e = commands
-            .spawn((EntryBundle::new_derived(n), IsDerivedEntry))
-            .id();
-        collected.push(e)
-    }
-    if !collected.is_empty() {
-        commands
-            .entity(schedule)
-            .insert_children(insertion_index, &collected);
-    }
-    for e in to_despawn.iter().copied() {
-        commands.entity(e).despawn();
-    }
-    collected.len()
 }
 
 /// Parameters used for unwinding the flexible stack.

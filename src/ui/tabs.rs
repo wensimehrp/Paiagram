@@ -40,12 +40,56 @@ pub mod all_tabs {
 }
 
 pub trait Navigatable {
+    type XOffset;
+    type YOffset;
     fn zoom_x(&self) -> f32;
     fn zoom_y(&self) -> f32;
     fn set_zoom(&mut self, zoom_x: f32, zoom_y: f32);
     fn offset_x(&self) -> f64;
     fn offset_y(&self) -> f32;
     fn set_offset(&mut self, offset_x: f64, offset_y: f32);
+    fn x_from_f64(&self, value: f64) -> Self::XOffset;
+    fn x_to_f64(&self, value: Self::XOffset) -> f64;
+    // TODO: put in the XOffset: From<f64> and Into<f64> constraints
+    fn y_from_f32(&self, value: f32) -> Self::YOffset;
+    fn y_to_f32(&self, value: Self::YOffset) -> f32;
+    fn screen_pos_to_xy(&self, pos: egui::Pos2) -> (Self::XOffset, Self::YOffset) {
+        let rect = self.visible_rect();
+        let x_per_screen_unit = self.x_to_f64(self.x_per_screen_unit());
+        let y_per_screen_unit = self.y_to_f32(self.y_per_screen_unit());
+        let x = self.offset_x() + (pos.x - rect.left()) as f64 * x_per_screen_unit;
+        let y = self.offset_y() + (pos.y - rect.top()) * y_per_screen_unit;
+        (self.x_from_f64(x), self.y_from_f32(y))
+    }
+    fn xy_to_screen_pos(&self, x: Self::XOffset, y: Self::YOffset) -> egui::Pos2 {
+        let rect = self.visible_rect();
+        let x_per_screen_unit = self.x_to_f64(self.x_per_screen_unit());
+        let y_per_screen_unit = self.y_to_f32(self.y_per_screen_unit());
+        let x = self.x_to_f64(x);
+        let y = self.y_to_f32(y);
+        let screen_x = rect.left() + ((x - self.offset_x()) / x_per_screen_unit) as f32;
+        let screen_y = rect.top() + (y - self.offset_y()) / y_per_screen_unit;
+        egui::Pos2::new(screen_x, screen_y)
+    }
+    fn visible_rect(&self) -> egui::Rect;
+    fn visible_x(&self) -> std::ops::Range<Self::XOffset> {
+        let width = self.visible_rect().width() as f64;
+        let start = self.offset_x();
+        let end = start + width * self.x_to_f64(self.x_per_screen_unit());
+        self.x_from_f64(start)..self.x_from_f64(end)
+    }
+    fn visible_y(&self) -> std::ops::Range<Self::YOffset> {
+        let height = self.visible_rect().height();
+        let start = self.offset_y();
+        let end = start + height * self.y_to_f32(self.y_per_screen_unit());
+        self.y_from_f32(start)..self.y_from_f32(end)
+    }
+    fn x_per_screen_unit(&self) -> Self::XOffset {
+        self.x_from_f64(1.0 / self.zoom_x().max(f32::EPSILON) as f64)
+    }
+    fn y_per_screen_unit(&self) -> Self::YOffset {
+        self.y_from_f32(1.0 / self.zoom_y().max(f32::EPSILON))
+    }
     fn allow_axis_zoom(&self) -> bool {
         false
     }
@@ -112,25 +156,30 @@ pub trait Tab: MapEntities {
     fn post_render(&mut self, _world: &mut World) {}
     /// The main display of the tab.
     fn main_display(&mut self, world: &mut World, ui: &mut Ui);
+    /// The edit display
     fn edit_display(&mut self, _world: &mut World, ui: &mut Ui) {
         ui.label(Self::NAME);
         ui.label(tr!("side-panel-edit-fallback-1"));
         ui.label(tr!("side-panel-edit-fallback-2"));
     }
+    /// The details display
     fn display_display(&mut self, _world: &mut World, ui: &mut Ui) {
         ui.label(Self::NAME);
         ui.label(tr!("side-panel-details-fallback-1"));
         ui.label(tr!("side-panel-details-fallback-2"));
     }
+    /// The export display
     fn export_display(&mut self, _world: &mut World, ui: &mut Ui) {
         ui.label(Self::NAME);
         ui.label(tr!("side-panel-export-fallback-1"));
         ui.label(tr!("side-panel-export-fallback-2"));
     }
+    /// The title of the tab
     fn title(&self) -> WidgetText {
         Self::NAME.into()
     }
-    fn on_tab_button(&self, world: &mut World, response: &Response) {
+    /// What to do when clicking on the tab button
+    fn on_tab_button(&self, _world: &mut World, _response: &Response) {
         // if response.hovered() {
         //     let title_text = self.title();
         //     let s = &mut world.resource_mut::<StatusBarState>().tooltip;
@@ -140,16 +189,24 @@ pub trait Tab: MapEntities {
         //     s.push_str(title_text.text());
         // }
     }
+    /// The id of the tab
     fn id(&self) -> Id {
         Id::new(Self::NAME)
     }
+    /// Whether if the tab allows scrolling
     fn scroll_bars(&self) -> [bool; 2] {
         [true; 2]
     }
+    /// The frame of the tab
     fn frame(&self) -> egui::Frame {
         egui::Frame::default().inner_margin(egui::Margin::same(6))
     }
+    /// The icon of the tab
     fn icon(&self) -> Cow<'static, str> {
         "🖳".into()
+    }
+    /// The rendering order of the tab. Lower = higher priority
+    fn rendering_order(&self) -> isize {
+        0
     }
 }

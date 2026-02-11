@@ -16,8 +16,14 @@ impl Tab for ClassesTab {
 }
 
 fn list_classes(InMut(ui): InMut<Ui>, mut class_q: Query<(&Class, &Name, &mut DisplayedStroke)>) {
-    for (class, name, mut stroke) in class_q.iter_mut() {
-        ui.label(name.as_str());
-        ui.add(&mut stroke.color);
-    }
+    egui::Grid::new("class grid").num_columns(2).show(ui, |ui| {
+        for (class, name, mut stroke) in class_q.iter_mut() {
+            ui.label(name.as_str());
+            let res = ui.button("Edit Color");
+            egui::Popup::menu(&res).show(|ui| {
+                ui.add(&mut stroke.color);
+            });
+            ui.end_row();
+        }
+    });
 }

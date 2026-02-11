@@ -1,20 +1,22 @@
 use super::{Navigatable, Tab};
 use crate::entry::{
-    AdjustEntryMode, EntryBundle, EntryMode, EntryModeAdjustment, EntryQuery, EntryStop, TravelMode,
+    AdjustEntryMode, EntryBundle, EntryEstimate, EntryMode, EntryModeAdjustment, EntryQuery,
+    EntryStop, IsDerivedEntry, TravelMode,
 };
 use crate::export::ExportObject;
 use crate::route::Route;
-use crate::station::Station;
 use crate::trip::class::DisplayedStroke;
-use crate::trip::{Trip, TripBundle, TripClass};
+use crate::trip::routing::AddEntryToTrip;
+use crate::trip::{Trip, TripBundle, TripClass, TripSchedule};
 use crate::ui::widgets::buttons;
 use crate::units::time::{Duration, TimetableTime};
 use bevy::prelude::*;
 use egui::epaint::TextShape;
-use egui::{Align2, Color32, FontId, Id, Margin, NumExt, Painter, Pos2, Rect, Sense, Ui, Vec2};
+use egui::{
+    Align2, Color32, FontId, Id, Margin, NumExt, Painter, Pos2, Rect, Sense, Stroke, Ui, Vec2,
+};
 use egui_i18n::tr;
 use instant::Instant;
-use itertools::Itertools;
 use moonshine_core::prelude::MapEntities;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -31,10 +33,11 @@ enum SelectedItem {
     Interval(Entity, Entity),
     /// A station
     Station(Entity),
-    /// A trip
+    /// Extending a trip
     ExtendingTrip {
         entry: Entity,
         previous_pos: Option<(TimetableTime, usize)>,
+        last_time: Option<TimetableTime>,
         current_entry: Option<Entity>,
     },
 }
@@ -43,13 +46,9 @@ enum SelectedItem {
 #[derive(Serialize, Deserialize, Clone)]
 pub struct DiagramTab {
     /// X offset as ticks
-    x_offset: i64,
-    y_offset: f32,
-    zoom: Vec2,
+    navi: DiagramTabNavigation,
     selected: Option<SelectedItem>,
     route_entity: Entity,
-    // cache zone
-    max_height: f32,
     trips: Vec<Entity>,
     #[serde(skip, default)]
     gpu_state: Arc<egui::mutex::Mutex<gpu_draw::GpuTripRendererState>>,
@@ -58,9 +57,34 @@ pub struct DiagramTab {
     #[serde(skip, default)]
     last_frame_ms: f32,
     #[serde(skip, default)]
-    last_draw_ms: f32,
-    #[serde(skip, default)]
     last_gpu_prep_ms: f32,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct DiagramTabNavigation {
+    x_offset: i64,
+    y_offset: f32,
+    zoom: Vec2,
+    #[serde(skip, default = "default_visible_rect")]
+    visible_rect: Rect,
+    // cache zone
+    max_height: f32,
+}
+
+impl Default for DiagramTabNavigation {
+    fn default() -> Self {
+        Self {
+            x_offset: 0,
+            y_offset: 0.0,
+            zoom: Vec2::splat(1.0),
+            visible_rect: Rect::NOTHING,
+            max_height: 0.0,
+        }
+    }
+}
+
+fn default_visible_rect() -> Rect {
+    Rect::NOTHING
 }
 
 impl PartialEq for DiagramTab {
@@ -72,30 +96,17 @@ impl PartialEq for DiagramTab {
 impl DiagramTab {
     pub fn new(route_entity: Entity) -> Self {
         Self {
-            x_offset: 0,
-            y_offset: 0.0,
-            zoom: Vec2 { x: 0.0001, y: 0.2 },
+            navi: DiagramTabNavigation::default(),
             selected: None,
             route_entity,
-            max_height: 0.0,
             trips: Vec::new(),
             gpu_state: Arc::new(egui::mutex::Mutex::new(
                 gpu_draw::GpuTripRendererState::default(),
             )),
             show_perf: false,
             last_frame_ms: 0.0,
-            last_draw_ms: 0.0,
             last_gpu_prep_ms: 0.0,
         }
-    }
-    pub fn time_view(&self, rect: egui::Rect) -> (std::ops::Range<i64>, f64) {
-        let width = rect.width().max(1.0);
-        let zoom_x = self.zoom.x.max(f32::EPSILON);
-
-        let visible_ticks = self.x_offset..self.x_offset + (width as f64 / zoom_x as f64) as i64;
-        let ticks_per_screen_unit = (visible_ticks.end - visible_ticks.start) as f64 / width as f64;
-
-        (visible_ticks, ticks_per_screen_unit)
     }
 }
 
@@ -105,7 +116,10 @@ impl MapEntities for DiagramTab {
     }
 }
 
-impl Navigatable for DiagramTab {
+impl Navigatable for DiagramTabNavigation {
+    type XOffset = i64;
+    type YOffset = f32;
+
     fn zoom_x(&self) -> f32 {
         self.zoom.x
     }
@@ -124,6 +138,54 @@ impl Navigatable for DiagramTab {
     fn set_offset(&mut self, offset_x: f64, offset_y: f32) {
         self.x_offset = offset_x.round() as i64;
         self.y_offset = offset_y;
+    }
+    fn x_from_f64(&self, value: f64) -> Self::XOffset {
+        value.trunc() as i64
+    }
+    fn x_to_f64(&self, value: Self::XOffset) -> f64 {
+        value as f64
+    }
+    fn y_from_f32(&self, value: f32) -> Self::YOffset {
+        value
+    }
+    fn y_to_f32(&self, value: Self::YOffset) -> f32 {
+        value
+    }
+    fn screen_pos_to_xy(&self, pos: egui::Pos2) -> (Self::XOffset, Self::YOffset) {
+        let rect = self.visible_rect;
+        let ticks_per_screen_unit = 1.0 / self.zoom_x().max(f32::EPSILON) as f64;
+        let x = self.offset_x() + (pos.x - rect.left()) as f64 * ticks_per_screen_unit;
+        let y = self.offset_y() + (pos.y - rect.top()) / self.zoom_y().max(f32::EPSILON);
+        (x.trunc() as i64, y)
+    }
+    fn xy_to_screen_pos(&self, x: Self::XOffset, y: Self::YOffset) -> egui::Pos2 {
+        let rect = self.visible_rect;
+        let ticks_per_screen_unit = 1.0 / self.zoom_x().max(f32::EPSILON) as f64;
+        let screen_x = rect.left() + ((x as f64 - self.offset_x()) / ticks_per_screen_unit) as f32;
+        let screen_y = rect.top() + (y - self.offset_y()) * self.zoom_y().max(f32::EPSILON);
+        egui::Pos2::new(screen_x, screen_y)
+    }
+    fn visible_rect(&self) -> egui::Rect {
+        self.visible_rect
+    }
+    fn x_per_screen_unit(&self) -> Self::XOffset {
+        (1.0 / self.zoom_x().max(f32::EPSILON) as f64) as i64
+    }
+    fn visible_x(&self) -> std::ops::Range<Self::XOffset> {
+        let width = self.visible_rect().width() as f64;
+        let ticks_per_screen_unit = 1.0 / self.zoom_x().max(f32::EPSILON) as f64;
+        let start = self.x_offset;
+        let end = start + (width * ticks_per_screen_unit).ceil() as i64;
+        start..end
+    }
+    fn visible_y(&self) -> std::ops::Range<Self::YOffset> {
+        let height = self.visible_rect.height();
+        let start = self.offset_y();
+        let end = start + height / self.zoom_y().max(f32::EPSILON);
+        start..end
+    }
+    fn y_per_screen_unit(&self) -> Self::YOffset {
+        1.0 / self.zoom_y().max(f32::EPSILON)
     }
     fn allow_axis_zoom(&self) -> bool {
         true
@@ -165,6 +227,9 @@ pub struct DrawnTrip {
 
 impl Tab for DiagramTab {
     const NAME: &'static str = "Diagram";
+    fn id(&self) -> Id {
+        Id::new(self.route_entity)
+    }
     fn export_display(&mut self, world: &mut World, ui: &mut Ui) {
         use crate::export::typst_diagram::{TypstDiagram, TypstModule};
         ui.strong(tr!("tab-diagram-save-typst-module"));
@@ -196,6 +261,7 @@ impl Tab for DiagramTab {
                         entry: new_trip,
                         previous_pos: None,
                         current_entry: None,
+                        last_time: None,
                     })
                 }
             }
@@ -203,17 +269,55 @@ impl Tab for DiagramTab {
                 entry,
                 previous_pos,
                 current_entry,
+                last_time,
             }) => {
+                let mut name = world.get_mut::<Name>(entry).unwrap();
+                name.mutate(|n| {
+                    ui.text_edit_singleline(n);
+                });
                 if ui.button("Complete").clicked() {
                     self.selected = None
                 }
             }
-            Some(SelectedItem::TimetableEntry { entry: _, parent }) => {
+            Some(SelectedItem::TimetableEntry { entry, parent }) => {
+                let is_derived = world.get::<IsDerivedEntry>(entry).is_some();
+                if is_derived && ui.button("Convert to explicit").clicked() {
+                    world.entity_mut(entry).remove::<IsDerivedEntry>();
+                } else if !is_derived && ui.button("Delete").clicked() {
+                    world.entity_mut(entry).despawn();
+                }
+                let mut name = world.get_mut::<Name>(parent).unwrap();
+                name.mutate(|n| {
+                    ui.text_edit_singleline(n);
+                });
                 if ui.button("Extend").clicked() {
+                    let mut last_time = None;
+                    world
+                        .run_system_cached_with(
+                            |(InMut(last_time), In(parent)): (
+                                InMut<Option<TimetableTime>>,
+                                In<Entity>,
+                            ),
+                             schedule_q: Query<&TripSchedule, With<Trip>>,
+                             entry_q: Query<&EntryEstimate>| {
+                                let Ok(schedule) = schedule_q.get(parent) else {
+                                    return;
+                                };
+                                let Some(time) =
+                                    schedule.iter().rev().find_map(|e| entry_q.get(e).ok())
+                                else {
+                                    return;
+                                };
+                                *last_time = Some(time.dep);
+                            },
+                            (&mut last_time, parent),
+                        )
+                        .unwrap();
                     self.selected = Some(SelectedItem::ExtendingTrip {
                         entry: parent,
                         previous_pos: None,
                         current_entry: None,
+                        last_time,
                     })
                 }
             }
@@ -222,57 +326,60 @@ impl Tab for DiagramTab {
         }
     }
     fn main_display(&mut self, world: &mut World, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
-            ui.checkbox(&mut self.show_perf, "Perf");
-        });
         egui::Frame::canvas(ui.style())
             .inner_margin(Margin::ZERO)
+            .outer_margin(Margin::ZERO)
+            .stroke(Stroke::NONE)
             .show(ui, |ui| {
-                let frame_start = Instant::now();
                 let route = world
                     .get::<Route>(self.route_entity)
                     .expect("Entity should have a route");
                 let (response, mut painter) =
                     ui.allocate_painter(ui.available_size_before_wrap(), Sense::click_and_drag());
-                self.handle_navigation(ui, &response);
+                self.navi.visible_rect = response.rect;
+                self.navi.handle_navigation(ui, &response);
                 let station_heights: Vec<_> = route.iter().collect();
-                let (visible_ticks, ticks_per_screen_unit) = self.time_view(response.rect);
-                let to_screen_y = |h: f32| (h - self.y_offset) * self.zoom.y + response.rect.top();
+                if station_heights.is_empty() {
+                    return;
+                }
+                self.navi.max_height = station_heights.last().map_or(0.0, |(_, h)| *h);
+                let ticks_per_screen_unit = 1.0 / self.navi.zoom_x().max(f32::EPSILON) as f64;
+                let visible_ticks = self.navi.visible_x();
+                let to_screen_y = |h: f32| {
+                    self.navi.visible_rect.top()
+                        + (h - self.navi.offset_y()) * self.navi.zoom_y().max(f32::EPSILON)
+                };
                 let screen_x_to_seconds = |screen_x: f32| -> TimetableTime {
-                    let ticks = (screen_x - response.rect.left()) as f64 * ticks_per_screen_unit
-                        + self.x_offset as f64;
+                    let ticks = self.navi.offset_x()
+                        + (screen_x - self.navi.visible_rect.left()) as f64 * ticks_per_screen_unit;
                     TimetableTime((ticks / TICKS_PER_SECOND as f64) as i32)
                 };
                 let ticks_to_screen_x = |ticks: i64| -> f32 {
-                    let base = (ticks - self.x_offset) as f64 / ticks_per_screen_unit;
-                    response.rect.left() + base as f32
+                    self.navi.visible_rect.left()
+                        + ((ticks as f64 - self.navi.offset_x()) / ticks_per_screen_unit) as f32
                 };
                 let station_heights_screen_iter = station_heights.iter().copied().map(|(e, h)| {
                     let height = to_screen_y(h);
                     (e, height)
                 });
-                if station_heights.is_empty() {
-                    return;
-                }
-                self.max_height = station_heights.last().map_or(0.0, |(_, h)| *h);
                 // note that order matters here: navigation must be handled before anything else is calculated
-                let show_button = self.zoom.x.min(self.zoom.y) > 0.0005;
+                let show_button = self.navi.zoom.x.min(self.navi.zoom.y) > 0.001;
                 let button_strength = ui
                     .ctx()
                     .animate_bool(ui.id().with("all buttons animation"), show_button);
                 draw_lines::draw_station_lines(
-                    self.y_offset,
+                    self.navi.y_offset,
                     &mut painter,
-                    response.rect,
-                    self.zoom.y,
+                    self.navi.visible_rect,
+                    self.navi.zoom.y,
                     station_heights.iter().copied(),
                     ui.pixels_per_point(),
                     &world, // FIXME: make this a system instead of passing world into it
                 );
                 draw_lines::draw_time_lines(
-                    self.x_offset,
+                    self.navi.x_offset,
                     &mut painter,
-                    response.rect,
+                    self.navi.visible_rect,
                     ticks_per_screen_unit,
                     &visible_ticks,
                     ui.pixels_per_point(),
@@ -287,7 +394,7 @@ impl Tab for DiagramTab {
                 // Calculate the visible trains
                 let calc_context = calc_trip_lines::CalcContext::from_tab(
                     &self,
-                    response.rect,
+                    self.navi.visible_rect,
                     ticks_per_screen_unit,
                     visible_ticks.clone(),
                 );
@@ -301,8 +408,13 @@ impl Tab for DiagramTab {
                     entry,
                     previous_pos,
                     current_entry,
+                    last_time,
                 }) = &mut self.selected
-                    && let Some(interact_pos) = ui.input(|r| r.pointer.hover_pos())
+                    && let (Some(interact_pos), is_touch_input) = ui.input(|r| {
+                        let pos = r.pointer.latest_pos().or(r.pointer.interact_pos());
+                        let is_touch = r.any_touches();
+                        (pos, is_touch)
+                    })
                 {
                     let mut new_screen_pos: Pos2 = interact_pos;
                     let new_station_idx: usize;
@@ -326,19 +438,24 @@ impl Tab for DiagramTab {
                     // see https://github.com/rerun-io/egui_tiles/blob/f86273ba8ff9f44a9817067abbf977ba5cdcb9fa/src/tree.rs#L438-L493
                     let mut requires_repaint = false;
                     let dt = ui.ctx().input(|input| input.stable_dt).at_most(0.1);
-                    let smoothed_screen_pos = ui.ctx().data_mut(|data| {
-                        let smoothed: &mut Pos2 = data
-                            .get_temp_mut_or(ui.id().with("new line animation"), new_screen_pos);
+                    let smoothed_screen_y = ui.ctx().data_mut(|data| {
+                        let smoothed: &mut f32 = data
+                            .get_temp_mut_or(ui.id().with("new line animation"), new_screen_pos.y);
                         let t = egui::emath::exponential_smooth_factor(0.9, 0.05, dt);
-                        *smoothed = smoothed.lerp(new_screen_pos, t);
-                        let diff = smoothed.distance(new_screen_pos);
+                        *smoothed = smoothed.lerp(new_screen_pos.y, t);
+                        // *smoothed = smoothed.lerp(new_screen_pos, t);
+                        let diff = (*smoothed - new_screen_pos.y).abs();
                         if diff < 1.0 {
-                            *smoothed = new_screen_pos
+                            *smoothed = new_screen_pos.y
                         } else {
                             requires_repaint = true
                         }
                         *smoothed
                     });
+                    let smoothed_screen_pos = Pos2 {
+                        x: new_screen_pos.x,
+                        y: smoothed_screen_y,
+                    };
                     if requires_repaint {
                         ui.ctx().request_repaint();
                     }
@@ -361,8 +478,23 @@ impl Tab for DiagramTab {
                         );
                         painter.line_segment([prev_pos, smoothed_screen_pos], stroke);
                     }
-                    if response.clicked() {
+                    let add_or_populate_entry = if is_touch_input {
+                        // TODO: show a button instead of using secondary_clicked
+                        response.secondary_clicked()
+                    } else {
+                        response.clicked()
+                    };
+                    if add_or_populate_entry {
                         let hovered_time = screen_x_to_seconds(interact_pos.x);
+                        // normalize the time until the time difference is positive and less than 24 hours.
+                        let normalized_time = if let Some(last_time) = *last_time
+                            && let Some((last_clicked_time, _)) = *previous_pos
+                        {
+                            let diff = last_clicked_time - last_time;
+                            hovered_time - diff
+                        } else {
+                            hovered_time.normalized()
+                        };
                         let should_spawn = match current_entry {
                             Some(current_entry_unwrapped) => {
                                 let stop = world
@@ -373,7 +505,7 @@ impl Tab for DiagramTab {
                                     let mut mode = world
                                         .get_mut::<EntryMode>(*current_entry_unwrapped)
                                         .unwrap();
-                                    mode.dep = Some(TravelMode::At(hovered_time));
+                                    mode.dep = Some(TravelMode::At(normalized_time));
                                     *current_entry = None;
                                     false
                                 } else {
@@ -385,15 +517,19 @@ impl Tab for DiagramTab {
                         if should_spawn {
                             let new_child = world
                                 .spawn(EntryBundle::new(
-                                    TravelMode::At(hovered_time),
+                                    TravelMode::At(normalized_time),
                                     None,
                                     new_station_entity,
                                 ))
                                 .id();
-                            world.entity_mut(*entry).add_child(new_child);
+                            world.write_message(AddEntryToTrip {
+                                trip: *entry,
+                                entry: new_child,
+                            });
                             *current_entry = Some(new_child);
                         }
-                        *previous_pos = Some((hovered_time, new_station_idx))
+                        *previous_pos = Some((hovered_time, new_station_idx));
+                        *last_time = Some(normalized_time);
                     }
                 } else if response.clicked()
                     && let Some(pos) = response.interact_pointer_pos()
@@ -441,8 +577,6 @@ impl Tab for DiagramTab {
                 self.last_gpu_prep_ms = gpu_prep_start.elapsed().as_secs_f32() * 1000.0;
                 let callback = gpu_draw::paint_callback(response.rect, self.gpu_state.clone());
                 painter.add(callback);
-                let draw_start = Instant::now();
-                self.last_draw_ms = draw_start.elapsed().as_secs_f32() * 1000.0;
                 let s = (selection_strength * 0.5 * u8::MAX as f32) as u8;
                 painter.rect_filled(
                     response.rect,
@@ -481,7 +615,7 @@ impl Tab for DiagramTab {
                                         (i, j),
                                         ui,
                                         &mut painter,
-                                        self.zoom.x,
+                                        self.navi.zoom.x,
                                         button_strength.min(selection_strength),
                                     ),
                                 )
@@ -501,11 +635,10 @@ impl Tab for DiagramTab {
                         );
                     }
                 }
-                self.last_frame_ms = frame_start.elapsed().as_secs_f32() * 1000.0;
                 if self.show_perf {
                     let mut text = format!(
-                        "GPU: on\nGPU prep: {:.2} ms\nDraw: {:.2} ms\nFrame: {:.2} ms",
-                        self.last_gpu_prep_ms, self.last_draw_ms, self.last_frame_ms
+                        "GPU: on\nGPU prep: {:.2} ms\nFrame: {:.2} ms",
+                        self.last_gpu_prep_ms, self.last_frame_ms
                     );
                     if let Some(info) = ui
                         .ctx()
@@ -570,7 +703,7 @@ fn draw_trip_lines<'a>(
             .get(ui.visuals().dark_mode)
             .gamma_multiply(strength);
         let name = name_q.get(trip.entity).unwrap().to_string();
-        let galley = painter.layout_no_wrap(name, egui::FontId::proportional(14.0), draw_color);
+        let galley = painter.layout_no_wrap(name, egui::FontId::proportional(13.0), draw_color);
         for ([.., curr], [next, ..]) in trip.points.iter().filter_map(|it| {
             if let (Some(a), Some(b)) = (it.get(0), it.get(1)) {
                 return Some((a, b));

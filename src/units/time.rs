@@ -73,6 +73,18 @@ impl TimetableTime {
             _ => None,
         }
     }
+    /// Return the normalized time that is in 24 hour range
+    #[inline]
+    pub fn normalized(self) -> Self {
+        Self(self.0.rem_euclid(86400))
+    }
+    /// Return the normalized time that is always within 24 hours ahead of the
+    /// current time
+    #[inline]
+    pub fn normalized_ahead(&self, other: TimetableTime) -> Self {
+        let diff = other.0 - self.0;
+        Self(self.0 + diff.rem_euclid(86400))
+    }
 }
 
 impl std::fmt::Display for TimetableTime {

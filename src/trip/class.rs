@@ -35,7 +35,7 @@ impl DisplayedStroke {
     pub fn neutral(is_dark: bool) -> egui::Stroke {
         egui::Stroke {
             color: DisplayColor::Predefined(PredefinedColor::Neutral).get(is_dark),
-            width: 1.0
+            width: 1.0,
         }
     }
 }

@@ -32,9 +32,9 @@ impl CalcContext {
     ) -> Self {
         Self {
             route_entity: tab.route_entity,
-            y_offset: tab.y_offset,
-            zoom_y: tab.zoom.y,
-            x_offset: tab.x_offset,
+            y_offset: tab.navi.y_offset,
+            zoom_y: tab.navi.zoom.y,
+            x_offset: tab.navi.x_offset,
             screen_rect,
             ticks_per_screen_unit,
             visible_ticks,
