@@ -1,4 +1,4 @@
-use crate::{station::Station, units::time::TimetableTime};
+use crate::units::time::TimetableTime;
 
 use super::TICKS_PER_SECOND;
 use bevy::prelude::*;

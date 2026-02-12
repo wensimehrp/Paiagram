@@ -48,7 +48,7 @@ macro_rules! for_all_tabs {
             MainTab::Classes($t) => $body,
             // MainTab::Services($t) => $body,
             // MainTab::Minesweeper($t) => $body,
-            // MainTab::Graph($t) => $body,
+            MainTab::Graph($t) => $body,
             MainTab::Inspector($t) => $body,
             MainTab::Trip($t) => $body,
         }
@@ -66,7 +66,7 @@ pub enum MainTab {
     Classes(ClassesTab),
     // Services(ServicesTab),
     // Minesweeper(MinesweeperTab),
-    // Graph(GraphTab),
+    Graph(GraphTab),
     Inspector(InspectorTab),
     Trip(TripTab),
 }
@@ -138,6 +138,7 @@ impl<'w> TabViewer for MainTabViewer<'w> {
             ("Inspector", MainTab::Inspector(InspectorTab::default())),
             ("Settings", MainTab::Settings(SettingsTab::default())),
             ("Classes", MainTab::Classes(ClassesTab::default())),
+            ("Graph", MainTab::Graph(GraphTab::default())),
         ] {
             if ui.button(s).clicked() {
                 self.world.write_message(OpenOrFocus(t));
