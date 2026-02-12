@@ -1,9 +1,15 @@
-use bevy::prelude::*;
-use egui::{Color32, Margin, Painter, Rect, Sense, Stroke, Vec2};
+use bevy::{ecs::entity::EntityHashMap, prelude::*};
+use egui::{Align2, Color32, FontId, Margin, Painter, Rect, Sense, Stroke, Vec2};
 use moonshine_core::prelude::MapEntities;
+use petgraph::graph::NodeIndex;
 use serde::{Deserialize, Serialize};
+use visgraph::layout::force_directed::force_directed_layout;
 
-use crate::ui::tabs::Navigatable;
+use crate::{
+    colors::PredefinedColor,
+    graph::{Graph, Node, NodePos},
+    ui::tabs::Navigatable,
+};
 
 #[derive(Serialize, Deserialize, Clone, MapEntities, Default)]
 pub struct GraphTab {
@@ -83,6 +89,28 @@ impl super::Tab for GraphTab {
             .stroke(Stroke::NONE)
             .show(ui, |ui| display(self, world, ui));
     }
+    fn edit_display(&mut self, world: &mut World, ui: &mut egui::Ui) {
+        // re-order the graph
+        if ui.button("reorder").clicked() {
+            world.run_system_cached(apply_graph_layout).unwrap();
+        }
+    }
+}
+
+fn apply_graph_layout(graph_map: Res<Graph>, mut nodes: Query<&mut Node>) {
+    let graph: petgraph::Graph<_, _, _, usize> = graph_map.map.clone().into_graph();
+    let binding = &graph;
+    let entity_map: EntityHashMap<NodeIndex<usize>> = graph
+        .node_indices()
+        .map(|idx| (graph.node_weight(idx).unwrap().clone(), idx))
+        .collect();
+    let f = force_directed_layout(&binding, 1000, 0.1);
+    for node_entity in graph_map.nodes() {
+        let mut pos = nodes.get_mut(node_entity).unwrap();
+        let idx = *entity_map.get(&node_entity).unwrap();
+        let (nx, ny) = f(idx);
+        pos.pos = NodePos::new_xy(nx as f64, ny as f64);
+    }
 }
 
 fn display(tab: &mut GraphTab, world: &mut World, ui: &mut egui::Ui) {
@@ -99,6 +127,12 @@ fn display(tab: &mut GraphTab, world: &mut World, ui: &mut egui::Ui) {
         },
         tab.navi.zoom,
     );
+    world
+        .run_system_cached_with(
+            plot_nodes,
+            (ui.visuals().dark_mode, &mut painter, &tab.navi),
+        )
+        .unwrap();
 }
 
 fn draw_world_grid(painter: &Painter, viewport: Rect, offset: Vec2, zoom: f32) {
@@ -152,6 +186,28 @@ fn draw_world_grid(painter: &Painter, viewport: Rect, offset: Vec2, zoom: f32) {
                 painter.hline(viewport.x_range(), viewport.top() + screen_y_rel, stroke);
             }
             m += 1.0;
+        }
+    }
+}
+
+fn plot_nodes(
+    (In(is_dark), InMut(painter), InRef(navi)): (In<bool>, InMut<Painter>, InRef<GraphNavigation>),
+    nodes: Query<(&Node, Option<&Name>)>,
+) {
+    for (node, name) in nodes {
+        let x = node.pos.x();
+        let y = node.pos.y();
+        let pos = navi.xy_to_screen_pos(x, y);
+        let color = PredefinedColor::Neutral.get(is_dark);
+        painter.circle_filled(pos, 6.0, color);
+        if let Some(name) = name {
+            painter.text(
+                pos + Vec2 { x: 7.0, y: 0.0 },
+                Align2::LEFT_CENTER,
+                name.to_string(),
+                FontId::proportional(13.0),
+                color,
+            );
         }
     }
 }

@@ -4,6 +4,7 @@ use crate::station::Station;
 use bevy::ecs::entity::EntityHashSet;
 use bevy::{ecs::entity::EntityHash, prelude::*};
 use moonshine_core::prelude::MapEntities;
+use petgraph::Directed;
 use petgraph::prelude::DiGraphMap;
 use petgraph::{algo::astar, visit::EdgeRef};
 use serde::{Deserialize, Serialize};
@@ -73,7 +74,7 @@ impl Graph {
 }
 
 /// The position of the node
-#[derive(Reflect, Clone, Copy)]
+#[derive(Reflect, Clone, Copy, Debug)]
 pub enum NodePos {
     /// X and Y used for normal mapping
     Xy { x: f64, y: f64 },
@@ -153,10 +154,10 @@ impl NodePos {
     }
 }
 
-#[derive(Default, Reflect, Component)]
+#[derive(Default, Reflect, Component, Debug)]
 #[reflect(Component)]
 pub struct Node {
-    pos: NodePos,
+    pub pos: NodePos,
 }
 
 fn update_graph_on_station_removal(
