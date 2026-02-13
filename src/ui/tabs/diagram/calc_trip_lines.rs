@@ -156,7 +156,7 @@ pub fn calc(
         entries: Vec<TripEntryData>,
     }
 
-    let use_full_trip = false;
+    let use_full_trip = true;
     let stations_for_layout = if use_full_trip {
         &heights[..]
     } else {

@@ -1,7 +1,7 @@
 use bevy::{ecs::entity::EntityHashMap, prelude::*};
 use egui::{Align2, Color32, FontId, Margin, Painter, Rect, Sense, Stroke, Vec2};
 use moonshine_core::prelude::MapEntities;
-use petgraph::graph::NodeIndex;
+use petgraph::{Direction, graph::NodeIndex};
 use serde::{Deserialize, Serialize};
 use visgraph::layout::force_directed::force_directed_layout;
 
@@ -97,6 +97,7 @@ impl super::Tab for GraphTab {
     }
 }
 
+// TDOO: move this to a separate module, and asyncify it
 fn apply_graph_layout(graph_map: Res<Graph>, mut nodes: Query<&mut Node>) {
     let graph: petgraph::Graph<_, _, _, usize> = graph_map.map.clone().into_graph();
     let binding = &graph;
@@ -193,12 +194,13 @@ fn draw_world_grid(painter: &Painter, viewport: Rect, offset: Vec2, zoom: f32) {
 fn plot_nodes(
     (In(is_dark), InMut(painter), InRef(navi)): (In<bool>, InMut<Painter>, InRef<GraphNavigation>),
     nodes: Query<(&Node, Option<&Name>)>,
+    graph: Res<Graph>,
 ) {
+    let color = PredefinedColor::Neutral.get(is_dark);
     for (node, name) in nodes {
         let x = node.pos.x();
         let y = node.pos.y();
         let pos = navi.xy_to_screen_pos(x, y);
-        let color = PredefinedColor::Neutral.get(is_dark);
         painter.circle_filled(pos, 6.0, color);
         if let Some(name) = name {
             painter.text(
@@ -208,6 +210,19 @@ fn plot_nodes(
                 FontId::proportional(13.0),
                 color,
             );
+        }
+    }
+    for n in graph.nodes() {
+        let (s, _) = nodes.get(n).unwrap();
+        let x = s.pos.x();
+        let y = s.pos.y();
+        let spos = navi.xy_to_screen_pos(x, y);
+        for (_, t, _) in graph.edges_directed(n, Direction::Outgoing) {
+            let (t, _) = nodes.get(t).unwrap();
+            let x = t.pos.x();
+            let y = t.pos.y();
+            let tpos = navi.xy_to_screen_pos(x, y);
+            painter.line_segment([spos, tpos], Stroke::new(1.0, color));
         }
     }
 }
