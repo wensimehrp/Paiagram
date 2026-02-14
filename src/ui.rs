@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use tabs::{Tab, all_tabs::*};
 
 use crate::{
-    import::{self, LoadOuDiaSecond, LoadQETRC},
+    import::{LoadGTFS, LoadOuDia, LoadQETRC},
     route::Route,
     settings::UserPreferences,
     trip::Trip,
@@ -265,7 +265,16 @@ pub fn show_ui(ctx: &Context, world: &mut World) {
             // TODO: add rfd file reading
             let res = ui.button("More...");
             egui::Popup::menu(&res).show(|ui| {
-                if ui.button("Read OUD2").clicked() {
+                if ui.button("Read OuDia").clicked() {
+                    world.commands().trigger(crate::rw::read::ReadFile {
+                        title: "Load OuDia Files".to_string(),
+                        extensions: vec![("OuDia Files".to_string(), vec!["oud".to_string()])],
+                        callback: |c, s| {
+                            c.trigger(LoadOuDia::original(s));
+                        },
+                    });
+                }
+                if ui.button("Read OuDiaSecond").clicked() {
                     world.commands().trigger(crate::rw::read::ReadFile {
                         title: "Load OuDiaSecond Files".to_string(),
                         extensions: vec![(
@@ -273,13 +282,11 @@ pub fn show_ui(ctx: &Context, world: &mut World) {
                             vec!["oud2".to_string()],
                         )],
                         callback: |c, s| {
-                            c.trigger(LoadOuDiaSecond {
-                                content: String::from_utf8(s).unwrap(),
-                            });
+                            c.trigger(LoadOuDia::second(String::from_utf8(s).unwrap()));
                         },
                     });
                 }
-                if ui.button("Read qETRC").clicked() {
+                if ui.button("Read qETRC/pyETRC").clicked() {
                     world.commands().trigger(crate::rw::read::ReadFile {
                         title: "Load qETRC Files".to_string(),
                         extensions: vec![(
@@ -290,6 +297,15 @@ pub fn show_ui(ctx: &Context, world: &mut World) {
                             c.trigger(LoadQETRC {
                                 content: String::from_utf8(s).unwrap(),
                             });
+                        },
+                    });
+                }
+                if ui.button("Read GTFS").clicked() {
+                    world.commands().trigger(crate::rw::read::ReadFile {
+                        title: "Load GTFS Files".to_string(),
+                        extensions: vec![("GTFS Files".to_string(), vec!["zip".to_string()])],
+                        callback: |c, s| {
+                            c.trigger(LoadGTFS { content: s });
                         },
                     });
                 }

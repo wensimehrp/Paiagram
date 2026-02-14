@@ -1,6 +1,7 @@
 use bevy::color::{Srgba, palettes::tailwind::*};
 use bevy::prelude::*;
 use egui::Color32;
+use egui::color_picker::{Alpha, color_picker_color32};
 use egui_i18n::tr;
 use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
@@ -27,38 +28,38 @@ impl egui::Widget for &mut DisplayColor {
             DisplayColor::Custom(_) => None,
         };
 
-        ui.vertical(|ui| {
-            ui.label("Predefined");
-            ui.horizontal_wrapped(|ui| {
-                for predefined in PredefinedColor::iter() {
-                    let color = predefined.get(is_dark);
-                    let is_selected = current_predefined == Some(predefined);
-                    let text_color = readable_text_color(color);
-                    let label = egui::RichText::new(predefined.name().as_ref()).color(text_color);
-                    let button = egui::Button::new(label)
-                        .fill(color)
-                        .min_size(egui::vec2(56.0, 24.0))
-                        .stroke(if is_selected {
-                            ui.visuals().selection.stroke
-                        } else {
-                            ui.visuals().widgets.inactive.bg_stroke
-                        });
+        ui.horizontal(|ui| {
+            ui.vertical(|ui| {
+                ui.label("Predefined");
+                ui.set_max_width(200.0);
+                ui.horizontal_wrapped(|ui| {
+                    ui.style_mut().spacing.item_spacing = egui::Vec2::splat(4.0);
+                    for predefined in PredefinedColor::iter() {
+                        let color = predefined.get(is_dark);
+                        let is_selected = current_predefined == Some(predefined);
+                        let button = egui::Button::new("")
+                            .fill(color)
+                            .min_size(egui::vec2(24.0, 24.0))
+                            .stroke(if is_selected {
+                                ui.visuals().selection.stroke
+                            } else {
+                                ui.visuals().widgets.inactive.bg_stroke
+                            });
 
-                    if ui.add(button).clicked() {
-                        *self = DisplayColor::Predefined(predefined);
+                        if ui.add(button).clicked() {
+                            *self = DisplayColor::Predefined(predefined);
+                        }
                     }
-                }
+                });
             });
-
             ui.separator();
-            ui.horizontal(|ui| {
+            ui.vertical(|ui| {
                 ui.label("Custom");
                 let mut custom_color = match *self {
                     DisplayColor::Custom(c) => c,
                     DisplayColor::Predefined(p) => p.get(is_dark),
                 };
-                let response = ui.color_edit_button_srgba(&mut custom_color);
-                if response.changed() {
+                if color_picker_color32(ui, &mut custom_color, Alpha::Opaque) {
                     *self = DisplayColor::Custom(custom_color);
                 }
             });

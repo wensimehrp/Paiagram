@@ -1,7 +1,8 @@
 use crate::{
     colors::DisplayColor,
-    entry::{EntryBundle, EntryMode, EntryStop, TravelMode},
+    entry::{EntryBundle, TravelMode},
     graph::Graph,
+    import::OuDiaContentType,
     route::Route,
     station::Station as StationComponent,
     trip::{
@@ -22,18 +23,18 @@ use pest_derive::Parser;
 pub struct OUD2Parser;
 
 #[derive(Debug)]
-enum Structure<'a> {
+pub enum Structure<'a> {
     Struct(&'a str, Vec<Structure<'a>>),
     Pair(&'a str, Value<'a>),
 }
 
 #[derive(Debug)]
-enum Value<'a> {
+pub enum Value<'a> {
     Single(&'a str),
     List(Vec<&'a str>),
 }
 
-fn parse_oud2_to_ast(file: &str) -> Result<Structure<'_>, pest::error::Error<Rule>> {
+pub fn parse_oud2_to_ast(file: &str) -> Result<Structure<'_>, pest::error::Error<Rule>> {
     let oud2 = OUD2Parser::parse(Rule::file, file)?
         .next()
         .unwrap()
@@ -83,17 +84,23 @@ fn parse_oud2_to_ast(file: &str) -> Result<Structure<'_>, pest::error::Error<Rul
     Ok(parse_struct(oud2))
 }
 
-pub fn load_oud2(
-    msg: On<super::LoadOuDiaSecond>,
+pub fn load_oud(
+    msg: On<super::LoadOuDia>,
     mut commands: Commands,
     mut graph: ResMut<Graph>,
     class_resource: Res<ClassResource>,
 ) {
-    let str = &msg.content;
-    graph.clear();
-    info!("Loading OUD2 data...");
-    let ast = parse_oud2_to_ast(str).expect("Failed to parse OUD2 file");
-    let root = parse_ast(&ast).expect("Failed to convert OUD2 AST to internal representation");
+    let str = match &msg.content {
+        OuDiaContentType::OuDiaSecond(s) => std::borrow::Cow::Borrowed(s.as_str()),
+        OuDiaContentType::OuDia(d) => {
+            use encoding_rs::SHIFT_JIS;
+            let (s, _, _) = SHIFT_JIS.decode(d);
+            s
+        }
+    };
+    info!("Loading OUD/OUD2 data...");
+    let ast = parse_oud2_to_ast(&str).expect("Failed to parse OUD/OUD2 file");
+    let root = parse_ast(&ast).expect("Failed to convert OUD/OUD2 AST to internal representation");
     let mut station_map: HashMap<String, Instance<StationComponent>> = HashMap::new();
     for line in root.lines {
         let mut stations: Vec<Option<Instance<StationComponent>>> = vec![None; line.stations.len()];
@@ -151,7 +158,8 @@ pub fn load_oud2(
             );
         }
 
-        for diagram in line.diagrams {
+        // TODO: find a method to support multiple diagrams
+        for diagram in line.diagrams.into_iter().take(1) {
             for train in diagram.trains {
                 let trip_class = train
                     .class_index
@@ -164,12 +172,16 @@ pub fn load_oud2(
                             .into_iter()
                             .enumerate()
                             .filter_map(|(i, time)| {
+                                let time = time?;
+                                if matches!(time.passing_mode, PassingMode::NoOperation) {
+                                    return None;
+                                }
                                 let station_index = match train.direction {
                                     Direction::Down => i,
                                     Direction::Up => station_instances.len() - 1 - i,
                                 };
                                 let stop = station_instances[station_index];
-                                Some((stop, time?))
+                                Some((stop, time))
                             })
                             .chunk_by(|(s, _t)| *s)
                         {
@@ -225,7 +237,6 @@ struct Station {
 struct Diagram {
     name: String,
     trains: Vec<Train>,
-    is_timing_foundation: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -267,9 +278,10 @@ struct TrainClass {
 
 use Structure::*;
 use Value::*;
-fn parse_ast(ast: &Structure) -> Result<Root, String> {
+use anyhow::{Context, Result, anyhow};
+pub fn parse_ast(ast: &Structure) -> Result<Root> {
     let Struct(_, v) = ast else {
-        return Err("Expected root structure".to_string());
+        return Err(anyhow!("Expected root structure"));
     };
     let mut version = Option::None;
     let mut lines = Vec::new();
@@ -286,14 +298,11 @@ fn parse_ast(ast: &Structure) -> Result<Root, String> {
         }
     }
     Ok(Root {
-        version: version.ok_or("File does not have a version")?,
+        version: version.ok_or(anyhow!("File does not have a version"))?,
         lines,
     })
 }
-fn parse_line_meta(
-    fields: &[Structure],
-    unnamed_line_counter: &mut usize,
-) -> Result<LineMeta, String> {
+fn parse_line_meta(fields: &[Structure], unnamed_line_counter: &mut usize) -> Result<LineMeta> {
     let mut name: Option<String> = None;
     let mut stations = Vec::new();
     let mut diagrams = Vec::new();
@@ -334,10 +343,7 @@ fn parse_line_meta(
     })
 }
 
-fn parse_station(
-    fields: &[Structure],
-    unnamed_station_counter: &mut usize,
-) -> Result<Station, String> {
+fn parse_station(fields: &[Structure], unnamed_station_counter: &mut usize) -> Result<Station> {
     let mut name: Option<String> = None;
     let mut branch_index: Option<usize> = None;
     let mut loop_index: Option<usize> = None;
@@ -352,13 +358,13 @@ fn parse_station(
             Pair(k, Single(v)) if *k == "BrunchCoreEkiIndex" => {
                 branch_index = Some(
                     v.parse::<usize>()
-                        .map_err(|e| format!("Failed to parse branch index: {}", e))?,
+                        .map_err(|e| anyhow!("Failed to parse branch index: {}", e))?,
                 );
             }
             Pair(k, Single(v)) if *k == "LoopOriginEkiIndex" => {
                 loop_index = Some(
                     v.parse::<usize>()
-                        .map_err(|e| format!("Failed to parse loop index: {}", e))?,
+                        .map_err(|e| anyhow!("Failed to parse loop index: {}", e))?,
                 );
             }
             Pair(k, List(v)) if *k == "JikokuhyouJikokuDisplayKudari" => {
@@ -389,15 +395,12 @@ fn parse_diagram(
     fields: &[Structure],
     unnamed_diagram_counter: &mut usize,
     unnamed_train_counter: &mut usize,
-) -> Result<Diagram, String> {
+) -> Result<Diagram> {
     let mut name: Option<String> = None;
     let mut trains: Vec<Train> = Vec::new();
-    let mut is_timing_foundation = false;
     for field in fields {
         match field {
             Pair(k, Single(v)) if *k == "DiaName" => {
-                // hard coded eh
-                is_timing_foundation = *v == "基準運転時分";
                 name = Some(v.to_string());
             }
             Struct(k, v) if *k == "Kudari" => {
@@ -418,7 +421,6 @@ fn parse_diagram(
             name
         }),
         trains,
-        is_timing_foundation,
     })
 }
 
@@ -426,8 +428,8 @@ fn parse_trains(
     direction: Direction,
     fields: &[Structure],
     unnamed_train_counter: &mut usize,
-) -> Result<Vec<Train>, String> {
-    fn parse_time(str: &str) -> Result<Option<TimetableEntry>, String> {
+) -> Result<Vec<Train>> {
+    fn parse_time(str: &str) -> Result<Option<TimetableEntry>> {
         let mut entry = TimetableEntry {
             passing_mode: PassingMode::NoOperation,
             arrival: None,
@@ -438,9 +440,9 @@ fn parse_trains(
             return Ok(None);
         }
         let parts = OUD2Parser::parse(Rule::timetable_entry, str)
-            .map_err(|e| e.to_string())?
+            .map_err(|e| anyhow!(e))?
             .next()
-            .ok_or("Unexpected error while unwrapping")?;
+            .ok_or(anyhow!("Unexpected error while unwrapping"))?;
         for field in parts.into_inner() {
             match field.as_rule() {
                 Rule::service_mode => match field.as_str() {
@@ -458,7 +460,7 @@ fn parse_trains(
         }
         Ok(Some(entry))
     }
-    let mut parse_trains = |fields: &[Structure]| -> Result<Train, String> {
+    let mut parse_trains = |fields: &[Structure]| -> Result<Train> {
         let mut name: Option<String> = None;
         let mut entries: Vec<Option<TimetableEntry>> = Vec::new();
         let mut class_index: Option<usize> = None;
@@ -477,7 +479,7 @@ fn parse_trains(
                     }
                 }
                 Pair(k, Single(v)) if *k == "Syubetsu" => {
-                    class_index = Some(v.parse::<usize>().map_err(|e| e.to_string())?)
+                    class_index = Some(v.parse::<usize>().map_err(|e| anyhow!("{:?}", e))?)
                 }
                 _ => {}
             }

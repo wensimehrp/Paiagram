@@ -14,9 +14,9 @@ impl Plugin for StationPlugin {
 /// may contain extra platforms, and each platform would also record a set of
 /// entries that visit the platform, not the station.
 /// See [`PlatformEntries`] for further details.
-type StationEntries = PlatformEntries;
+pub type StationEntries = PlatformEntries;
 /// A type alias to make things clearer.
-type Platforms = Children;
+pub type Platforms = Children;
 
 /// Marker component for stations that are not managed by the current diagram.
 /// Note that being "external" doesn't mean that it can be excluded from
@@ -38,10 +38,21 @@ pub struct IsDepot;
 #[require(Name, Platform, PlatformEntries, Platforms, DisplayedStroke)]
 pub struct Station;
 
+/// Spawn with [`with_children()``]
 #[derive(Bundle)]
 pub struct StationBundle {
     station: Station,
-    platforms: Platforms,
+    name: Name,
+    // platforms: Platforms,
+}
+
+impl StationBundle {
+    pub fn new(name: String) -> Self {
+        Self {
+            station: Station,
+            name: name.into(),
+        }
+    }
 }
 
 /// Entries that passes this platform.

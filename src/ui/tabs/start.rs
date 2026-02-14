@@ -62,6 +62,11 @@ impl Tab for StartTab {
             }
             CurrentField::Misc => {}
         }
+        if ui.button("Merge stations by name").clicked() {
+            world
+                .run_system_cached(crate::graph::merge_station_by_name)
+                .unwrap();
+        }
     }
     fn title(&self) -> egui::WidgetText {
         tr!("tab-start").into()

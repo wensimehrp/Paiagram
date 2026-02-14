@@ -1,19 +1,125 @@
-use bevy::{ecs::entity::EntityHashMap, prelude::*};
+use bevy::prelude::*;
 use egui::{Align2, Color32, FontId, Margin, Painter, Rect, Sense, Stroke, Vec2};
+use instant::Instant;
 use moonshine_core::prelude::MapEntities;
-use petgraph::{Direction, graph::NodeIndex};
+use petgraph::Direction;
 use serde::{Deserialize, Serialize};
-use visgraph::layout::force_directed::force_directed_layout;
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use crate::{
     colors::PredefinedColor,
-    graph::{Graph, Node, NodePos},
+    graph::{Graph, GraphSpatialIndex, Node},
+    trip::{
+        Trip, TripClass, TripSpatialIndex,
+        class::{Class, DisplayedStroke},
+    },
     ui::tabs::Navigatable,
 };
 
-#[derive(Serialize, Deserialize, Clone, MapEntities, Default)]
+mod gpu_draw;
+
+#[derive(Clone)]
+struct GraphLabel {
+    pos: egui::Pos2,
+    text: String,
+    color: egui::Color32,
+}
+
+#[derive(Default, Clone)]
+struct GraphDrawItems {
+    shapes: Vec<gpu_draw::ShapeSpec>,
+    labels: Vec<GraphLabel>,
+}
+
+#[derive(Default, Clone)]
+struct CollectTimings {
+    index_query_ms: f32,
+    nodes_ms: f32,
+    edges_ms: f32,
+    trips_ms: f32,
+    label_cull_ms: f32,
+}
+
+#[derive(Default, Clone)]
+struct CollectedGraphDraw {
+    items: GraphDrawItems,
+    timings: CollectTimings,
+}
+
+#[derive(Default, Clone)]
+struct GraphPerf {
+    collect_ms: f32,
+    collect_index_query_ms: f32,
+    collect_nodes_ms: f32,
+    collect_edges_ms: f32,
+    collect_trips_ms: f32,
+    collect_label_cull_ms: f32,
+    gpu_upload_ms: f32,
+    text_ms: f32,
+    frame_ms: f32,
+    shape_count: usize,
+    label_count: usize,
+}
+
+fn smooth_ms(previous: f32, new_value: f32) -> f32 {
+    if previous <= 0.0 {
+        new_value
+    } else {
+        previous * 0.8 + new_value * 0.2
+    }
+}
+
+fn segment_visible(viewport: Rect, a: egui::Pos2, b: egui::Pos2) -> bool {
+    if viewport.contains(a) || viewport.contains(b) {
+        return true;
+    }
+    let min_x = a.x.min(b.x);
+    let max_x = a.x.max(b.x);
+    let min_y = a.y.min(b.y);
+    let max_y = a.y.max(b.y);
+    let seg_rect = Rect::from_min_max(egui::pos2(min_x, min_y), egui::pos2(max_x, max_y));
+    viewport.intersects(seg_rect)
+}
+
+#[derive(Serialize, Deserialize, Clone, MapEntities)]
 pub struct GraphTab {
     navi: GraphNavigation,
+    #[serde(skip, default = "default_arrange_iterations")]
+    arrange_iterations: u32,
+    #[serde(skip, default)]
+    osm_area_name: String,
+    animation_time: f64,
+    animation_playing: bool,
+    animation_speed: f64,
+    #[serde(skip, default)]
+    show_perf: bool,
+    #[serde(skip, default)]
+    perf: GraphPerf,
+    #[serde(skip, default)]
+    gpu_state: Arc<egui::mutex::Mutex<gpu_draw::GpuGraphRendererState>>,
+}
+
+fn default_arrange_iterations() -> u32 {
+    1000
+}
+
+impl Default for GraphTab {
+    fn default() -> Self {
+        Self {
+            navi: GraphNavigation::default(),
+            arrange_iterations: default_arrange_iterations(),
+            osm_area_name: String::new(),
+            animation_time: 0.0,
+            animation_playing: false,
+            animation_speed: 10.0,
+            show_perf: false,
+            perf: GraphPerf::default(),
+            gpu_state: Arc::new(egui::mutex::Mutex::new(
+                gpu_draw::GpuGraphRendererState::default(),
+            )),
+        }
+    }
 }
 
 impl PartialEq for GraphTab {
@@ -90,32 +196,97 @@ impl super::Tab for GraphTab {
             .show(ui, |ui| display(self, world, ui));
     }
     fn edit_display(&mut self, world: &mut World, ui: &mut egui::Ui) {
-        // re-order the graph
-        if ui.button("reorder").clicked() {
-            world.run_system_cached(apply_graph_layout).unwrap();
+        ui.add(egui::Slider::new(&mut self.arrange_iterations, 100..=10000).text("Iterations"));
+        if ui.button("Arrange graph").clicked() {
+            world
+                .run_system_cached_with(
+                    crate::graph::arrange::auto_arrange_graph,
+                    (ui.ctx().clone(), self.arrange_iterations),
+                )
+                .unwrap();
+        }
+        ui.separator();
+        ui.horizontal(|ui| {
+            ui.label("OSM area:");
+            ui.text_edit_singleline(&mut self.osm_area_name);
+        });
+        if ui.button("Arrange via OSM").clicked() {
+            let area_name = if self.osm_area_name.is_empty() {
+                None
+            } else {
+                Some(self.osm_area_name.clone())
+            };
+            world
+                .run_system_cached_with(
+                    crate::graph::arrange::arrange_via_osm,
+                    (ui.ctx().clone(), area_name),
+                )
+                .unwrap();
+        }
+        if let Some(task) = world.get_resource::<crate::graph::arrange::GraphLayoutTask>() {
+            let (finished, total, queued_retry) = task.progress();
+            let mode = match task.kind {
+                crate::graph::arrange::GraphLayoutKind::ForceDirected => "Force",
+                crate::graph::arrange::GraphLayoutKind::OSM => "OSM",
+            };
+            ui.label(format!(
+                "Arrange ({mode}) progress: {finished}/{total} | retry queued: {queued_retry}"
+            ));
+            if total > 0 {
+                ui.add(egui::ProgressBar::new(finished as f32 / total as f32));
+            }
+        }
+        if ui
+            .button(if self.animation_playing {
+                "Pause"
+            } else {
+                "Play"
+            })
+            .clicked()
+        {
+            self.animation_playing = !self.animation_playing
+        };
+        ui.add(
+            egui::Slider::new(&mut self.animation_time, -86400.0..=86400.0)
+                .fixed_decimals(0)
+                .clamping(egui::SliderClamping::Edits)
+                .text("Time"),
+        );
+        ui.add(
+            egui::Slider::new(&mut self.animation_speed, -10.0..=100.0)
+                .fixed_decimals(1)
+                .text("Speed")
+                .clamping(egui::SliderClamping::Always),
+        );
+
+        ui.separator();
+        ui.checkbox(&mut self.show_perf, "Show perf");
+        if self.show_perf {
+            ui.monospace(format!(
+                "CPU collect: {:.2} ms\n  - Index query: {:.2} ms\n  - Nodes: {:.2} ms\n  - Edges: {:.2} ms\n  - Trips: {:.2} ms\n  - Label cull: {:.2} ms\nGPU upload prep: {:.2} ms\nText draw: {:.2} ms\nFrame total: {:.2} ms\nShapes: {}\nLabels: {}",
+                self.perf.collect_ms,
+                self.perf.collect_index_query_ms,
+                self.perf.collect_nodes_ms,
+                self.perf.collect_edges_ms,
+                self.perf.collect_trips_ms,
+                self.perf.collect_label_cull_ms,
+                self.perf.gpu_upload_ms,
+                self.perf.text_ms,
+                self.perf.frame_ms,
+                self.perf.shape_count,
+                self.perf.label_count,
+            ));
         }
     }
 }
 
-// TDOO: move this to a separate module, and asyncify it
-fn apply_graph_layout(graph_map: Res<Graph>, mut nodes: Query<&mut Node>) {
-    let graph: petgraph::Graph<_, _, _, usize> = graph_map.map.clone().into_graph();
-    let binding = &graph;
-    let entity_map: EntityHashMap<NodeIndex<usize>> = graph
-        .node_indices()
-        .map(|idx| (graph.node_weight(idx).unwrap().clone(), idx))
-        .collect();
-    let f = force_directed_layout(&binding, 1000, 0.1);
-    for node_entity in graph_map.nodes() {
-        let mut pos = nodes.get_mut(node_entity).unwrap();
-        let idx = *entity_map.get(&node_entity).unwrap();
-        let (nx, ny) = f(idx);
-        pos.pos = NodePos::new_xy(nx as f64, ny as f64);
-    }
-}
-
 fn display(tab: &mut GraphTab, world: &mut World, ui: &mut egui::Ui) {
-    let (response, mut painter) =
+    let frame_start = Instant::now();
+    if tab.animation_playing {
+        tab.animation_time += tab.animation_speed * ui.input(|r| r.predicted_dt) as f64;
+        ui.ctx().request_repaint();
+    }
+    let (response, painter) =
         ui.allocate_painter(ui.available_size_before_wrap(), Sense::click_and_drag());
     tab.navi.visible = response.rect;
     tab.navi.handle_navigation(ui, &response);
@@ -128,12 +299,72 @@ fn display(tab: &mut GraphTab, world: &mut World, ui: &mut egui::Ui) {
         },
         tab.navi.zoom,
     );
-    world
+
+    let collect_start = Instant::now();
+    let collected = world
         .run_system_cached_with(
-            plot_nodes,
-            (ui.visuals().dark_mode, &mut painter, &tab.navi),
+            collect_draw_items,
+            (ui.visuals().dark_mode, &tab.navi, tab.animation_time),
         )
         .unwrap();
+    tab.perf.collect_ms = smooth_ms(
+        tab.perf.collect_ms,
+        collect_start.elapsed().as_secs_f32() * 1000.0,
+    );
+    tab.perf.collect_index_query_ms = smooth_ms(
+        tab.perf.collect_index_query_ms,
+        collected.timings.index_query_ms,
+    );
+    tab.perf.collect_nodes_ms = smooth_ms(tab.perf.collect_nodes_ms, collected.timings.nodes_ms);
+    tab.perf.collect_edges_ms = smooth_ms(tab.perf.collect_edges_ms, collected.timings.edges_ms);
+    tab.perf.collect_trips_ms = smooth_ms(tab.perf.collect_trips_ms, collected.timings.trips_ms);
+    tab.perf.collect_label_cull_ms = smooth_ms(
+        tab.perf.collect_label_cull_ms,
+        collected.timings.label_cull_ms,
+    );
+    let draw_items = collected.items;
+    tab.perf.shape_count = draw_items.shapes.len();
+    tab.perf.label_count = draw_items.labels.len();
+
+    let mut state = tab.gpu_state.lock();
+    if let Some(target_format) = ui.ctx().data(|data| {
+        data.get_temp::<eframe::egui_wgpu::wgpu::TextureFormat>(egui::Id::new("wgpu_target_format"))
+    }) {
+        state.target_format = Some(target_format);
+    }
+    if let Some(msaa_samples) = ui
+        .ctx()
+        .data(|data| data.get_temp::<u32>(egui::Id::new("wgpu_msaa_samples")))
+    {
+        state.msaa_samples = msaa_samples;
+    }
+    let gpu_upload_start = Instant::now();
+    gpu_draw::write_instances(&draw_items.shapes, &mut state);
+    tab.perf.gpu_upload_ms = smooth_ms(
+        tab.perf.gpu_upload_ms,
+        gpu_upload_start.elapsed().as_secs_f32() * 1000.0,
+    );
+    let callback = gpu_draw::paint_callback(response.rect, tab.gpu_state.clone());
+    painter.add(callback);
+
+    let text_start = Instant::now();
+    for label in &draw_items.labels {
+        painter.text(
+            label.pos,
+            Align2::LEFT_CENTER,
+            &label.text,
+            FontId::proportional(13.0),
+            label.color,
+        );
+    }
+    tab.perf.text_ms = smooth_ms(
+        tab.perf.text_ms,
+        text_start.elapsed().as_secs_f32() * 1000.0,
+    );
+    tab.perf.frame_ms = smooth_ms(
+        tab.perf.frame_ms,
+        frame_start.elapsed().as_secs_f32() * 1000.0,
+    );
 }
 
 fn draw_world_grid(painter: &Painter, viewport: Rect, offset: Vec2, zoom: f32) {
@@ -191,38 +422,149 @@ fn draw_world_grid(painter: &Painter, viewport: Rect, offset: Vec2, zoom: f32) {
     }
 }
 
-fn plot_nodes(
-    (In(is_dark), InMut(painter), InRef(navi)): (In<bool>, InMut<Painter>, InRef<GraphNavigation>),
-    nodes: Query<(&Node, Option<&Name>)>,
+fn collect_draw_items(
+    (In(is_dark), InRef(navi), In(time)): (In<bool>, InRef<GraphNavigation>, In<f64>),
+    nodes: Query<(Entity, &Node, Option<&Name>)>,
     graph: Res<Graph>,
-) {
+    spatial_index: Res<GraphSpatialIndex>,
+    trip_spatial_index: Res<TripSpatialIndex>,
+    trip_meta_q: Query<(&Name, &TripClass), With<Trip>>,
+    stroke_q: Query<&DisplayedStroke, With<Class>>,
+) -> CollectedGraphDraw {
+    let mut out = GraphDrawItems::default();
+    let mut timings = CollectTimings::default();
     let color = PredefinedColor::Neutral.get(is_dark);
-    for (node, name) in nodes {
+    let view = navi.visible_rect();
+    let view_expanded = view.expand2(Vec2::splat(12.0));
+    let margin_x = 12.0 / navi.zoom_x().max(f32::EPSILON) as f64;
+    let margin_y = 12.0 / navi.zoom_y().max(f32::EPSILON) as f64;
+    let visible_x = navi.visible_x();
+    let visible_y = navi.visible_y();
+    let min_x = visible_x.start - margin_x;
+    let max_x = visible_x.end + margin_x;
+    let min_y = visible_y.start - margin_y;
+    let max_y = visible_y.end + margin_y;
+
+    let index_query_start = Instant::now();
+    let candidate_nodes: Vec<Entity> = if spatial_index.is_empty() {
+        nodes.iter().map(|(entity, _, _)| entity).collect()
+    } else {
+        spatial_index.entities_in_xy_aabb(min_x, min_y, max_x, max_y)
+    };
+    timings.index_query_ms = index_query_start.elapsed().as_secs_f32() * 1000.0;
+
+    let mut screen_pos_by_entity: HashMap<Entity, egui::Pos2> = HashMap::new();
+    let mut visible_nodes: HashSet<Entity> = HashSet::new();
+
+    let nodes_start = Instant::now();
+    for entity in candidate_nodes {
+        let Ok((_, node, name)) = nodes.get(entity) else {
+            continue;
+        };
         let x = node.pos.x();
         let y = node.pos.y();
         let pos = navi.xy_to_screen_pos(x, y);
-        painter.circle_filled(pos, 6.0, color);
+        screen_pos_by_entity.insert(entity, pos);
+
+        if !view_expanded.contains(pos) {
+            continue;
+        }
+        visible_nodes.insert(entity);
+        out.shapes
+            .push(gpu_draw::ShapeSpec::circle(pos, 6.0, color));
         if let Some(name) = name {
-            painter.text(
-                pos + Vec2 { x: 7.0, y: 0.0 },
-                Align2::LEFT_CENTER,
-                name.to_string(),
-                FontId::proportional(13.0),
+            out.labels.push(GraphLabel {
+                pos: pos + Vec2 { x: 7.0, y: 0.0 },
+                text: name.to_string(),
                 color,
-            );
+            });
         }
     }
-    for n in graph.nodes() {
-        let (s, _) = nodes.get(n).unwrap();
-        let x = s.pos.x();
-        let y = s.pos.y();
-        let spos = navi.xy_to_screen_pos(x, y);
-        for (_, t, _) in graph.edges_directed(n, Direction::Outgoing) {
-            let (t, _) = nodes.get(t).unwrap();
-            let x = t.pos.x();
-            let y = t.pos.y();
-            let tpos = navi.xy_to_screen_pos(x, y);
-            painter.line_segment([spos, tpos], Stroke::new(1.0, color));
+    timings.nodes_ms = nodes_start.elapsed().as_secs_f32() * 1000.0;
+
+    let mut rendered_intervals: HashSet<Entity> = HashSet::new();
+    let edges_start = Instant::now();
+    for n in &visible_nodes {
+        let n = *n;
+        let Some(&spos) = screen_pos_by_entity.get(&n) else {
+            continue;
+        };
+
+        for (_, t, interval) in graph.edges_directed(n, Direction::Outgoing) {
+            if !rendered_intervals.insert(*interval) {
+                continue;
+            }
+            if !screen_pos_by_entity.contains_key(&t)
+                && let Ok((_, node, _)) = nodes.get(t)
+            {
+                let pos = navi.xy_to_screen_pos(node.pos.x(), node.pos.y());
+                screen_pos_by_entity.insert(t, pos);
+            }
+            let Some(&tpos) = screen_pos_by_entity.get(&t) else {
+                continue;
+            };
+            if !(visible_nodes.contains(&n)
+                || visible_nodes.contains(&t)
+                || segment_visible(view_expanded, spos, tpos))
+            {
+                continue;
+            }
+            out.shapes
+                .push(gpu_draw::ShapeSpec::segment(spos, tpos, 1.0, color));
         }
+
+        for (s, _, interval) in graph.edges_directed(n, Direction::Incoming) {
+            if !rendered_intervals.insert(*interval) {
+                continue;
+            }
+            if !screen_pos_by_entity.contains_key(&s)
+                && let Ok((_, node, _)) = nodes.get(s)
+            {
+                let pos = navi.xy_to_screen_pos(node.pos.x(), node.pos.y());
+                screen_pos_by_entity.insert(s, pos);
+            }
+            let Some(&spos2) = screen_pos_by_entity.get(&s) else {
+                continue;
+            };
+            if !(visible_nodes.contains(&s)
+                || visible_nodes.contains(&n)
+                || segment_visible(view_expanded, spos2, spos))
+            {
+                continue;
+            }
+            out.shapes
+                .push(gpu_draw::ShapeSpec::segment(spos2, spos, 1.0, color));
+        }
+    }
+    timings.edges_ms = edges_start.elapsed().as_secs_f32() * 1000.0;
+
+    let trips_start = Instant::now();
+    for sample in trip_spatial_index.query_xy_time(min_x, max_x, min_y, max_y, time) {
+        let Ok((name, trip_class)) = trip_meta_q.get(sample.trip) else {
+            continue;
+        };
+        let Ok(stroke) = stroke_q.get(trip_class.entity()) else {
+            continue;
+        };
+        let color = stroke.color.get(is_dark);
+        let pos = navi.xy_to_screen_pos(sample.x, sample.y);
+        if !view_expanded.contains(pos) {
+            continue;
+        }
+        out.shapes
+            .push(gpu_draw::ShapeSpec::circle(pos, 6.0, color));
+        out.labels.push(GraphLabel {
+            pos: pos + Vec2 { x: 7.0, y: 0.0 },
+            text: name.to_string(),
+            color,
+        });
+    }
+    timings.trips_ms = trips_start.elapsed().as_secs_f32() * 1000.0;
+
+    timings.label_cull_ms = 0.0;
+
+    CollectedGraphDraw {
+        items: out,
+        timings,
     }
 }

@@ -14,6 +14,9 @@ impl super::ExportObject<()> for TypstModule {
     fn export_to_buffer(&mut self, world: &mut World, buffer: &mut Vec<u8>, input: ()) {
         buffer.write(include_bytes!("./typst_diagram.typ")).unwrap();
     }
+    fn extension(&self) -> impl AsRef<str> {
+        ".typ"
+    }
 }
 
 pub struct TypstDiagram;

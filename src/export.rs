@@ -19,7 +19,5 @@ pub trait ExportObject<S = ()> {
     fn filename(&self) -> impl AsRef<str> {
         "exported_file"
     }
-    fn extension(&self) -> impl AsRef<str> {
-        ".paiagram"
-    }
+    fn extension(&self) -> impl AsRef<str>;
 }

@@ -6,7 +6,7 @@ use serde_json;
 
 use crate::{
     colors::DisplayColor,
-    entry::{EntryBundle, EntryMode, EntryStop, TravelMode},
+    entry::{EntryBundle, TravelMode},
     graph::Graph,
     route::Route,
     station::Station,

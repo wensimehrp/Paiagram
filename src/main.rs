@@ -10,6 +10,7 @@ mod colors;
 // mod export;
 mod graph;
 mod i18n;
+mod plugin;
 mod ui;
 // mod interface;
 // mod lines;
@@ -177,9 +178,10 @@ struct Cli {
     #[arg(
         short = 'o',
         long = "open",
-        help = "Path to a .paiagram file (or any other compatible file formats) to open on startup"
+        help = "Path to a .paiagram file (or any other compatible file formats) to open on startup",
+        num_args = 1..
     )]
-    open: Option<PathBuf>,
+    open: Option<Vec<PathBuf>>,
     #[arg(
         long = "fresh",
         help = "Start with a fresh state, ignoring any autosave"
@@ -195,15 +197,25 @@ struct Cli {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn handle_args(cli: In<Cli>, mut commands: Commands) {
-    if let Some(path) = &cli.open {
+    for path in cli.open.iter().flatten() {
         use crate::import::*;
-        let content = std::fs::read_to_string(path).unwrap();
         match path.extension().and_then(|s| s.to_str()) {
             Some("pyetgr") | Some("json") => {
+                let content = std::fs::read_to_string(path).unwrap();
                 commands.trigger(LoadQETRC { content });
             }
             Some("oud2") => {
-                commands.trigger(LoadOuDiaSecond { content });
+                let content = std::fs::read_to_string(path).unwrap();
+                commands.trigger(LoadOuDia::second(content));
+            }
+            Some("zip") => {
+                let content = std::fs::read(path).unwrap();
+                commands.trigger(LoadGTFS { content });
+            }
+            Some("oud") => {
+                // oudia does not use utf-8
+                let content = std::fs::read(path).unwrap();
+                commands.trigger(LoadOuDia::original(content))
             }
             _ => panic!(),
         }

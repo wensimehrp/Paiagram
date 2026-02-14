@@ -14,6 +14,7 @@ use crate::{
 use bevy::{platform::collections::HashMap, prelude::*};
 use moonshine_core::kind::*;
 
+mod gtfs;
 mod oudia;
 mod qetrc;
 
@@ -21,7 +22,8 @@ pub struct ImportPlugin;
 impl Plugin for ImportPlugin {
     fn build(&self, app: &mut App) {
         app.add_observer(qetrc::load_qetrc)
-            .add_observer(oudia::load_oud2);
+            .add_observer(oudia::load_oud)
+            .add_observer(gtfs::load_gtfs_static);
     }
 }
 
@@ -30,9 +32,32 @@ pub struct LoadQETRC {
     pub content: String,
 }
 
+pub enum OuDiaContentType {
+    OuDiaSecond(String),
+    OuDia(Vec<u8>),
+}
+
 #[derive(Event)]
-pub struct LoadOuDiaSecond {
-    pub content: String,
+pub struct LoadOuDia {
+    pub content: OuDiaContentType,
+}
+
+impl LoadOuDia {
+    pub fn original(data: Vec<u8>) -> Self {
+        Self {
+            content: OuDiaContentType::OuDia(data),
+        }
+    }
+    pub fn second(data: String) -> Self {
+        Self {
+            content: OuDiaContentType::OuDiaSecond(data),
+        }
+    }
+}
+
+#[derive(Event)]
+pub struct LoadGTFS {
+    pub content: Vec<u8>,
 }
 
 fn normalize_times<'a>(mut time_iter: impl Iterator<Item = &'a mut TimetableTime> + 'a) {

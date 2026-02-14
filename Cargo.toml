@@ -48,7 +48,6 @@ egui = { version = "0.33.3", default-features = false, features = [
 smallvec = { version = "1.15.1", features = ["serde"] }
 either = "1.15.0"
 egui_table = "0.6.0"
-wasm-bindgen = "0.2.106"
 fluent = "0.17.0"
 strum = "0.27.2"
 strum_macros = "0.27.2"
@@ -71,13 +70,17 @@ egui-phosphor = "0.11.0"
 wgpu = { version = "27.0.1", features = ["vulkan", "gles", "dx12", "metal", "webgpu", "webgl"] }
 bytemuck = { version = "1.23.2", features = ["extern_crate_alloc"] }
 wasmi = "1.0.9"
+anyhow = "1.0.101"
+encoding_rs = "0.8.35"
+rstar = "0.12.2"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 ureq = { version = "3.1.4", features = ["_tls"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.2.17", features = ["js"] }
-wasm-bindgen = "0.2.108"
+wasm-bindgen = "0.2"
+
 wasm-bindgen-futures = "0.4"
 web-sys = { version = "0.3", features = [
     "Document",

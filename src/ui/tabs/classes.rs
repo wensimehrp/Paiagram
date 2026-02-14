@@ -20,9 +20,11 @@ fn list_classes(InMut(ui): InMut<Ui>, mut class_q: Query<(&Class, &Name, &mut Di
         for (class, name, mut stroke) in class_q.iter_mut() {
             ui.label(name.as_str());
             let res = ui.button("Edit Color");
-            egui::Popup::menu(&res).show(|ui| {
-                ui.add(&mut stroke.color);
-            });
+            egui::Popup::menu(&res)
+                .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+                .show(|ui| {
+                    ui.add(&mut stroke.color);
+                });
             ui.end_row();
         }
     });
