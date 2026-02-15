@@ -8,6 +8,7 @@ use crate::route::Route;
 use crate::trip::class::DisplayedStroke;
 use crate::trip::routing::AddEntryToTrip;
 use crate::trip::{Trip, TripBundle, TripClass, TripSchedule};
+use crate::ui::GlobalTimer;
 use crate::ui::widgets::buttons;
 use crate::units::time::{Duration, TimetableTime};
 use bevy::prelude::*;
@@ -50,6 +51,10 @@ pub struct DiagramTab {
     selected: Option<SelectedItem>,
     route_entity: Entity,
     trips: Vec<Entity>,
+    #[serde(skip, default)]
+    use_global_timer: bool,
+    #[serde(skip, default)]
+    holds_global_timer_lock: bool,
     #[serde(skip, default)]
     gpu_state: Arc<egui::mutex::Mutex<gpu_draw::GpuTripRendererState>>,
     #[serde(skip, default)]
@@ -100,6 +105,8 @@ impl DiagramTab {
             selected: None,
             route_entity,
             trips: Vec::new(),
+            use_global_timer: false,
+            holds_global_timer_lock: false,
             gpu_state: Arc::new(egui::mutex::Mutex::new(
                 gpu_draw::GpuTripRendererState::default(),
             )),
@@ -244,6 +251,11 @@ impl Tab for DiagramTab {
         }
     }
     fn edit_display(&mut self, world: &mut World, ui: &mut Ui) {
+        ui.checkbox(&mut self.use_global_timer, "Use global timer");
+        if !self.use_global_timer && self.holds_global_timer_lock {
+            world.resource::<GlobalTimer>().unlock();
+            self.holds_global_timer_lock = false;
+        }
         match self.selected {
             None => {
                 ui.strong("New Trip");
@@ -337,7 +349,23 @@ impl Tab for DiagramTab {
                 let (response, mut painter) =
                     ui.allocate_painter(ui.available_size_before_wrap(), Sense::click_and_drag());
                 self.navi.visible_rect = response.rect;
+                if self.use_global_timer && !self.holds_global_timer_lock {
+                    self.navi.x_offset = world.resource::<GlobalTimer>().read_ticks();
+                }
                 self.navi.handle_navigation(ui, &response);
+                if self.use_global_timer {
+                    let dragging_time = response.dragged();
+                    let timer = world.resource::<GlobalTimer>();
+                    if dragging_time && !self.holds_global_timer_lock {
+                        self.holds_global_timer_lock = timer.try_lock();
+                    } else if !dragging_time && self.holds_global_timer_lock {
+                        timer.unlock();
+                        self.holds_global_timer_lock = false;
+                    }
+                    if self.holds_global_timer_lock {
+                        timer.write_ticks(self.navi.x_offset);
+                    }
+                }
                 let station_heights: Vec<_> = route.iter().collect();
                 if station_heights.is_empty() {
                     return;

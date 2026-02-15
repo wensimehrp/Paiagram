@@ -4,6 +4,8 @@
 pub mod tabs;
 mod widgets;
 
+use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
+
 use bevy::prelude::*;
 use egui::{Context, CornerRadius, Frame, Id, Margin, ScrollArea, Ui};
 use egui_dock::{DockArea, DockState, TabViewer};
@@ -24,6 +26,7 @@ impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<MainUiState>()
             .init_resource::<AdditionalUiState>()
+            .init_resource::<GlobalTimer>()
             .add_plugins(bevy_inspector_egui::DefaultInspectorConfigPlugin)
             .add_message::<OpenOrFocus>()
             .add_systems(
@@ -33,6 +36,56 @@ impl Plugin for UiPlugin {
                     reorder_tabs_by_priority,
                 ),
             );
+    }
+}
+
+#[derive(Resource)]
+pub struct GlobalTimer {
+    value: AtomicI64,
+    locked: AtomicBool,
+}
+
+pub const GLOBAL_TIMER_TICKS_PER_SECOND: i64 = 100;
+
+impl Default for GlobalTimer {
+    fn default() -> Self {
+        Self {
+            value: AtomicI64::new(0),
+            locked: AtomicBool::new(false),
+        }
+    }
+}
+
+impl GlobalTimer {
+    pub fn read_ticks(&self) -> i64 {
+        self.value.load(Ordering::Acquire)
+    }
+
+    pub fn write_ticks(&self, value: i64) {
+        self.value.store(value, Ordering::Release);
+    }
+
+    pub fn read_seconds(&self) -> f64 {
+        self.read_ticks() as f64 / GLOBAL_TIMER_TICKS_PER_SECOND as f64
+    }
+
+    pub fn write_seconds(&self, value: f64) {
+        let ticks = (value * GLOBAL_TIMER_TICKS_PER_SECOND as f64).round() as i64;
+        self.write_ticks(ticks);
+    }
+
+    pub fn is_locked(&self) -> bool {
+        self.locked.load(Ordering::Acquire)
+    }
+
+    pub fn try_lock(&self) -> bool {
+        self.locked
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+    }
+
+    pub fn unlock(&self) {
+        self.locked.store(false, Ordering::Release);
     }
 }
 

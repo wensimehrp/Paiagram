@@ -25,6 +25,8 @@ impl Plugin for GraphPlugin {
         app.init_resource::<Graph>()
             .init_resource::<GraphSpatialIndex>()
             .init_resource::<GraphSpatialIndexState>()
+            .init_resource::<GraphIntervalSpatialIndex>()
+            .init_resource::<GraphIntervalSpatialIndexState>()
             .add_systems(Update, arrange::apply_graph_layout_task)
             .add_systems(
                 Update,
@@ -32,6 +34,15 @@ impl Plugin for GraphPlugin {
                     mark_graph_spatial_index_dirty,
                     start_graph_spatial_index_rebuild,
                     apply_graph_spatial_index_task,
+                )
+                    .chain(),
+            )
+            .add_systems(
+                Update,
+                (
+                    mark_graph_interval_spatial_index_dirty,
+                    start_graph_interval_spatial_index_rebuild,
+                    apply_graph_interval_spatial_index_task,
                 )
                     .chain(),
             )
@@ -101,6 +112,13 @@ struct SpatialIndexedEntity {
     point: [f64; 2],
 }
 
+#[derive(Clone, Copy, Debug)]
+struct IntervalSpatialIndexedEntity {
+    interval: Entity,
+    p0: [f64; 2],
+    p1: [f64; 2],
+}
+
 impl RTreeObject for SpatialIndexedEntity {
     type Envelope = AABB<[f64; 2]>;
 
@@ -117,9 +135,32 @@ impl PointDistance for SpatialIndexedEntity {
     }
 }
 
+impl RTreeObject for IntervalSpatialIndexedEntity {
+    type Envelope = AABB<[f64; 2]>;
+
+    fn envelope(&self) -> Self::Envelope {
+        AABB::from_corners(
+            [self.p0[0].min(self.p1[0]), self.p0[1].min(self.p1[1])],
+            [self.p0[0].max(self.p1[0]), self.p0[1].max(self.p1[1])],
+        )
+    }
+}
+
 #[derive(Resource, Default)]
 pub struct GraphSpatialIndex {
     tree: RTree<SpatialIndexedEntity>,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct GraphIntervalSpatialSample {
+    pub interval: Entity,
+    pub p0: [f64; 2],
+    pub p1: [f64; 2],
+}
+
+#[derive(Resource, Default)]
+pub struct GraphIntervalSpatialIndex {
+    tree: RTree<IntervalSpatialIndexedEntity>,
 }
 
 impl GraphSpatialIndex {
@@ -188,13 +229,58 @@ impl GraphSpatialIndex {
     }
 }
 
+impl GraphIntervalSpatialIndex {
+    pub fn is_empty(&self) -> bool {
+        self.tree.size() == 0
+    }
+
+    pub fn query_xy_aabb(&self, min_x: f64, min_y: f64, max_x: f64, max_y: f64) -> Vec<GraphIntervalSpatialSample> {
+        if self.is_empty() {
+            return Vec::new();
+        }
+
+        let envelope = AABB::from_corners(
+            [min_x.min(max_x), min_y.min(max_y)],
+            [min_x.max(max_x), min_y.max(max_y)],
+        );
+
+        self.tree
+            .locate_in_envelope_intersecting(&envelope)
+            .map(|item| GraphIntervalSpatialSample {
+                interval: item.interval,
+                p0: item.p0,
+                p1: item.p1,
+            })
+            .collect()
+    }
+
+    fn replace_tree(&mut self, tree: RTree<IntervalSpatialIndexedEntity>) {
+        self.tree = tree;
+    }
+}
+
 #[derive(Resource)]
 struct GraphSpatialIndexState {
     dirty: bool,
     task: Option<Task<RTree<SpatialIndexedEntity>>>,
 }
 
+#[derive(Resource)]
+struct GraphIntervalSpatialIndexState {
+    dirty: bool,
+    task: Option<Task<RTree<IntervalSpatialIndexedEntity>>>,
+}
+
 impl Default for GraphSpatialIndexState {
+    fn default() -> Self {
+        Self {
+            dirty: true,
+            task: None,
+        }
+    }
+}
+
+impl Default for GraphIntervalSpatialIndexState {
     fn default() -> Self {
         Self {
             dirty: true,
@@ -214,6 +300,25 @@ fn mark_graph_spatial_index_dirty(
     mut removed_nodes: RemovedComponents<Node>,
 ) {
     if !changed_nodes.is_empty() || removed_nodes.read().next().is_some() {
+        state.dirty = true;
+    }
+}
+
+fn mark_graph_interval_spatial_index_dirty(
+    mut state: ResMut<GraphIntervalSpatialIndexState>,
+    graph: Res<Graph>,
+    changed_nodes: Query<(), Or<(Added<Node>, Changed<Node>)>>,
+    changed_intervals: Query<(), Or<(Added<Interval>, Changed<Interval>)>>,
+    mut removed_nodes: RemovedComponents<Node>,
+    mut removed_intervals: RemovedComponents<Interval>,
+) {
+    if graph.is_added()
+        || graph.is_changed()
+        || !changed_nodes.is_empty()
+        || !changed_intervals.is_empty()
+        || removed_nodes.read().next().is_some()
+        || removed_intervals.read().next().is_some()
+    {
         state.dirty = true;
     }
 }
@@ -240,9 +345,51 @@ fn start_graph_spatial_index_rebuild(
     }));
 }
 
+fn start_graph_interval_spatial_index_rebuild(
+    mut state: ResMut<GraphIntervalSpatialIndexState>,
+    graph: Res<Graph>,
+    nodes: Query<&Node>,
+) {
+    if !state.dirty || state.task.is_some() {
+        return;
+    }
+    state.dirty = false;
+
+    let mut snapshot = Vec::<IntervalSpatialIndexedEntity>::new();
+    for (source, target, interval) in graph.all_edges() {
+        let Ok(source_node) = nodes.get(source) else {
+            continue;
+        };
+        let Ok(target_node) = nodes.get(target) else {
+            continue;
+        };
+        snapshot.push(IntervalSpatialIndexedEntity {
+            interval: *interval,
+            p0: [source_node.pos.x(), source_node.pos.y()],
+            p1: [target_node.pos.x(), target_node.pos.y()],
+        });
+    }
+
+    state.task = Some(AsyncComputeTaskPool::get().spawn(async move { RTree::bulk_load(snapshot) }));
+}
+
 fn apply_graph_spatial_index_task(
     mut state: ResMut<GraphSpatialIndexState>,
     mut index: ResMut<GraphSpatialIndex>,
+) {
+    let Some(task) = state.task.as_mut() else {
+        return;
+    };
+    let Some(tree) = block_on(poll_once(task)) else {
+        return;
+    };
+    index.replace_tree(tree);
+    state.task = None;
+}
+
+fn apply_graph_interval_spatial_index_task(
+    mut state: ResMut<GraphIntervalSpatialIndexState>,
+    mut index: ResMut<GraphIntervalSpatialIndex>,
 ) {
     let Some(task) = state.task.as_mut() else {
         return;

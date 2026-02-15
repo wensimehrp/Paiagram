@@ -6,7 +6,10 @@ use crate::{
     units::time::{Duration, TimetableTime},
     vehicle::Vehicle,
 };
-use bevy::tasks::{AsyncComputeTaskPool, Task, block_on, futures_lite::future::poll_once};
+use bevy::{
+    ecs::entity::{EntityHash, EntityHashMap},
+    tasks::{AsyncComputeTaskPool, Task, block_on, futures_lite::future::poll_once},
+};
 use bevy::{ecs::query::QueryData, prelude::*};
 use moonshine_core::prelude::{MapEntities, ReflectMapEntities};
 use rstar::{AABB, RTree, RTreeObject};
@@ -111,7 +114,8 @@ impl TripSpatialIndex {
             [min_x.max(max_x), min_y.max(max_y), time],
         );
 
-        let mut by_trip: HashMap<Entity, TripSpatialSample> = HashMap::new();
+        let mut by_trip: HashMap<Entity, TripSpatialSample, EntityHash> =
+            HashMap::with_hasher(EntityHash);
         for item in self.tree.locate_in_envelope_intersecting(&query_env) {
             let Some([x, y]) = item.sample_at(time) else {
                 continue;

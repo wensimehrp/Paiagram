@@ -2,19 +2,18 @@ use bevy::prelude::*;
 use egui::{Align2, Color32, FontId, Margin, Painter, Rect, Sense, Stroke, Vec2};
 use instant::Instant;
 use moonshine_core::prelude::MapEntities;
-use petgraph::Direction;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use crate::{
     colors::PredefinedColor,
-    graph::{Graph, GraphSpatialIndex, Node},
+    graph::{GraphIntervalSpatialIndex, GraphSpatialIndex, Node},
     trip::{
         Trip, TripClass, TripSpatialIndex,
         class::{Class, DisplayedStroke},
     },
-    ui::tabs::Navigatable,
+    ui::{GlobalTimer, tabs::Navigatable},
 };
 
 mod gpu_draw;
@@ -92,6 +91,10 @@ pub struct GraphTab {
     animation_time: f64,
     animation_playing: bool,
     animation_speed: f64,
+    #[serde(skip, default = "default_use_global_timer")]
+    use_global_timer: bool,
+    #[serde(skip, default)]
+    holds_global_timer_lock: bool,
     #[serde(skip, default)]
     show_perf: bool,
     #[serde(skip, default)]
@@ -104,6 +107,10 @@ fn default_arrange_iterations() -> u32 {
     1000
 }
 
+fn default_use_global_timer() -> bool {
+    true
+}
+
 impl Default for GraphTab {
     fn default() -> Self {
         Self {
@@ -113,6 +120,8 @@ impl Default for GraphTab {
             animation_time: 0.0,
             animation_playing: false,
             animation_speed: 10.0,
+            use_global_timer: default_use_global_timer(),
+            holds_global_timer_lock: false,
             show_perf: false,
             perf: GraphPerf::default(),
             gpu_state: Arc::new(egui::mutex::Mutex::new(
@@ -246,12 +255,33 @@ impl super::Tab for GraphTab {
         {
             self.animation_playing = !self.animation_playing
         };
-        ui.add(
+        ui.checkbox(&mut self.use_global_timer, "Use global timer");
+        if !self.use_global_timer && self.holds_global_timer_lock {
+            world.resource::<GlobalTimer>().unlock();
+            self.holds_global_timer_lock = false;
+        }
+        if self.use_global_timer {
+            self.animation_time = world.resource::<GlobalTimer>().read_seconds();
+        }
+        let time_response = ui.add(
             egui::Slider::new(&mut self.animation_time, -86400.0..=86400.0)
                 .fixed_decimals(0)
                 .clamping(egui::SliderClamping::Edits)
                 .text("Time"),
         );
+        if self.use_global_timer {
+            let dragging = time_response.dragged();
+            let timer = world.resource::<GlobalTimer>();
+            if dragging && !self.holds_global_timer_lock {
+                self.holds_global_timer_lock = timer.try_lock();
+            } else if !dragging && self.holds_global_timer_lock {
+                timer.unlock();
+                self.holds_global_timer_lock = false;
+            }
+            if time_response.changed() && self.holds_global_timer_lock {
+                timer.write_seconds(self.animation_time);
+            }
+        }
         ui.add(
             egui::Slider::new(&mut self.animation_speed, -10.0..=100.0)
                 .fixed_decimals(1)
@@ -282,8 +312,19 @@ impl super::Tab for GraphTab {
 
 fn display(tab: &mut GraphTab, world: &mut World, ui: &mut egui::Ui) {
     let frame_start = Instant::now();
+    if tab.use_global_timer {
+        tab.animation_time = world.resource::<GlobalTimer>().read_seconds();
+    }
     if tab.animation_playing {
-        tab.animation_time += tab.animation_speed * ui.input(|r| r.predicted_dt) as f64;
+        if tab.use_global_timer {
+            let timer = world.resource::<GlobalTimer>();
+            if !timer.is_locked() {
+                tab.animation_time += tab.animation_speed * ui.input(|r| r.predicted_dt) as f64;
+                timer.write_seconds(tab.animation_time);
+            }
+        } else {
+            tab.animation_time += tab.animation_speed * ui.input(|r| r.predicted_dt) as f64;
+        }
         ui.ctx().request_repaint();
     }
     let (response, painter) =
@@ -425,8 +466,8 @@ fn draw_world_grid(painter: &Painter, viewport: Rect, offset: Vec2, zoom: f32) {
 fn collect_draw_items(
     (In(is_dark), InRef(navi), In(time)): (In<bool>, InRef<GraphNavigation>, In<f64>),
     nodes: Query<(Entity, &Node, Option<&Name>)>,
-    graph: Res<Graph>,
     spatial_index: Res<GraphSpatialIndex>,
+    interval_spatial_index: Res<GraphIntervalSpatialIndex>,
     trip_spatial_index: Res<TripSpatialIndex>,
     trip_meta_q: Query<(&Name, &TripClass), With<Trip>>,
     stroke_q: Query<&DisplayedStroke, With<Class>>,
@@ -482,59 +523,19 @@ fn collect_draw_items(
     }
     timings.nodes_ms = nodes_start.elapsed().as_secs_f32() * 1000.0;
 
-    let mut rendered_intervals: HashSet<Entity> = HashSet::new();
     let edges_start = Instant::now();
-    for n in &visible_nodes {
-        let n = *n;
-        let Some(&spos) = screen_pos_by_entity.get(&n) else {
+    let mut rendered_intervals: HashSet<Entity> = HashSet::new();
+    for segment in interval_spatial_index.query_xy_aabb(min_x, min_y, max_x, max_y) {
+        if !rendered_intervals.insert(segment.interval) {
             continue;
-        };
-
-        for (_, t, interval) in graph.edges_directed(n, Direction::Outgoing) {
-            if !rendered_intervals.insert(*interval) {
-                continue;
-            }
-            if !screen_pos_by_entity.contains_key(&t)
-                && let Ok((_, node, _)) = nodes.get(t)
-            {
-                let pos = navi.xy_to_screen_pos(node.pos.x(), node.pos.y());
-                screen_pos_by_entity.insert(t, pos);
-            }
-            let Some(&tpos) = screen_pos_by_entity.get(&t) else {
-                continue;
-            };
-            if !(visible_nodes.contains(&n)
-                || visible_nodes.contains(&t)
-                || segment_visible(view_expanded, spos, tpos))
-            {
-                continue;
-            }
-            out.shapes
-                .push(gpu_draw::ShapeSpec::segment(spos, tpos, 1.0, color));
         }
-
-        for (s, _, interval) in graph.edges_directed(n, Direction::Incoming) {
-            if !rendered_intervals.insert(*interval) {
-                continue;
-            }
-            if !screen_pos_by_entity.contains_key(&s)
-                && let Ok((_, node, _)) = nodes.get(s)
-            {
-                let pos = navi.xy_to_screen_pos(node.pos.x(), node.pos.y());
-                screen_pos_by_entity.insert(s, pos);
-            }
-            let Some(&spos2) = screen_pos_by_entity.get(&s) else {
-                continue;
-            };
-            if !(visible_nodes.contains(&s)
-                || visible_nodes.contains(&n)
-                || segment_visible(view_expanded, spos2, spos))
-            {
-                continue;
-            }
-            out.shapes
-                .push(gpu_draw::ShapeSpec::segment(spos2, spos, 1.0, color));
+        let spos = navi.xy_to_screen_pos(segment.p0[0], segment.p0[1]);
+        let tpos = navi.xy_to_screen_pos(segment.p1[0], segment.p1[1]);
+        if !segment_visible(view_expanded, spos, tpos) {
+            continue;
         }
+        out.shapes
+            .push(gpu_draw::ShapeSpec::segment(spos, tpos, 1.0, color));
     }
     timings.edges_ms = edges_start.elapsed().as_secs_f32() * 1000.0;
 
