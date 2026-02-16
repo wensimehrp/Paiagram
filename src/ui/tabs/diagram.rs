@@ -398,6 +398,7 @@ fn main_display(tab: &mut DiagramTab, world: &mut World, ui: &mut egui::Ui) {
         tab.navi.zoom.y,
         station_heights.iter().copied(),
         ui.pixels_per_point(),
+        ui.visuals(),
         &world, // FIXME: make this a system instead of passing world into it
     );
     draw_lines::draw_time_lines(

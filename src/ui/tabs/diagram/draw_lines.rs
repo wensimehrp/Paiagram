@@ -2,7 +2,7 @@ use crate::units::time::TimetableTime;
 
 use super::TICKS_PER_SECOND;
 use bevy::prelude::*;
-use egui::{Color32, FontId, Painter, Pos2, Rect, Stroke};
+use egui::{Color32, FontId, Painter, Pos2, Rect, Stroke, Visuals};
 
 pub fn draw_station_lines<'a>(
     vertical_offset: f32,
@@ -11,12 +11,13 @@ pub fn draw_station_lines<'a>(
     zoom: f32,
     to_draw: impl Iterator<Item = (Entity, f32)>,
     pixels_per_point: f32,
+    visuals: &Visuals,
     world: &World, // FIXME: make this a system afterwards
 ) {
     // TODO: implement per-station stroke
     let stroke = Stroke {
         width: 0.6,
-        color: Color32::GRAY,
+        color: visuals.window_stroke().color,
     };
     // Guard against invalid zoom
     for (station_entity, height) in to_draw {
@@ -32,13 +33,13 @@ pub fn draw_station_lines<'a>(
                 .get::<Name>(station_entity)
                 .map_or("<Unknown>".to_string(), Name::to_string),
             egui::FontId::proportional(13.0),
-            Color32::WHITE,
+            visuals.text_color(),
         );
         let layout_pos = Pos2 {
             x: screen_rect.left(),
             y: draw_height - layout.size().y,
         };
-        painter.galley(layout_pos, layout, Color32::WHITE);
+        painter.galley(layout_pos, layout, visuals.text_color());
     }
 }
 
