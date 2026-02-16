@@ -97,6 +97,9 @@ pub trait Navigatable {
     /// Returns true if there are any user input
     fn handle_navigation(&mut self, ui: &mut Ui, response: &Response) -> bool {
         let mut moved = response.dragged();
+        let started_pos = ui
+            .ctx()
+            .input(|i| i.pointer.press_origin().or(i.pointer.hover_pos()));
         let zoom_delta = if self.allow_axis_zoom() {
             ui.input(|input| input.zoom_delta_2d())
         } else {
@@ -134,7 +137,10 @@ pub trait Navigatable {
             self.set_zoom(new_zoom_x, new_zoom_y);
             self.set_offset(new_offset_x, new_offset_y);
         }
-        if ui.ui_contains_pointer() || ui.input(|r| r.any_touches()) {
+        // if ui.ui_contains_pointer() || ui.input(|r| r.any_touches()) {
+        if let Some(started_pos) = started_pos
+            && response.rect.contains(started_pos)
+        {
             let ticks_per_screen_unit = 1.0 / self.zoom_x() as f64;
             let pan_delta = response.drag_delta() + scroll_delta;
             let new_offset_x = self.offset_x() - ticks_per_screen_unit * pan_delta.x as f64;

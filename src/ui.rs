@@ -14,13 +14,16 @@ use serde::{Deserialize, Serialize};
 use tabs::{Tab, all_tabs::*};
 
 use crate::{
-    import::{self, DownloadFile, LoadGTFS, LoadOuDia, LoadQETRC},
+    import::{DownloadFile, LoadGTFS, LoadOuDia, LoadQETRC},
     route::Route,
     settings::UserPreferences,
     trip::Trip,
     units::time::TimetableTime,
     vehicle::Vehicle,
 };
+
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
 
 pub struct UiPlugin;
 impl Plugin for UiPlugin {
@@ -373,6 +376,28 @@ impl<'w> TabViewer for AdditionalTabViewer<'w> {
     }
 }
 
+/// WASM fullscreen toggle
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen(inline_js = r#"
+export function toggle_fullscreen(id) {
+    if (!document.fullscreenElement) {
+        const el = document.getElementById(id);
+        if (el?.requestFullscreen) {
+            el.requestFullscreen().catch(err => {
+                console.error(`Error attempting to enable full-screen mode: ${err.message}`);
+            });
+        }
+    } else {
+        if (document.exitFullscreen) {
+            document.exitFullscreen();
+        }
+    }
+}
+"#)]
+extern "C" {
+    fn toggle_fullscreen(id: &str);
+}
+
 pub fn show_ui(ctx: &Context, world: &mut World) {
     world.run_system_cached_with(sync_ui, ctx).unwrap();
     world.resource_scope(|world, mut modal: Mut<UiModal>| {
@@ -386,6 +411,16 @@ pub fn show_ui(ctx: &Context, world: &mut World) {
         ui.horizontal(|ui| {
             // TODO: add rfd file reading
             let res = ui.button("More...");
+            #[cfg(not(target_arch = "wasm32"))]
+            if ui.button("Fullscreen").clicked() {
+                let is_fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
+                ui.ctx()
+                    .send_viewport_cmd(egui::ViewportCommand::Fullscreen(!is_fullscreen));
+            }
+            #[cfg(target_arch = "wasm32")]
+            if ui.button("Fullscreen").clicked() {
+                toggle_fullscreen("paiagram_canvas");
+            }
             egui::Popup::menu(&res).show(|ui| {
                 if ui.button("Import from URL...").clicked() {
                     world.resource_mut::<UiModal>().0 = Some(Modals::OpenUrl(String::new()));
