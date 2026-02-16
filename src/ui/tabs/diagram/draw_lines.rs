@@ -117,7 +117,11 @@ pub fn draw_time_lines(
                 3..=8 => format!("{}:{:02}", time.to_hmsd().0, time.to_hmsd().1),
                 _ => time.to_string(),
             };
-            let label = painter.layout_no_wrap(text, FontId::monospace(13.0), current_stroke.color);
+            let label = painter.layout_no_wrap(
+                text,
+                FontId::new(13.0, egui::FontFamily::Name("dia_pro".into())),
+                current_stroke.color,
+            );
             painter.galley(
                 Pos2 {
                     x: x - label.size().x / 2.0,

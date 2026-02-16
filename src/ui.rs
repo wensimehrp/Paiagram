@@ -4,7 +4,7 @@
 pub mod tabs;
 mod widgets;
 
-use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
+use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 
 use bevy::prelude::*;
 use egui::{Context, CornerRadius, Frame, Id, Margin, ScrollArea, Ui};
@@ -18,6 +18,7 @@ use crate::{
     route::Route,
     settings::UserPreferences,
     trip::Trip,
+    units::time::TimetableTime,
     vehicle::Vehicle,
 };
 
@@ -31,18 +32,18 @@ impl Plugin for UiPlugin {
             .add_message::<OpenOrFocus>()
             .add_systems(
                 Update,
-                (
-                    open_or_focus_tab.run_if(on_message::<OpenOrFocus>),
-                    reorder_tabs_by_priority,
-                ),
+                (open_or_focus_tab.run_if(on_message::<OpenOrFocus>),),
             );
     }
 }
 
-#[derive(Resource)]
+#[derive(Resource, Reflect)]
+#[reflect(Resource)]
 pub struct GlobalTimer {
     value: AtomicI64,
-    locked: AtomicBool,
+    locker: AtomicU64,
+    animation_speed: f64,
+    animation_playing: bool,
 }
 
 pub const GLOBAL_TIMER_TICKS_PER_SECOND: i64 = 100;
@@ -51,12 +52,15 @@ impl Default for GlobalTimer {
     fn default() -> Self {
         Self {
             value: AtomicI64::new(0),
-            locked: AtomicBool::new(false),
+            locker: AtomicU64::new(Self::UNLOCKED),
+            animation_speed: 10.0,
+            animation_playing: false,
         }
     }
 }
 
 impl GlobalTimer {
+    const UNLOCKED: u64 = u64::MAX;
     pub fn read_ticks(&self) -> i64 {
         self.value.load(Ordering::Acquire)
     }
@@ -75,17 +79,41 @@ impl GlobalTimer {
     }
 
     pub fn is_locked(&self) -> bool {
-        self.locked.load(Ordering::Acquire)
+        self.locker.load(Ordering::Acquire) != Self::UNLOCKED
     }
 
-    pub fn try_lock(&self) -> bool {
-        self.locked
-            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-            .is_ok()
+    pub fn try_lock(&self, id: Entity) -> bool {
+        let id_bits = id.to_bits();
+
+        let result = self.locker.compare_exchange(
+            Self::UNLOCKED,
+            id_bits,
+            Ordering::AcqRel,
+            Ordering::Acquire,
+        );
+
+        result.is_ok() || result.unwrap_err() == id_bits
     }
 
-    pub fn unlock(&self) {
-        self.locked.store(false, Ordering::Release);
+    pub fn try_unlock(&self, id: Entity) {
+        let _ = self.locker.compare_exchange(
+            id.to_bits(),
+            Self::UNLOCKED,
+            Ordering::Release,
+            Ordering::Relaxed,
+        );
+    }
+
+    pub fn owner(&self) -> u64 {
+        self.locker.load(Ordering::Acquire)
+    }
+
+    pub unsafe fn try_lock_unchecked(&self, id: u64) -> bool {
+        self.try_lock(Entity::from_bits(id))
+    }
+
+    pub unsafe fn try_unlock_unchecked(&self, id: u64) {
+        self.try_unlock(Entity::from_bits(id))
     }
 }
 
@@ -162,9 +190,6 @@ fn open_or_focus_tab(mut tabs: MessageReader<OpenOrFocus>, mut state: ResMut<Mai
     }
 }
 
-fn reorder_tabs_by_priority(mut state: ResMut<MainUiState>) {
-    // TODO
-}
 struct MainTabViewer<'w> {
     world: &'w mut World,
 }
@@ -240,6 +265,13 @@ impl<'w> TabViewer for MainTabViewer<'w> {
                 }
             });
         });
+    }
+    fn closeable(&mut self, tab: &mut Self::Tab) -> bool {
+        if matches!(tab, MainTab::Start(_)) {
+            true
+        } else {
+            false
+        }
     }
 }
 
@@ -364,6 +396,37 @@ pub fn show_ui(ctx: &Context, world: &mut World) {
                 }
             });
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let mut timer = world.resource_mut::<GlobalTimer>();
+                let mut seconds = timer.read_seconds();
+                ui.checkbox(&mut timer.animation_playing, "Play animation");
+                let time_response = ui.add(
+                    egui::DragValue::new(&mut seconds)
+                        .custom_formatter(|it, _| {
+                            format!("{}", TimetableTime::from_hms(0, 0, it as i32))
+                        })
+                        .custom_parser(|s| TimetableTime::from_str(s).map(|it| it.0 as f64)),
+                );
+                ui.add(
+                    egui::Slider::new(&mut timer.animation_speed, -500.0..=500.0)
+                        .fixed_decimals(1)
+                        .text("Speed")
+                        .clamping(egui::SliderClamping::Always),
+                );
+                unsafe {
+                    if time_response.dragged() && timer.try_lock_unchecked(1) {
+                        timer.write_seconds(seconds);
+                    } else {
+                        timer.try_unlock_unchecked(1);
+                    }
+                }
+                if timer.animation_playing {
+                    if !timer.is_locked() {
+                        seconds += timer.animation_speed * ui.input(|r| r.stable_dt) as f64;
+                        timer.write_seconds(seconds);
+                    }
+                    ui.ctx().request_repaint();
+                }
+                if ui.button("P").clicked() {}
                 if ui.button("R").clicked() {}
                 if ui.button("B").clicked() {}
             });
@@ -436,10 +499,20 @@ pub fn apply_custom_fonts(ctx: &Context) {
             "../assets/fonts/SarasaUiSC-Regular.ttf"
         ))),
     );
+    fonts.font_data.insert(
+        "dia_pro".to_owned(),
+        std::sync::Arc::new(egui::FontData::from_static(include_bytes!(
+            "../assets/fonts/DiaPro-Regular.ttf"
+        ))),
+    );
     fonts
         .families
         .get_mut(&egui::FontFamily::Proportional)
         .unwrap()
         .insert(0, "my_font".to_owned());
+    fonts.families.insert(
+        egui::FontFamily::Name("dia_pro".into()),
+        vec!["dia_pro".to_owned(), "my_font".to_owned()],
+    );
     ctx.set_fonts(fonts);
 }

@@ -9,6 +9,7 @@ use std::sync::Arc;
 use crate::{
     colors::PredefinedColor,
     graph::{GraphIntervalSpatialIndex, GraphSpatialIndex, Node},
+    settings::ProjectSettings,
     trip::{
         Trip, TripClass, TripSpatialIndex,
         class::{Class, DisplayedStroke},
@@ -88,13 +89,6 @@ pub struct GraphTab {
     arrange_iterations: u32,
     #[serde(skip, default)]
     osm_area_name: String,
-    animation_time: f64,
-    animation_playing: bool,
-    animation_speed: f64,
-    #[serde(skip, default = "default_use_global_timer")]
-    use_global_timer: bool,
-    #[serde(skip, default)]
-    holds_global_timer_lock: bool,
     #[serde(skip, default)]
     show_perf: bool,
     #[serde(skip, default)]
@@ -107,21 +101,12 @@ fn default_arrange_iterations() -> u32 {
     1000
 }
 
-fn default_use_global_timer() -> bool {
-    true
-}
-
 impl Default for GraphTab {
     fn default() -> Self {
         Self {
             navi: GraphNavigation::default(),
             arrange_iterations: default_arrange_iterations(),
             osm_area_name: String::new(),
-            animation_time: 0.0,
-            animation_playing: false,
-            animation_speed: 10.0,
-            use_global_timer: default_use_global_timer(),
-            holds_global_timer_lock: false,
             show_perf: false,
             perf: GraphPerf::default(),
             gpu_state: Arc::new(egui::mutex::Mutex::new(
@@ -245,50 +230,6 @@ impl super::Tab for GraphTab {
                 ui.add(egui::ProgressBar::new(finished as f32 / total as f32));
             }
         }
-        if ui
-            .button(if self.animation_playing {
-                "Pause"
-            } else {
-                "Play"
-            })
-            .clicked()
-        {
-            self.animation_playing = !self.animation_playing
-        };
-        ui.checkbox(&mut self.use_global_timer, "Use global timer");
-        if !self.use_global_timer && self.holds_global_timer_lock {
-            world.resource::<GlobalTimer>().unlock();
-            self.holds_global_timer_lock = false;
-        }
-        if self.use_global_timer {
-            self.animation_time = world.resource::<GlobalTimer>().read_seconds();
-        }
-        let time_response = ui.add(
-            egui::Slider::new(&mut self.animation_time, -86400.0..=86400.0)
-                .fixed_decimals(0)
-                .clamping(egui::SliderClamping::Edits)
-                .text("Time"),
-        );
-        if self.use_global_timer {
-            let dragging = time_response.dragged();
-            let timer = world.resource::<GlobalTimer>();
-            if dragging && !self.holds_global_timer_lock {
-                self.holds_global_timer_lock = timer.try_lock();
-            } else if !dragging && self.holds_global_timer_lock {
-                timer.unlock();
-                self.holds_global_timer_lock = false;
-            }
-            if time_response.changed() && self.holds_global_timer_lock {
-                timer.write_seconds(self.animation_time);
-            }
-        }
-        ui.add(
-            egui::Slider::new(&mut self.animation_speed, -10.0..=100.0)
-                .fixed_decimals(1)
-                .text("Speed")
-                .clamping(egui::SliderClamping::Always),
-        );
-
         ui.separator();
         ui.checkbox(&mut self.show_perf, "Show perf");
         if self.show_perf {
@@ -312,21 +253,6 @@ impl super::Tab for GraphTab {
 
 fn display(tab: &mut GraphTab, world: &mut World, ui: &mut egui::Ui) {
     let frame_start = Instant::now();
-    if tab.use_global_timer {
-        tab.animation_time = world.resource::<GlobalTimer>().read_seconds();
-    }
-    if tab.animation_playing {
-        if tab.use_global_timer {
-            let timer = world.resource::<GlobalTimer>();
-            if !timer.is_locked() {
-                tab.animation_time += tab.animation_speed * ui.input(|r| r.predicted_dt) as f64;
-                timer.write_seconds(tab.animation_time);
-            }
-        } else {
-            tab.animation_time += tab.animation_speed * ui.input(|r| r.predicted_dt) as f64;
-        }
-        ui.ctx().request_repaint();
-    }
     let (response, painter) =
         ui.allocate_painter(ui.available_size_before_wrap(), Sense::click_and_drag());
     tab.navi.visible = response.rect;
@@ -343,10 +269,7 @@ fn display(tab: &mut GraphTab, world: &mut World, ui: &mut egui::Ui) {
 
     let collect_start = Instant::now();
     let collected = world
-        .run_system_cached_with(
-            collect_draw_items,
-            (ui.visuals().dark_mode, &tab.navi, tab.animation_time),
-        )
+        .run_system_cached_with(collect_draw_items, (ui.visuals().dark_mode, &tab.navi))
         .unwrap();
     tab.perf.collect_ms = smooth_ms(
         tab.perf.collect_ms,
@@ -464,14 +387,23 @@ fn draw_world_grid(painter: &Painter, viewport: Rect, offset: Vec2, zoom: f32) {
 }
 
 fn collect_draw_items(
-    (In(is_dark), InRef(navi), In(time)): (In<bool>, InRef<GraphNavigation>, In<f64>),
+    (In(is_dark), InRef(navi)): (In<bool>, InRef<GraphNavigation>),
     nodes: Query<(Entity, &Node, Option<&Name>)>,
     spatial_index: Res<GraphSpatialIndex>,
     interval_spatial_index: Res<GraphIntervalSpatialIndex>,
     trip_spatial_index: Res<TripSpatialIndex>,
+    settings: Res<ProjectSettings>,
     trip_meta_q: Query<(&Name, &TripClass), With<Trip>>,
     stroke_q: Query<&DisplayedStroke, With<Class>>,
+    timer: Res<GlobalTimer>,
 ) -> CollectedGraphDraw {
+    let time = timer.read_seconds();
+    let repeat_time = settings.repeat_frequency.0 as f64;
+    let query_time = if repeat_time > 0.0 {
+        time.rem_euclid(repeat_time)
+    } else {
+        time
+    };
     let mut out = GraphDrawItems::default();
     let mut timings = CollectTimings::default();
     let color = PredefinedColor::Neutral.get(is_dark);
@@ -540,7 +472,9 @@ fn collect_draw_items(
     timings.edges_ms = edges_start.elapsed().as_secs_f32() * 1000.0;
 
     let trips_start = Instant::now();
-    for sample in trip_spatial_index.query_xy_time(min_x, max_x, min_y, max_y, time) {
+    for sample in
+        trip_spatial_index.query_xy_time(min_x..=max_x, min_y..=max_y, query_time..=query_time)
+    {
         let Ok((name, trip_class)) = trip_meta_q.get(sample.trip) else {
             continue;
         };

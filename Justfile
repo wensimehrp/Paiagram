@@ -7,6 +7,8 @@ get-fonts:
     7z x SarasaUiSC-TTF-1.0.33.7z -oassets/fonts -y
     wget https://github.com/be5invis/Sarasa-Gothic/releases/download/v1.0.33/SarasaTermSC-TTF-1.0.33.7z
     7z x SarasaTermSC-TTF-1.0.33.7z -oassets/fonts -y
+    wget https://github.com/ButTaiwan/diapro/releases/download/v1.200/DiaProV1200.zip
+    7z x DiaProV1200.zip -oassets/fonts -y
 
 # Check documentation build
 doc-check:

@@ -1,3 +1,4 @@
+use arrayvec::ArrayVec;
 use bevy::prelude::Reflect;
 use serde::{Deserialize, Serialize};
 use std::ops;
@@ -29,18 +30,28 @@ impl TimetableTime {
     }
     #[inline]
     pub fn from_str(s: &str) -> Option<Self> {
-        let parts: Vec<&str> = s.split(':').collect();
+        let (time_part, day_offset_seconds) = if let Some(idx) = s.rfind(['+', '-']) {
+            let (time, offset_str) = s.split_at(idx);
+            let sign = if &s[idx..idx + 1] == "+" { 1 } else { -1 };
+
+            // offset_str includes the sign, e.g., "+1"
+            let days = offset_str.parse::<i32>().ok()?;
+            (time, days * 86400)
+        } else {
+            (s, 0)
+        };
+        let parts: ArrayVec<&str, 3> = time_part.split(':').take(3).collect();
         match parts.len() {
             2 => {
                 let h = parts[0].parse::<i32>().ok()?;
                 let m = parts[1].parse::<i32>().ok()?;
-                Some(TimetableTime::from_hms(h, m, 0))
+                Some(TimetableTime::from_hms(h, m, 0 + day_offset_seconds))
             }
             3 => {
                 let h = parts[0].parse::<i32>().ok()?;
                 let m = parts[1].parse::<i32>().ok()?;
                 let sec = parts[2].parse::<i32>().ok()?;
-                Some(TimetableTime::from_hms(h, m, sec))
+                Some(TimetableTime::from_hms(h, m, sec + day_offset_seconds))
             }
             _ => None,
         }

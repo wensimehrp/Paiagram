@@ -1,20 +1,18 @@
 use crate::{
     entry,
-    graph::{Node, NodePos},
+    graph::Node,
+    settings::ProjectSettings,
     station::Station,
     trip::class::{Class, DisplayedStroke},
-    units::time::{Duration, TimetableTime},
+    units::time::Duration,
     vehicle::Vehicle,
 };
-use bevy::{
-    ecs::entity::{EntityHash, EntityHashMap},
-    tasks::{AsyncComputeTaskPool, Task, block_on, futures_lite::future::poll_once},
-};
+use bevy::tasks::{AsyncComputeTaskPool, Task, block_on, futures_lite::future::poll_once};
 use bevy::{ecs::query::QueryData, prelude::*};
 use moonshine_core::prelude::{MapEntities, ReflectMapEntities};
 use rstar::{AABB, RTree, RTreeObject};
-use smallvec::{SmallVec, smallvec};
-use std::collections::HashMap;
+use smallvec::SmallVec;
+use std::ops::RangeInclusive;
 
 pub mod class;
 pub mod routing;
@@ -41,15 +39,17 @@ impl Plugin for TripPlugin {
 }
 
 #[derive(Clone, Copy, Debug)]
-struct TripSegmentIndexItem {
+struct TripSpatialIndexItem {
     trip: Entity,
+    entry0: Entity,
+    entry1: Entity,
     t0: f64,
     t1: f64,
     p0: [f64; 2],
     p1: [f64; 2],
 }
 
-impl TripSegmentIndexItem {
+impl TripSpatialIndexItem {
     fn sample_at(self, time: f64) -> Option<[f64; 2]> {
         if time < self.t0 || time > self.t1 {
             return None;
@@ -62,7 +62,7 @@ impl TripSegmentIndexItem {
     }
 }
 
-impl RTreeObject for TripSegmentIndexItem {
+impl RTreeObject for TripSpatialIndexItem {
     type Envelope = AABB<[f64; 3]>;
 
     fn envelope(&self) -> Self::Envelope {
@@ -70,12 +70,12 @@ impl RTreeObject for TripSegmentIndexItem {
             [
                 self.p0[0].min(self.p1[0]),
                 self.p0[1].min(self.p1[1]),
-                self.t0.min(self.t1),
+                self.t0,
             ],
             [
                 self.p0[0].max(self.p1[0]),
                 self.p0[1].max(self.p1[1]),
-                self.t0.max(self.t1),
+                self.t1,
             ],
         )
     }
@@ -84,13 +84,15 @@ impl RTreeObject for TripSegmentIndexItem {
 #[derive(Clone, Copy, Debug)]
 pub struct TripSpatialSample {
     pub trip: Entity,
+    pub entry0: Entity,
+    pub entry1: Entity,
     pub x: f64,
     pub y: f64,
 }
 
 #[derive(Resource, Default)]
 pub struct TripSpatialIndex {
-    tree: RTree<TripSegmentIndexItem>,
+    tree: RTree<TripSpatialIndexItem>,
 }
 
 impl TripSpatialIndex {
@@ -100,44 +102,48 @@ impl TripSpatialIndex {
 
     pub fn query_xy_time(
         &self,
-        min_x: f64,
-        max_x: f64,
-        min_y: f64,
-        max_y: f64,
-        time: f64,
-    ) -> Vec<TripSpatialSample> {
-        if self.is_empty() {
-            return Vec::new();
-        }
-        let query_env = AABB::from_corners(
-            [min_x.min(max_x), min_y.min(max_y), time],
-            [min_x.max(max_x), min_y.max(max_y), time],
-        );
+        x_range: RangeInclusive<f64>,
+        y_range: RangeInclusive<f64>,
+        time_range: RangeInclusive<f64>,
+    ) -> impl Iterator<Item = TripSpatialSample> + '_ {
+        let x0 = (*x_range.start()).min(*x_range.end());
+        let x1 = (*x_range.start()).max(*x_range.end());
+        let y0 = (*y_range.start()).min(*y_range.end());
+        let y1 = (*y_range.start()).max(*y_range.end());
+        let t0 = (*time_range.start()).min(*time_range.end());
+        let t1 = (*time_range.start()).max(*time_range.end());
 
-        let mut by_trip: HashMap<Entity, TripSpatialSample, EntityHash> =
-            HashMap::with_hasher(EntityHash);
-        for item in self.tree.locate_in_envelope_intersecting(&query_env) {
-            let Some([x, y]) = item.sample_at(time) else {
-                continue;
-            };
-            if x < min_x.min(max_x)
-                || x > min_x.max(max_x)
-                || y < min_y.min(max_y)
-                || y > min_y.max(max_y)
-            {
-                continue;
+        let t_mid = (t0 + t1) * 0.5;
+
+        self.tree.iter().filter_map(move |item| {
+            if item.t1 < t0 || item.t0 > t1 {
+                return None;
             }
-            by_trip.entry(item.trip).or_insert(TripSpatialSample {
+            if item.p0[0].max(item.p1[0]) < x0
+                || item.p0[0].min(item.p1[0]) > x1
+                || item.p0[1].max(item.p1[1]) < y0
+                || item.p0[1].min(item.p1[1]) > y1
+            {
+                return None;
+            }
+
+            let sample_time = t_mid.clamp(item.t0, item.t1);
+            let [x, y] = item.sample_at(sample_time)?;
+            if x < x0 || x > x1 || y < y0 || y > y1 {
+                return None;
+            }
+
+            Some(TripSpatialSample {
                 trip: item.trip,
+                entry0: item.entry0,
+                entry1: item.entry1,
                 x,
                 y,
-            });
-        }
-
-        by_trip.into_values().collect()
+            })
+        })
     }
 
-    fn replace_tree(&mut self, tree: RTree<TripSegmentIndexItem>) {
+    fn replace_tree(&mut self, tree: RTree<TripSpatialIndexItem>) {
         self.tree = tree;
     }
 }
@@ -145,7 +151,7 @@ impl TripSpatialIndex {
 #[derive(Resource)]
 struct TripSpatialIndexState {
     dirty: bool,
-    task: Option<Task<RTree<TripSegmentIndexItem>>>,
+    task: Option<Task<RTree<TripSpatialIndexItem>>>,
 }
 
 impl Default for TripSpatialIndexState {
@@ -157,6 +163,7 @@ impl Default for TripSpatialIndexState {
     }
 }
 
+// TODO: replace the dirty method with specific updates
 fn mark_trip_spatial_index_dirty(
     mut state: ResMut<TripSpatialIndexState>,
     changed_trips: Query<(), Or<(Added<Trip>, Changed<Children>)>>,
@@ -196,13 +203,14 @@ fn start_trip_spatial_index_rebuild(
     estimate_q: Query<&entry::EntryEstimate>,
     platform_q: Query<AnyOf<(&Station, &ChildOf)>>,
     node_q: Query<&Node>,
+    settings: Res<ProjectSettings>,
 ) {
     if !state.dirty || state.task.is_some() {
         return;
     }
     state.dirty = false;
 
-    let mut snapshot = Vec::<TripSegmentIndexItem>::new();
+    let mut snapshot = Vec::<TripSpatialIndexItem>::new();
 
     let get_station_xy = |entry_entity: Entity| -> Option<[f64; 2]> {
         let platform_entity = stop_q.get(entry_entity).ok()?.entity();
@@ -214,50 +222,84 @@ fn start_trip_spatial_index_rebuild(
         Some([node.pos.x(), node.pos.y()])
     };
 
+    let repeat_time = settings.repeat_frequency.0 as f64;
+
     for (trip_entity, schedule) in &trips {
         if schedule.len() < 2 {
             continue;
         }
 
         for idx in 1..schedule.len() {
-            let prev_entry = schedule[idx - 1];
-            let curr_entry = schedule[idx];
+            let entry0 = schedule[idx - 1];
+            let entry1 = schedule[idx];
 
-            let Ok(prev_estimate) = estimate_q.get(prev_entry) else {
+            let Some(p0) = get_station_xy(entry0) else {
                 continue;
             };
-            let Ok(curr_estimate) = estimate_q.get(curr_entry) else {
-                continue;
-            };
-
-            let Some(prev_xy) = get_station_xy(prev_entry) else {
-                continue;
-            };
-            let Some(curr_xy) = get_station_xy(curr_entry) else {
+            let Some(p1) = get_station_xy(entry1) else {
                 continue;
             };
 
-            let prev_arr = prev_estimate.arr.0 as f64;
-            let prev_dep = prev_estimate.dep.0 as f64;
-            let curr_arr = curr_estimate.arr.0 as f64;
+            let Ok(estimate0) = estimate_q.get(entry0) else {
+                continue;
+            };
+            let Ok(estimate1) = estimate_q.get(entry1) else {
+                continue;
+            };
 
-            if prev_dep > prev_arr {
-                snapshot.push(TripSegmentIndexItem {
-                    trip: trip_entity,
-                    t0: prev_arr,
-                    t1: prev_dep,
-                    p0: prev_xy,
-                    p1: prev_xy,
-                });
+            let t0 = estimate0.dep.0 as f64;
+            let t1 = estimate1.arr.0 as f64;
+            if t1 < t0 {
+                continue;
             }
 
-            if curr_arr > prev_dep {
-                snapshot.push(TripSegmentIndexItem {
+            if repeat_time > 0.0 {
+                let duration = t1 - t0;
+                if duration >= repeat_time {
+                    snapshot.push(TripSpatialIndexItem {
+                        trip: trip_entity,
+                        entry0,
+                        entry1,
+                        t0: 0.0,
+                        t1: repeat_time,
+                        p0,
+                        p1,
+                    });
+                    continue;
+                }
+
+                let normalized_t0 = t0.rem_euclid(repeat_time);
+                let normalized_t1 = normalized_t0 + duration;
+                snapshot.push(TripSpatialIndexItem {
                     trip: trip_entity,
-                    t0: prev_dep,
-                    t1: curr_arr,
-                    p0: prev_xy,
-                    p1: curr_xy,
+                    entry0,
+                    entry1,
+                    t0: normalized_t0,
+                    t1: normalized_t1,
+                    p0,
+                    p1,
+                });
+
+                if normalized_t1 > repeat_time {
+                    snapshot.push(TripSpatialIndexItem {
+                        trip: trip_entity,
+                        entry0,
+                        entry1,
+                        t0: normalized_t0 - repeat_time,
+                        t1: normalized_t1 - repeat_time,
+                        p0,
+                        p1,
+                    });
+                }
+            } else {
+                snapshot.push(TripSpatialIndexItem {
+                    trip: trip_entity,
+                    entry0,
+                    entry1,
+                    t0,
+                    t1,
+                    p0,
+                    p1,
                 });
             }
         }

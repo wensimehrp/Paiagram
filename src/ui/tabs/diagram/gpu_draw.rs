@@ -3,6 +3,7 @@ use bytemuck::cast_slice;
 use eframe::egui_wgpu::{self, wgpu};
 use egui::{Pos2, Rect, mutex::Mutex};
 use egui_wgpu::CallbackTrait;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 pub struct GpuTripRendererState {
@@ -140,6 +141,11 @@ struct TripRenderResources {
     vertex_capacity: usize,
     target_format: wgpu::TextureFormat,
     msaa_samples: u32,
+}
+
+#[derive(Default)]
+struct TripRenderResourceMap {
+    by_state: HashMap<usize, TripRenderResources>,
 }
 
 impl TripRenderResources {
@@ -283,7 +289,16 @@ impl CallbackTrait for TripCallback {
             return Vec::new();
         }
 
-        let needs_rebuild = match resources.get::<TripRenderResources>() {
+        let state_key = Arc::as_ptr(&self.state) as usize;
+
+        if resources.get::<TripRenderResourceMap>().is_none() {
+            resources.insert(TripRenderResourceMap::default());
+        }
+
+        let resources_map: &mut TripRenderResourceMap =
+            resources.get_mut::<TripRenderResourceMap>().unwrap();
+
+        let needs_rebuild = match resources_map.by_state.get(&state_key) {
             Some(existing) => {
                 existing.target_format != target_format
                     || existing.msaa_samples != state.msaa_samples
@@ -292,15 +307,18 @@ impl CallbackTrait for TripCallback {
         };
 
         if needs_rebuild {
-            resources.insert(TripRenderResources::new(
+            resources_map.by_state.insert(
+                state_key,
+                TripRenderResources::new(
                 device,
                 target_format,
                 state.msaa_samples,
-            ));
+                ),
+            );
         }
 
         let resources: &mut TripRenderResources =
-            resources.get_mut::<TripRenderResources>().unwrap();
+            resources_map.by_state.get_mut(&state_key).unwrap();
 
         let vertex_bytes = cast_slice(state.combined_vertices.as_slice());
         let required_size = vertex_bytes.len();
@@ -332,7 +350,11 @@ impl CallbackTrait for TripCallback {
         render_pass: &mut wgpu::RenderPass<'static>,
         resources: &egui_wgpu::CallbackResources,
     ) {
-        let Some(resources) = resources.get::<TripRenderResources>() else {
+        let Some(resources_map) = resources.get::<TripRenderResourceMap>() else {
+            return;
+        };
+        let state_key = Arc::as_ptr(&self.state) as usize;
+        let Some(resources) = resources_map.by_state.get(&state_key) else {
             return;
         };
 

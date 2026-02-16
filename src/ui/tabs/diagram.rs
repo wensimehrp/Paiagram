@@ -54,8 +54,6 @@ pub struct DiagramTab {
     #[serde(skip, default)]
     use_global_timer: bool,
     #[serde(skip, default)]
-    holds_global_timer_lock: bool,
-    #[serde(skip, default)]
     gpu_state: Arc<egui::mutex::Mutex<gpu_draw::GpuTripRendererState>>,
     #[serde(skip, default)]
     show_perf: bool,
@@ -106,7 +104,6 @@ impl DiagramTab {
             route_entity,
             trips: Vec::new(),
             use_global_timer: false,
-            holds_global_timer_lock: false,
             gpu_state: Arc::new(egui::mutex::Mutex::new(
                 gpu_draw::GpuTripRendererState::default(),
             )),
@@ -237,6 +234,9 @@ impl Tab for DiagramTab {
     fn id(&self) -> Id {
         Id::new(self.route_entity)
     }
+    fn scroll_bars(&self) -> [bool; 2] {
+        [false; 2]
+    }
     fn export_display(&mut self, world: &mut World, ui: &mut Ui) {
         use crate::export::typst_diagram::{TypstDiagram, TypstModule};
         ui.strong(tr!("tab-diagram-save-typst-module"));
@@ -252,10 +252,6 @@ impl Tab for DiagramTab {
     }
     fn edit_display(&mut self, world: &mut World, ui: &mut Ui) {
         ui.checkbox(&mut self.use_global_timer, "Use global timer");
-        if !self.use_global_timer && self.holds_global_timer_lock {
-            world.resource::<GlobalTimer>().unlock();
-            self.holds_global_timer_lock = false;
-        }
         match self.selected {
             None => {
                 ui.strong("New Trip");
@@ -342,348 +338,340 @@ impl Tab for DiagramTab {
             .inner_margin(Margin::ZERO)
             .outer_margin(Margin::ZERO)
             .stroke(Stroke::NONE)
-            .show(ui, |ui| {
-                let route = world
-                    .get::<Route>(self.route_entity)
-                    .expect("Entity should have a route");
-                let (response, mut painter) =
-                    ui.allocate_painter(ui.available_size_before_wrap(), Sense::click_and_drag());
-                self.navi.visible_rect = response.rect;
-                if self.use_global_timer && !self.holds_global_timer_lock {
-                    self.navi.x_offset = world.resource::<GlobalTimer>().read_ticks();
-                }
-                self.navi.handle_navigation(ui, &response);
-                if self.use_global_timer {
-                    let dragging_time = response.dragged();
-                    let timer = world.resource::<GlobalTimer>();
-                    if dragging_time && !self.holds_global_timer_lock {
-                        self.holds_global_timer_lock = timer.try_lock();
-                    } else if !dragging_time && self.holds_global_timer_lock {
-                        timer.unlock();
-                        self.holds_global_timer_lock = false;
+            .show(ui, |ui| main_display(self, world, ui));
+    }
+}
+
+fn main_display(tab: &mut DiagramTab, world: &mut World, ui: &mut egui::Ui) {
+    let route = world
+        .get::<Route>(tab.route_entity)
+        .expect("Entity should have a route");
+    let (response, mut painter) =
+        ui.allocate_painter(ui.available_size_before_wrap(), Sense::click_and_drag());
+    let timer = world.resource::<GlobalTimer>();
+    tab.navi.visible_rect = response.rect;
+    if tab.use_global_timer {
+        tab.navi.x_offset = timer.read_ticks();
+    }
+    let moved = tab.navi.handle_navigation(ui, &response);
+    if tab.use_global_timer {
+        timer.write_ticks(tab.navi.x_offset);
+    }
+    if moved {
+        timer.try_lock(tab.route_entity);
+    } else {
+        timer.try_unlock(tab.route_entity);
+    }
+    let station_heights: Vec<_> = route.iter().collect();
+    if station_heights.is_empty() {
+        return;
+    }
+    tab.navi.max_height = station_heights.last().map_or(0.0, |(_, h)| *h);
+    let ticks_per_screen_unit = 1.0 / tab.navi.zoom_x().max(f32::EPSILON) as f64;
+    let visible_ticks = tab.navi.visible_x();
+    let to_screen_y = |h: f32| {
+        tab.navi.visible_rect.top()
+            + (h - tab.navi.offset_y()) * tab.navi.zoom_y().max(f32::EPSILON)
+    };
+    let screen_x_to_seconds = |screen_x: f32| -> TimetableTime {
+        let ticks = tab.navi.offset_x()
+            + (screen_x - tab.navi.visible_rect.left()) as f64 * ticks_per_screen_unit;
+        TimetableTime((ticks / TICKS_PER_SECOND as f64) as i32)
+    };
+    let ticks_to_screen_x = |ticks: i64| -> f32 {
+        tab.navi.visible_rect.left()
+            + ((ticks as f64 - tab.navi.offset_x()) / ticks_per_screen_unit) as f32
+    };
+    let station_heights_screen_iter = station_heights.iter().copied().map(|(e, h)| {
+        let height = to_screen_y(h);
+        (e, height)
+    });
+    // note that order matters here: navigation must be handled before anything else is calculated
+    let show_button = tab.navi.zoom.x.min(tab.navi.zoom.y) > 0.001;
+    let button_strength = ui
+        .ctx()
+        .animate_bool(ui.id().with("all buttons animation"), show_button);
+    draw_lines::draw_station_lines(
+        tab.navi.y_offset,
+        &mut painter,
+        tab.navi.visible_rect,
+        tab.navi.zoom.y,
+        station_heights.iter().copied(),
+        ui.pixels_per_point(),
+        &world, // FIXME: make this a system instead of passing world into it
+    );
+    draw_lines::draw_time_lines(
+        tab.navi.x_offset,
+        &mut painter,
+        tab.navi.visible_rect,
+        ticks_per_screen_unit,
+        &visible_ticks,
+        ui.pixels_per_point(),
+    );
+    world
+        .run_system_cached_with(
+            calc_trip_lines::calculate_trips,
+            (&mut tab.trips, tab.route_entity),
+        )
+        .unwrap();
+    let mut trip_line_buf = Vec::new();
+    // Calculate the visible trains
+    let calc_context = calc_trip_lines::CalcContext::from_tab(
+        &tab,
+        tab.navi.visible_rect,
+        ticks_per_screen_unit,
+        visible_ticks.clone(),
+    );
+    world
+        .run_system_cached_with(
+            calc_trip_lines::calc,
+            (&mut trip_line_buf, calc_context, &tab.trips),
+        )
+        .unwrap();
+    if let Some(SelectedItem::ExtendingTrip {
+        entry,
+        previous_pos,
+        current_entry,
+        last_time,
+    }) = &mut tab.selected
+        && let (Some(interact_pos), is_touch_input) = ui.input(|r| {
+            let pos = r.pointer.latest_pos().or(r.pointer.interact_pos());
+            let is_touch = r.any_touches();
+            (pos, is_touch)
+        })
+    {
+        let mut new_screen_pos: Pos2 = interact_pos;
+        let new_station_idx: usize;
+        let idx = station_heights_screen_iter
+            .clone()
+            .rposition(|(_, height)| height < interact_pos.y)
+            .unwrap_or(0);
+        let (_, prev_height) = station_heights[idx];
+        let prev_height = to_screen_y(prev_height);
+        if let Some((_, next_height)) = station_heights.get(idx + 1).copied()
+            && interact_pos.y > (to_screen_y(next_height) + prev_height) / 2.0
+        {
+            new_screen_pos.y = to_screen_y(next_height);
+            new_station_idx = idx + 1
+        } else {
+            new_screen_pos.y = prev_height;
+            new_station_idx = idx;
+        }
+        let new_station_entity = station_heights[new_station_idx].0;
+        // Smoothing animations
+        // see https://github.com/rerun-io/egui_tiles/blob/f86273ba8ff9f44a9817067abbf977ba5cdcb9fa/src/tree.rs#L438-L493
+        let mut requires_repaint = false;
+        let dt = ui.ctx().input(|input| input.stable_dt).at_most(0.1);
+        let smoothed_screen_y = ui.ctx().data_mut(|data| {
+            let smoothed: &mut f32 =
+                data.get_temp_mut_or(ui.id().with("new line animation"), new_screen_pos.y);
+            let t = egui::emath::exponential_smooth_factor(0.9, 0.05, dt);
+            *smoothed = smoothed.lerp(new_screen_pos.y, t);
+            // *smoothed = smoothed.lerp(new_screen_pos, t);
+            let diff = (*smoothed - new_screen_pos.y).abs();
+            if diff < 1.0 {
+                *smoothed = new_screen_pos.y
+            } else {
+                requires_repaint = true
+            }
+            *smoothed
+        });
+        let smoothed_screen_pos = Pos2 {
+            x: new_screen_pos.x,
+            y: smoothed_screen_y,
+        };
+        if requires_repaint {
+            ui.ctx().request_repaint();
+        }
+        let stroke = DisplayedStroke::default().egui_stroke(ui.visuals().dark_mode);
+        painter.line_segment([smoothed_screen_pos, interact_pos], stroke);
+        let station_name = world.get::<Name>(new_station_entity).unwrap();
+        painter.circle_filled(smoothed_screen_pos, 4.0, ui.visuals().text_color());
+        painter.text(
+            smoothed_screen_pos,
+            Align2::LEFT_BOTTOM,
+            station_name,
+            FontId::proportional(13.0),
+            ui.visuals().text_color(),
+        );
+        if let Some((t, idx)) = *previous_pos {
+            let (_, h) = station_heights[idx];
+            let prev_pos = Pos2::new(
+                ticks_to_screen_x(t.0 as i64 * TICKS_PER_SECOND),
+                to_screen_y(h),
+            );
+            painter.line_segment([prev_pos, smoothed_screen_pos], stroke);
+        }
+        let add_or_populate_entry = if is_touch_input {
+            // TODO: show a button instead of using secondary_clicked
+            response.secondary_clicked()
+        } else {
+            response.clicked()
+        };
+        if add_or_populate_entry {
+            let hovered_time = screen_x_to_seconds(interact_pos.x);
+            // normalize the time until the time difference is positive and less than 24 hours.
+            let normalized_time = if let Some(last_time) = *last_time
+                && let Some((last_clicked_time, _)) = *previous_pos
+            {
+                let diff = last_clicked_time - last_time;
+                hovered_time - diff
+            } else {
+                hovered_time.normalized()
+            };
+            let should_spawn = match current_entry {
+                Some(current_entry_unwrapped) => {
+                    let stop = world
+                        .get::<EntryStop>(*current_entry_unwrapped)
+                        .unwrap()
+                        .entity();
+                    if stop == new_station_entity {
+                        let mut mode = world
+                            .get_mut::<EntryMode>(*current_entry_unwrapped)
+                            .unwrap();
+                        mode.dep = Some(TravelMode::At(normalized_time));
+                        *current_entry = None;
+                        false
+                    } else {
+                        true
                     }
-                    if self.holds_global_timer_lock {
-                        timer.write_ticks(self.navi.x_offset);
-                    }
                 }
-                let station_heights: Vec<_> = route.iter().collect();
-                if station_heights.is_empty() {
-                    return;
-                }
-                self.navi.max_height = station_heights.last().map_or(0.0, |(_, h)| *h);
-                let ticks_per_screen_unit = 1.0 / self.navi.zoom_x().max(f32::EPSILON) as f64;
-                let visible_ticks = self.navi.visible_x();
-                let to_screen_y = |h: f32| {
-                    self.navi.visible_rect.top()
-                        + (h - self.navi.offset_y()) * self.navi.zoom_y().max(f32::EPSILON)
-                };
-                let screen_x_to_seconds = |screen_x: f32| -> TimetableTime {
-                    let ticks = self.navi.offset_x()
-                        + (screen_x - self.navi.visible_rect.left()) as f64 * ticks_per_screen_unit;
-                    TimetableTime((ticks / TICKS_PER_SECOND as f64) as i32)
-                };
-                let ticks_to_screen_x = |ticks: i64| -> f32 {
-                    self.navi.visible_rect.left()
-                        + ((ticks as f64 - self.navi.offset_x()) / ticks_per_screen_unit) as f32
-                };
-                let station_heights_screen_iter = station_heights.iter().copied().map(|(e, h)| {
-                    let height = to_screen_y(h);
-                    (e, height)
+                None => true,
+            };
+            if should_spawn {
+                let new_child = world
+                    .spawn(EntryBundle::new(
+                        TravelMode::At(normalized_time),
+                        None,
+                        new_station_entity,
+                    ))
+                    .id();
+                world.write_message(AddEntryToTrip {
+                    trip: *entry,
+                    entry: new_child,
                 });
-                // note that order matters here: navigation must be handled before anything else is calculated
-                let show_button = self.navi.zoom.x.min(self.navi.zoom.y) > 0.001;
-                let button_strength = ui
-                    .ctx()
-                    .animate_bool(ui.id().with("all buttons animation"), show_button);
-                draw_lines::draw_station_lines(
-                    self.navi.y_offset,
-                    &mut painter,
-                    self.navi.visible_rect,
-                    self.navi.zoom.y,
-                    station_heights.iter().copied(),
-                    ui.pixels_per_point(),
-                    &world, // FIXME: make this a system instead of passing world into it
-                );
-                draw_lines::draw_time_lines(
-                    self.navi.x_offset,
-                    &mut painter,
-                    self.navi.visible_rect,
-                    ticks_per_screen_unit,
-                    &visible_ticks,
-                    ui.pixels_per_point(),
-                );
+                *current_entry = Some(new_child);
+            }
+            *previous_pos = Some((hovered_time, new_station_idx));
+            *last_time = Some(normalized_time);
+        }
+    } else if response.clicked()
+        && let Some(pos) = response.interact_pointer_pos()
+    {
+        if tab.selected.is_some() {
+            tab.selected = None
+        } else {
+            tab.selected = handle_selection(&trip_line_buf, pos);
+        }
+    }
+    let selection_strength = ui
+        .ctx()
+        .animate_bool(ui.id().with("selection"), tab.selected.is_some());
+    // let use_gpu = tab.use_gpu;
+    let mut selected_idx_rect: Option<(usize, Vec<Rect>)> = None;
+    world
+        .run_system_cached_with(
+            draw_trip_lines,
+            (
+                &trip_line_buf,
+                ui,
+                &mut painter,
+                tab.selected,
+                &mut selected_idx_rect,
+                button_strength,
+            ),
+        )
+        .unwrap();
+    let mut state = tab.gpu_state.lock();
+    if let Some(target_format) = ui.ctx().data(|data| {
+        data.get_temp::<eframe::egui_wgpu::wgpu::TextureFormat>(Id::new("wgpu_target_format"))
+    }) {
+        state.target_format = Some(target_format);
+    }
+    if let Some(msaa_samples) = ui
+        .ctx()
+        .data(|data| data.get_temp::<u32>(Id::new("wgpu_msaa_samples")))
+    {
+        state.msaa_samples = msaa_samples;
+    }
+    let gpu_prep_start = Instant::now();
+    gpu_draw::write_vertices(&trip_line_buf, ui.visuals().dark_mode, &mut state);
+    tab.last_gpu_prep_ms = gpu_prep_start.elapsed().as_secs_f32() * 1000.0;
+    let callback = gpu_draw::paint_callback(response.rect, tab.gpu_state.clone());
+    painter.add(callback);
+    let s = (selection_strength * 0.5 * u8::MAX as f32) as u8;
+    painter.rect_filled(
+        response.rect,
+        0,
+        if ui.visuals().dark_mode {
+            Color32::from_black_alpha(s)
+        } else {
+            Color32::from_white_alpha(s)
+        },
+    );
+    if let Some((idx, rects)) = selected_idx_rect {
+        let trip = &trip_line_buf[idx];
+        let stroke = egui::Stroke {
+            width: trip.stroke.width + 3.0 * selection_strength * trip.stroke.width,
+            color: trip.stroke.color.get(ui.visuals().dark_mode),
+        };
+        for (i, (p_group, e_group)) in trip.points.iter().zip(trip.entries.iter()).enumerate() {
+            let mut points = Vec::with_capacity(p_group.len() * 4);
+            for segment in p_group.iter() {
+                points.extend(segment.iter().copied());
+            }
+            if points.len() >= 2 {
+                painter.line(points, stroke);
+            }
+            for (j, (points, e)) in p_group.iter().zip(e_group.iter().copied()).enumerate() {
                 world
                     .run_system_cached_with(
-                        calc_trip_lines::calculate_trips,
-                        (&mut self.trips, self.route_entity),
-                    )
-                    .unwrap();
-                let mut trip_line_buf = Vec::new();
-                // Calculate the visible trains
-                let calc_context = calc_trip_lines::CalcContext::from_tab(
-                    &self,
-                    self.navi.visible_rect,
-                    ticks_per_screen_unit,
-                    visible_ticks.clone(),
-                );
-                world
-                    .run_system_cached_with(
-                        calc_trip_lines::calc,
-                        (&mut trip_line_buf, calc_context, &self.trips),
-                    )
-                    .unwrap();
-                if let Some(SelectedItem::ExtendingTrip {
-                    entry,
-                    previous_pos,
-                    current_entry,
-                    last_time,
-                }) = &mut self.selected
-                    && let (Some(interact_pos), is_touch_input) = ui.input(|r| {
-                        let pos = r.pointer.latest_pos().or(r.pointer.interact_pos());
-                        let is_touch = r.any_touches();
-                        (pos, is_touch)
-                    })
-                {
-                    let mut new_screen_pos: Pos2 = interact_pos;
-                    let new_station_idx: usize;
-                    let idx = station_heights_screen_iter
-                        .clone()
-                        .rposition(|(_, height)| height < interact_pos.y)
-                        .unwrap_or(0);
-                    let (_, prev_height) = station_heights[idx];
-                    let prev_height = to_screen_y(prev_height);
-                    if let Some((_, next_height)) = station_heights.get(idx + 1).copied()
-                        && interact_pos.y > (to_screen_y(next_height) + prev_height) / 2.0
-                    {
-                        new_screen_pos.y = to_screen_y(next_height);
-                        new_station_idx = idx + 1
-                    } else {
-                        new_screen_pos.y = prev_height;
-                        new_station_idx = idx;
-                    }
-                    let new_station_entity = station_heights[new_station_idx].0;
-                    // Smoothing animations
-                    // see https://github.com/rerun-io/egui_tiles/blob/f86273ba8ff9f44a9817067abbf977ba5cdcb9fa/src/tree.rs#L438-L493
-                    let mut requires_repaint = false;
-                    let dt = ui.ctx().input(|input| input.stable_dt).at_most(0.1);
-                    let smoothed_screen_y = ui.ctx().data_mut(|data| {
-                        let smoothed: &mut f32 = data
-                            .get_temp_mut_or(ui.id().with("new line animation"), new_screen_pos.y);
-                        let t = egui::emath::exponential_smooth_factor(0.9, 0.05, dt);
-                        *smoothed = smoothed.lerp(new_screen_pos.y, t);
-                        // *smoothed = smoothed.lerp(new_screen_pos, t);
-                        let diff = (*smoothed - new_screen_pos.y).abs();
-                        if diff < 1.0 {
-                            *smoothed = new_screen_pos.y
-                        } else {
-                            requires_repaint = true
-                        }
-                        *smoothed
-                    });
-                    let smoothed_screen_pos = Pos2 {
-                        x: new_screen_pos.x,
-                        y: smoothed_screen_y,
-                    };
-                    if requires_repaint {
-                        ui.ctx().request_repaint();
-                    }
-                    let stroke = DisplayedStroke::default().egui_stroke(ui.visuals().dark_mode);
-                    painter.line_segment([smoothed_screen_pos, interact_pos], stroke);
-                    let station_name = world.get::<Name>(new_station_entity).unwrap();
-                    painter.circle_filled(smoothed_screen_pos, 4.0, ui.visuals().text_color());
-                    painter.text(
-                        smoothed_screen_pos,
-                        Align2::LEFT_BOTTOM,
-                        station_name,
-                        FontId::proportional(13.0),
-                        ui.visuals().text_color(),
-                    );
-                    if let Some((t, idx)) = *previous_pos {
-                        let (_, h) = station_heights[idx];
-                        let prev_pos = Pos2::new(
-                            ticks_to_screen_x(t.0 as i64 * TICKS_PER_SECOND),
-                            to_screen_y(h),
-                        );
-                        painter.line_segment([prev_pos, smoothed_screen_pos], stroke);
-                    }
-                    let add_or_populate_entry = if is_touch_input {
-                        // TODO: show a button instead of using secondary_clicked
-                        response.secondary_clicked()
-                    } else {
-                        response.clicked()
-                    };
-                    if add_or_populate_entry {
-                        let hovered_time = screen_x_to_seconds(interact_pos.x);
-                        // normalize the time until the time difference is positive and less than 24 hours.
-                        let normalized_time = if let Some(last_time) = *last_time
-                            && let Some((last_clicked_time, _)) = *previous_pos
-                        {
-                            let diff = last_clicked_time - last_time;
-                            hovered_time - diff
-                        } else {
-                            hovered_time.normalized()
-                        };
-                        let should_spawn = match current_entry {
-                            Some(current_entry_unwrapped) => {
-                                let stop = world
-                                    .get::<EntryStop>(*current_entry_unwrapped)
-                                    .unwrap()
-                                    .entity();
-                                if stop == new_station_entity {
-                                    let mut mode = world
-                                        .get_mut::<EntryMode>(*current_entry_unwrapped)
-                                        .unwrap();
-                                    mode.dep = Some(TravelMode::At(normalized_time));
-                                    *current_entry = None;
-                                    false
-                                } else {
-                                    true
-                                }
-                            }
-                            None => true,
-                        };
-                        if should_spawn {
-                            let new_child = world
-                                .spawn(EntryBundle::new(
-                                    TravelMode::At(normalized_time),
-                                    None,
-                                    new_station_entity,
-                                ))
-                                .id();
-                            world.write_message(AddEntryToTrip {
-                                trip: *entry,
-                                entry: new_child,
-                            });
-                            *current_entry = Some(new_child);
-                        }
-                        *previous_pos = Some((hovered_time, new_station_idx));
-                        *last_time = Some(normalized_time);
-                    }
-                } else if response.clicked()
-                    && let Some(pos) = response.interact_pointer_pos()
-                {
-                    if self.selected.is_some() {
-                        self.selected = None
-                    } else {
-                        self.selected = handle_selection(&trip_line_buf, pos);
-                    }
-                }
-                let selection_strength = ui
-                    .ctx()
-                    .animate_bool(ui.id().with("selection"), self.selected.is_some());
-                // let use_gpu = self.use_gpu;
-                let mut selected_idx_rect: Option<(usize, Vec<Rect>)> = None;
-                world
-                    .run_system_cached_with(
-                        draw_trip_lines,
+                        draw_handles,
                         (
-                            &trip_line_buf,
+                            points,
+                            e,
+                            (i, j),
                             ui,
                             &mut painter,
-                            self.selected,
-                            &mut selected_idx_rect,
-                            button_strength,
+                            tab.navi.zoom.x,
+                            button_strength.min(selection_strength),
                         ),
                     )
                     .unwrap();
-                let mut state = self.gpu_state.lock();
-                if let Some(target_format) = ui.ctx().data(|data| {
-                    data.get_temp::<eframe::egui_wgpu::wgpu::TextureFormat>(Id::new(
-                        "wgpu_target_format",
-                    ))
-                }) {
-                    state.target_format = Some(target_format);
-                }
-                if let Some(msaa_samples) = ui
-                    .ctx()
-                    .data(|data| data.get_temp::<u32>(Id::new("wgpu_msaa_samples")))
-                {
-                    state.msaa_samples = msaa_samples;
-                }
-                let gpu_prep_start = Instant::now();
-                gpu_draw::write_vertices(&trip_line_buf, ui.visuals().dark_mode, &mut state);
-                self.last_gpu_prep_ms = gpu_prep_start.elapsed().as_secs_f32() * 1000.0;
-                let callback = gpu_draw::paint_callback(response.rect, self.gpu_state.clone());
-                painter.add(callback);
-                let s = (selection_strength * 0.5 * u8::MAX as f32) as u8;
-                painter.rect_filled(
-                    response.rect,
-                    0,
-                    if ui.visuals().dark_mode {
-                        Color32::from_black_alpha(s)
-                    } else {
-                        Color32::from_white_alpha(s)
-                    },
-                );
-                if let Some((idx, rects)) = selected_idx_rect {
-                    let trip = &trip_line_buf[idx];
-                    let stroke = egui::Stroke {
-                        width: trip.stroke.width + 3.0 * selection_strength * trip.stroke.width,
-                        color: trip.stroke.color.get(ui.visuals().dark_mode),
-                    };
-                    for (i, (p_group, e_group)) in
-                        trip.points.iter().zip(trip.entries.iter()).enumerate()
-                    {
-                        let mut points = Vec::with_capacity(p_group.len() * 4);
-                        for segment in p_group.iter() {
-                            points.extend(segment.iter().copied());
-                        }
-                        if points.len() >= 2 {
-                            painter.line(points, stroke);
-                        }
-                        for (j, (points, e)) in
-                            p_group.iter().zip(e_group.iter().copied()).enumerate()
-                        {
-                            world
-                                .run_system_cached_with(
-                                    draw_handles,
-                                    (
-                                        points,
-                                        e,
-                                        (i, j),
-                                        ui,
-                                        &mut painter,
-                                        self.navi.zoom.x,
-                                        button_strength.min(selection_strength),
-                                    ),
-                                )
-                                .unwrap();
-                        }
-                    }
-                    for rect in rects {
-                        painter.rect(
-                            rect,
-                            8,
-                            Color32::BLUE.gamma_multiply(0.5),
-                            egui::Stroke {
-                                width: 1.0,
-                                color: Color32::BLUE,
-                            },
-                            egui::StrokeKind::Middle,
-                        );
-                    }
-                }
-                if self.show_perf {
-                    let mut text = format!(
-                        "GPU: on\nGPU prep: {:.2} ms\nFrame: {:.2} ms",
-                        self.last_gpu_prep_ms, self.last_frame_ms
-                    );
-                    if let Some(info) = ui
-                        .ctx()
-                        .data(|data| data.get_temp::<String>(Id::new("wgpu_adapter_info")))
-                    {
-                        text.push_str("\n");
-                        text.push_str(&info);
-                    }
-                    let color = if ui.visuals().dark_mode {
-                        Color32::WHITE
-                    } else {
-                        Color32::BLACK
-                    };
-                    let pos = response.rect.left_top() + Vec2::new(6.0, 6.0);
-                    painter.text(pos, Align2::LEFT_TOP, text, FontId::monospace(12.0), color);
-                }
-            });
+            }
+        }
+        for rect in rects {
+            painter.rect(
+                rect,
+                8,
+                Color32::BLUE.gamma_multiply(0.5),
+                egui::Stroke {
+                    width: 1.0,
+                    color: Color32::BLUE,
+                },
+                egui::StrokeKind::Middle,
+            );
+        }
+    }
+    if tab.show_perf {
+        let mut text = format!(
+            "GPU: on\nGPU prep: {:.2} ms\nFrame: {:.2} ms",
+            tab.last_gpu_prep_ms, tab.last_frame_ms
+        );
+        if let Some(info) = ui
+            .ctx()
+            .data(|data| data.get_temp::<String>(Id::new("wgpu_adapter_info")))
+        {
+            text.push_str("\n");
+            text.push_str(&info);
+        }
+        let color = if ui.visuals().dark_mode {
+            Color32::WHITE
+        } else {
+            Color32::BLACK
+        };
+        let pos = response.rect.left_top() + Vec2::new(6.0, 6.0);
+        painter.text(pos, Align2::LEFT_TOP, text, FontId::monospace(12.0), color);
     }
 }
 

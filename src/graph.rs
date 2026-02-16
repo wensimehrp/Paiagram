@@ -234,7 +234,13 @@ impl GraphIntervalSpatialIndex {
         self.tree.size() == 0
     }
 
-    pub fn query_xy_aabb(&self, min_x: f64, min_y: f64, max_x: f64, max_y: f64) -> Vec<GraphIntervalSpatialSample> {
+    pub fn query_xy_aabb(
+        &self,
+        min_x: f64,
+        min_y: f64,
+        max_x: f64,
+        max_y: f64,
+    ) -> Vec<GraphIntervalSpatialSample> {
         if self.is_empty() {
             return Vec::new();
         }

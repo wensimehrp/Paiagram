@@ -93,7 +93,10 @@ pub trait Navigatable {
     fn allow_axis_zoom(&self) -> bool {
         false
     }
-    fn handle_navigation(&mut self, ui: &mut Ui, response: &Response) {
+    /// Handles the navigation of the navigatable component.
+    /// Returns true if there are any user input
+    fn handle_navigation(&mut self, ui: &mut Ui, response: &Response) -> bool {
+        let mut moved = response.dragged();
         let zoom_delta = if self.allow_axis_zoom() {
             ui.input(|input| input.zoom_delta_2d())
         } else {
@@ -107,6 +110,7 @@ pub trait Navigatable {
             && ui.ui_contains_pointer()
             && let Some(pos) = response.hover_pos()
         {
+            moved |= zooming;
             let old_zoom_x = self.zoom_x();
             let old_zoom_y = self.zoom_y();
             let mut new_zoom_x = old_zoom_x * zoom_delta.x;
@@ -135,10 +139,13 @@ pub trait Navigatable {
             let pan_delta = response.drag_delta() + scroll_delta;
             let new_offset_x = self.offset_x() - ticks_per_screen_unit * pan_delta.x as f64;
             let new_offset_y = self.offset_y() - pan_delta.y / self.zoom_y();
+            moved |= scroll_delta.x != 0.0;
+            moved |= scroll_delta.y != 0.0;
             self.set_offset(new_offset_x, new_offset_y);
         }
 
         self.post_navigation(response);
+        return moved;
     }
     fn clamp_zoom(&self, zoom_x: f32, zoom_y: f32) -> (f32, f32) {
         (zoom_x, zoom_y)

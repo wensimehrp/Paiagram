@@ -2,7 +2,7 @@ struct VsOut {
   @builtin(position) pos: vec4<f32>,
   @location(0) local: vec2<f32>,
   @location(1) color: vec4<f32>,
-  @location(2) kind: u32,
+  @location(2) @interpolate(flat) kind: u32,
 };
 
 struct ShapeInstance {

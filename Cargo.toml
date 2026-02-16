@@ -73,6 +73,7 @@ wasmi = "1.0.9"
 anyhow = "1.0.101"
 encoding_rs = "0.8.35"
 rstar = "0.12.2"
+arrayvec = "0.7.6"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 ureq = { version = "3.1.4", features = ["_tls"] }
