@@ -225,13 +225,18 @@ fn start_trip_spatial_index_rebuild(
     let repeat_time = settings.repeat_frequency.0 as f64;
 
     for (trip_entity, schedule) in &trips {
-        if schedule.len() < 2 {
+        if schedule.len() < 1 {
             continue;
         }
 
-        for idx in 1..schedule.len() {
-            let entry0 = schedule[idx - 1];
-            let entry1 = schedule[idx];
+        for pair in schedule.windows(2).chain(std::iter::once(
+            [schedule.last().unwrap().clone(); 2].as_slice(),
+        )) {
+            let [entry0, entry1] = pair else {
+                continue;
+            };
+            let entry0 = *entry0;
+            let entry1 = *entry1;
 
             let Some(p0) = get_station_xy(entry0) else {
                 continue;
@@ -247,7 +252,8 @@ fn start_trip_spatial_index_rebuild(
                 continue;
             };
 
-            let t0 = estimate0.dep.0 as f64;
+            // include the previous arr time
+            let t0 = estimate0.arr.0 as f64;
             let t1 = estimate1.arr.0 as f64;
             if t1 < t0 {
                 continue;
