@@ -11,40 +11,44 @@
 <body>
     <main>
         <h1>Paiagram Nightly</h1>
-        <p>Choose a destination for the latest nightly build and reference documentation.<br>
-            <a href="https://github.com/WenSimEHRP/Paiagram/actions/workflows/nightly.yml">
-                <img src="https://github.com/WenSimEHRP/Paiagram/actions/workflows/nightly.yml/badge.svg"
-                    alt="workflow status">
-            </a>
-        </p>
-        <p>
-            Please use the latest version of Google Chrome or a Chromium-based browser new enough for the best
-            experience. This application also runs on latest versions of Firefox and Safari.
-        </p>
+
+        <a class="status-badge" href="https://github.com/WenSimEHRP/Paiagram/actions/workflows/nightly.yml">
+            <img src="https://github.com/WenSimEHRP/Paiagram/actions/workflows/nightly.yml/badge.svg"
+                alt="workflow status">
+        </a>
+
+        <p>timetables are just a click away.</p>
+
+        <div class="notice">
+            <strong>Linux & Browser Requirements:</strong> This program requires <b>WebGPU</b>. Please use the latest
+            Chrome, Chromium, or enable WebGPU in your browser settings. Supports latest Firefox and Safari.
+        </div>
+
         <nav>
             <a class="link-card" href="./nightly/">
                 <span>Nightly Web Build</span>
-                <small>Run the current nightly build in your browser.</small>
+                <small>Run the program directly in your browser.</small>
             </a>
-            <a class="link-card" href="./nightly/">
-                <span><b>Example</b></span>
-                <small>See an example of Paiagram!</small>
+            <a class="link-card"
+                href="./nightly/?load=https://raw.githubusercontent.com/WenSimEHRP/OuDiaSecond/refs/heads/master/DiagramEdit/manual/sample.oud2">
+                <span>View Example</span>
+                <small>See Paiagram in action with a live demo.</small>
             </a>
             <a class="link-card" href="https://github.com/WenSimEHRP/Paiagram/releases">
                 <span>Nightly Download</span>
-                <small>Download the native desktop versions for Windows and MacOS.</small>
+                <small>Downloads for Windows and MacOS.</small>
             </a>
             <a class="link-card" href="./nightly/docs/">
-                <span>Nightly Documentation</span>
-                <small>Browse documentation generated from the nightly build.</small>
+                <span>Documentation</span>
+                <small>Browse the latest documentation.</small>
             </a>
             <a class="link-card" href="./nightly/api-docs/paiagram/">
-                <span>Nightly API Docs</span>
-                <small>Code reference.</small>
+                <span>API Reference</span>
+                <small>See implementation details.</small>
             </a>
             <a class="link-card" href="https://github.com/wensimehrp/Paiagram">
                 <span>GitHub Repository</span>
-                <small>Checkout the code repository on GitHub.</small>
+                <small>Access the source code.</small>
             </a>
         </nav>
     </main>

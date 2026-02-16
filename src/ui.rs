@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use tabs::{Tab, all_tabs::*};
 
 use crate::{
-    import::{LoadGTFS, LoadOuDia, LoadQETRC},
+    import::{self, DownloadFile, LoadGTFS, LoadOuDia, LoadQETRC},
     route::Route,
     settings::UserPreferences,
     trip::Trip,
@@ -28,6 +28,7 @@ impl Plugin for UiPlugin {
         app.init_resource::<MainUiState>()
             .init_resource::<AdditionalUiState>()
             .init_resource::<GlobalTimer>()
+            .init_resource::<UiModal>()
             .add_plugins(bevy_inspector_egui::DefaultInspectorConfigPlugin)
             .add_message::<OpenOrFocus>()
             .add_systems(
@@ -36,6 +37,35 @@ impl Plugin for UiPlugin {
             );
     }
 }
+
+enum Modals {
+    OpenUrl(String),
+}
+
+impl Modals {
+    fn id(&self) -> egui::Id {
+        match self {
+            Self::OpenUrl(_) => "openurl".into(),
+        }
+    }
+    fn display(&mut self, ui: &mut egui::Ui, world: &mut World) {
+        match self {
+            Self::OpenUrl(buf) => {
+                ui.heading("Import from URL");
+                ui.label("Download the file from the Internet then import it into Paiagram");
+                ui.strong("URL:");
+                ui.text_edit_singleline(buf);
+                if ui.button("Download and Import").clicked() {
+                    world.trigger(DownloadFile { url: buf.clone() });
+                    ui.close();
+                }
+            }
+        }
+    }
+}
+
+#[derive(Resource, Deref, DerefMut, Default)]
+struct UiModal(Option<Modals>);
 
 #[derive(Resource, Reflect)]
 #[reflect(Resource)]
@@ -345,12 +375,23 @@ impl<'w> TabViewer for AdditionalTabViewer<'w> {
 
 pub fn show_ui(ctx: &Context, world: &mut World) {
     world.run_system_cached_with(sync_ui, ctx).unwrap();
+    world.resource_scope(|world, mut modal: Mut<UiModal>| {
+        let Some(m) = &mut modal.0 else { return };
+        let modal_response = egui::Modal::new(m.id()).show(ctx, |ui| m.display(ui, world));
+        if modal_response.should_close() {
+            modal.0 = None
+        }
+    });
     egui::TopBottomPanel::top("top panel").show(ctx, |ui| {
         ui.horizontal(|ui| {
             // TODO: add rfd file reading
             let res = ui.button("More...");
             egui::Popup::menu(&res).show(|ui| {
-                if ui.button("Read OuDia").clicked() {
+                if ui.button("Import from URL...").clicked() {
+                    world.resource_mut::<UiModal>().0 = Some(Modals::OpenUrl(String::new()));
+                }
+                ui.separator();
+                if ui.button("Read OuDia...").clicked() {
                     world.commands().trigger(crate::rw::read::ReadFile {
                         title: "Load OuDia Files".to_string(),
                         extensions: vec![("OuDia Files".to_string(), vec!["oud".to_string()])],
@@ -359,7 +400,7 @@ pub fn show_ui(ctx: &Context, world: &mut World) {
                         },
                     });
                 }
-                if ui.button("Read OuDiaSecond").clicked() {
+                if ui.button("Read OuDiaSecond...").clicked() {
                     world.commands().trigger(crate::rw::read::ReadFile {
                         title: "Load OuDiaSecond Files".to_string(),
                         extensions: vec![(
@@ -371,7 +412,7 @@ pub fn show_ui(ctx: &Context, world: &mut World) {
                         },
                     });
                 }
-                if ui.button("Read qETRC/pyETRC").clicked() {
+                if ui.button("Read qETRC/pyETRC...").clicked() {
                     world.commands().trigger(crate::rw::read::ReadFile {
                         title: "Load qETRC Files".to_string(),
                         extensions: vec![(
@@ -385,7 +426,7 @@ pub fn show_ui(ctx: &Context, world: &mut World) {
                         },
                     });
                 }
-                if ui.button("Read GTFS").clicked() {
+                if ui.button("Read GTFS...").clicked() {
                     world.commands().trigger(crate::rw::read::ReadFile {
                         title: "Load GTFS Files".to_string(),
                         extensions: vec![("GTFS Files".to_string(), vec!["zip".to_string()])],

@@ -86,7 +86,45 @@ impl PaiagramApp {
                 info!("Command line arguments handled successfully.");
             }
         }
+        #[cfg(target_arch = "wasm32")]
+        {
+            info!("Handling web args...");
+            if let Some(search) =
+                eframe::web_sys::window().and_then(|it| it.location().search().ok())
+            {
+                info!(?search);
+                let query = search.strip_prefix('?').unwrap_or(&search);
+                for pair in query.split('&') {
+                    let mut iter: std::str::SplitN<'_, char> = pair.splitn(2, '=');
+                    let key = iter.next().unwrap_or_default();
+                    if key != "load" {
+                        continue;
+                    }
+                    let value = iter.next().unwrap_or_default();
+                    app.world_mut()
+                        .run_system_cached_with(handle_arg_pair, (key, value))
+                        .unwrap();
+                }
+            }
+        }
         Self { bevy_app: app }
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn handle_arg_pair((InRef(key), InRef(val)): (InRef<str>, InRef<str>), mut commands: Commands) {
+    match key {
+        "load" => {
+            let Some(decoded) = urlencoding::decode(val).ok() else {
+                return;
+            };
+            commands.trigger(import::DownloadFile {
+                url: decoded.to_string(),
+            });
+        }
+        key => {
+            warn!("Unknown key in url: {}", key)
+        }
     }
 }
 
@@ -127,26 +165,16 @@ struct Cli {
 #[cfg(not(target_arch = "wasm32"))]
 fn handle_args(cli: In<Cli>, mut commands: Commands) {
     for path in cli.open.iter().flatten() {
-        use crate::import::*;
-        match path.extension().and_then(|s| s.to_str()) {
-            Some("pyetgr") | Some("json") => {
-                let content = std::fs::read_to_string(path).unwrap();
-                commands.trigger(LoadQETRC { content });
+        let content = match std::fs::read(path) {
+            Ok(c) => c,
+            Err(e) => {
+                error!("Could not open {:?}: {:?}", path, e);
+                continue;
             }
-            Some("oud2") => {
-                let content = std::fs::read_to_string(path).unwrap();
-                commands.trigger(LoadOuDia::second(content));
-            }
-            Some("zip") => {
-                let content = std::fs::read(path).unwrap();
-                commands.trigger(LoadGTFS { content });
-            }
-            Some("oud") => {
-                // oudia does not use utf-8
-                let content = std::fs::read(path).unwrap();
-                commands.trigger(LoadOuDia::original(content))
-            }
-            _ => panic!(),
+        };
+        if let Err(e) = import::load_and_trigger(path, content, &mut commands) {
+            error!("Could not load {:?}: {:#?}", path, e);
+            continue;
         }
     }
 }

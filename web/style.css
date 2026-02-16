@@ -17,89 +17,101 @@
     unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
-* {
-    box-sizing: border-box;
+/* 1. Variables & Setup */
+:root {
+    --bg-page: #f4f4f4;
+    --bg-surface: #ffffff;
+    --text-main: #222222;
+    --text-muted: #4b5468;
+    --border-color: #d4dae7;
+    --accent: #5f8cff;
+    --radius: 8px;
 }
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg-page: #121212;
+        --bg-surface: #1e1e1e;
+        --text-main: #dddddd;
+        --text-muted: #9aa1b1;
+        --border-color: #333333;
+    }
+}
+
+/* 2. Base Styles */
+* { box-sizing: border-box; }
 
 body {
-    margin: 0;
-    font-family: 'Merriweather Sans Variable', Arial, Helvetica, sans-serif;
-    background: #f4f4f4;
-    color: #222;
-    max-width: 720px;
     margin: 2rem auto;
     padding: 1.5rem;
-    background: #fff;
-    border: 1.5px solid #ddd;
-    border-radius: 8px;
-    line-height: 1.4;
+    max-width: 960px;
+    font-family: 'Merriweather Sans Variable', system-ui, sans-serif;
+    line-height: 1.5;
+    background-color: var(--bg-page);
+    color: var(--text-main);
 }
 
-table {
-    border-collapse: collapse;
+main {
+    background: var(--bg-surface);
+    border: 1.5px solid var(--border-color);
+    border-radius: var(--radius);
+    padding: 2rem;
 }
 
-th,
+/* 3. Typography & Elements */
+h1 { margin-top: 0; }
 
-td {
-    border: 1.5px solid #bbb;
-    text-align: left;
-    padding: 0.2rem;
+.notice {
+    padding: 1rem;
+    background: rgba(95, 140, 255, 0.1);
+    border-left: 4px solid var(--accent);
+    border-radius: 4px;
+    margin: 1.5rem 0;
+    font-size: 0.9rem;
 }
 
-a.link-card {
-    display: block;
+/* 4. Navigation Grid */
+nav {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1rem;
+    margin-top: 2rem;
+}
+
+/* 5. Link Cards */
+.link-card {
+    display: flex;
+    flex-direction: column;
     padding: 1rem 1.25rem;
-    border-radius: 8px;
-    background: #ffffff;
-    border: 1px solid #d4dae7;
     text-decoration: none;
     color: inherit;
-    margin-bottom: 1rem;
-    transition: border-color 0.1s ease-in-out;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    transition: transform 0.15s ease, border-color 0.15s ease;
 }
 
-a.link-card:hover,
-
-a.link-card:focus-visible {
-    border-color: #5f8cff;
+.link-card:hover,
+.link-card:focus-visible {
+    border-color: var(--accent);
+    transform: translateY(-2px);
     outline: none;
 }
 
-a.link-card span {
-    display: block;
+.link-card span {
     font-weight: 600;
     margin-bottom: 0.25rem;
+    color: var(--accent);
 }
 
-a.link-card small {
-    color: #4b5468;
+.link-card small {
+    color: var(--text-muted);
+    font-size: 0.85rem;
 }
 
-
+/* 6. Responsive */
 @media (max-width: 720px) {
-    body {
-        margin: 1rem;
-        padding: 1rem;
-    }
-}
-
-/* dark mode */
-@media (prefers-color-scheme: dark) {
-    body {
-        background: #1e1e1e;
-        color: #ddd;
-        border: 1.5px solid #333;
-    }
-    a.link-card {
-        background: #2a2a2a;
-        border: 1.5px solid #444c5c;
-    }
-    a.link-card:hover,
-    a.link-card:focus-visible {
-        border-color: #5f8cff;
-    }
-    a.link-card small {
-        color: #888;
-    }
+    body { margin: 0; padding: 1rem; }
+    main { padding: 1.25rem; border: none; }
+    nav { grid-template-columns: 1fr; }
 }
