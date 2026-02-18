@@ -37,8 +37,11 @@
     <script type="module">
         import init from "./paiagram.js";
 
-        const WASM_URL = new URL("./paiagram_bg.wasm", import.meta.url);
-        const CACHE_NAME = "paiagram-wasm-cache";
+        const RAW_BUILD_ID = "__PAIAGRAM_BUILD_ID__";
+        const BUILD_ID = RAW_BUILD_ID.includes("__PAIAGRAM_BUILD_ID__") ? "dev" : RAW_BUILD_ID;
+        const CACHE_PREFIX = "paiagram-wasm-cache-";
+        const CACHE_NAME = `${CACHE_PREFIX}${BUILD_ID}`;
+        const WASM_URL = new URL(`./paiagram_bg.wasm?v=${encodeURIComponent(BUILD_ID)}`, import.meta.url);
 
         async function fetchWithCache() {
             let cache;
@@ -48,33 +51,31 @@
                 // Cache API not supported or failed
             }
 
-            let cachedResponse;
-            if (cache) {
-                cachedResponse = await cache.match(WASM_URL);
-            }
+            const cachedResponse = cache ? await cache.match(WASM_URL) : undefined;
 
             if (cachedResponse) {
-                // Serve from cache immediately
                 init(cachedResponse.clone())
-                    .then(() => removeLoading())
+                    .then(removeLoading)
                     .catch((e) => {
                         console.error("Cached WASM failed to load", e);
-                        // Fallback to network
                         return fetchAndInit(cache);
                     });
 
-                // Update cache in background
                 fetchAndUpdateCache(cache);
             } else {
-                // No cache, fetch from network
                 await fetchAndInit(cache);
             }
+
+            cleanupOldCaches();
         }
 
         async function fetchAndInit(cache) {
             const response = await fetch(WASM_URL);
-            if (cache && response.ok) {
-                cache.put(WASM_URL, response.clone());
+            if (!response.ok) {
+                throw new Error(`Failed to fetch WASM: ${response.status} ${response.statusText}`);
+            }
+            if (cache) {
+                await cache.put(WASM_URL, response.clone());
             }
             await init(response);
             removeLoading();
@@ -86,10 +87,19 @@
                 const response = await fetch(WASM_URL);
                 if (response.ok) {
                     await cache.put(WASM_URL, response);
-                    console.log("WASM cache updated in background");
                 }
             } catch (e) {
                 console.warn("Failed to update WASM cache", e);
+            }
+        }
+
+        async function cleanupOldCaches() {
+            try {
+                const keys = await caches.keys();
+                const staleKeys = keys.filter((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME);
+                await Promise.all(staleKeys.map((key) => caches.delete(key)));
+            } catch {
+                // ignore cache cleanup failures
             }
         }
 
@@ -98,7 +108,13 @@
             if (loading) loading.remove();
         }
 
-        fetchWithCache();
+        fetchWithCache().catch((e) => {
+            console.error("Failed to initialize Paiagram", e);
+            const loading = document.getElementById("loading");
+            if (loading) {
+                loading.textContent = "Failed to load Paiagram Nightly Web Build. Please refresh and try again.";
+            }
+        });
 
         window.addEventListener("beforeunload", (event) => {
             event.preventDefault();

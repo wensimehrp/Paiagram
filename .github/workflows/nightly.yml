@@ -49,6 +49,11 @@ jobs:
       - name: Prepare Pages artifact
         run: nix develop .#default --command just prepare-pages
 
+      - name: Inject build id into nightly web page
+        run: |
+          BUILD_ID="${GITHUB_SHA::12}"
+          sed -i "s/__PAIAGRAM_BUILD_ID__/${BUILD_ID}/g" web-out/nightly/index.html
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v4
         with:
