@@ -278,6 +278,8 @@ impl CallbackTrait for GraphCallback {
         let screen_size = [
             screen_descriptor.size_in_pixels[0] as f32 / screen_descriptor.pixels_per_point,
             screen_descriptor.size_in_pixels[1] as f32 / screen_descriptor.pixels_per_point,
+            0.0,
+            0.0,
         ];
         queue.write_buffer(&resources.uniform_buffer, 0, cast_slice(&screen_size));
 

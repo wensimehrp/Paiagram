@@ -1,7 +1,7 @@
 use bevy::color::{Srgba, palettes::tailwind::*};
 use bevy::prelude::*;
 use egui::Color32;
-use egui::color_picker::{Alpha, color_picker_color32};
+use egui::color_picker::{Alpha, color_picker_color32, show_color_at};
 use egui_i18n::tr;
 use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
@@ -20,51 +20,86 @@ impl Default for DisplayColor {
     }
 }
 
+// this is copied from egui
+fn color_button(ui: &mut egui::Ui, color: Color32, open: bool) -> egui::Response {
+    let size = ui.spacing().interact_size;
+    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
+    response.widget_info(|| egui::WidgetInfo::new(egui::WidgetType::ColorButton));
+
+    if ui.is_rect_visible(rect) {
+        let visuals = if open {
+            &ui.visuals().widgets.open
+        } else {
+            ui.style().interact(&response)
+        };
+        let rect = rect.expand(visuals.expansion);
+
+        let stroke_width = 1.0;
+        show_color_at(ui.painter(), color, rect.shrink(stroke_width));
+
+        let corner_radius = visuals.corner_radius.at_most(2); // Can't do more rounding because the background grid doesn't do any rounding
+        ui.painter().rect_stroke(
+            rect,
+            corner_radius,
+            (stroke_width, visuals.bg_fill), // Using fill for stroke is intentional, because default style has no border
+            egui::StrokeKind::Inside,
+        );
+    }
+
+    response
+}
+
 impl egui::Widget for &mut DisplayColor {
     fn ui(self, ui: &mut egui::Ui) -> egui::Response {
         let is_dark = ui.visuals().dark_mode;
+        let button_res = color_button(ui, self.get(is_dark), false);
+
         let current_predefined = match *self {
             DisplayColor::Predefined(p) => Some(p),
             DisplayColor::Custom(_) => None,
         };
 
-        ui.horizontal(|ui| {
-            ui.vertical(|ui| {
-                ui.label("Predefined");
-                ui.set_max_width(200.0);
-                ui.horizontal_wrapped(|ui| {
-                    ui.style_mut().spacing.item_spacing = egui::Vec2::splat(4.0);
-                    for predefined in PredefinedColor::iter() {
-                        let color = predefined.get(is_dark);
-                        let is_selected = current_predefined == Some(predefined);
-                        let button = egui::Button::new("")
-                            .fill(color)
-                            .min_size(egui::vec2(24.0, 24.0))
-                            .stroke(if is_selected {
-                                ui.visuals().selection.stroke
-                            } else {
-                                ui.visuals().widgets.inactive.bg_stroke
-                            });
+        egui::Popup::menu(&button_res)
+            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+            .show(|ui| {
+                ui.horizontal(|ui| {
+                    ui.vertical(|ui| {
+                        ui.label("Predefined");
+                        ui.set_max_width(200.0);
+                        ui.horizontal_wrapped(|ui| {
+                            ui.style_mut().spacing.item_spacing = egui::Vec2::splat(4.0);
+                            for predefined in PredefinedColor::iter() {
+                                let color = predefined.get(is_dark);
+                                let is_selected = current_predefined == Some(predefined);
+                                let button = egui::Button::new("")
+                                    .fill(color)
+                                    .min_size(egui::vec2(24.0, 24.0))
+                                    .stroke(if is_selected {
+                                        ui.visuals().selection.stroke
+                                    } else {
+                                        ui.visuals().widgets.inactive.bg_stroke
+                                    });
 
-                        if ui.add(button).clicked() {
-                            *self = DisplayColor::Predefined(predefined);
+                                if ui.add(button).clicked() {
+                                    *self = DisplayColor::Predefined(predefined);
+                                }
+                            }
+                        });
+                    });
+                    ui.separator();
+                    ui.vertical(|ui| {
+                        ui.label("Custom");
+                        let mut custom_color = match *self {
+                            DisplayColor::Custom(c) => c,
+                            DisplayColor::Predefined(p) => p.get(is_dark),
+                        };
+                        if color_picker_color32(ui, &mut custom_color, Alpha::Opaque) {
+                            *self = DisplayColor::Custom(custom_color);
                         }
-                    }
-                });
+                    });
+                })
             });
-            ui.separator();
-            ui.vertical(|ui| {
-                ui.label("Custom");
-                let mut custom_color = match *self {
-                    DisplayColor::Custom(c) => c,
-                    DisplayColor::Predefined(p) => p.get(is_dark),
-                };
-                if color_picker_color32(ui, &mut custom_color, Alpha::Opaque) {
-                    *self = DisplayColor::Custom(custom_color);
-                }
-            });
-        })
-        .response
+        button_res
     }
 }
 

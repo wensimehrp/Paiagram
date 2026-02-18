@@ -41,6 +41,29 @@ impl Plugin for UiPlugin {
     }
 }
 
+// TODO: move to selected item resource
+/// The current selected item
+#[derive(Reflect, Clone, PartialEq, Eq)]
+pub enum SelectedItem {
+    /// A timetable entry
+    TimetableEntry { entry: Entity, parent: Entity },
+    /// An interval connecting two stations
+    Interval(Entity, Entity),
+    /// A station
+    Station(Entity),
+    /// Extending a trip
+    ExtendingTrip {
+        entry: Entity,
+        previous_pos: Option<(TimetableTime, usize)>,
+        last_time: Option<TimetableTime>,
+        current_entry: Option<Entity>,
+    },
+}
+
+#[derive(Reflect, Resource, Deref, DerefMut)]
+#[reflect(Resource)]
+pub struct SelectedItems(Vec<SelectedItem>);
+
 enum Modals {
     OpenUrl(String),
 }
@@ -165,6 +188,7 @@ macro_rules! for_all_tabs {
             MainTab::Graph($t) => $body,
             MainTab::Inspector($t) => $body,
             MainTab::Trip($t) => $body,
+            MainTab::AllTrips($t) => $body,
         }
     };
 }
@@ -183,6 +207,7 @@ pub enum MainTab {
     Graph(GraphTab),
     Inspector(InspectorTab),
     Trip(TripTab),
+    AllTrips(AllTripsTab)
 }
 
 impl MapEntities for MainTab {

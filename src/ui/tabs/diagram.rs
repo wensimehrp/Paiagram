@@ -8,8 +8,9 @@ use crate::route::Route;
 use crate::trip::class::DisplayedStroke;
 use crate::trip::routing::AddEntryToTrip;
 use crate::trip::{Trip, TripBundle, TripClass, TripSchedule};
-use crate::ui::GlobalTimer;
+use crate::ui::tabs::trip::TripTab;
 use crate::ui::widgets::buttons;
+use crate::ui::{GlobalTimer, OpenOrFocus};
 use crate::units::time::{Duration, TimetableTime};
 use bevy::prelude::*;
 use egui::epaint::TextShape;
@@ -298,6 +299,10 @@ impl Tab for DiagramTab {
                 name.mutate(|n| {
                     ui.text_edit_singleline(n);
                 });
+                if ui.button("Open trip view").clicked() {
+                    world
+                        .write_message(OpenOrFocus(crate::ui::MainTab::Trip(TripTab::new(parent))));
+                }
                 if ui.button("Extend").clicked() {
                     let mut last_time = None;
                     world
@@ -749,12 +754,35 @@ fn handle_selection(drawn_trips: &[DrawnTrip], pos: Pos2) -> Option<SelectedItem
     const STATION_SELECTION_RADIUS: f32 = VEHICLE_SELECTION_RADIUS;
     for trip in drawn_trips {
         for (points, entries) in trip.points.iter().zip(trip.entries.iter()) {
-            let entries_iter = entries
-                .iter()
-                .flat_map(|it| std::iter::repeat(it).take(4))
-                .copied();
-            for (w, e) in points.as_flattened().windows(2).zip(entries_iter) {
-                let [curr, next] = w else { unreachable!() };
+            let last = points
+                .last()
+                .into_iter()
+                .flat_map(|it| {
+                    let [a, b, c, d] = it;
+                    [[*a, *b], [*b, *c], [*c, *d]]
+                })
+                .zip(
+                    entries
+                        .last()
+                        .into_iter()
+                        .flat_map(|it| std::iter::repeat(*it).take(3)),
+                );
+            let entries_iter = entries.windows(2).flat_map(|w| {
+                let [a, b] = w else { unreachable!() };
+                std::iter::repeat(*a).take(4).chain(std::iter::once(*b))
+            });
+            for ([curr, next], e) in points
+                .windows(2)
+                .flat_map(|it| {
+                    let [[a1, a2, a3, a4], [b, ..]] = it else {
+                        unreachable!()
+                    };
+                    let mid = a4.lerp(*b, 0.5);
+                    [[*a1, *a2], [*a2, *a3], [*a3, *a4], [*a4, mid], [mid, *b]]
+                })
+                .zip(entries_iter)
+                .chain(last)
+            {
                 let a = pos.x - curr.x;
                 let b = pos.y - curr.y;
                 let c = next.x - curr.x;

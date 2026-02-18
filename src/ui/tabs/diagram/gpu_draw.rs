@@ -337,6 +337,8 @@ impl CallbackTrait for TripCallback {
         let screen_size = [
             screen_descriptor.size_in_pixels[0] as f32 / screen_descriptor.pixels_per_point,
             screen_descriptor.size_in_pixels[1] as f32 / screen_descriptor.pixels_per_point,
+            0.0,
+            0.0,
         ];
         let viewport_bytes = cast_slice(&screen_size);
         queue.write_buffer(&resources.uniform_buffer, 0, viewport_bytes);

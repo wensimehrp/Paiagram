@@ -32,56 +32,73 @@ impl TimetableTime {
     pub fn from_str(s: &str) -> Option<Self> {
         let (time_part, day_offset_seconds) = if let Some(idx) = s.rfind(['+', '-']) {
             let (time, offset_str) = s.split_at(idx);
-            let sign = if &s[idx..idx + 1] == "+" { 1 } else { -1 };
-
-            // offset_str includes the sign, e.g., "+1"
+            // offset_str is "+1" or "-1", parse handles the sign for us
             let days = offset_str.parse::<i32>().ok()?;
             (time, days * 86400)
         } else {
             (s, 0)
         };
-        let parts: ArrayVec<&str, 3> = time_part.split(':').take(3).collect();
-        match parts.len() {
-            2 => {
-                let h = parts[0].parse::<i32>().ok()?;
-                let m = parts[1].parse::<i32>().ok()?;
-                Some(TimetableTime::from_hms(h, m, 0 + day_offset_seconds))
-            }
+
+        let mut parts = time_part.split(':');
+        let h = parts.next()?.parse::<i32>().ok()?;
+        let m = parts.next()?.parse::<i32>().ok()?;
+        let s = parts
+            .next()
+            .map(|s| s.parse::<i32>().ok())
+            .flatten()
+            .unwrap_or(0);
+
+        if parts.next().is_some() {
+            return None;
+        }
+
+        Some(TimetableTime::from_hms(h, m, s + day_offset_seconds))
+    }
+    /// Parses strings in HMM, HHMM, HMMSS, HHMMSS
+    /// and with or without +D or -D
+    #[inline]
+    pub fn from_oud2_str(s: &str) -> Option<Self> {
+        let (time_part, day_offset_seconds) = if let Some(idx) = s.rfind(['+', '-']) {
+            let (time, offset_str) = s.split_at(idx);
+            // offset_str is "+1" or "-1", parse handles the sign for us
+            let days = offset_str.parse::<i32>().ok()?;
+            (time, days * 86400)
+        } else {
+            (s, 0)
+        };
+        match time_part.len() {
             3 => {
-                let h = parts[0].parse::<i32>().ok()?;
-                let m = parts[1].parse::<i32>().ok()?;
-                let sec = parts[2].parse::<i32>().ok()?;
-                Some(TimetableTime::from_hms(h, m, sec + day_offset_seconds))
+                let h = time_part[0..1].parse::<i32>().ok()?;
+                let m = time_part[1..3].parse::<i32>().ok()?;
+                Some(TimetableTime::from_hms(h, m, day_offset_seconds))
+            }
+            4 => {
+                let h = time_part[0..2].parse::<i32>().ok()?;
+                let m = time_part[2..4].parse::<i32>().ok()?;
+                Some(TimetableTime::from_hms(h, m, day_offset_seconds))
+            }
+            5 => {
+                let h = time_part[0..1].parse::<i32>().ok()?;
+                let m = time_part[1..3].parse::<i32>().ok()?;
+                let s = time_part[3..5].parse::<i32>().ok()?;
+                Some(TimetableTime::from_hms(h, m, s + day_offset_seconds))
+            }
+            6 => {
+                let h = time_part[0..2].parse::<i32>().ok()?;
+                let m = time_part[2..4].parse::<i32>().ok()?;
+                let s = time_part[4..6].parse::<i32>().ok()?;
+                Some(TimetableTime::from_hms(h, m, s + day_offset_seconds))
             }
             _ => None,
         }
     }
     #[inline]
-    pub fn from_oud2_str(s: &str) -> Option<Self> {
-        match s.len() {
-            3 => {
-                let h = s[0..1].parse::<i32>().ok()?;
-                let m = s[1..3].parse::<i32>().ok()?;
-                Some(TimetableTime::from_hms(h, m, 0))
-            }
-            4 => {
-                let h = s[0..2].parse::<i32>().ok()?;
-                let m = s[2..4].parse::<i32>().ok()?;
-                Some(TimetableTime::from_hms(h, m, 0))
-            }
-            5 => {
-                let h = s[0..1].parse::<i32>().ok()?;
-                let m = s[1..3].parse::<i32>().ok()?;
-                let sec = s[3..5].parse::<i32>().ok()?;
-                Some(TimetableTime::from_hms(h, m, sec))
-            }
-            6 => {
-                let h = s[0..2].parse::<i32>().ok()?;
-                let m = s[2..4].parse::<i32>().ok()?;
-                let sec = s[4..6].parse::<i32>().ok()?;
-                Some(TimetableTime::from_hms(h, m, sec))
-            }
-            _ => None,
+    pub fn to_oud2_str(&self, show_seconds: bool) -> String {
+        let (h, m, s, _) = self.to_hmsd();
+        if show_seconds {
+            format!("{:2}{:02}{:02}", h, m, s)
+        } else {
+            format!("{:2}{:02}", h, m)
         }
     }
     /// Return the normalized time that is in 24 hour range
@@ -95,6 +112,20 @@ impl TimetableTime {
     pub fn normalized_ahead(&self, other: TimetableTime) -> Self {
         let diff = other.0 - self.0;
         Self(self.0 + diff.rem_euclid(86400))
+    }
+}
+
+impl emath::Numeric for TimetableTime {
+    const INTEGRAL: bool = true;
+    const MIN: Self = Self(i32::MIN);
+    const MAX: Self = Self(i32::MAX);
+
+    fn from_f64(num: f64) -> Self {
+        Self(num as i32)
+    }
+
+    fn to_f64(self) -> f64 {
+        self.0 as f64
     }
 }
 
