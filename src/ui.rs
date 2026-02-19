@@ -262,6 +262,9 @@ impl<'w> TabViewer for MainTabViewer<'w> {
     fn id(&mut self, tab: &mut Self::Tab) -> Id {
         for_all_tabs!(tab, t, t.id())
     }
+    fn scroll_bars(&self, tab: &Self::Tab) -> [bool; 2] {
+        for_all_tabs!(tab, t, t.scroll_bars())
+    }
     fn add_popup(
         &mut self,
         ui: &mut Ui,
