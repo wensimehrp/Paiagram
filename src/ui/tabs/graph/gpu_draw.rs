@@ -1,6 +1,6 @@
 use bytemuck::cast_slice;
 use eframe::egui_wgpu::{self, wgpu};
-use egui::{Color32, Pos2, Rect, mutex::Mutex};
+use egui::{Color32, Pos2, Rect, Vec2, mutex::Mutex};
 use egui_wgpu::CallbackTrait;
 use std::sync::Arc;
 
@@ -30,6 +30,23 @@ impl ShapeSpec {
             size: radius,
             color,
             kind: 1,
+        }
+    }
+
+    pub fn stealth_arrow(from: Pos2, to: Pos2, center: Pos2, color: Color32) -> Self {
+        let direction = to - from;
+        let direction_len = direction.length();
+        let unit_direction = if direction_len > f32::EPSILON {
+            direction / direction_len
+        } else {
+            Vec2::X
+        };
+        Self {
+            a: center,
+            b: center + unit_direction,
+            size: 14.0,
+            color,
+            kind: 2,
         }
     }
 }

@@ -15,7 +15,7 @@ use crate::units::time::{Duration, TimetableTime};
 use bevy::prelude::*;
 use egui::epaint::TextShape;
 use egui::{
-    Align2, Color32, FontId, Id, Margin, NumExt, Painter, Pos2, Rect, Sense, Stroke, Ui, Vec2,
+    Align2, Color32, FontId, Id, Margin, NumExt, Painter, Pos2, Rect, Sense, Stroke, Ui, Vec2, vec2,
 };
 use egui_i18n::tr;
 use instant::Instant;
@@ -80,7 +80,7 @@ impl Default for DiagramTabNavigation {
         Self {
             x_offset: 0,
             y_offset: 0.0,
-            zoom: Vec2::splat(1.0),
+            zoom: vec2(0.005, 10.0),
             visible_rect: Rect::NOTHING,
             max_height: 0.0,
         }

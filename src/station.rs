@@ -117,6 +117,22 @@ impl<'w, 's> StationQueryItem<'w, 's> {
 }
 
 #[derive(QueryData)]
+pub struct ParentStationOrStation {
+    entity: Entity,
+    station: AnyOf<(&'static Station, &'static ChildOf)>,
+}
+
+impl<'w, 'q> ParentStationOrStationItem<'w, 'q> {
+    pub fn parent(&self) -> Entity {
+        match self.station {
+            (Some(_), _) => self.entity,
+            (None, Some(parent)) => parent.parent(),
+            (None, None) => unreachable!()
+        }
+    }
+}
+
+#[derive(QueryData)]
 pub struct PlatformQuery {
     entity: Entity,
     pub name: &'static Name,

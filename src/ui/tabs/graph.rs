@@ -482,12 +482,18 @@ fn collect_draw_items(
             continue;
         };
         let color = stroke.color.get(is_dark);
-        let pos = navi.xy_to_screen_pos(sample.x, sample.y);
-        if !view_expanded.contains(pos) {
-            continue;
-        }
+        let pos0 = navi.xy_to_screen_pos(sample.p0[0], sample.p0[1]);
+        let pos1 = navi.xy_to_screen_pos(sample.p1[0], sample.p1[1]);
+        let pos = if query_time <= sample.t1 {
+            pos0
+        } else if query_time >= sample.t2 {
+            pos1
+        } else {
+            let f = (query_time - sample.t1) / (sample.t2 - sample.t1).max(f64::EPSILON);
+            pos0.lerp(pos1, f as f32)
+        };
         out.shapes
-            .push(gpu_draw::ShapeSpec::circle(pos, 6.0, color));
+            .push(gpu_draw::ShapeSpec::stealth_arrow(pos0, pos1, pos, color));
         out.labels.push(GraphLabel {
             pos: pos + Vec2 { x: 7.0, y: 0.0 },
             text: name.to_string(),

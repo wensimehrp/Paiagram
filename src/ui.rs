@@ -24,7 +24,6 @@ use crate::{
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
-
 pub struct UiPlugin;
 impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
@@ -207,7 +206,7 @@ pub enum MainTab {
     Graph(GraphTab),
     Inspector(InspectorTab),
     Trip(TripTab),
-    AllTrips(AllTripsTab)
+    AllTrips(AllTripsTab),
 }
 
 impl MapEntities for MainTab {
@@ -281,6 +280,20 @@ impl<'w> TabViewer for MainTabViewer<'w> {
                 ui.close();
             }
         }
+        ui.menu_button("All Trips", |ui| {
+            if ui.button("New Route").clicked() {}
+            ui.separator();
+            ScrollArea::vertical().show(ui, |ui| {
+                if let Some(e) = self
+                    .world
+                    .run_system_cached_with(show_name_button::<Route>, ui)
+                    .unwrap()
+                {
+                    self.world
+                        .write_message(OpenOrFocus(MainTab::AllTrips(AllTripsTab::new(e))));
+                }
+            });
+        });
         ui.menu_button("Diagrams", |ui| {
             if ui.button("New Route").clicked() {}
             ui.separator();

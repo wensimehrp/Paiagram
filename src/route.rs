@@ -2,19 +2,22 @@
 //! Routes are slices of the graph that can be used as the foundation of diagrams.
 //! Diagrams use routes as their station list.
 
-use bevy::prelude::*;
+use bevy::{ecs::entity::EntityHashSet, prelude::*};
 use moonshine_core::prelude::{MapEntities, ReflectMapEntities};
 
 pub struct RoutePlugin;
 impl Plugin for RoutePlugin {
     fn build(&self, app: &mut App) {
-        app.add_observer(auto_update_length);
+        app.add_observer(auto_update_length)
+            .add_systems(Update, update_route_trips);
     }
 }
 
 use crate::{
+    entry::EntryMode,
     graph::Graph,
     interval::{Interval, UpdateInterval},
+    station::{Platform, PlatformEntries, Station, StationQuery},
 };
 
 /// Marker component for automatically updating route interval length.
@@ -24,12 +27,17 @@ pub struct AutoUpdateLength;
 
 #[derive(Reflect, Component, MapEntities)]
 #[reflect(Component, MapEntities)]
-#[require(Name)]
+#[require(Name, RouteTrips)]
 pub struct Route {
     #[entities]
     pub stops: Vec<Entity>,
     pub lengths: Vec<f32>,
 }
+
+#[derive(Default, Reflect, Component, Deref, DerefMut)]
+#[reflect(Component)]
+#[require(Name)]
+pub struct RouteTrips(Vec<Entity>);
 
 impl Route {
     pub fn iter(&self) -> impl Iterator<Item = (Entity, f32)> {
@@ -42,6 +50,71 @@ impl Route {
                 let out = (stop, *acc);
                 Some(out)
             })
+    }
+}
+
+fn update_route_trips(
+    mut routes: Query<(Entity, &Route, &mut RouteTrips)>,
+    changed_routes: Query<Entity, (With<Route>, Changed<Route>)>,
+    changed_station_entries: Query<Entity, (With<Station>, Changed<PlatformEntries>)>,
+    changed_platform_entries: Query<&ChildOf, (With<Platform>, Changed<PlatformEntries>)>,
+    stations: Query<StationQuery>,
+    platform_entries: Query<&PlatformEntries>,
+    entries: Query<&ChildOf, With<EntryMode>>,
+) {
+    let mut affected_routes = EntityHashSet::default();
+
+    for route_entity in &changed_routes {
+        affected_routes.insert(route_entity);
+    }
+
+    let mut changed_stations = EntityHashSet::default();
+    for station in &changed_station_entries {
+        changed_stations.insert(station);
+    }
+    for parent in &changed_platform_entries {
+        changed_stations.insert(parent.parent());
+    }
+
+    if !changed_stations.is_empty() {
+        for (route_entity, route, _) in &routes {
+            if route
+                .stops
+                .iter()
+                .any(|station| changed_stations.contains(station))
+            {
+                affected_routes.insert(route_entity);
+            }
+        }
+    }
+
+    if affected_routes.is_empty() {
+        return;
+    }
+
+    for (route_entity, route, mut route_trips) in &mut routes {
+        if !affected_routes.contains(&route_entity) {
+            continue;
+        }
+
+        let mut trips = EntityHashSet::default();
+        for station_entity in route.stops.iter().copied() {
+            let Ok(station) = stations.get(station_entity) else {
+                continue;
+            };
+            for entry in station.passing_entries(&platform_entries) {
+                let Ok(parent) = entries.get(entry) else {
+                    continue;
+                };
+                trips.insert(parent.parent());
+            }
+        }
+
+        let mut next = trips.into_iter().collect::<Vec<_>>();
+        next.sort_unstable();
+        if route_trips.0 != next {
+            route_trips.0 = next;
+        }
     }
 }
 

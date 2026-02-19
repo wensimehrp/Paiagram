@@ -39,27 +39,15 @@ impl Plugin for TripPlugin {
 }
 
 #[derive(Clone, Copy, Debug)]
-struct TripSpatialIndexItem {
-    trip: Entity,
-    entry0: Entity,
-    entry1: Entity,
-    t0: f64,
-    t1: f64,
-    p0: [f64; 2],
-    p1: [f64; 2],
-}
-
-impl TripSpatialIndexItem {
-    fn sample_at(self, time: f64) -> Option<[f64; 2]> {
-        if time < self.t0 || time > self.t1 {
-            return None;
-        }
-        let duration = (self.t1 - self.t0).max(1e-9);
-        let alpha = ((time - self.t0) / duration).clamp(0.0, 1.0);
-        let x = self.p0[0] + (self.p1[0] - self.p0[0]) * alpha;
-        let y = self.p0[1] + (self.p1[1] - self.p0[1]) * alpha;
-        Some([x, y])
-    }
+pub struct TripSpatialIndexItem {
+    pub trip: Entity,
+    pub entry0: Entity,
+    pub entry1: Entity,
+    pub t0: f64,
+    pub t1: f64,
+    pub t2: f64,
+    pub p0: [f64; 2],
+    pub p1: [f64; 2],
 }
 
 impl RTreeObject for TripSpatialIndexItem {
@@ -75,19 +63,10 @@ impl RTreeObject for TripSpatialIndexItem {
             [
                 self.p0[0].max(self.p1[0]),
                 self.p0[1].max(self.p1[1]),
-                self.t1,
+                self.t2,
             ],
         )
     }
-}
-
-#[derive(Clone, Copy, Debug)]
-pub struct TripSpatialSample {
-    pub trip: Entity,
-    pub entry0: Entity,
-    pub entry1: Entity,
-    pub x: f64,
-    pub y: f64,
 }
 
 #[derive(Resource, Default)]
@@ -105,7 +84,7 @@ impl TripSpatialIndex {
         x_range: RangeInclusive<f64>,
         y_range: RangeInclusive<f64>,
         time_range: RangeInclusive<f64>,
-    ) -> impl Iterator<Item = TripSpatialSample> + '_ {
+    ) -> impl Iterator<Item = TripSpatialIndexItem> + '_ {
         let x0 = (*x_range.start()).min(*x_range.end());
         let x1 = (*x_range.start()).max(*x_range.end());
         let y0 = (*y_range.start()).min(*y_range.end());
@@ -113,10 +92,8 @@ impl TripSpatialIndex {
         let t0 = (*time_range.start()).min(*time_range.end());
         let t1 = (*time_range.start()).max(*time_range.end());
 
-        let t_mid = (t0 + t1) * 0.5;
-
         self.tree.iter().filter_map(move |item| {
-            if item.t1 < t0 || item.t0 > t1 {
+            if item.t2 < t0 || item.t0 > t1 {
                 return None;
             }
             if item.p0[0].max(item.p1[0]) < x0
@@ -126,20 +103,7 @@ impl TripSpatialIndex {
             {
                 return None;
             }
-
-            let sample_time = t_mid.clamp(item.t0, item.t1);
-            let [x, y] = item.sample_at(sample_time)?;
-            if x < x0 || x > x1 || y < y0 || y > y1 {
-                return None;
-            }
-
-            Some(TripSpatialSample {
-                trip: item.trip,
-                entry0: item.entry0,
-                entry1: item.entry1,
-                x,
-                y,
-            })
+            Some(*item)
         })
     }
 
@@ -254,20 +218,23 @@ fn start_trip_spatial_index_rebuild(
 
             // include the previous arr time
             let t0 = estimate0.arr.0 as f64;
-            let t1 = estimate1.arr.0 as f64;
-            if t1 < t0 {
+            let t1 = estimate0.dep.0 as f64;
+            let t2 = estimate1.arr.0 as f64;
+            if t1 < t0 || t2 < t1 {
                 continue;
             }
 
             if repeat_time > 0.0 {
-                let duration = t1 - t0;
-                if duration >= repeat_time {
+                let dep_duration = t1 - t0;
+                let arr_duration = t2 - t0;
+                if arr_duration >= repeat_time {
                     snapshot.push(TripSpatialIndexItem {
                         trip: trip_entity,
                         entry0,
                         entry1,
                         t0: 0.0,
-                        t1: repeat_time,
+                        t1: dep_duration.rem_euclid(repeat_time),
+                        t2: repeat_time,
                         p0,
                         p1,
                     });
@@ -275,24 +242,27 @@ fn start_trip_spatial_index_rebuild(
                 }
 
                 let normalized_t0 = t0.rem_euclid(repeat_time);
-                let normalized_t1 = normalized_t0 + duration;
+                let normalized_t1 = normalized_t0 + dep_duration;
+                let normalized_t2 = normalized_t0 + arr_duration;
                 snapshot.push(TripSpatialIndexItem {
                     trip: trip_entity,
                     entry0,
                     entry1,
                     t0: normalized_t0,
                     t1: normalized_t1,
+                    t2: normalized_t2,
                     p0,
                     p1,
                 });
 
-                if normalized_t1 > repeat_time {
+                if normalized_t2 > repeat_time {
                     snapshot.push(TripSpatialIndexItem {
                         trip: trip_entity,
                         entry0,
                         entry1,
                         t0: normalized_t0 - repeat_time,
                         t1: normalized_t1 - repeat_time,
+                        t2: normalized_t2 - repeat_time,
                         p0,
                         p1,
                     });
@@ -304,6 +274,7 @@ fn start_trip_spatial_index_rebuild(
                     entry1,
                     t0,
                     t1,
+                    t2,
                     p0,
                     p1,
                 });
