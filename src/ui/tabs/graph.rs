@@ -434,8 +434,7 @@ fn collect_draw_items(
         let Ok((_, node, name)) = nodes.get(entity) else {
             continue;
         };
-        let x = node.pos.x();
-        let y = node.pos.y();
+        let [x, y] = node.pos.to_xy_arr();
         let pos = navi.xy_to_screen_pos(x, y);
         screen_pos_by_entity.insert(entity, pos);
 

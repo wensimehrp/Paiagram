@@ -242,12 +242,12 @@ fn fill_unmatched_via_neighbors(
         let count = found_neighbor_positions.len() as f64;
         let avg_lon = found_neighbor_positions
             .iter()
-            .map(|p| p.lon())
+            .map(|p| p.lon)
             .sum::<f64>()
             / count;
         let avg_lat = found_neighbor_positions
             .iter()
-            .map(|p| p.lat())
+            .map(|p| p.lat)
             .sum::<f64>()
             / count;
         known_positions.insert(station, NodePos::new_lon_lat(avg_lon, avg_lat));

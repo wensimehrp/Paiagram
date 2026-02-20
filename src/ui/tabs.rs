@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use bevy::ecs::world::World;
+use bevy::{ecs::world::World};
 use egui::{Id, Response, Ui, WidgetText};
 use egui_i18n::tr;
 use moonshine_core::prelude::MapEntities;
@@ -16,10 +16,10 @@ pub mod inspector;
 // pub mod minesweeper;
 // pub mod overview;
 // pub mod services;
+pub mod all_trips;
 pub mod settings;
 pub mod start;
 pub mod trip;
-pub mod all_trips;
 // pub mod station_timetable;
 // pub mod tree_view;
 // pub mod vehicle;
@@ -33,10 +33,10 @@ pub mod all_tabs {
     // pub use super::minesweeper::MinesweeperTab;
     // pub use super::overview::OverviewTab;
     // pub use super::services::ServicesTab;
+    pub use super::all_trips::AllTripsTab;
     pub use super::settings::SettingsTab;
     pub use super::start::StartTab;
     pub use super::trip::TripTab;
-    pub use super::all_trips::AllTripsTab;
     // pub use super::station_timetable::StationTimetableTab;
     // pub use super::vehicle::VehicleTab;
 }

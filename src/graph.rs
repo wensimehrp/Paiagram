@@ -300,6 +300,7 @@ fn lon_lat_to_xy(lon: f64, lat: f64) -> (f64, f64) {
     (easting, -northing)
 }
 
+// TODO: partial update
 fn mark_graph_spatial_index_dirty(
     mut state: ResMut<GraphSpatialIndexState>,
     changed_nodes: Query<(), Or<(Added<Node>, Changed<Node>)>>,
@@ -340,7 +341,7 @@ fn start_graph_spatial_index_rebuild(
 
     let snapshot: Vec<(Entity, [f64; 2])> = nodes
         .iter()
-        .map(|(entity, node)| (entity, [node.pos.x(), node.pos.y()]))
+        .map(|(entity, node)| (entity, node.pos.to_xy_arr()))
         .collect();
     state.task = Some(AsyncComputeTaskPool::get().spawn(async move {
         let entries: Vec<SpatialIndexedEntity> = snapshot
@@ -371,8 +372,8 @@ fn start_graph_interval_spatial_index_rebuild(
         };
         snapshot.push(IntervalSpatialIndexedEntity {
             interval: *interval,
-            p0: [source_node.pos.x(), source_node.pos.y()],
-            p1: [target_node.pos.x(), target_node.pos.y()],
+            p0: source_node.pos.to_xy_arr(),
+            p1: target_node.pos.to_xy_arr(),
         });
     }
 
@@ -407,108 +408,49 @@ fn apply_graph_interval_spatial_index_task(
     state.task = None;
 }
 
-/// The position of the node
+/// The position of the node.
+///
+/// This stores longitude and latitude values only.
 #[derive(Reflect, Clone, Copy, Debug)]
-pub enum NodePos {
-    /// X and Y used for normal mapping
-    Xy { x: f64, y: f64 },
-    /// Longitude and Latitude. This is for GTFS
-    LonLat { lon: f64, lat: f64 },
+pub struct NodePos {
+    pub lon: f64,
+    pub lat: f64,
 }
 
 impl Default for NodePos {
     fn default() -> Self {
-        Self::new_xy(0.0, 0.0)
+        Self::new_lon_lat(0.0, 0.0)
     }
 }
 
 impl NodePos {
     pub fn new_xy(x: f64, y: f64) -> Self {
-        Self::Xy { x, y }
+        Self::new_lon_lat(x, y)
     }
     pub fn new_lon_lat(lon: f64, lat: f64) -> Self {
-        Self::LonLat { lon, lat }
+        Self { lon, lat }
     }
-    pub fn x(&self) -> f64 {
-        match *self {
-            Self::Xy { x, y: _ } => x,
-            Self::LonLat { lon, lat } => {
-                let (_northing, easting, _) = utm::to_utm_wgs84_no_zone(lat, lon);
-                easting
-            }
-        }
+    pub fn to_xy(&self) -> (f64, f64) {
+        lon_lat_to_xy(self.lon, self.lat)
     }
-    pub fn y(&self) -> f64 {
-        match *self {
-            Self::Xy { x: _, y } => y,
-            Self::LonLat { lon, lat } => {
-                let (northing, _easting, _) = utm::to_utm_wgs84_no_zone(lat, lon);
-                -northing
-            }
-        }
-    }
-    pub fn lon(&self) -> f64 {
-        match *self {
-            Self::Xy { x, y: _ } => x,
-            Self::LonLat { lon, lat: _ } => lon,
-        }
-    }
-    pub fn lat(&self) -> f64 {
-        match *self {
-            Self::Xy { x: _, y } => y,
-            Self::LonLat { lon: _, lat } => lat,
-        }
+    pub fn to_xy_arr(&self) -> [f64; 2] {
+        let (x, y) = self.to_xy();
+        [x, y]
     }
     /// Shift the node on the canvas by x and y
     pub fn shift(&mut self, dx: f64, dy: f64) {
-        match self {
-            Self::Xy { x, y } => {
-                *x += dx;
-                *y += dy
-            }
-            Self::LonLat { lon, lat } => {
-                let zone_num = utm::lat_lon_to_zone_number(*lat, *lon);
-                let Some(zone_letter) = utm::lat_to_zone_letter(*lat) else {
-                    return;
-                };
-                let (northing, easting, _) = utm::to_utm_wgs84(*lat, *lon, zone_num);
-                let shifted_easting = easting + dx;
-                let shifted_northing = northing - dy;
-                if let Ok((new_lat, new_lon)) = utm::wsg84_utm_to_lat_lon(
-                    shifted_easting,
-                    shifted_northing,
-                    zone_num,
-                    zone_letter,
-                ) {
-                    *lat = new_lat;
-                    *lon = new_lon;
-                }
-            }
-        }
+        self.lon += dx;
+        self.lat += dy;
     }
     /// Linearly interpolates between `self` and `other` by fraction `t`.
     /// `t` is typically between 0.0 and 1.0.
-    /// The returned `NodePos` matches the variant of `self`.
     pub fn lerp(&self, other: &Self, t: f64) -> Self {
-        match *self {
-            Self::Xy { x, y } => {
-                let end_x = other.x();
-                let end_y = other.y();
+        let end_lon = other.lon;
+        let end_lat = other.lat;
 
-                Self::Xy {
-                    x: x + (end_x - x) * t,
-                    y: y + (end_y - y) * t,
-                }
-            }
-            Self::LonLat { lon, lat } => {
-                let end_lon = other.lon();
-                let end_lat = other.lat();
-
-                Self::LonLat {
-                    lon: lon + (end_lon - lon) * t,
-                    lat: lat + (end_lat - lat) * t,
-                }
-            }
+        Self {
+            lon: self.lon + (end_lon - self.lon) * t,
+            lat: self.lat + (end_lat - self.lat) * t,
         }
     }
 }
@@ -623,6 +565,7 @@ fn debug_graph_set_diff(
     );
 }
 
+// TODO: instead of merging them, make stations platforms instead
 pub fn merge_station_by_name(
     mut commands: Commands,
     mut graph: ResMut<Graph>,

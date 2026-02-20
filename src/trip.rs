@@ -92,19 +92,10 @@ impl TripSpatialIndex {
         let t0 = (*time_range.start()).min(*time_range.end());
         let t1 = (*time_range.start()).max(*time_range.end());
 
-        self.tree.iter().filter_map(move |item| {
-            if item.t2 < t0 || item.t0 > t1 {
-                return None;
-            }
-            if item.p0[0].max(item.p1[0]) < x0
-                || item.p0[0].min(item.p1[0]) > x1
-                || item.p0[1].max(item.p1[1]) < y0
-                || item.p0[1].min(item.p1[1]) > y1
-            {
-                return None;
-            }
-            Some(*item)
-        })
+        let envelope = AABB::from_corners([x0, y0, t0], [x1, y1, t1]);
+        self.tree
+            .locate_in_envelope_intersecting(&envelope)
+            .copied()
     }
 
     fn replace_tree(&mut self, tree: RTree<TripSpatialIndexItem>) {
@@ -183,7 +174,7 @@ fn start_trip_spatial_index_rebuild(
             (None, Some(parent)) => node_q.get(parent.parent()).ok()?,
             _ => return None,
         };
-        Some([node.pos.x(), node.pos.y()])
+        Some(node.pos.to_xy_arr())
     };
 
     let repeat_time = settings.repeat_frequency.0 as f64;
