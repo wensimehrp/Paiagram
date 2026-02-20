@@ -223,8 +223,8 @@ pub fn load_qetrc(event: On<super::LoadQETRC>, mut commands: Commands, mut graph
                         info!(?arr, ?dep, ?service.service_number)
                     }
                     debug_assert!(dep >= arr);
-                    let dep = (dep != arr).then(|| TravelMode::At(dep));
-                    let arr = TravelMode::At(arr);
+                    let arr = (dep != arr).then(|| TravelMode::At(arr));
+                    let dep = TravelMode::At(dep);
                     bundle.spawn(EntryBundle::new(arr, dep, stop.entity()));
                 }
             })

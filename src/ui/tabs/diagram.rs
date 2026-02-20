@@ -535,7 +535,8 @@ fn main_display(tab: &mut DiagramTab, world: &mut World, ui: &mut egui::Ui) {
                         let mut mode = world
                             .get_mut::<EntryMode>(*current_entry_unwrapped)
                             .unwrap();
-                        mode.dep = Some(TravelMode::At(normalized_time));
+                        mode.arr = Some(mode.dep);
+                        mode.dep = TravelMode::At(normalized_time);
                         *current_entry = None;
                         false
                     } else {
@@ -547,8 +548,8 @@ fn main_display(tab: &mut DiagramTab, world: &mut World, ui: &mut egui::Ui) {
             if should_spawn {
                 let new_child = world
                     .spawn(EntryBundle::new(
-                        TravelMode::At(normalized_time),
                         None,
+                        TravelMode::At(normalized_time),
                         new_station_entity,
                     ))
                     .id();
@@ -861,24 +862,31 @@ fn draw_handles(
     }
     .linear_multiply(strength);
     match entry.mode.arr {
-        TravelMode::At(_) => buttons::circle_button_shape(
+        Some(TravelMode::At(_)) => buttons::circle_button_shape(
             &mut painter,
             arrival_pos,
             CIRCLE_HANDLE_SIZE,
             handle_stroke,
             arrival_fill,
         ),
-        TravelMode::For(_) => buttons::dash_button_shape(
+        Some(TravelMode::For(_)) => buttons::dash_button_shape(
             &mut painter,
             arrival_pos,
             DASH_HANDLE_SIZE,
             handle_stroke,
             arrival_fill,
         ),
-        TravelMode::Flexible => buttons::triangle_button_shape(
+        Some(TravelMode::Flexible) => buttons::triangle_button_shape(
             &mut painter,
             arrival_pos,
             TRIANGLE_HANDLE_SIZE,
+            handle_stroke,
+            arrival_fill,
+        ),
+        None => buttons::double_triangle(
+            &mut painter,
+            arrival_pos,
+            DASH_HANDLE_SIZE,
             handle_stroke,
             arrival_fill,
         ),
@@ -920,7 +928,7 @@ fn draw_handles(
     }
 
     let dep_sense = match entry.mode.dep {
-        Some(TravelMode::Flexible) | None => Sense::click(),
+        TravelMode::Flexible => Sense::click(),
         _ => Sense::click_and_drag(),
     };
     let departure_rect = Rect::from_center_size(departure_pos, Vec2::splat(HANDLE_SIZE));
@@ -933,31 +941,24 @@ fn draw_handles(
     }
     .linear_multiply(strength);
     match entry.mode.dep {
-        Some(TravelMode::At(_)) => buttons::circle_button_shape(
+        TravelMode::At(_) => buttons::circle_button_shape(
             &mut painter,
             departure_pos,
             CIRCLE_HANDLE_SIZE,
             handle_stroke,
             departure_fill,
         ),
-        Some(TravelMode::For(_)) => buttons::dash_button_shape(
+        TravelMode::For(_) => buttons::dash_button_shape(
             &mut painter,
             departure_pos,
             DASH_HANDLE_SIZE,
             handle_stroke,
             departure_fill,
         ),
-        Some(TravelMode::Flexible) => buttons::triangle_button_shape(
+        TravelMode::Flexible => buttons::triangle_button_shape(
             &mut painter,
             departure_pos,
             TRIANGLE_HANDLE_SIZE,
-            handle_stroke,
-            departure_fill,
-        ),
-        None => buttons::double_triangle(
-            &mut painter,
-            departure_pos,
-            DASH_HANDLE_SIZE,
             handle_stroke,
             departure_fill,
         ),

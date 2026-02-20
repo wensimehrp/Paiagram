@@ -188,21 +188,17 @@ pub fn load_oud(
                             let (_, first_time) = times.next().unwrap();
                             let last_time = times.last().map(|(_, t)| t).unwrap_or(first_time);
                             let arrival = if matches!(first_time.passing_mode, PassingMode::Pass) {
-                                TravelMode::Flexible
-                            } else {
-                                first_time
-                                    .arrival
-                                    .map_or(TravelMode::Flexible, |t| TravelMode::At(t))
-                            };
-                            let departure = if matches!(last_time.passing_mode, PassingMode::Pass) {
                                 None
                             } else {
                                 Some(
-                                    last_time
-                                        .departure
+                                    first_time
+                                        .arrival
                                         .map_or(TravelMode::Flexible, |t| TravelMode::At(t)),
                                 )
                             };
+                            let departure = last_time
+                                .departure
+                                .map_or(TravelMode::Flexible, |t| TravelMode::At(t));
                             bundle.spawn(EntryBundle::new(arrival, departure, stop.entity()));
                         }
                     });

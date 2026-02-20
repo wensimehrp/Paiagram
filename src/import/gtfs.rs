@@ -231,7 +231,7 @@ pub fn load_gtfs_static(
             .or(trip.trip_headsign.as_ref())
             .map_or_else(|| trip.id.clone(), std::clone::Clone::clone);
 
-        let mut entry_payloads: Vec<(Entity, TimetableTime, Option<TimetableTime>)> =
+        let mut entry_payloads: Vec<(Entity, Option<TimetableTime>, TimetableTime)> =
             Vec::with_capacity(trip.stop_times.len());
         let mut previous_arrival: Option<TimetableTime> = None;
         for stop_time in &trip.stop_times {
@@ -276,18 +276,18 @@ pub fn load_gtfs_static(
             }
             previous_arrival = Some(arrival);
 
-            let dep_mode = (departure != arrival).then_some(departure);
-            entry_payloads.push((stop_entity, arrival, dep_mode));
+            let arr_mode = (departure != arrival).then_some(arrival);
+            entry_payloads.push((stop_entity, arr_mode, departure));
         }
 
         let trip_entity = commands
             .spawn(TripBundle::new(&trip_name, TripClass(trip_class.entity())))
             .with_children(|bundle| {
-                for (stop_entity, arrival, dep_mode) in entry_payloads {
-                    let dep_mode = dep_mode.map(TravelMode::At);
+                for (stop_entity, arr_mode, departure) in entry_payloads {
+                    let arr_mode = arr_mode.map(TravelMode::At);
                     bundle.spawn(EntryBundle::new(
-                        TravelMode::At(arrival),
-                        dep_mode,
+                        arr_mode,
+                        TravelMode::At(departure),
                         stop_entity,
                     ));
                 }

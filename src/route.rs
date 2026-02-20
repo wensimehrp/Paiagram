@@ -9,7 +9,7 @@ pub struct RoutePlugin;
 impl Plugin for RoutePlugin {
     fn build(&self, app: &mut App) {
         app.add_observer(auto_update_length)
-            .add_systems(Update, update_route_trips);
+            .add_systems(Update, (update_route_trips, auto_generate_display_modes));
     }
 }
 
@@ -33,6 +33,51 @@ pub struct Route {
     pub stops: Vec<Entity>,
     pub lengths: Vec<f32>,
 }
+
+#[derive(Reflect)]
+pub struct AllTripsDisplayMode {
+    pub departure: bool,
+    pub arrival: bool,
+}
+
+impl AllTripsDisplayMode {
+    pub fn count(&self) -> usize {
+        self.departure as usize + self.arrival as usize
+    }
+}
+
+#[derive(Reflect, Component, Deref, DerefMut)]
+#[reflect(Component)]
+pub struct RouteDisplayModes(Vec<AllTripsDisplayMode>);
+
+fn auto_generate_display_modes(
+    routes: Populated<(Entity, &Route), Without<RouteDisplayModes>>,
+    graph: Res<Graph>,
+    mut commands: Commands,
+) {
+    for (route_entity, route) in routes.iter().filter(|(_, it)| it.stops.len() > 0) {
+        let mut modes: Vec<AllTripsDisplayMode> = Vec::new();
+        modes.resize_with(route.stops.len(), || AllTripsDisplayMode {
+            departure: true,
+            arrival: false,
+        });
+        modes.last_mut().unwrap().arrival = true;
+        modes.last_mut().unwrap().departure = false;
+        for (idx, s) in route.stops.windows(2).enumerate() {
+            let [prev, curr] = s else { unreachable!() };
+            if graph.contains_edge(*prev, *curr) || graph.contains_edge(*curr, *prev) {
+                continue;
+            }
+            modes[idx].departure = false;
+            modes[idx].arrival = true;
+        }
+        commands
+            .entity(route_entity)
+            .insert(RouteDisplayModes(modes));
+    }
+}
+
+// TODO: handle update of route
 
 #[derive(Default, Reflect, Component, Deref, DerefMut)]
 #[reflect(Component)]

@@ -159,7 +159,7 @@ fn recalculate_estimate(
             if let Some(v) = next_stable.take() {
                 last_stable = Some(v);
             }
-            match (mode.arr, mode.dep.unwrap_or(TravelMode::Flexible)) {
+            match (mode.arr.unwrap_or(TravelMode::Flexible), mode.dep) {
                 (TravelMode::At(at), TravelMode::At(dt)) => {
                     commands
                         .entity(entry_entity)

@@ -29,32 +29,32 @@ pub enum TravelMode {
 #[derive(Default, Reflect, Component)]
 #[reflect(Component)]
 pub struct EntryMode {
-    pub arr: TravelMode,
-    pub dep: Option<TravelMode>,
+    pub arr: Option<TravelMode>,
+    pub dep: TravelMode,
 }
 
 impl EntryMode {
     pub fn new_derived() -> Self {
         Self {
-            arr: TravelMode::Flexible,
-            dep: None,
+            arr: None,
+            dep: TravelMode::Flexible,
         }
     }
     /// Shift the arrival time. The function does nothing if the arrival mode is [`TravelMode::Flexible`]
+    /// or [`Option::None`]
     pub fn shift_arr(&mut self, d: Duration) {
         match &mut self.arr {
-            TravelMode::At(t) => *t += d,
-            TravelMode::For(t) => *t += d,
-            TravelMode::Flexible => (),
-        }
-    }
-    /// Shift the departure time. The function does nothing if the departure mode is [`TravelMode::Flexible`]
-    /// or [`Option::None`]
-    pub fn shift_dep(&mut self, d: Duration) {
-        match &mut self.dep {
             Some(TravelMode::At(t)) => *t += d,
             Some(TravelMode::For(t)) => *t += d,
             Some(TravelMode::Flexible) | None => (),
+        }
+    }
+    /// Shift the departure time. The function does nothing if the departure mode is [`TravelMode::Flexible`]
+    pub fn shift_dep(&mut self, d: Duration) {
+        match &mut self.dep {
+            TravelMode::At(t) => *t += d,
+            TravelMode::For(t) => *t += d,
+            TravelMode::Flexible => (),
         }
     }
 }
@@ -92,7 +92,7 @@ pub struct EntryBundle {
 }
 
 impl EntryBundle {
-    pub fn new(arr: TravelMode, dep: Option<TravelMode>, stop: Entity) -> Self {
+    pub fn new(arr: Option<TravelMode>, dep: TravelMode, stop: Entity) -> Self {
         Self {
             time: EntryMode { arr, dep },
             stop: EntryStop(stop),
@@ -143,8 +143,8 @@ impl<'w, 's> EntryQueryItem<'w, 's> {
         let prev_dep = entry_q
             .iter_many(parent_schedule[0..idx].iter().rev())
             .find(|(mode, _)| match (mode.arr, mode.dep) {
-                (TravelMode::At(_), _) => true,
-                (_, Some(TravelMode::At(_))) => true,
+                (Some(TravelMode::At(_)), _) => true,
+                (_, TravelMode::At(_)) => true,
                 _ => false,
             })?
             .1?
@@ -171,8 +171,8 @@ pub struct AdjustEntryMode {
 
 #[derive(Debug)]
 pub enum EntryModeAdjustment {
-    SetArrival(TravelMode),
-    SetDeparture(Option<TravelMode>),
+    SetArrival(Option<TravelMode>),
+    SetDeparture(TravelMode),
     ShiftArrival(Duration),
     ShiftDeparture(Duration),
 }

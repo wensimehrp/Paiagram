@@ -197,7 +197,7 @@ pub fn calc(
                 station: station_entity,
                 arr_ticks,
                 dep_ticks,
-                has_departure: entry.mode.dep.is_some(),
+                has_departure: entry.mode.arr.is_some(),
             });
         }
 

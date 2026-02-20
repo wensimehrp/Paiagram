@@ -55,7 +55,7 @@ fn show_trip(
                 let platform = platform_q.get(it.stop()).unwrap();
                 let station = platform.station(&station_q);
                 ui.label(station.name.as_str());
-                let res = match it.mode.arr {
+                let res = match it.mode.dep {
                     TravelMode::At(t) => {
                         let mut new_t = t;
                         let res = ui.add(
@@ -68,7 +68,7 @@ fn show_trip(
                         if res.changed() {
                             commands.trigger(AdjustEntryMode {
                                 entity: it.entity,
-                                adj: EntryModeAdjustment::ShiftArrival(new_t - t)
+                                adj: EntryModeAdjustment::ShiftDeparture(new_t - t)
                             });
                         }
                         res

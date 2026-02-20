@@ -1,5 +1,7 @@
+use std::sync::atomic::{AtomicU16, AtomicUsize};
+
 use bevy::prelude::*;
-use egui::{FontId, RichText, Vec2, vec2};
+use egui::{FontId, Layout, Rect, RichText, Ui, Vec2, vec2};
 use egui_table::{Column, Table, TableDelegate};
 use either::Either;
 use emath::Numeric;
@@ -8,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     entry::{EntryQuery, EntryQueryItem, TravelMode},
-    route::{Route, RouteTrips},
+    route::{AllTripsDisplayMode, Route, RouteDisplayModes, RouteTrips},
     station::{ParentStationOrStation, Station},
     trip::{TripQuery, TripQueryItem},
     units::time::TimetableTime,
@@ -45,6 +47,15 @@ impl super::Tab for AllTripsTab {
     fn scroll_bars(&self) -> [bool; 2] {
         [false; 2]
     }
+    fn edit_display(&mut self, world: &mut World, ui: &mut Ui) {
+        if ui.button("Auto sort entries").clicked()
+            && let Some(buf) = self.downward_entities.as_mut()
+        {
+            world
+                .run_system_cached_with(sort_entries, (buf, self.route_entity, true))
+                .unwrap();
+        }
+    }
     fn main_display(&mut self, world: &mut bevy::ecs::world::World, ui: &mut egui::Ui) {
         // prepare the downward and upward data
         let route = world.get::<Route>(self.route_entity).unwrap();
@@ -52,7 +63,7 @@ impl super::Tab for AllTripsTab {
         let table = egui_table::Table::new()
             .id_salt(self.route_entity)
             .num_rows(route.stops.len() as u64)
-            .num_sticky_cols(1);
+            .num_sticky_cols(2);
         world
             .run_system_cached_with(
                 prepare_trips,
@@ -68,6 +79,42 @@ impl super::Tab for AllTripsTab {
             )
             .unwrap();
     }
+}
+
+fn sort_entries(
+    (InMut(buf), In(route_entity), In(downwards)): (InMut<Vec<Entity>>, In<Entity>, In<bool>),
+    route_q: Query<&Route>,
+    trip_q: Query<TripQuery>,
+    entry_q: Query<EntryQuery>,
+    parent_station_or_station: Query<ParentStationOrStation>,
+) {
+    let route = route_q.get(route_entity).unwrap();
+    buf.sort_unstable_by_key(|trip_entity| {
+        let mut stations = if downwards {
+            Either::Left(route.stops.iter())
+        } else {
+            Either::Right(route.stops.iter().rev())
+        };
+        let trip = trip_q.get(*trip_entity).unwrap();
+
+        let mut first_time = TimetableTime::MAX;
+        // Default to max if no estimate
+        let mut first_station_idx = usize::MAX;
+
+        for it in entry_q.iter_many(trip.schedule.iter()) {
+            let station_entity = parent_station_or_station.get(it.stop()).unwrap().parent();
+            if let Some(found_pos) = stations.position(|s| *s == station_entity) {
+                first_station_idx = found_pos;
+                if let Some(est) = it.estimate {
+                    first_time = est.arr;
+                }
+                break; // We only care about the first occurrence
+            }
+        }
+
+        // Sort by first station occurrence (ascending), then by time (ascending)
+        (first_station_idx, first_time)
+    });
 }
 
 fn prepare_trips(
@@ -116,6 +163,7 @@ fn prepare_trips(
 
 struct AllTripsDisplayer<'w> {
     route: &'w Route,
+    route_display_modes: &'w mut RouteDisplayModes,
     names: &'w [&'w str],
     available_trips: &'w [Entity],
     column_offset: usize,
@@ -125,19 +173,28 @@ struct AllTripsDisplayer<'w> {
     parent_station_or_station: &'w Query<'w, 'w, ParentStationOrStation>,
 }
 
+impl<'w> AllTripsDisplayer<'w> {
+    fn table_cell_width() -> f32 {
+        36.0
+    }
+    fn cell_size() -> Vec2 {
+        vec2(36.0, 16.0)
+    }
+}
+
 impl<'w> TableDelegate for AllTripsDisplayer<'w> {
     fn prepare(&mut self, info: &egui_table::PrefetchInfo) {
         self.trips.clear();
 
-        let visible_trip_cols_start = info.visible_columns.start.max(1);
+        let visible_trip_cols_start = info.visible_columns.start.max(2);
         let visible_trip_cols_end = info.visible_columns.end;
 
         if visible_trip_cols_start >= visible_trip_cols_end {
             return;
         }
 
-        let trip_start = visible_trip_cols_start - 1;
-        let trip_end = visible_trip_cols_end - 1;
+        let trip_start = visible_trip_cols_start - 2;
+        let trip_end = visible_trip_cols_end - 2;
         self.column_offset = trip_start;
 
         let trips_iter = self
@@ -185,6 +242,14 @@ impl<'w> TableDelegate for AllTripsDisplayer<'w> {
             });
         self.trips.extend(trips_iter);
     }
+    fn row_top_offset(&self, _ctx: &egui::Context, _table_id: egui::Id, row_nr: u64) -> f32 {
+        let offset_count: usize = self.route_display_modes[0..(row_nr as usize)]
+            .iter()
+            .map(|mode| mode.count())
+            .sum();
+
+        (offset_count as f32) * self.default_row_height()
+    }
     fn default_row_height(&self) -> f32 {
         16.0
     }
@@ -209,7 +274,10 @@ impl<'w> TableDelegate for AllTripsDisplayer<'w> {
             ],
             ui.visuals().window_stroke(),
         );
-        let trip_index = cell.group_index - 1;
+        if cell.group_index == 1 {
+            return;
+        }
+        let trip_index = cell.group_index - 2;
         let trip_end = self.column_offset + self.trips.len();
         if trip_index < self.column_offset || trip_index >= trip_end {
             return;
@@ -219,8 +287,16 @@ impl<'w> TableDelegate for AllTripsDisplayer<'w> {
         ui.label(t.name.as_str());
     }
     fn cell_ui(&mut self, ui: &mut egui::Ui, cell: &egui_table::CellInfo) {
+        let row_nr = cell.row_nr as usize;
+        let display_mode = &self.route_display_modes[row_nr];
         if cell.col_nr == 0 {
-            ui.label(self.names[cell.row_nr as usize]);
+            ui.allocate_ui_with_layout(
+                ui.available_size(),
+                Layout::left_to_right(egui::Align::Center),
+                |ui| {
+                    ui.label(self.names[row_nr]);
+                },
+            );
             return;
         }
         let dx = vec2(-ui.visuals().window_stroke.width, 0.0);
@@ -231,45 +307,153 @@ impl<'w> TableDelegate for AllTripsDisplayer<'w> {
             ],
             ui.visuals().window_stroke(),
         );
-        let trip_index = cell.col_nr - 1;
+        if cell.col_nr == 1 {
+            let prev_arr = row_nr
+                .checked_sub(1)
+                .map_or(false, |idx| self.route_display_modes[idx].arrival);
+            let prev_dep = !display_mode.arrival
+                && row_nr
+                    .checked_sub(1)
+                    .map_or(false, |idx| self.route_display_modes[idx].departure);
+            let m = &mut self.route_display_modes[row_nr];
+            let show_edit_button = |m: &mut AllTripsDisplayMode, ui: &mut egui::Ui, s: &str| {
+                let res = ui.button(s);
+                egui::Popup::menu(&res).show(|ui| {
+                    ui.add_enabled(
+                        !m.arrival || m.departure,
+                        egui::Checkbox::new(&mut m.arrival, "Arrival"),
+                    );
+                    ui.add_enabled(
+                        !m.departure || m.arrival,
+                        egui::Checkbox::new(&mut m.departure, "Departure"),
+                    );
+                });
+            };
+            ui.vertical(|ui| {
+                if m.arrival {
+                    let s = if prev_arr { "〃" } else { "Ａ" };
+                    show_edit_button(m, ui, s);
+                }
+                if m.departure {
+                    let s = if prev_dep { "〃" } else { "Ｄ" };
+                    show_edit_button(m, ui, s);
+                }
+            });
+            return;
+        }
+        if display_mode.arrival {
+            if display_mode.departure {
+                ui.painter().line_segment(
+                    [ui.max_rect().left_center(), ui.max_rect().right_center()],
+                    ui.visuals().window_stroke(),
+                );
+            } else {
+                let dy = vec2(0.0, -ui.visuals().window_stroke.width);
+                ui.painter().line_segment(
+                    [
+                        ui.max_rect().left_bottom() + dy,
+                        ui.max_rect().right_bottom() + dy,
+                    ],
+                    ui.visuals().window_stroke(),
+                );
+            }
+        }
+        let trip_index = cell.col_nr - 2;
         let trip_end = self.column_offset + self.trips.len();
         if trip_index < self.column_offset || trip_index >= trip_end {
             return;
         }
         let local_trip_index = trip_index - self.column_offset;
         let (_, entries) = &self.trips[local_trip_index];
-        let entry = &entries[cell.row_nr as usize];
-        let font = FontId::new(15.0, egui::FontFamily::Name("dia_pro".into()));
-        let res = ui.add_sized(ui.available_size(), |ui: &mut egui::Ui| match entry {
-            EntryDisplayMode::Skipped => ui.button(RichText::new("║").font(font)),
-            EntryDisplayMode::NoOperation => ui.button(
-                RichText::new(if (cell.row_nr + 1) % 10 == 0 {
-                    "┄"
-                } else {
-                    "‥"
-                })
-                .font(font),
-            ),
-            EntryDisplayMode::Terminated => ui.button(RichText::new("▔").font(font)),
-            EntryDisplayMode::Some(e) => match e.mode.arr {
-                TravelMode::At(t) => {
-                    let mut new_t = t;
-                    ui.add(
-                        egui::DragValue::new(&mut new_t)
-                            .custom_formatter(|it, _| {
-                                TimetableTime::from_f64(it).to_oud2_str(false)
-                            })
-                            .custom_parser(|s| {
-                                TimetableTime::from_oud2_str(s).map(|it| it.to_f64())
-                            }),
-                    )
-                }
-                TravelMode::Flexible => ui.button(RichText::new("⇂").font(font)),
-                _ => ui.label(RichText::new("⇂").font(font)),
-            },
-        });
-        egui::Popup::menu(&res).show(|ui| {
-            ui.label("Hi!");
+        let entry = &entries[row_nr];
+        ui.vertical(|ui| {
+            if display_mode.arrival {
+                let font = FontId::new(15.0, egui::FontFamily::Name("dia_pro".into()));
+                let res = ui.put(
+                    Rect::from_min_size(ui.max_rect().left_top(), AllTripsDisplayer::cell_size()),
+                    |ui: &mut egui::Ui| match entry {
+                        EntryDisplayMode::Skipped => ui.button(RichText::new("║").font(font)),
+                        EntryDisplayMode::NoOperation => ui.button(
+                            RichText::new(
+                                if (cell.row_nr + 1) % 10 == 0 && display_mode.count() < 2 {
+                                    "┄"
+                                } else {
+                                    "‥"
+                                },
+                            )
+                            .font(font),
+                        ),
+                        EntryDisplayMode::Terminated => ui.button(RichText::new("▔").font(font)),
+                        EntryDisplayMode::Some(e) => match e.mode.arr {
+                            Some(TravelMode::At(t)) => {
+                                let mut new_t = t;
+                                ui.add(
+                                    egui::DragValue::new(&mut new_t)
+                                        .custom_formatter(|it, _| {
+                                            TimetableTime::from_f64(it).to_oud2_str(false)
+                                        })
+                                        .custom_parser(|s| {
+                                            TimetableTime::from_oud2_str(s).map(|it| it.to_f64())
+                                        }),
+                                )
+                            }
+                            None | Some(TravelMode::Flexible) => {
+                                ui.button(RichText::new("⇂").font(font))
+                            }
+                            _ => ui.label(RichText::new("⇂").font(font)),
+                        },
+                    },
+                );
+                egui::Popup::menu(&res).show(|ui| {
+                    ui.label("Hi!");
+                });
+            }
+            if display_mode.departure {
+                let font = FontId::new(15.0, egui::FontFamily::Name("dia_pro".into()));
+                let res = ui.put(
+                    Rect::from_min_size(
+                        if display_mode.arrival {
+                            ui.max_rect().left_center()
+                        } else {
+                            ui.max_rect().left_top()
+                        },
+                        AllTripsDisplayer::cell_size(),
+                    ),
+                    |ui: &mut egui::Ui| match entry {
+                        EntryDisplayMode::Skipped => ui.button(RichText::new("║").font(font)),
+                        EntryDisplayMode::NoOperation => ui.button(
+                            RichText::new(
+                                if (cell.row_nr + 1) % 10 == 0 && display_mode.count() < 2 {
+                                    "┄"
+                                } else {
+                                    "‥"
+                                },
+                            )
+                            .font(font),
+                        ),
+                        EntryDisplayMode::Terminated => ui.button(RichText::new("▔").font(font)),
+                        EntryDisplayMode::Some(e) => match e.mode.dep {
+                            TravelMode::At(t) => {
+                                let mut new_t = t;
+                                ui.add(
+                                    egui::DragValue::new(&mut new_t)
+                                        .custom_formatter(|it, _| {
+                                            TimetableTime::from_f64(it).to_oud2_str(false)
+                                        })
+                                        .custom_parser(|s| {
+                                            TimetableTime::from_oud2_str(s).map(|it| it.to_f64())
+                                        }),
+                                )
+                            }
+                            TravelMode::Flexible => ui.button(RichText::new("⇂").font(font)),
+                            _ => ui.label(RichText::new("⇂").font(font)),
+                        },
+                    },
+                );
+                egui::Popup::menu(&res).show(|ui| {
+                    ui.label("Hi!");
+                });
+            }
         });
     }
 }
@@ -288,19 +472,20 @@ fn display_table(
         In<Entity>,
         InRef<[Entity]>,
     ),
-    route_q: Query<&Route>,
+    mut route_q: Query<(&Route, &mut RouteDisplayModes)>,
     trip_q: Query<TripQuery>,
     entry_q: Query<EntryQuery>,
     parent_station_or_station: Query<ParentStationOrStation>,
     names: Query<&Name, With<Station>>,
 ) {
-    let route = route_q.get(route_entity).unwrap();
+    let (route, mut route_display_modes) = route_q.get_mut(route_entity).unwrap();
     let names: Vec<_> = names
         .iter_many(route.stops.iter())
         .map(|it| it.as_str())
         .collect();
     let mut displayer = AllTripsDisplayer {
         route,
+        route_display_modes: &mut *route_display_modes,
         names: &names,
         trips: Vec::new(),
         available_trips: trips_to_display,
@@ -321,7 +506,12 @@ fn display_table(
     table
         .columns(
             std::iter::once(Column::new(80.0).resizable(true))
-                .chain((0..trips_to_display.len()).map(|_| Column::new(36.0).resizable(false)))
+                .chain(std::iter::once(Column::new(20.0).resizable(false)))
+                .chain(
+                    (0..trips_to_display.len()).map(|_| {
+                        Column::new(AllTripsDisplayer::table_cell_width()).resizable(false)
+                    }),
+                )
                 .collect::<Vec<_>>(),
         )
         .show(ui, &mut displayer);
