@@ -39,8 +39,11 @@
     <script type="module">
         import init from "./paiagram.js";
 
-        const RAW_BUILD_ID = "__PAIAGRAM_BUILD_ID__";
-        const BUILD_ID = RAW_BUILD_ID.includes("__PAIAGRAM_BUILD_ID__") ? "dev" : RAW_BUILD_ID;
+        const BUILD_ID_PLACEHOLDER = "__PAIAGRAM_BUILD_ID__";
+        const RAW_BUILD_ID = BUILD_ID_PLACEHOLDER;
+        const BUILD_ID = RAW_BUILD_ID === BUILD_ID_PLACEHOLDER || RAW_BUILD_ID.length === 0
+            ? "dev"
+            : RAW_BUILD_ID;
         const CACHE_PREFIX = "paiagram-wasm-cache-";
         const CACHE_NAME = `${CACHE_PREFIX}${BUILD_ID}`;
         const WASM_URL = new URL(`./paiagram_bg.wasm?v=${encodeURIComponent(BUILD_ID)}`, import.meta.url);
