@@ -6,6 +6,36 @@ use std::ops;
 #[derive(
     Reflect, Debug, Deserialize, Serialize, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord,
 )]
+pub struct Tick(pub i64);
+
+impl Tick {
+    pub fn to_timetable_time(self) -> TimetableTime {
+        TimetableTime((self.0 / 100) as i32)
+    }
+    pub fn from_timetable_time(time: TimetableTime) -> Self {
+        Tick(time.0 as i64 * 100)
+    }
+    pub fn as_seconds_f64(self) -> f64 {
+        let ticks_per_second = Self::from_timetable_time(TimetableTime(1)).0 as f64;
+        self.0 as f64 / ticks_per_second
+    }
+}
+
+impl From<f64> for Tick {
+    fn from(value: f64) -> Self {
+        Tick(value as i64)
+    }
+}
+
+impl Into<f64> for Tick {
+    fn into(self) -> f64 {
+        self.0 as f64
+    }
+}
+
+#[derive(
+    Reflect, Debug, Deserialize, Serialize, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord,
+)]
 pub struct TimetableTime(pub i32);
 
 impl TimetableTime {

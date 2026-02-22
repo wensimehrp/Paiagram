@@ -9,15 +9,17 @@ pub struct RoutePlugin;
 impl Plugin for RoutePlugin {
     fn build(&self, app: &mut App) {
         app.add_observer(auto_update_length)
+            .add_observer(sort_route_by_direction_trips)
             .add_systems(Update, (update_route_trips, auto_generate_display_modes));
     }
 }
 
 use crate::{
-    entry::EntryMode,
+    entry::{EntryMode, EntryQuery},
     graph::Graph,
     interval::{Interval, UpdateInterval},
-    station::{Platform, PlatformEntries, Station, StationQuery},
+    station::{ParentStationOrStation, Platform, PlatformEntries, Station, StationQuery},
+    trip::TripQuery,
 };
 
 /// Marker component for automatically updating route interval length.
@@ -27,7 +29,7 @@ pub struct AutoUpdateLength;
 
 #[derive(Reflect, Component, MapEntities)]
 #[reflect(Component, MapEntities)]
-#[require(Name, RouteTrips)]
+#[require(Name, RouteTrips, RouteByDirectionTrips)]
 pub struct Route {
     #[entities]
     pub stops: Vec<Entity>,
@@ -78,11 +80,95 @@ fn auto_generate_display_modes(
 }
 
 // TODO: handle update of route
-
+// TODO: improve sorting logic
 #[derive(Default, Reflect, Component, Deref, DerefMut)]
 #[reflect(Component)]
 #[require(Name)]
 pub struct RouteTrips(Vec<Entity>);
+
+#[derive(Default, Reflect, Component)]
+#[reflect(Component)]
+pub struct RouteByDirectionTrips {
+    pub downward: Vec<Entity>,
+    pub upward: Vec<Entity>,
+}
+
+#[derive(EntityEvent)]
+pub struct SortRouteByDirectionTrips {
+    pub entity: Entity,
+}
+
+fn compute_sorted_by_first_entry_estimate(
+    trip_entities: &[Entity],
+    trip_q: &Query<TripQuery>,
+    entry_q: &Query<EntryQuery>,
+) -> Vec<Entity> {
+    let mut out = trip_entities.to_vec();
+    out.sort_unstable_by_key(|trip_entity| {
+        let trip = trip_q.get(*trip_entity).ok();
+        let first_time = trip
+            .and_then(|trip| {
+                entry_q
+                    .iter_many(trip.schedule.iter())
+                    .find_map(|entry| entry.estimate.map(|it| it.arr.min(it.dep)))
+            })
+            .unwrap_or(crate::units::time::TimetableTime(i32::MAX));
+        (first_time, trip_entity.to_bits())
+    });
+    out
+}
+
+fn compute_directional_members(
+    route: &Route,
+    trip_entities: &[Entity],
+    downwards: bool,
+    trip_q: &Query<TripQuery>,
+    entry_q: &Query<EntryQuery>,
+    parent_station_or_station: &Query<ParentStationOrStation>,
+) -> Vec<Entity> {
+    trip_entities
+        .iter()
+        .copied()
+        .filter_map(|trip_entity| {
+            let trip = trip_q.get(trip_entity).ok()?;
+            let mut stations = if downwards {
+                either::Either::Left(route.stops.iter())
+            } else {
+                either::Either::Right(route.stops.iter().rev())
+            };
+            let mut found_counter = 0;
+            for it in entry_q.iter_many(trip.schedule.iter()) {
+                let station_entity = parent_station_or_station.get(it.stop()).ok()?.parent();
+                if stations.any(|it| *it == station_entity) {
+                    found_counter += 1;
+                    if found_counter >= 2 {
+                        return Some(trip_entity);
+                    }
+                }
+            }
+            None
+        })
+        .collect()
+}
+
+fn sync_direction_order(existing: &mut Vec<Entity>, members: &[Entity], fallback_order: &[Entity]) {
+    let member_set: EntityHashSet = members.iter().copied().collect();
+    let mut next = Vec::with_capacity(members.len());
+
+    for entity in existing.iter().copied() {
+        if member_set.contains(&entity) {
+            next.push(entity);
+        }
+    }
+
+    for entity in fallback_order.iter().copied() {
+        if member_set.contains(&entity) && !next.contains(&entity) {
+            next.push(entity);
+        }
+    }
+
+    *existing = next;
+}
 
 impl Route {
     pub fn iter(&self) -> impl Iterator<Item = (Entity, f32)> {
@@ -99,13 +185,16 @@ impl Route {
 }
 
 fn update_route_trips(
-    mut routes: Query<(Entity, &Route, &mut RouteTrips)>,
+    mut routes: Query<(Entity, &Route, &mut RouteTrips, &mut RouteByDirectionTrips)>,
     changed_routes: Query<Entity, (With<Route>, Changed<Route>)>,
     changed_station_entries: Query<Entity, (With<Station>, Changed<PlatformEntries>)>,
     changed_platform_entries: Query<&ChildOf, (With<Platform>, Changed<PlatformEntries>)>,
     stations: Query<StationQuery>,
     platform_entries: Query<&PlatformEntries>,
     entries: Query<&ChildOf, With<EntryMode>>,
+    trip_q: Query<TripQuery>,
+    entry_q: Query<EntryQuery>,
+    parent_station_or_station: Query<ParentStationOrStation>,
 ) {
     let mut affected_routes = EntityHashSet::default();
 
@@ -122,7 +211,7 @@ fn update_route_trips(
     }
 
     if !changed_stations.is_empty() {
-        for (route_entity, route, _) in &routes {
+        for (route_entity, route, _, _) in &routes {
             if route
                 .stops
                 .iter()
@@ -137,7 +226,7 @@ fn update_route_trips(
         return;
     }
 
-    for (route_entity, route, mut route_trips) in &mut routes {
+    for (route_entity, route, mut route_trips, mut by_direction) in &mut routes {
         if !affected_routes.contains(&route_entity) {
             continue;
         }
@@ -155,12 +244,65 @@ fn update_route_trips(
             }
         }
 
-        let mut next = trips.into_iter().collect::<Vec<_>>();
-        next.sort_unstable();
-        if route_trips.0 != next {
-            route_trips.0 = next;
+        let mut next = route_trips
+            .0
+            .iter()
+            .copied()
+            .filter(|entity| trips.contains(entity))
+            .collect::<Vec<_>>();
+        for entity in trips.iter().copied() {
+            if !next.contains(&entity) {
+                next.push(entity);
+            }
         }
+        if route_trips.0 != next {
+            route_trips.0 = next.clone();
+        }
+
+        let new_downward = compute_directional_members(
+            route,
+            &next,
+            true,
+            &trip_q,
+            &entry_q,
+            &parent_station_or_station,
+        );
+        let new_upward = compute_directional_members(
+            route,
+            &next,
+            false,
+            &trip_q,
+            &entry_q,
+            &parent_station_or_station,
+        );
+        sync_direction_order(&mut by_direction.downward, &new_downward, &next);
+        sync_direction_order(&mut by_direction.upward, &new_upward, &next);
     }
+}
+
+fn sort_route_by_direction_trips(
+    trigger: On<SortRouteByDirectionTrips>,
+    mut routes: Query<(&RouteTrips, &mut RouteByDirectionTrips)>,
+    trip_q: Query<TripQuery>,
+    entry_q: Query<EntryQuery>,
+) {
+    let Ok((route_trips, mut by_direction)) = routes.get_mut(trigger.entity) else {
+        return;
+    };
+
+    let sorted_downward = compute_sorted_by_first_entry_estimate(
+        &by_direction.downward,
+        &trip_q,
+        &entry_q,
+    );
+    let sorted_upward = compute_sorted_by_first_entry_estimate(
+        &by_direction.upward,
+        &trip_q,
+        &entry_q,
+    );
+
+    by_direction.downward = sorted_downward;
+    by_direction.upward = sorted_upward;
 }
 
 fn auto_update_length(

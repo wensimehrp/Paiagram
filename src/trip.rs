@@ -343,6 +343,7 @@ pub type TripSchedule = Children;
 #[derive(QueryData)]
 pub struct TripQuery {
     trip: &'static Trip,
+    pub entity: Entity,
     pub vehicles: &'static TripVehicles,
     pub name: &'static Name,
     pub class: &'static TripClass,

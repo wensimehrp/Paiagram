@@ -13,6 +13,7 @@ use moonshine_core::prelude::MapEntities;
 use serde::{Deserialize, Serialize};
 use tabs::{Tab, all_tabs::*};
 
+use crate::units::time::Tick;
 use crate::{
     import::{DownloadFile, LoadGTFS, LoadOuDia, LoadQETRC},
     route::Route,
@@ -101,8 +102,6 @@ pub struct GlobalTimer {
     animation_playing: bool,
 }
 
-pub const GLOBAL_TIMER_TICKS_PER_SECOND: i64 = 100;
-
 impl Default for GlobalTimer {
     fn default() -> Self {
         Self {
@@ -116,21 +115,22 @@ impl Default for GlobalTimer {
 
 impl GlobalTimer {
     const UNLOCKED: u64 = u64::MAX;
-    pub fn read_ticks(&self) -> i64 {
-        self.value.load(Ordering::Acquire)
+    pub fn read_ticks(&self) -> Tick {
+        Tick(self.value.load(Ordering::Acquire))
     }
 
-    pub fn write_ticks(&self, value: i64) {
-        self.value.store(value, Ordering::Release);
+    pub fn write_ticks(&self, value: Tick) {
+        self.value.store(value.0, Ordering::Release);
     }
 
     pub fn read_seconds(&self) -> f64 {
-        self.read_ticks() as f64 / GLOBAL_TIMER_TICKS_PER_SECOND as f64
+        self.read_ticks().as_seconds_f64()
     }
 
     pub fn write_seconds(&self, value: f64) {
-        let ticks = (value * GLOBAL_TIMER_TICKS_PER_SECOND as f64).round() as i64;
-        self.write_ticks(ticks);
+        let ticks_per_second = Tick::from_timetable_time(TimetableTime(1)).0 as f64;
+        let ticks = (value * ticks_per_second).round() as i64;
+        self.write_ticks(Tick(ticks));
     }
 
     pub fn is_locked(&self) -> bool {
@@ -188,6 +188,7 @@ macro_rules! for_all_tabs {
             MainTab::Inspector($t) => $body,
             MainTab::Trip($t) => $body,
             MainTab::AllTrips($t) => $body,
+            MainTab::PriorityGraph($t) => $body,
         }
     };
 }
@@ -207,6 +208,7 @@ pub enum MainTab {
     Inspector(InspectorTab),
     Trip(TripTab),
     AllTrips(AllTripsTab),
+    PriorityGraph(PriorityGraphTab),
 }
 
 impl MapEntities for MainTab {
@@ -294,6 +296,21 @@ impl<'w> TabViewer for MainTabViewer<'w> {
                 {
                     self.world
                         .write_message(OpenOrFocus(MainTab::AllTrips(AllTripsTab::new(e))));
+                }
+            });
+        });
+        ui.menu_button("Priority Graph", |ui| {
+            if ui.button("New Route").clicked() {}
+            ui.separator();
+            ScrollArea::vertical().show(ui, |ui| {
+                if let Some(e) = self
+                    .world
+                    .run_system_cached_with(show_name_button::<Route>, ui)
+                    .unwrap()
+                {
+                    self.world.write_message(OpenOrFocus(MainTab::PriorityGraph(
+                        PriorityGraphTab::new(e),
+                    )));
                 }
             });
         });
@@ -448,107 +465,108 @@ pub fn show_ui(ctx: &Context, world: &mut World) {
             modal.0 = None
         }
     });
-    egui::TopBottomPanel::top("top panel").show(ctx, |ui| {
-        ui.horizontal(|ui| {
-            // TODO: add rfd file reading
-            let res = ui.button("More...");
-            #[cfg(not(target_arch = "wasm32"))]
-            if ui.button("Fullscreen").clicked() {
-                let is_fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
-                ui.ctx()
-                    .send_viewport_cmd(egui::ViewportCommand::Fullscreen(!is_fullscreen));
-            }
-            #[cfg(target_arch = "wasm32")]
-            if ui.button("Fullscreen").clicked() {
-                toggle_fullscreen("paiagram_canvas");
-            }
-            egui::Popup::menu(&res).show(|ui| {
-                if ui.button("Import from URL...").clicked() {
-                    world.resource_mut::<UiModal>().0 = Some(Modals::OpenUrl(String::new()));
+    egui::TopBottomPanel::top("top panel")
+        .exact_height(32.0)
+        .show(ctx, |ui| {
+            ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                let res = ui.button("More...");
+                #[cfg(not(target_arch = "wasm32"))]
+                if ui.button("Fullscreen").clicked() {
+                    let is_fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
+                    ui.ctx()
+                        .send_viewport_cmd(egui::ViewportCommand::Fullscreen(!is_fullscreen));
                 }
-                ui.separator();
-                if ui.button("Read OuDia...").clicked() {
-                    world.commands().trigger(crate::rw::read::ReadFile {
-                        title: "Load OuDia Files".to_string(),
-                        extensions: vec![("OuDia Files".to_string(), vec!["oud".to_string()])],
-                        callback: |c, s| {
-                            c.trigger(LoadOuDia::original(s));
-                        },
-                    });
+                #[cfg(target_arch = "wasm32")]
+                if ui.button("Fullscreen").clicked() {
+                    toggle_fullscreen("paiagram_canvas");
                 }
-                if ui.button("Read OuDiaSecond...").clicked() {
-                    world.commands().trigger(crate::rw::read::ReadFile {
-                        title: "Load OuDiaSecond Files".to_string(),
-                        extensions: vec![(
-                            "OuDiaSecond Files".to_string(),
-                            vec!["oud2".to_string()],
-                        )],
-                        callback: |c, s| {
-                            c.trigger(LoadOuDia::second(String::from_utf8(s).unwrap()));
-                        },
-                    });
-                }
-                if ui.button("Read qETRC/pyETRC...").clicked() {
-                    world.commands().trigger(crate::rw::read::ReadFile {
-                        title: "Load qETRC Files".to_string(),
-                        extensions: vec![(
-                            "qETRC Files".to_string(),
-                            vec!["json".to_string(), "pyetgr".to_string()],
-                        )],
-                        callback: |c, s| {
-                            c.trigger(LoadQETRC {
-                                content: String::from_utf8(s).unwrap(),
-                            });
-                        },
-                    });
-                }
-                if ui.button("Read GTFS...").clicked() {
-                    world.commands().trigger(crate::rw::read::ReadFile {
-                        title: "Load GTFS Files".to_string(),
-                        extensions: vec![("GTFS Files".to_string(), vec!["zip".to_string()])],
-                        callback: |c, s| {
-                            c.trigger(LoadGTFS { content: s });
-                        },
-                    });
-                }
-            });
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let mut timer = world.resource_mut::<GlobalTimer>();
-                let mut seconds = timer.read_seconds();
-                ui.checkbox(&mut timer.animation_playing, "Play animation");
-                let time_response = ui.add(
-                    egui::DragValue::new(&mut seconds)
-                        .custom_formatter(|it, _| {
-                            format!("{}", TimetableTime::from_hms(0, 0, it as i32))
-                        })
-                        .custom_parser(|s| TimetableTime::from_str(s).map(|it| it.0 as f64)),
-                );
-                ui.add(
-                    egui::Slider::new(&mut timer.animation_speed, -500.0..=500.0)
-                        .fixed_decimals(1)
-                        .text("Speed")
-                        .clamping(egui::SliderClamping::Always),
-                );
-                unsafe {
-                    if time_response.dragged() && timer.try_lock_unchecked(1) {
-                        timer.write_seconds(seconds);
-                    } else {
-                        timer.try_unlock_unchecked(1);
+                egui::Popup::menu(&res).show(|ui| {
+                    if ui.button("Import from URL...").clicked() {
+                        world.resource_mut::<UiModal>().0 = Some(Modals::OpenUrl(String::new()));
                     }
-                }
-                if timer.animation_playing {
-                    if !timer.is_locked() {
-                        seconds += timer.animation_speed * ui.input(|r| r.stable_dt) as f64;
-                        timer.write_seconds(seconds);
+                    ui.separator();
+                    if ui.button("Read OuDia...").clicked() {
+                        world.commands().trigger(crate::rw::read::ReadFile {
+                            title: "Load OuDia Files".to_string(),
+                            extensions: vec![("OuDia Files".to_string(), vec!["oud".to_string()])],
+                            callback: |c, s| {
+                                c.trigger(LoadOuDia::original(s));
+                            },
+                        });
                     }
-                    ui.ctx().request_repaint();
-                }
-                if ui.button("P").clicked() {}
-                if ui.button("R").clicked() {}
-                if ui.button("B").clicked() {}
-            });
-        })
-    });
+                    if ui.button("Read OuDiaSecond...").clicked() {
+                        world.commands().trigger(crate::rw::read::ReadFile {
+                            title: "Load OuDiaSecond Files".to_string(),
+                            extensions: vec![(
+                                "OuDiaSecond Files".to_string(),
+                                vec!["oud2".to_string()],
+                            )],
+                            callback: |c, s| {
+                                c.trigger(LoadOuDia::second(String::from_utf8(s).unwrap()));
+                            },
+                        });
+                    }
+                    if ui.button("Read qETRC/pyETRC...").clicked() {
+                        world.commands().trigger(crate::rw::read::ReadFile {
+                            title: "Load qETRC Files".to_string(),
+                            extensions: vec![(
+                                "qETRC Files".to_string(),
+                                vec!["json".to_string(), "pyetgr".to_string()],
+                            )],
+                            callback: |c, s| {
+                                c.trigger(LoadQETRC {
+                                    content: String::from_utf8(s).unwrap(),
+                                });
+                            },
+                        });
+                    }
+                    if ui.button("Read GTFS...").clicked() {
+                        world.commands().trigger(crate::rw::read::ReadFile {
+                            title: "Load GTFS Files".to_string(),
+                            extensions: vec![("GTFS Files".to_string(), vec!["zip".to_string()])],
+                            callback: |c, s| {
+                                c.trigger(LoadGTFS { content: s });
+                            },
+                        });
+                    }
+                });
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let mut timer = world.resource_mut::<GlobalTimer>();
+                    let mut seconds = timer.read_seconds();
+                    ui.checkbox(&mut timer.animation_playing, "Play animation");
+                    let time_response = ui.add(
+                        egui::DragValue::new(&mut seconds)
+                            .custom_formatter(|it, _| {
+                                format!("{}", TimetableTime::from_hms(0, 0, it as i32))
+                            })
+                            .custom_parser(|s| TimetableTime::from_str(s).map(|it| it.0 as f64)),
+                    );
+                    ui.add(
+                        egui::Slider::new(&mut timer.animation_speed, -500.0..=500.0)
+                            .fixed_decimals(1)
+                            .text("Speed")
+                            .clamping(egui::SliderClamping::Always),
+                    );
+                    unsafe {
+                        if time_response.dragged() && timer.try_lock_unchecked(1) {
+                            timer.write_seconds(seconds);
+                        } else {
+                            timer.try_unlock_unchecked(1);
+                        }
+                    }
+                    if timer.animation_playing {
+                        if !timer.is_locked() {
+                            seconds += timer.animation_speed * ui.input(|r| r.stable_dt) as f64;
+                            timer.write_seconds(seconds);
+                        }
+                        ui.ctx().request_repaint();
+                    }
+                    if ui.button("P").clicked() {}
+                    if ui.button("R").clicked() {}
+                    if ui.button("B").clicked() {}
+                });
+            })
+        });
     let make_dock_style = |ui: &Ui| {
         let mut s = egui_dock::Style::from_egui(ui.style());
         s.tab.tab_body.inner_margin = Margin::same(0);

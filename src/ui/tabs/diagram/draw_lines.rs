@@ -1,6 +1,4 @@
-use crate::units::time::TimetableTime;
-
-use super::TICKS_PER_SECOND;
+use crate::units::time::{Tick, TimetableTime};
 use bevy::prelude::*;
 use egui::{Color32, FontId, Painter, Pos2, Rect, Stroke, Visuals};
 
@@ -64,26 +62,26 @@ pub fn draw_time_lines(
 ) {
     const MAX_SCREEN_WIDTH: f64 = 64.0;
     const MIN_SCREEN_WIDTH: f64 = 32.0;
-    const SIZES: &[i64] = &[
-        TICKS_PER_SECOND * 1,            // 1 second
-        TICKS_PER_SECOND * 10,           // 10 seconds
-        TICKS_PER_SECOND * 30,           // 30 seconds
-        TICKS_PER_SECOND * 60,           // 1 minute
-        TICKS_PER_SECOND * 60 * 5,       // 5 minutes
-        TICKS_PER_SECOND * 60 * 10,      // 10 minutes
-        TICKS_PER_SECOND * 60 * 30,      // 30 minutes
-        TICKS_PER_SECOND * 60 * 60,      // 1 hour
-        TICKS_PER_SECOND * 60 * 60 * 4,  // 4 hours
-        TICKS_PER_SECOND * 60 * 60 * 24, // 1 day
+    let sizes = [
+        Tick::from_timetable_time(TimetableTime(1)).0,      // 1 second
+        Tick::from_timetable_time(TimetableTime(10)).0,     // 10 seconds
+        Tick::from_timetable_time(TimetableTime(30)).0,     // 30 seconds
+        Tick::from_timetable_time(TimetableTime(60)).0,     // 1 minute
+        Tick::from_timetable_time(TimetableTime(60 * 5)).0, // 5 minutes
+        Tick::from_timetable_time(TimetableTime(60 * 10)).0, // 10 minutes
+        Tick::from_timetable_time(TimetableTime(60 * 30)).0, // 30 minutes
+        Tick::from_timetable_time(TimetableTime(60 * 60)).0, // 1 hour
+        Tick::from_timetable_time(TimetableTime(60 * 60 * 4)).0, // 4 hours
+        Tick::from_timetable_time(TimetableTime(60 * 60 * 24)).0, // 1 day
     ];
     let mut drawn: Vec<i64> = Vec::with_capacity(30);
 
     // align the first tick to a spacing boundary that is <= visible start.
-    let first_visible_position = SIZES
+    let first_visible_position = sizes
         .iter()
         .position(|s| *s as f64 / ticks_per_screen_unit * 1.5 > MIN_SCREEN_WIDTH)
         .unwrap_or(0);
-    let visible = &SIZES[first_visible_position..];
+    let visible = &sizes[first_visible_position..];
     for (i, spacing) in visible.iter().enumerate().rev() {
         let first = visible_ticks.start - visible_ticks.start.rem_euclid(*spacing) - spacing;
         let mut tick = first;
@@ -112,7 +110,7 @@ pub fn draw_time_lines(
             current_stroke.round_center_to_pixel(pixels_per_point, &mut x);
             painter.vline(x, screen_rect.top()..=screen_rect.bottom(), current_stroke);
             drawn.push(tick);
-            let time = TimetableTime((tick / 100) as i32);
+            let time = Tick(tick).to_timetable_time();
             let text = match i + first_visible_position {
                 0..=2 => time.to_hmsd().2.to_string(),
                 3..=8 => format!("{}:{:02}", time.to_hmsd().0, time.to_hmsd().1),

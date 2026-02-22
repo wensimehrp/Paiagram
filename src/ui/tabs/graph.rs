@@ -156,24 +156,12 @@ impl super::Navigatable for GraphNavigation {
     fn offset_x(&self) -> f64 {
         self.x_offset
     }
-    fn offset_y(&self) -> f32 {
-        self.y_offset as f32
+    fn offset_y(&self) -> f64 {
+        self.y_offset
     }
-    fn set_offset(&mut self, offset_x: f64, offset_y: f32) {
+    fn set_offset(&mut self, offset_x: f64, offset_y: f64) {
         self.x_offset = offset_x;
-        self.y_offset = offset_y as f64
-    }
-    fn x_from_f64(&self, value: f64) -> Self::XOffset {
-        value
-    }
-    fn x_to_f64(&self, value: Self::XOffset) -> f64 {
-        value
-    }
-    fn y_from_f32(&self, value: f32) -> Self::YOffset {
-        value as f64
-    }
-    fn y_to_f32(&self, value: Self::YOffset) -> f32 {
-        value as f32
+        self.y_offset = offset_y;
     }
     fn visible_rect(&self) -> egui::Rect {
         self.visible

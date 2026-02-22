@@ -11,7 +11,7 @@ use crate::trip::{Trip, TripBundle, TripClass, TripSchedule};
 use crate::ui::tabs::trip::TripTab;
 use crate::ui::widgets::buttons;
 use crate::ui::{GlobalTimer, OpenOrFocus};
-use crate::units::time::{Duration, TimetableTime};
+use crate::units::time::{Duration, Tick, TimetableTime};
 use bevy::prelude::*;
 use egui::epaint::TextShape;
 use egui::{
@@ -66,8 +66,8 @@ pub struct DiagramTab {
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct DiagramTabNavigation {
-    x_offset: i64,
-    y_offset: f32,
+    x_offset: Tick,
+    y_offset: f64,
     zoom: Vec2,
     #[serde(skip, default = "default_visible_rect")]
     visible_rect: Rect,
@@ -78,7 +78,7 @@ pub struct DiagramTabNavigation {
 impl Default for DiagramTabNavigation {
     fn default() -> Self {
         Self {
-            x_offset: 0,
+            x_offset: Tick(0),
             y_offset: 0.0,
             zoom: vec2(0.005, 10.0),
             visible_rect: Rect::NOTHING,
@@ -122,8 +122,8 @@ impl MapEntities for DiagramTab {
 }
 
 impl Navigatable for DiagramTabNavigation {
-    type XOffset = i64;
-    type YOffset = f32;
+    type XOffset = crate::units::time::Tick;
+    type YOffset = f64;
 
     fn zoom_x(&self) -> f32 {
         self.zoom.x
@@ -135,62 +135,36 @@ impl Navigatable for DiagramTabNavigation {
         self.zoom = Vec2::new(zoom_x, zoom_y);
     }
     fn offset_x(&self) -> f64 {
-        self.x_offset as f64
+        self.x_offset.0 as f64
     }
-    fn offset_y(&self) -> f32 {
+    fn offset_y(&self) -> f64 {
         self.y_offset
     }
-    fn set_offset(&mut self, offset_x: f64, offset_y: f32) {
-        self.x_offset = offset_x.round() as i64;
+    fn set_offset(&mut self, offset_x: f64, offset_y: f64) {
+        self.x_offset = Tick(offset_x.round() as i64);
         self.y_offset = offset_y;
-    }
-    fn x_from_f64(&self, value: f64) -> Self::XOffset {
-        value.trunc() as i64
-    }
-    fn x_to_f64(&self, value: Self::XOffset) -> f64 {
-        value as f64
-    }
-    fn y_from_f32(&self, value: f32) -> Self::YOffset {
-        value
-    }
-    fn y_to_f32(&self, value: Self::YOffset) -> f32 {
-        value
-    }
-    fn screen_pos_to_xy(&self, pos: egui::Pos2) -> (Self::XOffset, Self::YOffset) {
-        let rect = self.visible_rect;
-        let ticks_per_screen_unit = 1.0 / self.zoom_x().max(f32::EPSILON) as f64;
-        let x = self.offset_x() + (pos.x - rect.left()) as f64 * ticks_per_screen_unit;
-        let y = self.offset_y() + (pos.y - rect.top()) / self.zoom_y().max(f32::EPSILON);
-        (x.trunc() as i64, y)
-    }
-    fn xy_to_screen_pos(&self, x: Self::XOffset, y: Self::YOffset) -> egui::Pos2 {
-        let rect = self.visible_rect;
-        let ticks_per_screen_unit = 1.0 / self.zoom_x().max(f32::EPSILON) as f64;
-        let screen_x = rect.left() + ((x as f64 - self.offset_x()) / ticks_per_screen_unit) as f32;
-        let screen_y = rect.top() + (y - self.offset_y()) * self.zoom_y().max(f32::EPSILON);
-        egui::Pos2::new(screen_x, screen_y)
     }
     fn visible_rect(&self) -> egui::Rect {
         self.visible_rect
     }
     fn x_per_screen_unit(&self) -> Self::XOffset {
-        (1.0 / self.zoom_x().max(f32::EPSILON) as f64) as i64
+        Tick((1.0 / self.zoom_x().max(f32::EPSILON) as f64) as i64)
     }
     fn visible_x(&self) -> std::ops::Range<Self::XOffset> {
         let width = self.visible_rect().width() as f64;
         let ticks_per_screen_unit = 1.0 / self.zoom_x().max(f32::EPSILON) as f64;
         let start = self.x_offset;
-        let end = start + (width * ticks_per_screen_unit).ceil() as i64;
+        let end = Tick(start.0 + (width * ticks_per_screen_unit).ceil() as i64);
         start..end
     }
     fn visible_y(&self) -> std::ops::Range<Self::YOffset> {
-        let height = self.visible_rect.height();
+        let height = self.visible_rect.height() as f64;
         let start = self.offset_y();
-        let end = start + height / self.zoom_y().max(f32::EPSILON);
+        let end = start + height / self.zoom_y().max(f32::EPSILON) as f64;
         start..end
     }
     fn y_per_screen_unit(&self) -> Self::YOffset {
-        1.0 / self.zoom_y().max(f32::EPSILON)
+        1.0 / self.zoom_y().max(f32::EPSILON) as f64
     }
     fn allow_axis_zoom(&self) -> bool {
         true
@@ -199,28 +173,26 @@ impl Navigatable for DiagramTabNavigation {
         (zoom_x.clamp(0.00005, 0.4), zoom_y.clamp(0.1, 2048.0))
     }
     fn post_navigation(&mut self, response: &egui::Response) {
-        self.x_offset = self.x_offset.clamp(
-            -366 * 86400 * TICKS_PER_SECOND,
-            366 * 86400 * TICKS_PER_SECOND
+        let max_tick = Tick::from_timetable_time(TimetableTime(366 * 86400)).0;
+        self.x_offset = Tick(self.x_offset.0.clamp(
+            -max_tick,
+            max_tick
                 - (response.rect.width() as f64 / self.zoom.x as f64) as i64,
-        );
+        ));
         const TOP_BOTTOM_PADDING: f32 = 30.0;
         self.y_offset = if response.rect.height() / self.zoom.y
             > (self.max_height + TOP_BOTTOM_PADDING * 2.0 / self.zoom.y)
         {
-            (-response.rect.height() / self.zoom.y + self.max_height) / 2.0
+            ((-response.rect.height() / self.zoom.y + self.max_height) / 2.0) as f64
         } else {
             self.y_offset.clamp(
-                -TOP_BOTTOM_PADDING / self.zoom.y,
-                self.max_height - response.rect.height() / self.zoom.y
-                    + TOP_BOTTOM_PADDING / self.zoom.y,
+                (-TOP_BOTTOM_PADDING / self.zoom.y) as f64,
+                (self.max_height - response.rect.height() / self.zoom.y
+                    + TOP_BOTTOM_PADDING / self.zoom.y) as f64,
             )
         }
     }
 }
-
-/// Time and time-canvas related constant. How many ticks is a second
-pub const TICKS_PER_SECOND: i64 = 100;
 
 #[derive(Debug)]
 pub struct DrawnTrip {
@@ -376,16 +348,16 @@ fn main_display(tab: &mut DiagramTab, world: &mut World, ui: &mut egui::Ui) {
     let visible_ticks = tab.navi.visible_x();
     let to_screen_y = |h: f32| {
         tab.navi.visible_rect.top()
-            + (h - tab.navi.offset_y()) * tab.navi.zoom_y().max(f32::EPSILON)
+            + (h - tab.navi.offset_y() as f32) * tab.navi.zoom_y().max(f32::EPSILON)
     };
     let screen_x_to_seconds = |screen_x: f32| -> TimetableTime {
         let ticks = tab.navi.offset_x()
             + (screen_x - tab.navi.visible_rect.left()) as f64 * ticks_per_screen_unit;
-        TimetableTime((ticks / TICKS_PER_SECOND as f64) as i32)
+        Tick(ticks as i64).to_timetable_time()
     };
-    let ticks_to_screen_x = |ticks: i64| -> f32 {
+    let ticks_to_screen_x = |ticks: Tick| -> f32 {
         tab.navi.visible_rect.left()
-            + ((ticks as f64 - tab.navi.offset_x()) / ticks_per_screen_unit) as f32
+            + ((ticks.0 as f64 - tab.navi.offset_x()) / ticks_per_screen_unit) as f32
     };
     let station_heights_screen_iter = station_heights.iter().copied().map(|(e, h)| {
         let height = to_screen_y(h);
@@ -397,7 +369,7 @@ fn main_display(tab: &mut DiagramTab, world: &mut World, ui: &mut egui::Ui) {
         .ctx()
         .animate_bool(ui.id().with("all buttons animation"), show_button);
     draw_lines::draw_station_lines(
-        tab.navi.y_offset,
+        tab.navi.y_offset as f32,
         &mut painter,
         tab.navi.visible_rect,
         tab.navi.zoom.y,
@@ -407,11 +379,11 @@ fn main_display(tab: &mut DiagramTab, world: &mut World, ui: &mut egui::Ui) {
         &world, // FIXME: make this a system instead of passing world into it
     );
     draw_lines::draw_time_lines(
-        tab.navi.x_offset,
+        tab.navi.x_offset.0,
         &mut painter,
         tab.navi.visible_rect,
         ticks_per_screen_unit,
-        &visible_ticks,
+        &(visible_ticks.start.0..visible_ticks.end.0),
         ui.pixels_per_point(),
     );
     world
@@ -503,7 +475,7 @@ fn main_display(tab: &mut DiagramTab, world: &mut World, ui: &mut egui::Ui) {
         if let Some((t, idx)) = *previous_pos {
             let (_, h) = station_heights[idx];
             let prev_pos = Pos2::new(
-                ticks_to_screen_x(t.0 as i64 * TICKS_PER_SECOND),
+                ticks_to_screen_x(Tick::from_timetable_time(t)),
                 to_screen_y(h),
             );
             painter.line_segment([prev_pos, smoothed_screen_pos], stroke);
@@ -898,19 +870,18 @@ fn draw_handles(
     if let Some(total_drag_delta) = arrival_response.total_drag_delta() {
         if zoom_x > f32::EPSILON {
             let previous_drag_delta = prev_drag_delta.unwrap_or(0.0);
-            let duration = Duration(
-                ((total_drag_delta.x as f64 - previous_drag_delta as f64)
-                    / zoom_x as f64
-                    / TICKS_PER_SECOND as f64) as i32,
+            let delta_ticks = Tick(
+                ((total_drag_delta.x as f64 - previous_drag_delta as f64) / zoom_x as f64) as i64,
             );
+            let duration = Duration(delta_ticks.to_timetable_time().0);
             if duration != Duration(0) {
                 commands.trigger(AdjustEntryMode {
                     entity: e,
                     adj: EntryModeAdjustment::ShiftArrival(duration),
                 });
+                let consumed_ticks = Tick::from_timetable_time(TimetableTime(duration.0));
                 *prev_drag_delta = Some(
-                    previous_drag_delta
-                        + (duration.0 as f64 * TICKS_PER_SECOND as f64 * zoom_x as f64) as f32,
+                    previous_drag_delta + (consumed_ticks.0 as f64 * zoom_x as f64) as f32,
                 );
             }
         }
@@ -970,19 +941,18 @@ fn draw_handles(
     if let Some(total_drag_delta) = departure_response.total_drag_delta() {
         if zoom_x > f32::EPSILON {
             let previous_drag_delta = prev_drag_delta.unwrap_or(0.0);
-            let duration = Duration(
-                ((total_drag_delta.x as f64 - previous_drag_delta as f64)
-                    / zoom_x as f64
-                    / TICKS_PER_SECOND as f64) as i32,
+            let delta_ticks = Tick(
+                ((total_drag_delta.x as f64 - previous_drag_delta as f64) / zoom_x as f64) as i64,
             );
+            let duration = Duration(delta_ticks.to_timetable_time().0);
             if duration != Duration(0) {
                 commands.trigger(AdjustEntryMode {
                     entity: e,
                     adj: EntryModeAdjustment::ShiftDeparture(duration),
                 });
+                let consumed_ticks = Tick::from_timetable_time(TimetableTime(duration.0));
                 *prev_drag_delta = Some(
-                    previous_drag_delta
-                        + (duration.0 as f64 * TICKS_PER_SECOND as f64 * zoom_x as f64) as f32,
+                    previous_drag_delta + (consumed_ticks.0 as f64 * zoom_x as f64) as f32,
                 );
             }
         }

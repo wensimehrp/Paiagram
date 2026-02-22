@@ -1,7 +1,7 @@
 use crate::route::Route;
 use crate::ui::tabs::diagram::DrawnTrip;
-use crate::ui::tabs::diagram::TICKS_PER_SECOND;
 use crate::ui::tabs::diagram::calc_trip_lines::{CalcContext, calc};
+use crate::units::time::{Tick, TimetableTime};
 use bevy::prelude::*;
 use egui::Color32;
 use egui::{Pos2, Rect};
@@ -35,16 +35,16 @@ struct TripsOutput {
 }
 
 fn default_calc_context(route: &Route, route_entity: Entity) -> CalcContext {
-    let max_ticks: i64 = 24 * 60 * 60 * TICKS_PER_SECOND;
+    let max_ticks = Tick::from_timetable_time(TimetableTime(24 * 60 * 60));
     let width: f32 = 1200.0;
     let max_height = route.iter().last().map(|(_, h)| h).unwrap_or(0.0).max(1.0);
     let height = max_height + 100.0;
-    let ticks_per_screen_unit = max_ticks as f64 / width as f64;
+    let ticks_per_screen_unit = max_ticks.0 as f64 / width as f64;
     CalcContext {
         route_entity,
         y_offset: 0.0,
         zoom_y: 1.0,
-        x_offset: 0,
+        x_offset: Tick(0),
         screen_rect: Rect {
             min: Pos2::new(0.0, 0.0),
             max: Pos2 {
@@ -53,7 +53,7 @@ fn default_calc_context(route: &Route, route_entity: Entity) -> CalcContext {
             },
         },
         ticks_per_screen_unit,
-        visible_ticks: 0i64..max_ticks,
+        visible_ticks: Tick(0)..max_ticks,
     }
 }
 

@@ -20,6 +20,7 @@ pub mod all_trips;
 pub mod settings;
 pub mod start;
 pub mod trip;
+pub mod priority_graph;
 // pub mod station_timetable;
 // pub mod tree_view;
 // pub mod vehicle;
@@ -37,60 +38,56 @@ pub mod all_tabs {
     pub use super::settings::SettingsTab;
     pub use super::start::StartTab;
     pub use super::trip::TripTab;
+    pub use super::priority_graph::PriorityGraphTab;
     // pub use super::station_timetable::StationTimetableTab;
     // pub use super::vehicle::VehicleTab;
 }
 
 pub trait Navigatable {
-    type XOffset;
-    type YOffset;
+    type XOffset: Into<f64> + From<f64>;
+    type YOffset: Into<f64> + From<f64>;
     fn zoom_x(&self) -> f32;
     fn zoom_y(&self) -> f32;
     fn set_zoom(&mut self, zoom_x: f32, zoom_y: f32);
     fn offset_x(&self) -> f64;
-    fn offset_y(&self) -> f32;
-    fn set_offset(&mut self, offset_x: f64, offset_y: f32);
-    fn x_from_f64(&self, value: f64) -> Self::XOffset;
-    fn x_to_f64(&self, value: Self::XOffset) -> f64;
-    // TODO: put in the XOffset: From<f64> and Into<f64> constraints
-    fn y_from_f32(&self, value: f32) -> Self::YOffset;
-    fn y_to_f32(&self, value: Self::YOffset) -> f32;
+    fn offset_y(&self) -> f64;
+    fn set_offset(&mut self, offset_x: f64, offset_y: f64);
     fn screen_pos_to_xy(&self, pos: egui::Pos2) -> (Self::XOffset, Self::YOffset) {
         let rect = self.visible_rect();
-        let x_per_screen_unit = self.x_to_f64(self.x_per_screen_unit());
-        let y_per_screen_unit = self.y_to_f32(self.y_per_screen_unit());
+        let x_per_screen_unit = self.x_per_screen_unit().into();
+        let y_per_screen_unit = self.y_per_screen_unit().into();
         let x = self.offset_x() + (pos.x - rect.left()) as f64 * x_per_screen_unit;
-        let y = self.offset_y() + (pos.y - rect.top()) * y_per_screen_unit;
-        (self.x_from_f64(x), self.y_from_f32(y))
+        let y = self.offset_y() + (pos.y - rect.top()) as f64 * y_per_screen_unit;
+        (x.into(), y.into())
     }
     fn xy_to_screen_pos(&self, x: Self::XOffset, y: Self::YOffset) -> egui::Pos2 {
         let rect = self.visible_rect();
-        let x_per_screen_unit = self.x_to_f64(self.x_per_screen_unit());
-        let y_per_screen_unit = self.y_to_f32(self.y_per_screen_unit());
-        let x = self.x_to_f64(x);
-        let y = self.y_to_f32(y);
+        let x_per_screen_unit = self.x_per_screen_unit().into();
+        let y_per_screen_unit = self.y_per_screen_unit().into();
+        let x = x.into();
+        let y = y.into();
         let screen_x = rect.left() + ((x - self.offset_x()) / x_per_screen_unit) as f32;
-        let screen_y = rect.top() + (y - self.offset_y()) / y_per_screen_unit;
+        let screen_y = rect.top() + ((y - self.offset_y()) / y_per_screen_unit) as f32;
         egui::Pos2::new(screen_x, screen_y)
     }
     fn visible_rect(&self) -> egui::Rect;
     fn visible_x(&self) -> std::ops::Range<Self::XOffset> {
         let width = self.visible_rect().width() as f64;
         let start = self.offset_x();
-        let end = start + width * self.x_to_f64(self.x_per_screen_unit());
-        self.x_from_f64(start)..self.x_from_f64(end)
+        let end = start + width * self.x_per_screen_unit().into();
+        start.into()..end.into()
     }
     fn visible_y(&self) -> std::ops::Range<Self::YOffset> {
-        let height = self.visible_rect().height();
+        let height = self.visible_rect().height() as f64;
         let start = self.offset_y();
-        let end = start + height * self.y_to_f32(self.y_per_screen_unit());
-        self.y_from_f32(start)..self.y_from_f32(end)
+        let end = start + height * self.y_per_screen_unit().into();
+        start.into()..end.into()
     }
     fn x_per_screen_unit(&self) -> Self::XOffset {
-        self.x_from_f64(1.0 / self.zoom_x().max(f32::EPSILON) as f64)
+        (1.0 / self.zoom_x().max(f32::EPSILON) as f64).into()
     }
     fn y_per_screen_unit(&self) -> Self::YOffset {
-        self.y_from_f32(1.0 / self.zoom_y().max(f32::EPSILON))
+        (1.0 / self.zoom_y().max(f32::EPSILON) as f64).into()
     }
     fn allow_axis_zoom(&self) -> bool {
         false
@@ -133,8 +130,8 @@ pub trait Navigatable {
             let world_height_before = response.rect.height() as f64 / old_zoom_y as f64;
             let world_height_after = response.rect.height() as f64 / new_zoom_y as f64;
             let world_pos_before_y =
-                self.offset_y() as f64 + rel_pos.y as f64 * world_height_before;
-            let new_offset_y = (world_pos_before_y - rel_pos.y as f64 * world_height_after) as f32;
+                self.offset_y() + rel_pos.y as f64 * world_height_before;
+            let new_offset_y = world_pos_before_y - rel_pos.y as f64 * world_height_after;
 
             self.set_zoom(new_zoom_x, new_zoom_y);
             self.set_offset(new_offset_x, new_offset_y);
@@ -146,7 +143,7 @@ pub trait Navigatable {
             let ticks_per_screen_unit = 1.0 / self.zoom_x() as f64;
             let pan_delta = response.drag_delta() + scroll_delta;
             let new_offset_x = self.offset_x() - ticks_per_screen_unit * pan_delta.x as f64;
-            let new_offset_y = self.offset_y() - pan_delta.y / self.zoom_y();
+            let new_offset_y = self.offset_y() - pan_delta.y as f64 / self.zoom_y() as f64;
             moved |= scroll_delta.x != 0.0;
             moved |= scroll_delta.y != 0.0;
             self.set_offset(new_offset_x, new_offset_y);

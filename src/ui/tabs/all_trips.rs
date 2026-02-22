@@ -1,16 +1,16 @@
-use std::sync::atomic::{AtomicU16, AtomicUsize};
-
 use bevy::prelude::*;
 use egui::{FontId, Layout, Rect, RichText, Ui, Vec2, vec2};
 use egui_table::{Column, Table, TableDelegate};
-use either::Either;
 use emath::Numeric;
 use moonshine_core::prelude::MapEntities;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     entry::{EntryQuery, EntryQueryItem, TravelMode},
-    route::{AllTripsDisplayMode, Route, RouteDisplayModes, RouteTrips},
+    route::{
+        AllTripsDisplayMode, Route, RouteByDirectionTrips, RouteDisplayModes,
+        SortRouteByDirectionTrips,
+    },
     station::{ParentStationOrStation, Station},
     trip::{TripQuery, TripQueryItem},
     units::time::TimetableTime,
@@ -20,19 +20,11 @@ use crate::{
 pub struct AllTripsTab {
     #[entities]
     route_entity: Entity,
-    #[entities]
-    downward_entities: Option<Vec<Entity>>,
-    #[entities]
-    upward_entities: Option<Vec<Entity>>,
 }
 
 impl AllTripsTab {
     pub fn new(e: Entity) -> Self {
-        Self {
-            route_entity: e,
-            upward_entities: None,
-            downward_entities: None,
-        }
+        Self { route_entity: e }
     }
 }
 
@@ -48,17 +40,18 @@ impl super::Tab for AllTripsTab {
         [false; 2]
     }
     fn edit_display(&mut self, world: &mut World, ui: &mut Ui) {
-        if ui.button("Auto sort entries").clicked()
-            && let Some(buf) = self.downward_entities.as_mut()
-        {
-            world
-                .run_system_cached_with(sort_entries, (buf, self.route_entity, true))
-                .unwrap();
+        if ui.button("Sort entries").clicked() {
+            world.trigger(SortRouteByDirectionTrips {
+                entity: self.route_entity,
+            });
         }
     }
     fn main_display(&mut self, world: &mut bevy::ecs::world::World, ui: &mut egui::Ui) {
-        // prepare the downward and upward data
         let route = world.get::<Route>(self.route_entity).unwrap();
+        let by_direction = world
+            .get::<RouteByDirectionTrips>(self.route_entity)
+            .expect("Route should have RouteByDirectionTrips");
+        let downward_entities = by_direction.downward.clone();
         // use a table
         let table = egui_table::Table::new()
             .id_salt(self.route_entity)
@@ -66,99 +59,11 @@ impl super::Tab for AllTripsTab {
             .num_sticky_cols(2);
         world
             .run_system_cached_with(
-                prepare_trips,
-                (self.route_entity, &mut self.downward_entities, true),
-            )
-            .unwrap();
-        // downward entities must be initialized from this point
-        let downward_entities = self.downward_entities.as_deref().unwrap();
-        world
-            .run_system_cached_with(
                 display_table,
-                (table, ui, self.route_entity, downward_entities),
+                (table, ui, self.route_entity, downward_entities.as_slice()),
             )
             .unwrap();
     }
-}
-
-fn sort_entries(
-    (InMut(buf), In(route_entity), In(downwards)): (InMut<Vec<Entity>>, In<Entity>, In<bool>),
-    route_q: Query<&Route>,
-    trip_q: Query<TripQuery>,
-    entry_q: Query<EntryQuery>,
-    parent_station_or_station: Query<ParentStationOrStation>,
-) {
-    let route = route_q.get(route_entity).unwrap();
-    buf.sort_unstable_by_key(|trip_entity| {
-        let mut stations = if downwards {
-            Either::Left(route.stops.iter())
-        } else {
-            Either::Right(route.stops.iter().rev())
-        };
-        let trip = trip_q.get(*trip_entity).unwrap();
-
-        let mut first_time = TimetableTime::MAX;
-        // Default to max if no estimate
-        let mut first_station_idx = usize::MAX;
-
-        for it in entry_q.iter_many(trip.schedule.iter()) {
-            let station_entity = parent_station_or_station.get(it.stop()).unwrap().parent();
-            if let Some(found_pos) = stations.position(|s| *s == station_entity) {
-                first_station_idx = found_pos;
-                if let Some(est) = it.estimate {
-                    first_time = est.arr;
-                }
-                break; // We only care about the first occurrence
-            }
-        }
-
-        // Sort by first station occurrence (ascending), then by time (ascending)
-        (first_station_idx, first_time)
-    });
-}
-
-fn prepare_trips(
-    (In(route_entity), InMut(buf), In(downwards)): (
-        In<Entity>,
-        InMut<Option<Vec<Entity>>>,
-        In<bool>,
-    ),
-    route_q: Query<(&Route, Ref<RouteTrips>)>,
-    trip_q: Query<TripQuery>,
-    entry_q: Query<EntryQuery>,
-    parent_station_or_station: Query<ParentStationOrStation>,
-) {
-    let (route, trips) = route_q.get(route_entity).unwrap();
-    // if the buffer is not initialized, or the trips is refreshed, update the entities
-    if buf.is_some() && !trips.is_changed() {
-        return;
-    }
-
-    let out = buf.get_or_insert_default();
-    out.clear();
-
-    let extend_iter = trips.iter().copied().filter_map(|trip_entity| {
-        let trip = trip_q.get(trip_entity).unwrap();
-        let mut stations = if downwards {
-            Either::Left(route.stops.iter())
-        } else {
-            Either::Right(route.stops.iter().rev())
-        };
-        let mut found_counter = 0;
-        for it in entry_q.iter_many(trip.schedule.iter()) {
-            let station_entity = parent_station_or_station.get(it.stop()).unwrap().parent();
-            // The first match is consumed here
-            // reuse the same iterator afterwards
-            if stations.any(|it| *it == station_entity) {
-                found_counter += 1;
-                if found_counter >= 2 {
-                    return Some(trip_entity);
-                }
-            }
-        }
-        return None;
-    });
-    out.extend(extend_iter);
 }
 
 struct AllTripsDisplayer<'w> {

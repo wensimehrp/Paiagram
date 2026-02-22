@@ -11,16 +11,17 @@ use crate::{
     settings::ProjectSettings,
     station::{Platform, PlatformEntries, Station, StationQuery},
     trip::class::{Class, DisplayedStroke},
+    units::time::Tick,
 };
 
 pub struct CalcContext {
     pub route_entity: Entity,
-    pub y_offset: f32,
+    pub y_offset: f64,
     pub zoom_y: f32,
-    pub x_offset: i64,
+    pub x_offset: Tick,
     pub screen_rect: Rect,
     pub ticks_per_screen_unit: f64,
-    pub visible_ticks: std::ops::Range<i64>,
+    pub visible_ticks: std::ops::Range<Tick>,
 }
 
 impl CalcContext {
@@ -28,7 +29,7 @@ impl CalcContext {
         tab: &super::DiagramTab,
         screen_rect: Rect,
         ticks_per_screen_unit: f64,
-        visible_ticks: std::ops::Range<i64>,
+        visible_ticks: std::ops::Range<Tick>,
     ) -> Self {
         Self {
             route_entity: tab.route_entity,
@@ -95,7 +96,7 @@ pub fn calc(
     }
 
     let vertical_visible =
-        ctx.y_offset..ctx.y_offset + ctx.screen_rect.height() / ctx.zoom_y.max(f32::EPSILON);
+        ctx.y_offset as f32..ctx.y_offset as f32 + ctx.screen_rect.height() / ctx.zoom_y.max(f32::EPSILON);
 
     let visible_stations = {
         let first_visible = heights
@@ -145,8 +146,8 @@ pub fn calc(
     struct TripEntryData {
         entity: Entity,
         station: Entity,
-        arr_ticks: Option<i64>,
-        dep_ticks: Option<i64>,
+        arr_ticks: Option<Tick>,
+        dep_ticks: Option<Tick>,
         has_departure: bool,
     }
 
@@ -185,8 +186,8 @@ pub fn calc(
                 continue;
             };
             let (arr_ticks, dep_ticks) = if let Some(estimate) = entry.estimate {
-                let arrival_ticks = estimate.arr.0 as i64 * super::TICKS_PER_SECOND;
-                let departure_ticks = estimate.dep.0 as i64 * super::TICKS_PER_SECOND;
+                let arrival_ticks = Tick::from_timetable_time(estimate.arr);
+                let departure_ticks = Tick::from_timetable_time(estimate.dep);
                 (Some(arrival_ticks), Some(departure_ticks))
             } else {
                 (None, None)
@@ -212,7 +213,9 @@ pub fn calc(
         });
     }
 
-    let repeat_freq_ticks = settings.repeat_frequency.0 as i64 * super::TICKS_PER_SECOND;
+    let repeat_freq_ticks = Tick::from_timetable_time(crate::units::time::TimetableTime(
+        settings.repeat_frequency.0,
+    ));
 
     let drawn: Vec<super::DrawnTrip> = trip_data
         .par_iter()
@@ -226,16 +229,16 @@ pub fn calc(
                 return None;
             }
 
-            let mut base_min: Option<i64> = None;
-            let mut base_max: Option<i64> = None;
+            let mut base_min: Option<Tick> = None;
+            let mut base_max: Option<Tick> = None;
             for entry in &trip.entries {
                 let (Some(arrival_ticks), Some(departure_ticks)) =
                     (entry.arr_ticks, entry.dep_ticks)
                 else {
                     continue;
                 };
-                let local_min = arrival_ticks.min(departure_ticks);
-                let local_max = arrival_ticks.max(departure_ticks);
+                let local_min = Tick(arrival_ticks.0.min(departure_ticks.0));
+                let local_max = Tick(arrival_ticks.0.max(departure_ticks.0));
                 base_min = Some(base_min.map_or(local_min, |v| v.min(local_min)));
                 base_max = Some(base_max.map_or(local_max, |v| v.max(local_max)));
             }
@@ -247,9 +250,9 @@ pub fn calc(
                 return None;
             };
 
-            let (repeat_start, repeat_end) = if repeat_freq_ticks > 0 {
-                let start = (ctx.visible_ticks.start - base_max).div_euclid(repeat_freq_ticks);
-                let end = (ctx.visible_ticks.end - base_min).div_euclid(repeat_freq_ticks);
+            let (repeat_start, repeat_end) = if repeat_freq_ticks.0 > 0 {
+                let start = (ctx.visible_ticks.start.0 - base_max.0).div_euclid(repeat_freq_ticks.0);
+                let end = (ctx.visible_ticks.end.0 - base_min.0).div_euclid(repeat_freq_ticks.0);
                 (start, end)
             } else {
                 (0, 0)
@@ -259,7 +262,7 @@ pub fn calc(
             let mut drawn_entries = Vec::new();
 
             for repeat in repeat_start..=repeat_end {
-                let repeat_offset = repeat * repeat_freq_ticks;
+                let repeat_offset = repeat * repeat_freq_ticks.0;
 
                 let first_visible = trip.entries.iter().position(|entry| {
                     let (Some(arrival_ticks), Some(departure_ticks)) =
@@ -267,10 +270,10 @@ pub fn calc(
                     else {
                         return false;
                     };
-                    let arrival_ticks = arrival_ticks + repeat_offset;
-                    let departure_ticks = departure_ticks + repeat_offset;
-                    !(departure_ticks < ctx.visible_ticks.start
-                        || arrival_ticks > ctx.visible_ticks.end)
+                    let arrival_ticks = arrival_ticks.0 + repeat_offset;
+                    let departure_ticks = departure_ticks.0 + repeat_offset;
+                    !(departure_ticks < ctx.visible_ticks.start.0
+                        || arrival_ticks > ctx.visible_ticks.end.0)
                 });
                 let last_visible = trip.entries.iter().rposition(|entry| {
                     let (Some(arrival_ticks), Some(departure_ticks)) =
@@ -278,10 +281,10 @@ pub fn calc(
                     else {
                         return false;
                     };
-                    let arrival_ticks = arrival_ticks + repeat_offset;
-                    let departure_ticks = departure_ticks + repeat_offset;
-                    !(departure_ticks < ctx.visible_ticks.start
-                        || arrival_ticks > ctx.visible_ticks.end)
+                    let arrival_ticks = arrival_ticks.0 + repeat_offset;
+                    let departure_ticks = departure_ticks.0 + repeat_offset;
+                    !(departure_ticks < ctx.visible_ticks.start.0
+                        || arrival_ticks > ctx.visible_ticks.end.0)
                 });
 
                 let Some(first_visible) = first_visible else {
@@ -348,8 +351,8 @@ pub fn calc(
                         continue;
                     };
 
-                    let arrival_ticks = arrival_ticks + repeat_offset;
-                    let departure_ticks = departure_ticks + repeat_offset;
+                    let arrival_ticks = Tick(arrival_ticks.0 + repeat_offset);
+                    let departure_ticks = Tick(departure_ticks.0 + repeat_offset);
 
                     let mut next_local_edges = Vec::new();
 
@@ -370,23 +373,23 @@ pub fn calc(
 
                         let arrival_pos = Pos2::new(
                             super::draw_lines::ticks_to_screen_x(
-                                arrival_ticks,
+                                arrival_ticks.0,
                                 ctx.screen_rect,
                                 ctx.ticks_per_screen_unit,
-                                ctx.x_offset,
+                                ctx.x_offset.0,
                             ),
-                            (height - ctx.y_offset) * ctx.zoom_y + ctx.screen_rect.top(),
+                            (height - ctx.y_offset as f32) * ctx.zoom_y + ctx.screen_rect.top(),
                         );
 
                         let departure_pos = if entry.has_departure {
                             Pos2::new(
                                 super::draw_lines::ticks_to_screen_x(
-                                    departure_ticks,
+                                    departure_ticks.0,
                                     ctx.screen_rect,
                                     ctx.ticks_per_screen_unit,
-                                    ctx.x_offset,
+                                    ctx.x_offset.0,
                                 ),
-                                (height - ctx.y_offset) * ctx.zoom_y + ctx.screen_rect.top(),
+                                (height - ctx.y_offset as f32) * ctx.zoom_y + ctx.screen_rect.top(),
                             )
                         } else {
                             arrival_pos
