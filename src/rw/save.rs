@@ -5,7 +5,6 @@ use bevy::{
 };
 use cbor4ii::core::utils::SliceReader;
 use serde::de::DeserializeSeed;
-use logging_timer::time;
 
 pub struct SavePlugin;
 
@@ -32,7 +31,6 @@ pub enum SaveData {
 }
 
 // TODO: make this async
-#[time("info")]
 pub fn save(world: &mut World) -> Vec<u8> {
     let entities: Vec<_> = world.query::<Entity>().iter(&world).collect();
     let registry = world.resource::<AppTypeRegistry>().read();
@@ -42,7 +40,6 @@ pub fn save(world: &mut World) -> Vec<u8> {
     lz4_flex::compress_prepend_size(&serialized)
 }
 
-#[time("info")]
 pub fn save_ron(world: &mut World) -> Vec<u8> {
     let entities: Vec<_> = world.query::<Entity>().iter(&world).collect();
     let registry = world.resource::<AppTypeRegistry>().read();
@@ -51,9 +48,7 @@ pub fn save_ron(world: &mut World) -> Vec<u8> {
     data
 }
 
-#[time("info")]
 fn make_scene(world: &World, entities: impl Iterator<Item = Entity>) -> DynamicScene {
-    let now = instant::Instant::now();
     let scene = DynamicSceneBuilder::from_world(world)
         .deny_all_resources()
         .allow_resource::<crate::graph::Graph>()
@@ -66,7 +61,6 @@ fn make_scene(world: &World, entities: impl Iterator<Item = Entity>) -> DynamicS
     scene
 }
 
-#[time("info")]
 fn load_scene(world: &mut World) {
     let Some(data) = world.remove_resource::<LoadCandidate>() else {
         error!("Tried to load data but the data does not exist");
