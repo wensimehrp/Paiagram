@@ -220,10 +220,10 @@ pub fn load_and_trigger(path: &PathBuf, content: Vec<u8>, commands: &mut Command
             // oudia does not use utf-8
             commands.trigger(LoadOuDia::original(content))
         }
-        Some("lz4") | Some("txt") if filename.ends_with(".lz4.txt") => {
+        Some("lz4") => {
             commands.insert_resource(LoadCandidate(SaveData::CompressedCbor(content)));
         }
-        Some("ron") | Some("txt") if filename.ends_with(".ron.txt") => {
+        Some("ron") => {
             commands.insert_resource(LoadCandidate(SaveData::Ron(content)));
         }
         Some(e) => return Err(anyhow!("Unexpected extension: {e}")),
