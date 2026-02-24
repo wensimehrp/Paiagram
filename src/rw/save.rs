@@ -15,7 +15,7 @@ impl Plugin for SavePlugin {
 }
 
 #[derive(Resource, Deref, DerefMut)]
-struct LoadCandidate(SaveData);
+pub struct LoadCandidate(pub SaveData);
 
 pub fn add_load_candidate_ron(commands: &mut Commands, data: Vec<u8>) {
     commands.insert_resource(LoadCandidate(SaveData::Ron(data)));
@@ -25,7 +25,7 @@ pub fn add_load_candidate_compressed_cbor(commands: &mut Commands, data: Vec<u8>
     commands.insert_resource(LoadCandidate(SaveData::CompressedCbor(data)));
 }
 
-enum SaveData {
+pub enum SaveData {
     CompressedCbor(Vec<u8>),
     Ron(Vec<u8>),
 }
