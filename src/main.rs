@@ -75,6 +75,9 @@ impl PaiagramApp {
             problems::ProblemsPlugin,
             class::ClassPlugin,
             rw::read::ReadPlugin,
+            rw::save::SavePlugin,
+            bevy::diagnostic::DiagnosticsPlugin,
+            bevy::diagnostic::FrameTimeDiagnosticsPlugin::new(2000),
         ));
         info!("Initialized Bevy App.");
         #[cfg(not(target_arch = "wasm32"))]

@@ -81,15 +81,17 @@ fn auto_generate_display_modes(
 
 // TODO: handle update of route
 // TODO: improve sorting logic
-#[derive(Default, Reflect, Component, Deref, DerefMut)]
-#[reflect(Component)]
+#[derive(Default, Reflect, Component, MapEntities, Deref, DerefMut)]
+#[reflect(Component, MapEntities)]
 #[require(Name)]
-pub struct RouteTrips(Vec<Entity>);
+pub struct RouteTrips(#[entities] Vec<Entity>);
 
-#[derive(Default, Reflect, Component)]
-#[reflect(Component)]
+#[derive(Default, Reflect, Component, MapEntities)]
+#[reflect(Component, MapEntities)]
 pub struct RouteByDirectionTrips {
+    #[entities]
     pub downward: Vec<Entity>,
+    #[entities]
     pub upward: Vec<Entity>,
 }
 

@@ -12,7 +12,7 @@ use bevy::ecs::entity::EntityHashMap;
 use bevy::ecs::entity::EntityHashSet;
 use bevy::tasks::{AsyncComputeTaskPool, Task, block_on, futures_lite::future::poll_once};
 use bevy::{ecs::entity::EntityHash, prelude::*};
-use moonshine_core::prelude::MapEntities;
+use moonshine_core::prelude::{MapEntities, ReflectMapEntities};
 use petgraph::prelude::DiGraphMap;
 use petgraph::{algo::astar, visit::EdgeRef};
 use rstar::{AABB, PointDistance, RTree, RTreeObject};
@@ -60,7 +60,7 @@ impl Plugin for GraphPlugin {
 }
 
 #[derive(Reflect, Clone, Resource, Serialize, Deserialize, Default, Deref, DerefMut)]
-#[reflect(Resource, opaque, Serialize, Deserialize)]
+#[reflect(Resource, opaque, Serialize, Deserialize, MapEntities)]
 pub struct Graph {
     pub map: DiGraphMap<Entity, Entity, EntityHash>,
 }

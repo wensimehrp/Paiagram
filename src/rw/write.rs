@@ -1,4 +1,5 @@
 use bevy::tasks::IoTaskPool;
+use num_format::{Locale, ToFormattedString};
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn write_file(data: Vec<u8>, filename: String) {
@@ -11,6 +12,10 @@ pub fn write_file(data: Vec<u8>, filename: String) {
             if let Some(file) = file {
                 file.write(&data).await.unwrap();
                 bevy::log::info!("File saved to {:?}", file.path());
+                bevy::log::info!(
+                    "Filesize: {:?}",
+                    data.len().to_formatted_string(&Locale::en)
+                );
             }
         })
         .detach();
@@ -41,4 +46,8 @@ extern "C" {
 #[cfg(target_arch = "wasm32")]
 pub fn write_file(data: Vec<u8>, filename: String) {
     download_file(&data, &filename);
+    bevy::log::info!(
+        "Filesize: {:?}",
+        data.len().to_formatted_string(&Locale::en)
+    );
 }

@@ -45,12 +45,15 @@ enum SelectedItem {
 }
 
 // TODO: dt & td graphs
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, MapEntities)]
 pub struct DiagramTab {
     /// X offset as ticks
     navi: DiagramTabNavigation,
+    #[serde(skip, default)]
     selected: Option<SelectedItem>,
+    #[entities]
     route_entity: Entity,
+    #[entities] // TODO: use the trip cache instead
     trips: Vec<Entity>,
     #[serde(skip, default)]
     use_global_timer: bool,
@@ -112,12 +115,6 @@ impl DiagramTab {
             last_frame_ms: 0.0,
             last_gpu_prep_ms: 0.0,
         }
-    }
-}
-
-impl MapEntities for DiagramTab {
-    fn map_entities<E: EntityMapper>(&mut self, entity_mapper: &mut E) {
-        self.route_entity.map_entities(entity_mapper);
     }
 }
 

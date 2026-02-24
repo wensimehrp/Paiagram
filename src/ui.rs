@@ -6,10 +6,11 @@ mod widgets;
 
 use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 
+use bevy::diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
 use bevy::prelude::*;
 use egui::{Context, CornerRadius, Frame, Id, Margin, ScrollArea, Ui};
 use egui_dock::{DockArea, DockState, TabViewer};
-use moonshine_core::prelude::MapEntities;
+use moonshine_core::prelude::{MapEntities, ReflectMapEntities};
 use serde::{Deserialize, Serialize};
 use tabs::{Tab, all_tabs::*};
 
@@ -218,8 +219,8 @@ impl MapEntities for MainTab {
 }
 
 #[derive(Reflect, Resource, Serialize, Deserialize, Clone, Deref, DerefMut)]
-#[reflect(opaque, Resource, Serialize, Deserialize)]
-struct MainUiState(DockState<MainTab>);
+#[reflect(opaque, Resource, Serialize, Deserialize, MapEntities)]
+pub struct MainUiState(DockState<MainTab>);
 
 impl Default for MainUiState {
     fn default() -> Self {
@@ -529,7 +530,37 @@ pub fn show_ui(ctx: &Context, world: &mut World) {
                             },
                         });
                     }
+                    ui.separator();
+                    if ui.button("Save compressed CBOR...").clicked() {
+                        let data = crate::rw::save::save(world);
+                        crate::rw::write::write_file(data, "compressed.lz4".to_string());
+                    }
+                    if ui.button("Read compressed CBOR...").clicked() {
+                        world.commands().trigger(crate::rw::read::ReadFile {
+                            title: "Load LZ4 Files".to_string(),
+                            extensions: vec![("LZ4 Files".to_string(), vec!["lz4".to_string()])],
+                            callback: crate::rw::save::add_load_candidate_compressed_cbor,
+                        });
+                    }
+                    if ui.button("Save RON...").clicked() {
+                        let data = crate::rw::save::save_ron(world);
+                        crate::rw::write::write_file(data, "saved.ron".to_string());
+                    }
+                    if ui.button("Read RON...").clicked() {
+                        world.commands().trigger(crate::rw::read::ReadFile {
+                            title: "Load RON Files".to_string(),
+                            extensions: vec![("RON Files".to_string(), vec!["ron".to_string()])],
+                            callback: crate::rw::save::add_load_candidate_ron,
+                        });
+                    }
                 });
+                if let Some(fps) = world
+                    .resource::<DiagnosticsStore>()
+                    .get(&FrameTimeDiagnosticsPlugin::FPS)
+                    && let Some(val) = fps.smoothed()
+                {
+                    ui.monospace(format!("FPS: {:.2}", val));
+                }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let mut timer = world.resource_mut::<GlobalTimer>();
                     let mut seconds = timer.read_seconds();
