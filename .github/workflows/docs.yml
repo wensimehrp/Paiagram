@@ -54,4 +54,3 @@ jobs:
           publish_dir: ./dist
           destination_dir: ./nightly-docs
           keep_files: true
-          force_orphan: true
