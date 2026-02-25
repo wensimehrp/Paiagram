@@ -39,5 +39,3 @@ prep-wasm: rust-docs build-wasm
     cp -r web/nightly/* dist/nightly
     cp -r target/doc/* dist/nightly/api-docs/
     cp -r wasm-out/* dist/nightly/
-
-nightly-build: prep-wasm prep-docs

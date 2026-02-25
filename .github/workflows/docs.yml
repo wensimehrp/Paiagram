@@ -6,10 +6,14 @@ on:
       - main
     paths:
       - 'docs/**'
+  workflow_run:
+    workflows: ["Deploy WASM"]
+    types:
+      - completed
 
 concurrency:
   group: wasm
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build-and-deploy:

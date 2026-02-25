@@ -34,7 +34,7 @@ jobs:
         run: git submodule update --init
 
       - name: Prepare Pages artifact
-        run: nix develop .#default --command just nightly-build
+        run: nix develop .#default --command just prep-wasm
 
       - name: Upload artifacts
         uses: peaceiris/actions-gh-pages@v4
