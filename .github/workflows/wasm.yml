@@ -46,5 +46,4 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./dist
           destination_dir: ./nightly
-          keep_files: true
-          force_orphan: true
+
