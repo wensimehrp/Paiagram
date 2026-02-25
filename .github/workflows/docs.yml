@@ -10,6 +10,7 @@ on:
     workflows: ["Deploy WASM"]
     types:
       - completed
+  workflow_dispatch:
 
 concurrency:
   group: wasm
@@ -52,5 +53,5 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./dist
-          keep_files: true
+          destination_dir: ./nightly-docs
           force_orphan: true

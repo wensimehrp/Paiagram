@@ -27,15 +27,14 @@ build-wasm:
 
 prep-docs:
     shiroa build docs --mode static-html
-    rm -rf dist/nightly/docs
-    mkdir -p dist/nightly/docs
-    cp -r docs/dist/. dist/nightly/docs
-
-prep-wasm: rust-docs build-wasm
+    rm -rf dist
     mkdir -p dist
-    rm -rf dist/nightly
-    cp -r web/* dist
-    mkdir -p dist/nightly/api-docs
-    cp -r web/nightly/* dist/nightly
-    cp -r target/doc/* dist/nightly/api-docs/
-    cp -r wasm-out/* dist/nightly/
+    cp -r docs/dist dist
+
+prep-wasm: rust-docs
+    rm -rf dist
+    mkdir -p dist
+    mkdir -p dist/api-docs
+    cp -r web/nightly/* dist
+    cp -r target/doc/* dist/api-docs/
+    cp -r wasm-out/* dist/

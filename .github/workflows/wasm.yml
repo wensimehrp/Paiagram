@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - 'src/**'
+  workflow_dispatch:
 
 concurrency:
   group: wasm
@@ -41,4 +42,5 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./dist
+          destination_dir: ./nightly
           force_orphan: true
