@@ -26,12 +26,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v20
-
-      - name: Configure Nix cache
-        uses: DeterminateSystems/magic-nix-cache-action@v13
-
       - name: Get shiroa latest commit hash
         id: get-rev
         run: echo "rev=$(git ls-remote https://github.com/Myriad-Dreamin/shiroa HEAD | awk '{ print $1 }')" >> $GITHUB_OUTPUT
