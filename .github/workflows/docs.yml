@@ -16,6 +16,9 @@ concurrency:
   group: wasm
   cancel-in-progress: false
 
+permissions:
+  contents: write
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
