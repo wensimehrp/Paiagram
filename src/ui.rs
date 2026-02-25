@@ -532,8 +532,7 @@ pub fn show_ui(ctx: &Context, world: &mut World) {
                     }
                     ui.separator();
                     if ui.button("Save compressed CBOR...").clicked() {
-                        let data = crate::rw::save::save(world);
-                        crate::rw::write::write_file(data, "compressed.lz4".to_string());
+                        crate::rw::save::save(world, "compressed.lz4".to_string());
                     }
                     if ui.button("Read compressed CBOR...").clicked() {
                         world.commands().trigger(crate::rw::read::ReadFile {
@@ -543,8 +542,7 @@ pub fn show_ui(ctx: &Context, world: &mut World) {
                         });
                     }
                     if ui.button("Save RON...").clicked() {
-                        let data = crate::rw::save::save_ron(world);
-                        crate::rw::write::write_file(data, "saved.ron".to_string());
+                        crate::rw::save::save_ron(world, "saved.ron".to_string());
                     }
                     if ui.button("Read RON...").clicked() {
                         world.commands().trigger(crate::rw::read::ReadFile {

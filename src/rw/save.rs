@@ -2,6 +2,7 @@ use bevy::{
     ecs::entity::EntityHashMap,
     prelude::*,
     scene::serde::{SceneDeserializer, SceneSerializer},
+    tasks::AsyncComputeTaskPool,
 };
 use cbor4ii::core::utils::SliceReader;
 use serde::de::DeserializeSeed;
@@ -30,22 +31,28 @@ pub enum SaveData {
     Ron(Vec<u8>),
 }
 
-// TODO: make this async
-pub fn save(world: &mut World) -> Vec<u8> {
+pub fn save(world: &mut World, filename: String) {
     let entities: Vec<_> = world.query::<Entity>().iter(&world).collect();
-    let registry = world.resource::<AppTypeRegistry>().read();
+    let registry = world.resource::<AppTypeRegistry>().clone();
     let scene = make_scene(world, entities.into_iter());
-    let serializer = SceneSerializer::new(&scene, &registry);
-    let serialized = cbor4ii::serde::to_vec(Vec::new(), &serializer).unwrap();
-    lz4_flex::compress_prepend_size(&serialized)
+    AsyncComputeTaskPool::get().spawn(async move {
+        let reg = registry.read();
+        let serializer = SceneSerializer::new(&scene, &reg);
+        let serialized = cbor4ii::serde::to_vec(Vec::new(), &serializer).unwrap();
+        let compressed = lz4_flex::compress_prepend_size(&serialized);
+        super::write::write_file(compressed, filename);
+    }).detach();
 }
 
-pub fn save_ron(world: &mut World) -> Vec<u8> {
+pub fn save_ron(world: &mut World, filename: String) {
     let entities: Vec<_> = world.query::<Entity>().iter(&world).collect();
-    let registry = world.resource::<AppTypeRegistry>().read();
+    let registry = world.resource::<AppTypeRegistry>().clone();
     let scene = make_scene(world, entities.into_iter());
-    let data = scene.serialize(&registry).unwrap().into_bytes();
-    data
+    AsyncComputeTaskPool::get().spawn(async move {
+        let reg = registry.read();
+        let data = scene.serialize(&reg).unwrap().into_bytes();
+        super::write::write_file(data, filename);
+    }).detach();
 }
 
 fn make_scene(world: &World, entities: impl Iterator<Item = Entity>) -> DynamicScene {
