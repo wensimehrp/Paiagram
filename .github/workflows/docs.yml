@@ -42,8 +42,10 @@ jobs:
         if: steps.cache-shiroa.outputs.cache-hit != 'true'
         run: cargo install --git https://github.com/Myriad-Dreamin/shiroa --locked shiroa
 
+      - uses: extractions/setup-just@v3
+
       - name: Prepare Pages artifact
-        run: nix develop .#default --command just prep-docs
+        run: just prep-docs
 
       - name: Upload artifacts
         uses: peaceiris/actions-gh-pages@v4
