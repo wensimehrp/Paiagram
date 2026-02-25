@@ -10,8 +10,8 @@ get-fonts:
     wget https://github.com/ButTaiwan/diapro/releases/download/v1.200/DiaProV1200.zip
     7z x DiaProV1200.zip -oassets/fonts -y
 
-# Check documentation build
-doc-check:
+# Build rust docs
+rust-docs:
     cargo doc --workspace --no-deps --release
 
 # Build WASM binary
@@ -25,21 +25,19 @@ build-wasm:
         target/wasm32-unknown-unknown/release/paiagram.wasm
     wasm-opt -O4 --all-features --fast-math -o wasm-out/paiagram_bg.wasm wasm-out/paiagram_bg.wasm
 
-# Build HTML and PDF documentation
-build-docs:
-    typst c docs/index.typ --features html -f html --root .
-    typst c docs/index.typ --features html -f pdf --root .
+prep-docs:
+    shiroa build docs --mode static-html
+    rm -rf dist/nightly/docs
+    mkdir -p dist/nightly/docs
+    cp -r docs/dist/. dist/nightly/docs
 
-# Prepare Pages artifact
-prepare-pages:
-    rm -rf web-out
-    mkdir -p web-out
-    cp -r web/* web-out/
-    mkdir -p web-out/nightly/api-docs web-out/nightly/docs
-    cp -r target/doc/* web-out/nightly/api-docs/
-    cp -r wasm-out/* web-out/nightly/
-    cp docs/index.* web-out/nightly/docs/
-    cp docs/style.css web-out/nightly/docs/
+prep-wasm: rust-docs build-wasm
+    mkdir -p dist
+    rm -rf dist/nightly
+    cp -r web/* dist
+    mkdir -p dist/nightly/api-docs
+    cp -r web/nightly/* dist/nightly
+    cp -r target/doc/* dist/nightly/api-docs/
+    cp -r wasm-out/* dist/nightly/
 
-# Full build for nightly. Make sure to run `get-fonts` before running this target
-web-nightly: doc-check build-wasm build-docs prepare-pages
+nightly-build: prep-wasm prep-docs

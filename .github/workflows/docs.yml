@@ -1,0 +1,52 @@
+name: Deploy docs
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'docs/**'
+
+concurrency:
+  group: wasm
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v20
+
+      - name: Configure Nix cache
+        uses: DeterminateSystems/magic-nix-cache-action@v13
+
+      - name: Get shiroa latest commit hash
+        id: get-rev
+        run: echo "rev=$(git ls-remote https://github.com/Myriad-Dreamin/shiroa HEAD | awk '{ print $1 }')" >> $GITHUB_OUTPUT
+      - name: Cache shiroa
+        id: cache-shiroa
+        uses: actions/cache@v3
+        with:
+          path: ~/.cargo/bin/shiroa
+          key: ${{ runner.os }}-shiroa-${{ steps.get-rev.outputs.rev }}
+      - name: Install Rust
+        if: steps.cache-shiroa.outputs.cache-hit != 'true'
+        uses: dtolnay/rust-toolchain@stable
+      - name: Install shiroa
+        if: steps.cache-shiroa.outputs.cache-hit != 'true'
+        run: cargo install --git https://github.com/Myriad-Dreamin/shiroa --locked shiroa
+
+      - name: Prepare Pages artifact
+        run: nix develop .#default --command just prep-docs
+
+      - name: Upload artifacts
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          keep_files: true
+          force_orphan: true

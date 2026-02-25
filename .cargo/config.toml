@@ -11,6 +11,5 @@ rustflags = [
 ]
 runner = "/home/jeremyg/.cargo/bin/wasm-server-runner"
 
-[doc.extern-map.regular]
-bevy = "https://docs.rs/bevy/latest/"
-egui = "https://docs.rs/egui/latest/"
+[doc.extern-map.registries]
+crates-io = "https://docs.rs/{pkg}/{version}/"

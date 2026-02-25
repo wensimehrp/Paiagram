@@ -1,0 +1,44 @@
+name: Deploy WASM
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**'
+
+concurrency:
+  group: wasm
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v20
+
+      - name: Configure Nix cache
+        uses: DeterminateSystems/magic-nix-cache-action@v13
+
+      - name: Cache cargo build data
+        uses: Swatinem/rust-cache@v2
+
+      - name: Download Sarasa fonts
+        run: nix develop .#default --command just get-fonts
+
+      - name: Fetch submodules
+        run: git submodule update --init
+
+      - name: Prepare Pages artifact
+        run: nix develop .#default --command just nightly-build
+
+      - name: Upload artifacts
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          force_orphan: true

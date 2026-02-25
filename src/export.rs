@@ -5,7 +5,7 @@ pub mod typst_diagram;
 // pub mod typst_timetable;
 
 pub trait ExportObject<S = ()> {
-    /// Export contents to a Vec<u8> buffer, with optional parameters
+    /// Export contents to a `Vec<u8>` buffer, with optional parameters
     fn export_to_buffer(&mut self, world: &mut World, buffer: &mut Vec<u8>, input: S);
     /// Export contents and save them on disk, with optional parameters
     fn export_to_file(&mut self, world: &mut World, input: S) {

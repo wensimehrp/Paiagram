@@ -22,7 +22,7 @@ use crate::{
 struct Root {
     // qetrc_release: u32,
     // qetrc_version: String,
-    /// Trains in the original qETRC data. Each "train" corresponds to a [`VehicleService`] in Paiagram.
+    /// Trains in the original qETRC data. Each "train" corresponds to a [`crate::trip::Trip`] in Paiagram.
     #[serde(rename = "trains")]
     services: Vec<Service>,
     // qETRC has the line field and the lines array, both contains line data.
@@ -35,7 +35,7 @@ struct Root {
     lines: Option<Vec<Line>>,
     /// Vehicles in the qETRC data.
     /// They are named "circuits" in the original qETRC data. A "circuit" refers to a train that runs a set of services
-    /// in a given period, which matches the concept of [`Vehicle`] or [`VehicleSchedule`] in Paiagram.
+    /// in a given period, which matches the concept of [`Vehicle`] in Paiagram.
     #[serde(rename = "circuits")]
     vehicles: Vec<Vehicle>,
     config: Option<Config>,

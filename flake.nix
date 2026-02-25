@@ -71,12 +71,10 @@
               rustToolchain
               pkg-config
               wasm-bindgen-cli_0_2_108
-              typst
               just
               wget
               p7zip
               binaryen
-              trunk
               cargo-about
               gitui
             ]
