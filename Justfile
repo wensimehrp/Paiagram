@@ -29,7 +29,7 @@ prep-docs:
     shiroa build docs --mode static-html
     rm -rf dist
     mkdir -p dist
-    cp -r docs/dist dist
+    cp -r docs/dist/. dist
 
 prep-wasm: rust-docs build-wasm
     rm -rf dist
