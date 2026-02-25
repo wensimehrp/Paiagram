@@ -68,7 +68,7 @@ fn show_trip(
                         if res.changed() {
                             commands.trigger(AdjustEntryMode {
                                 entity: it.entity,
-                                adj: EntryModeAdjustment::ShiftDeparture(new_t - t)
+                                adj: EntryModeAdjustment::ShiftDeparture(new_t - t),
                             });
                         }
                         res

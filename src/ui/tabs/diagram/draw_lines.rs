@@ -63,10 +63,10 @@ pub fn draw_time_lines(
     const MAX_SCREEN_WIDTH: f64 = 64.0;
     const MIN_SCREEN_WIDTH: f64 = 32.0;
     let sizes = [
-        Tick::from_timetable_time(TimetableTime(1)).0,      // 1 second
-        Tick::from_timetable_time(TimetableTime(10)).0,     // 10 seconds
-        Tick::from_timetable_time(TimetableTime(30)).0,     // 30 seconds
-        Tick::from_timetable_time(TimetableTime(60)).0,     // 1 minute
+        Tick::from_timetable_time(TimetableTime(1)).0, // 1 second
+        Tick::from_timetable_time(TimetableTime(10)).0, // 10 seconds
+        Tick::from_timetable_time(TimetableTime(30)).0, // 30 seconds
+        Tick::from_timetable_time(TimetableTime(60)).0, // 1 minute
         Tick::from_timetable_time(TimetableTime(60 * 5)).0, // 5 minutes
         Tick::from_timetable_time(TimetableTime(60 * 10)).0, // 10 minutes
         Tick::from_timetable_time(TimetableTime(60 * 30)).0, // 30 minutes

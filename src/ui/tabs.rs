@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use bevy::{ecs::world::World};
+use bevy::ecs::world::World;
 use egui::{Id, Response, Ui, WidgetText};
 use egui_i18n::tr;
 use moonshine_core::prelude::MapEntities;
@@ -17,10 +17,10 @@ pub mod inspector;
 // pub mod overview;
 // pub mod services;
 pub mod all_trips;
+pub mod priority_graph;
 pub mod settings;
 pub mod start;
 pub mod trip;
-pub mod priority_graph;
 // pub mod station_timetable;
 // pub mod tree_view;
 // pub mod vehicle;
@@ -35,10 +35,10 @@ pub mod all_tabs {
     // pub use super::overview::OverviewTab;
     // pub use super::services::ServicesTab;
     pub use super::all_trips::AllTripsTab;
+    pub use super::priority_graph::PriorityGraphTab;
     pub use super::settings::SettingsTab;
     pub use super::start::StartTab;
     pub use super::trip::TripTab;
-    pub use super::priority_graph::PriorityGraphTab;
     // pub use super::station_timetable::StationTimetableTab;
     // pub use super::vehicle::VehicleTab;
 }
@@ -129,8 +129,7 @@ pub trait Navigatable {
 
             let world_height_before = response.rect.height() as f64 / old_zoom_y as f64;
             let world_height_after = response.rect.height() as f64 / new_zoom_y as f64;
-            let world_pos_before_y =
-                self.offset_y() + rel_pos.y as f64 * world_height_before;
+            let world_pos_before_y = self.offset_y() + rel_pos.y as f64 * world_height_before;
             let new_offset_y = world_pos_before_y - rel_pos.y as f64 * world_height_after;
 
             self.set_zoom(new_zoom_x, new_zoom_y);

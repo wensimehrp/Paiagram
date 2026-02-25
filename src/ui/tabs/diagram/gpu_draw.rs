@@ -309,11 +309,7 @@ impl CallbackTrait for TripCallback {
         if needs_rebuild {
             resources_map.by_state.insert(
                 state_key,
-                TripRenderResources::new(
-                device,
-                target_format,
-                state.msaa_samples,
-                ),
+                TripRenderResources::new(device, target_format, state.msaa_samples),
             );
         }
 

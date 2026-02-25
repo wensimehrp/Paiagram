@@ -173,8 +173,7 @@ impl Navigatable for DiagramTabNavigation {
         let max_tick = Tick::from_timetable_time(TimetableTime(366 * 86400)).0;
         self.x_offset = Tick(self.x_offset.0.clamp(
             -max_tick,
-            max_tick
-                - (response.rect.width() as f64 / self.zoom.x as f64) as i64,
+            max_tick - (response.rect.width() as f64 / self.zoom.x as f64) as i64,
         ));
         const TOP_BOTTOM_PADDING: f32 = 30.0;
         self.y_offset = if response.rect.height() / self.zoom.y
@@ -877,9 +876,8 @@ fn draw_handles(
                     adj: EntryModeAdjustment::ShiftArrival(duration),
                 });
                 let consumed_ticks = Tick::from_timetable_time(TimetableTime(duration.0));
-                *prev_drag_delta = Some(
-                    previous_drag_delta + (consumed_ticks.0 as f64 * zoom_x as f64) as f32,
-                );
+                *prev_drag_delta =
+                    Some(previous_drag_delta + (consumed_ticks.0 as f64 * zoom_x as f64) as f32);
             }
         }
     }
@@ -948,9 +946,8 @@ fn draw_handles(
                     adj: EntryModeAdjustment::ShiftDeparture(duration),
                 });
                 let consumed_ticks = Tick::from_timetable_time(TimetableTime(duration.0));
-                *prev_drag_delta = Some(
-                    previous_drag_delta + (consumed_ticks.0 as f64 * zoom_x as f64) as f32,
-                );
+                *prev_drag_delta =
+                    Some(previous_drag_delta + (consumed_ticks.0 as f64 * zoom_x as f64) as f32);
             }
         }
     }

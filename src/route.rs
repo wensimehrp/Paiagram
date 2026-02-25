@@ -292,16 +292,10 @@ fn sort_route_by_direction_trips(
         return;
     };
 
-    let sorted_downward = compute_sorted_by_first_entry_estimate(
-        &by_direction.downward,
-        &trip_q,
-        &entry_q,
-    );
-    let sorted_upward = compute_sorted_by_first_entry_estimate(
-        &by_direction.upward,
-        &trip_q,
-        &entry_q,
-    );
+    let sorted_downward =
+        compute_sorted_by_first_entry_estimate(&by_direction.downward, &trip_q, &entry_q);
+    let sorted_upward =
+        compute_sorted_by_first_entry_estimate(&by_direction.upward, &trip_q, &entry_q);
 
     by_direction.downward = sorted_downward;
     by_direction.upward = sorted_upward;

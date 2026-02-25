@@ -127,7 +127,7 @@ impl<'w, 'q> ParentStationOrStationItem<'w, 'q> {
         match self.station {
             (Some(_), _) => self.entity,
             (None, Some(parent)) => parent.parent(),
-            (None, None) => unreachable!()
+            (None, None) => unreachable!(),
         }
     }
 }

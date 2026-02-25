@@ -95,8 +95,8 @@ pub fn calc(
         return;
     }
 
-    let vertical_visible =
-        ctx.y_offset as f32..ctx.y_offset as f32 + ctx.screen_rect.height() / ctx.zoom_y.max(f32::EPSILON);
+    let vertical_visible = ctx.y_offset as f32
+        ..ctx.y_offset as f32 + ctx.screen_rect.height() / ctx.zoom_y.max(f32::EPSILON);
 
     let visible_stations = {
         let first_visible = heights
@@ -251,7 +251,8 @@ pub fn calc(
             };
 
             let (repeat_start, repeat_end) = if repeat_freq_ticks.0 > 0 {
-                let start = (ctx.visible_ticks.start.0 - base_max.0).div_euclid(repeat_freq_ticks.0);
+                let start =
+                    (ctx.visible_ticks.start.0 - base_max.0).div_euclid(repeat_freq_ticks.0);
                 let end = (ctx.visible_ticks.end.0 - base_min.0).div_euclid(repeat_freq_ticks.0);
                 (start, end)
             } else {
