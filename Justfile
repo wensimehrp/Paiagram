@@ -26,7 +26,7 @@ build-wasm:
     wasm-opt -O4 --all-features --fast-math -o wasm-out/paiagram_bg.wasm wasm-out/paiagram_bg.wasm
 
 prep-docs:
-    shiroa build docs --mode static-html --path-to-root nightly-docs
+    shiroa build docs --mode static-html --path-to-root Paiagram/nightly-docs
     rm -rf dist
     mkdir -p dist
     cp -r docs/dist/. dist

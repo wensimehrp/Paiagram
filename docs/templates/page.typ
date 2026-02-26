@@ -29,8 +29,7 @@
     dash-color: dash-color,
     code-extra-colors: code-extra-colors,
   ),
-) = themes;
-#let (
+) = themes; #let (
   default-theme: default-theme,
 ) = themes;
 #let theme-box = theme-box.with(themes: themes)
@@ -70,6 +69,15 @@
   font-style: italic;
 }
 ```
+
+// Umami tracking script
+#let umami-script = if sys-is-html-target {
+  html.elem("script", attrs: (
+    defer: "",
+    src: "https://cloud.umami.is/script.js",
+    data-website-id: "1e645081-beea-4836-bd66-ead28c2c1976",
+  ))[]
+}
 
 /// The project show rule that is used by all pages.
 ///
@@ -125,7 +133,7 @@
     title: title,
     description: description,
     plain-body: plain-body,
-    extra-assets: (extra-css,),
+    extra-assets: (extra-css, umami-script),
     ..common,
   )
 
