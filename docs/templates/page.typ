@@ -121,7 +121,7 @@
   )
 
   show: template-rules.with(
-    book-meta: include "/book.typ",
+    book-meta: include "../book.typ",
     title: title,
     description: description,
     plain-body: plain-body,

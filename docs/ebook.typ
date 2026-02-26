@@ -1,6 +1,6 @@
 #import "@preview/shiroa:0.3.1": *
 
-#import "/templates/ebook.typ"
+#import "./templates/ebook.typ"
 
 #show: ebook.project.with(title: "typst-book", spec: "book.typ")
 
