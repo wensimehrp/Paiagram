@@ -242,7 +242,7 @@ fn fill_unmatched_via_neighbors(
         let count = found_neighbor_positions.len() as f64;
         let avg_lon = found_neighbor_positions.iter().map(|p| p.lon).sum::<f64>() / count;
         let avg_lat = found_neighbor_positions.iter().map(|p| p.lat).sum::<f64>() / count;
-        known_positions.insert(station, NodePos::new_lon_lat(avg_lon, avg_lat));
+        known_positions.insert(station, NodePos::new(avg_lon, avg_lat));
         fallback_count += 1;
     }
 
@@ -391,7 +391,7 @@ pub fn arrange_via_osm(
             let mut matched_count = 0usize;
             for (entity, name) in chunk {
                 if let Some(element) = best_name_match(&osm_data.elements, &name) {
-                    known_positions.insert(entity, NodePos::new_lon_lat(element.lon, element.lat));
+                    known_positions.insert(entity, NodePos::new(element.lon, element.lat));
                     matched_count += 1;
                 }
                 finished_in_task.fetch_add(1, Ordering::Relaxed);

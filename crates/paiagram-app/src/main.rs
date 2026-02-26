@@ -5,30 +5,10 @@ use bevy::{ecs::system::RunSystemOnce, log::LogPlugin, prelude::*};
 #[cfg(not(target_arch = "wasm32"))]
 use clap::Parser;
 
-mod colors;
-// mod export;
-mod graph;
-mod i18n;
-mod plugin;
-mod ui;
-// mod lines;
-// mod rw_data;
-// mod search;
-mod settings;
-// mod status_bar_text;
-mod entry;
-mod export;
-mod import;
-mod interval;
-mod rw;
-mod station;
-mod trip;
-mod vehicle;
-// mod troubleshoot;
-mod units;
-// mod vehicles;
-mod problems;
-mod route;
+use paiagram_core::{
+    entry, graph, i18n, import, problems, route, rw, settings, station, trip, ui,
+};
+use paiagram_core::trip::class;
 
 struct PaiagramApp {
     bevy_app: App,
@@ -59,7 +39,6 @@ impl PaiagramApp {
                 data.insert_temp(egui::Id::new("wgpu_msaa_samples"), msaa_samples);
             });
         }
-        // set up bevy world
         let mut app = App::new();
         app.add_plugins(MinimalPlugins);
         app.add_plugins(LogPlugin::default());
@@ -133,7 +112,7 @@ fn handle_arg_pair((InRef(key), InRef(val)): (InRef<str>, InRef<str>), mut comma
 
 impl eframe::App for PaiagramApp {
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
-        egui::Rgba::TRANSPARENT.to_array() // Make sure we don't paint anything behind the rounded corners
+        egui::Rgba::TRANSPARENT.to_array()
     }
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.bevy_app.update();
@@ -204,8 +183,6 @@ fn main() -> eframe::Result<()> {
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
-use crate::trip::class;
-
 #[cfg(target_arch = "wasm32")]
 #[derive(Clone)]
 #[wasm_bindgen]
@@ -213,7 +190,6 @@ pub struct WebHandle {
     runner: eframe::WebRunner,
 }
 
-// When compiling to web using trunk:
 #[cfg(target_arch = "wasm32")]
 fn main() {
     i18n::init();
@@ -238,7 +214,6 @@ fn main() {
                 .expect("Failed to create canvas element");
             canvas.set_id("paiagram_canvas");
 
-            // Set styles to ensure full screen and correct rendering
             canvas
                 .set_attribute("style", "display: block; width: 100%; height: 100%;")
                 .ok();
@@ -271,7 +246,6 @@ fn main() {
             )
             .await;
 
-        // Remove the loading text and spinner:
         if let Some(loading_text) = document.get_element_by_id("loading_text") {
             match start_result {
                 Ok(_) => {

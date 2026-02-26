@@ -419,16 +419,16 @@ pub struct NodePos {
 
 impl Default for NodePos {
     fn default() -> Self {
-        Self::new_lon_lat(0.0, 0.0)
+        Self::new(0.0, 0.0)
     }
 }
 
 impl NodePos {
-    pub fn new_xy(x: f64, y: f64) -> Self {
-        Self::new_lon_lat(x, y)
-    }
-    pub fn new_lon_lat(lon: f64, lat: f64) -> Self {
+    pub fn new(lon: f64, lat: f64) -> Self {
         Self { lon, lat }
+    }
+    pub fn new_xy(x: f64, y: f64) -> Self {
+        Self::new(x, y)
     }
     pub fn to_xy(&self) -> (f64, f64) {
         lon_lat_to_xy(self.lon, self.lat)

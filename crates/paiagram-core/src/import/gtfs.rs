@@ -151,11 +151,11 @@ pub fn load_gtfs_static(
 
             if let (Some(lat), Some(lon)) = (stop.latitude, stop.longitude) {
                 commands.entity(platform_entity).insert(Node {
-                    pos: NodePos::new_lon_lat(lon, lat),
+                    pos: NodePos::new(lon, lat),
                 });
                 if platform_entity != station_entity {
                     commands.entity(station_entity).insert(Node {
-                        pos: NodePos::new_lon_lat(lon, lat),
+                        pos: NodePos::new(lon, lat),
                     });
                 }
             }
@@ -252,7 +252,7 @@ pub fn load_gtfs_static(
 
             if let (Some(lat), Some(lon)) = (stop.latitude, stop.longitude) {
                 commands.entity(stop_entity).insert(Node {
-                    pos: NodePos::new_lon_lat(lon, lat),
+                    pos: NodePos::new(lon, lat),
                 });
             }
 
