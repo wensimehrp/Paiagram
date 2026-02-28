@@ -1,6 +1,5 @@
 [workspace]
 members = [
-    "crates/egui_dock",
     "crates/paiagram-core",
     "crates/paiagram-app",
     "crates/paiagram-raptor",

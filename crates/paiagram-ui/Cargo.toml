@@ -8,7 +8,7 @@ license.workspace = true
 paiagram-core = { path = "../paiagram-core" }
 paiagram-raptor = { path = "../paiagram-raptor" }
 paiagram-rw = { path = "../paiagram-rw" }
-egui_dock = { path = "../egui_dock", features = ["serde"] }
+egui_tiles = "0.14.1"
 bevy = { version = "0.18.0", default-features = false }
 moonshine-core = "0.5.1"
 serde = "1.0.228"

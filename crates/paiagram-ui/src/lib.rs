@@ -10,8 +10,10 @@ use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 
 use bevy::diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
 use bevy::prelude::*;
-use egui::{Context, CornerRadius, Frame, Id, Margin, ScrollArea, Ui};
-use egui_dock::{DockArea, DockState, TabViewer};
+use egui::{Context, CornerRadius, Frame, Id, Margin, ScrollArea, Sense, Ui, UiBuilder};
+use egui_tiles::{
+    Behavior, ContainerKind, SimplificationOptions, Tile, TileId, Tiles, Tree, UiResponse,
+};
 use moonshine_core::prelude::{MapEntities, ReflectMapEntities};
 use serde::{Deserialize, Serialize};
 use tabs::{Tab, all_tabs::*};
@@ -226,18 +228,51 @@ impl MapEntities for MainTab {
 
 #[derive(Reflect, Resource, Serialize, Deserialize, Clone, Deref, DerefMut)]
 #[reflect(opaque, Resource, Serialize, Deserialize, MapEntities)]
-pub struct MainUiState(DockState<MainTab>);
+pub struct MainUiState(Tree<MainTab>);
+
+impl MainUiState {
+    pub fn push_to_focused_leaf(&mut self, new_pane: MainTab) {
+        let new_id = self.0.tiles.insert_pane(new_pane);
+
+        // Try to add it to the same Tabs container that is currently focused
+        if let Some(&active_id) = self.0.active_tiles().last() {
+            if let Some(parent_id) = self.0.tiles.parent_of(active_id) {
+                if let Some(Tile::Container(container)) = self.0.tiles.get_mut(parent_id) {
+                    if container.kind() == ContainerKind::Tabs {
+                        container.add_child(new_id);
+                        self.0.make_active(|id, _| id == new_id);
+                        return;
+                    }
+                }
+            }
+        }
+
+        // Fallback: create a new top-level Tabs container
+        // let old_root = self.0.root;
+        // let tabs_id = self.0.tiles.insert_tab_tile(vec![old_root, new_id]);
+        // self.0.root = tabs_id;
+        // self.0.make_active(new_id);
+    }
+}
 
 impl Default for MainUiState {
     fn default() -> Self {
-        Self(DockState::new(vec![MainTab::Start(StartTab::default())]))
+        Self(Tree::new_tabs(
+            "main",
+            vec![MainTab::Start(StartTab::default())],
+        ))
     }
 }
 
 impl MapEntities for MainUiState {
     fn map_entities<E: EntityMapper>(&mut self, entity_mapper: &mut E) {
-        for (_, tab) in self.0.iter_all_tabs_mut() {
-            tab.map_entities(entity_mapper);
+        for pane in self
+            .0
+            .tiles
+            .iter_mut()
+            .filter_map(|(_, p)| if let Tile::Pane(p) = p { Some(p) } else { None })
+        {
+            pane.map_entities(entity_mapper);
         }
     }
 }
@@ -245,41 +280,28 @@ impl MapEntities for MainUiState {
 #[derive(Message)]
 struct OpenOrFocus(MainTab);
 
-fn open_or_focus_tab(mut tabs: MessageReader<OpenOrFocus>, mut state: ResMut<MainUiState>) {
-    for tab in tabs.read() {
-        if let Some((surface_index, node_index, tab_index)) = state.find_tab(&tab.0) {
-            state.set_active_tab((surface_index, node_index, tab_index));
-            state.set_focused_node_and_surface((surface_index, node_index));
+fn open_or_focus_tab(mut messages: MessageReader<OpenOrFocus>, mut state: ResMut<MainUiState>) {
+    for msg in messages.read() {
+        let pane = &msg.0; // your pane data
+
+        if let Some(tile_id) = state.0.tiles.find_pane(pane) {
+            // Already exists → just focus it
+            state.make_active(|id, _| id == tile_id);
+            state.set_visible(tile_id, true);
         } else {
-            state.push_to_focused_leaf(tab.0.clone());
+            // New pane → add it to the currently focused container
+            state.push_to_focused_leaf(pane.clone());
         }
     }
 }
 
 struct MainTabViewer<'w> {
     world: &'w mut World,
+    last_focused_id: Option<TileId>,
 }
 
-impl<'w> TabViewer for MainTabViewer<'w> {
-    type Tab = MainTab;
-    fn title(&mut self, tab: &mut Self::Tab) -> egui::WidgetText {
-        for_all_tabs!(tab, t, t.title())
-    }
-    fn ui(&mut self, ui: &mut Ui, tab: &mut Self::Tab) {
-        for_all_tabs!(tab, t, t.main_display(self.world, ui));
-    }
-    fn id(&mut self, tab: &mut Self::Tab) -> Id {
-        for_all_tabs!(tab, t, t.id())
-    }
-    fn scroll_bars(&self, tab: &Self::Tab) -> [bool; 2] {
-        for_all_tabs!(tab, t, t.scroll_bars())
-    }
-    fn add_popup(
-        &mut self,
-        ui: &mut Ui,
-        _surface: egui_dock::SurfaceIndex,
-        _node: egui_dock::NodeIndex,
-    ) {
+impl<'w> MainTabViewer<'w> {
+    fn add_popup(&mut self, ui: &mut Ui) {
         for (s, t) in [
             ("Start", MainTab::Start(StartTab::default())),
             ("Inspector", MainTab::Inspector(InspectorTab::default())),
@@ -364,12 +386,60 @@ impl<'w> TabViewer for MainTabViewer<'w> {
             });
         });
     }
-    fn closeable(&mut self, tab: &mut Self::Tab) -> bool {
-        if matches!(tab, MainTab::Start(_)) {
-            true
-        } else {
-            false
+}
+
+impl<'w> Behavior<MainTab> for MainTabViewer<'w> {
+    fn tab_title_for_pane(&mut self, pane: &MainTab) -> egui::WidgetText {
+        for_all_tabs!(pane, p, p.title())
+    }
+    fn pane_ui(&mut self, ui: &mut Ui, tile_id: TileId, tab: &mut MainTab) -> UiResponse {
+        ui.painter()
+            .rect_filled(ui.available_rect_before_wrap(), 0, ui.visuals().panel_fill);
+        for_all_tabs!(tab, t, t.main_display(self.world, ui));
+        let clip = ui.clip_rect();
+        let press_origin = ui.ctx().input(|i| i.pointer.press_origin());
+        let pointer_inside = ui.rect_contains_pointer(clip);
+        let (drag_started_inside, clicked_inside) = ui.ctx().interaction_snapshot(|snap| {
+            let drag_started_inside = snap.drag_started.is_some()
+                && press_origin.is_some_and(|origin| clip.contains(origin));
+            let clicked_inside = pointer_inside && snap.clicked.is_some();
+            (drag_started_inside, clicked_inside)
+        });
+        if drag_started_inside || clicked_inside {
+            self.last_focused_id = Some(tile_id);
         }
+        Default::default()
+    }
+    fn simplification_options(&self) -> SimplificationOptions {
+        SimplificationOptions {
+            prune_empty_tabs: true,
+            prune_empty_containers: true,
+            prune_single_child_tabs: false,
+            prune_single_child_containers: true,
+            all_panes_must_have_tabs: true,
+            join_nested_linear_containers: true,
+        }
+    }
+    fn is_tab_closable(&self, tiles: &Tiles<MainTab>, tile_id: TileId) -> bool {
+        match tiles.get(tile_id) {
+            None => false,
+            Some(Tile::Container(_)) => false,
+            Some(Tile::Pane(MainTab::Start(_))) => false,
+            Some(Tile::Pane(_)) => true
+        }
+    }
+    fn top_bar_right_ui(
+        &mut self,
+        _tiles: &Tiles<MainTab>,
+        ui: &mut Ui,
+        _tile_id: TileId,
+        _tabs: &egui_tiles::Tabs,
+        _scroll_offset: &mut f32,
+    ) {
+        let res = ui.button("+");
+        egui::Popup::menu(&res).show(|ui| {
+            self.add_popup(ui);
+        });
     }
 }
 
@@ -395,15 +465,25 @@ enum AdditionalTab {
 
 #[derive(Reflect, Resource, Serialize, Deserialize, Clone, Deref, DerefMut)]
 #[reflect(opaque, Resource, Serialize, Deserialize)]
-struct AdditionalUiState(DockState<AdditionalTab>);
+struct AdditionalUiState {
+    #[deref]
+    tree: Tree<AdditionalTab>,
+    focused_id: Option<TileId>,
+}
 
 impl Default for AdditionalUiState {
     fn default() -> Self {
-        Self(DockState::new(vec![
-            AdditionalTab::Edit,
-            AdditionalTab::Properties,
-            AdditionalTab::Export,
-        ]))
+        Self {
+            tree: Tree::new_tabs(
+                "additional",
+                vec![
+                    AdditionalTab::Edit,
+                    AdditionalTab::Properties,
+                    AdditionalTab::Export,
+                ],
+            ),
+            focused_id: None,
+        }
     }
 }
 
@@ -412,9 +492,8 @@ struct AdditionalTabViewer<'w> {
     focused_tab: Option<&'w mut MainTab>,
 }
 
-impl<'w> TabViewer for AdditionalTabViewer<'w> {
-    type Tab = AdditionalTab;
-    fn title(&mut self, tab: &mut Self::Tab) -> egui::WidgetText {
+impl<'w> egui_tiles::Behavior<AdditionalTab> for AdditionalTabViewer<'w> {
+    fn tab_title_for_pane(&mut self, tab: &AdditionalTab) -> egui::WidgetText {
         match *tab {
             AdditionalTab::Edit => "Edit",
             AdditionalTab::Properties => "Properties",
@@ -422,22 +501,30 @@ impl<'w> TabViewer for AdditionalTabViewer<'w> {
         }
         .into()
     }
-    fn ui(&mut self, ui: &mut Ui, tab: &mut Self::Tab) {
+    fn pane_ui(
+        &mut self,
+        ui: &mut Ui,
+        _tile_id: egui_tiles::TileId,
+        tab: &mut AdditionalTab,
+    ) -> egui_tiles::UiResponse {
+        ui.painter()
+            .rect_filled(ui.available_rect_before_wrap(), 0, ui.visuals().panel_fill);
         let Some(ref mut focused) = self.focused_tab else {
             ui.label("Nothing focused");
-            return;
+            return Default::default();
         };
         match *tab {
             AdditionalTab::Edit => {
-                for_all_tabs!(focused, t, t.edit_display(self.world, ui))
+                for_all_tabs!(focused, t, t.edit_display(self.world, ui));
             }
             AdditionalTab::Properties => {
-                for_all_tabs!(focused, t, t.display_display(self.world, ui))
+                for_all_tabs!(focused, t, t.display_display(self.world, ui));
             }
             AdditionalTab::Export => {
-                for_all_tabs!(focused, t, t.export_display(self.world, ui))
+                for_all_tabs!(focused, t, t.export_display(self.world, ui));
             }
         }
+        Default::default()
     }
 }
 
@@ -596,56 +683,41 @@ pub fn show_ui(ctx: &Context, world: &mut World) {
                         }
                         ui.ctx().request_repaint();
                     }
-                    if ui.button("P").clicked() {}
-                    if ui.button("R").clicked() {}
-                    if ui.button("B").clicked() {}
                 });
             })
         });
-    let make_dock_style = |ui: &Ui| {
-        let mut s = egui_dock::Style::from_egui(ui.style());
-        s.tab.tab_body.inner_margin = Margin::same(0);
-        s.tab.tab_body.corner_radius = CornerRadius::ZERO;
-        s.tab.tab_body.stroke.width = 0.0;
-        s.tab.active.corner_radius = CornerRadius::ZERO;
-        s.tab.inactive.corner_radius = CornerRadius::ZERO;
-        s.tab.focused.corner_radius = CornerRadius::ZERO;
-        s.tab.hovered.corner_radius = CornerRadius::ZERO;
-        s.tab.inactive_with_kb_focus.corner_radius = CornerRadius::ZERO;
-        s.tab.active_with_kb_focus.corner_radius = CornerRadius::ZERO;
-        s.tab.focused_with_kb_focus.corner_radius = CornerRadius::ZERO;
-        s.tab_bar.corner_radius = CornerRadius::ZERO;
-        s
-    };
     world.resource_scope(|world, mut aus: Mut<AdditionalUiState>| {
         world.resource_scope(|mut world, mut mus: Mut<MainUiState>| {
             let mut tab_viewer = AdditionalTabViewer {
                 world: &mut world,
-                focused_tab: mus.find_active_focused().map(|(_, f)| f),
+                focused_tab: aus
+                    .focused_id
+                    .and_then(|id| mus.tiles.get_mut(id))
+                    .and_then(|p| {
+                        if let Tile::Pane(pane) = p {
+                            Some(pane)
+                        } else {
+                            None
+                        }
+                    }),
             };
             egui::SidePanel::right("right panel")
                 .frame(Frame::default())
                 .show(ctx, |ui| {
-                    DockArea::new(&mut aus)
-                        .show_close_buttons(false)
-                        .show_leaf_close_all_buttons(false)
-                        .show_leaf_collapse_buttons(false)
-                        .id(Id::new("right panel content"))
-                        .style(make_dock_style(ui))
-                        .show_inside(ui, &mut tab_viewer);
+                    aus.ui(&mut tab_viewer, ui);
                 });
-            let mut tab_viewer = MainTabViewer { world: &mut world };
+            let mut tab_viewer = MainTabViewer {
+                world: &mut world,
+                last_focused_id: None,
+            };
             egui::CentralPanel::default()
                 .frame(Frame::default())
                 .show(ctx, |ui| {
-                    DockArea::new(&mut mus)
-                        .show_leaf_close_all_buttons(false)
-                        .id(Id::new("main panel content"))
-                        .show_add_buttons(true)
-                        .show_add_popup(true)
-                        .style(make_dock_style(ui))
-                        .show_inside(ui, &mut tab_viewer);
+                    mus.0.ui(&mut tab_viewer, ui);
                 });
+            if let Some(id) = tab_viewer.last_focused_id {
+                aus.focused_id = Some(id);
+            }
         })
     });
 }

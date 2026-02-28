@@ -6,7 +6,6 @@ license.workspace = true
 
 [dependencies]
 paiagram-rw = { path = "../paiagram-rw" }
-egui_dock = { path = "../egui_dock", features = ["serde"] }
 serde = "1.0.228"
 rand = "0.9.2"
 bevy = { version = "0.18.0", default-features = false, features = [
