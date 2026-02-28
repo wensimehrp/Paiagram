@@ -1,6 +1,8 @@
 //! # UI
 //! Module for the user interface.
 
+pub mod export_typst_diagram;
+pub mod save;
 pub mod tabs;
 mod widgets;
 
@@ -14,8 +16,8 @@ use moonshine_core::prelude::{MapEntities, ReflectMapEntities};
 use serde::{Deserialize, Serialize};
 use tabs::{Tab, all_tabs::*};
 
-use crate::units::time::Tick;
-use crate::{
+use paiagram_core::units::time::Tick;
+use paiagram_core::{
     import::{DownloadFile, LoadGTFS, LoadOuDia, LoadQETRC},
     route::Route,
     settings::UserPreferences,
@@ -37,7 +39,11 @@ impl Plugin for UiPlugin {
             .add_message::<OpenOrFocus>()
             .add_systems(
                 Update,
-                (open_or_focus_tab.run_if(on_message::<OpenOrFocus>),),
+                (
+                    open_or_focus_tab.run_if(on_message::<OpenOrFocus>),
+                    save::apply_loaded_scene
+                        .run_if(resource_exists::<paiagram_rw::save::LoadedScene>),
+                ),
             );
     }
 }
@@ -487,7 +493,7 @@ pub fn show_ui(ctx: &Context, world: &mut World) {
                     }
                     ui.separator();
                     if ui.button("Read OuDia...").clicked() {
-                        world.commands().trigger(crate::rw::read::ReadFile {
+                        world.commands().trigger(paiagram_rw::read::ReadFile {
                             title: "Load OuDia Files".to_string(),
                             extensions: vec![("OuDia Files".to_string(), vec!["oud".to_string()])],
                             callback: |c, s| {
@@ -496,7 +502,7 @@ pub fn show_ui(ctx: &Context, world: &mut World) {
                         });
                     }
                     if ui.button("Read OuDiaSecond...").clicked() {
-                        world.commands().trigger(crate::rw::read::ReadFile {
+                        world.commands().trigger(paiagram_rw::read::ReadFile {
                             title: "Load OuDiaSecond Files".to_string(),
                             extensions: vec![(
                                 "OuDiaSecond Files".to_string(),
@@ -508,7 +514,7 @@ pub fn show_ui(ctx: &Context, world: &mut World) {
                         });
                     }
                     if ui.button("Read qETRC/pyETRC...").clicked() {
-                        world.commands().trigger(crate::rw::read::ReadFile {
+                        world.commands().trigger(paiagram_rw::read::ReadFile {
                             title: "Load qETRC Files".to_string(),
                             extensions: vec![(
                                 "qETRC Files".to_string(),
@@ -522,7 +528,7 @@ pub fn show_ui(ctx: &Context, world: &mut World) {
                         });
                     }
                     if ui.button("Read GTFS...").clicked() {
-                        world.commands().trigger(crate::rw::read::ReadFile {
+                        world.commands().trigger(paiagram_rw::read::ReadFile {
                             title: "Load GTFS Files".to_string(),
                             extensions: vec![("GTFS Files".to_string(), vec!["zip".to_string()])],
                             callback: |c, s| {
@@ -532,23 +538,23 @@ pub fn show_ui(ctx: &Context, world: &mut World) {
                     }
                     ui.separator();
                     if ui.button("Save compressed CBOR...").clicked() {
-                        crate::rw::save::save(world, "compressed.lz4".to_string());
+                        save::save(world, "compressed.lz4".to_string());
                     }
                     if ui.button("Read compressed CBOR...").clicked() {
-                        world.commands().trigger(crate::rw::read::ReadFile {
+                        world.commands().trigger(paiagram_rw::read::ReadFile {
                             title: "Load LZ4 Files".to_string(),
                             extensions: vec![("LZ4 Files".to_string(), vec!["lz4".to_string()])],
-                            callback: crate::rw::save::add_load_candidate_compressed_cbor,
+                            callback: paiagram_rw::save::add_load_candidate_compressed_cbor,
                         });
                     }
                     if ui.button("Save RON...").clicked() {
-                        crate::rw::save::save_ron(world, "saved.ron".to_string());
+                        save::save_ron(world, "saved.ron".to_string());
                     }
                     if ui.button("Read RON...").clicked() {
-                        world.commands().trigger(crate::rw::read::ReadFile {
+                        world.commands().trigger(paiagram_rw::read::ReadFile {
                             title: "Load RON Files".to_string(),
                             extensions: vec![("RON Files".to_string(), vec!["ron".to_string()])],
-                            callback: crate::rw::save::add_load_candidate_ron,
+                            callback: paiagram_rw::save::add_load_candidate_ron,
                         });
                     }
                 });

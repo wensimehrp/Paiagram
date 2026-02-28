@@ -1,5 +1,13 @@
 [workspace]
-members = ["crates/paiagram-core", "crates/paiagram-app", "egui_dock"]
+members = [
+    "crates/egui_dock",
+    "crates/paiagram-core",
+    "crates/paiagram-app",
+    "crates/paiagram-raptor",
+    "crates/paiagram-timing",
+    "crates/paiagram-ui",
+    "crates/paiagram-rw",
+]
 default-members = ["crates/paiagram-app"]
 resolver = "3"
 

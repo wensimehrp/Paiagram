@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - 'src/**'
+      - 'crates/**'
   workflow_dispatch:
 
 concurrency:
@@ -46,4 +46,3 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./dist
           destination_dir: ./nightly
-

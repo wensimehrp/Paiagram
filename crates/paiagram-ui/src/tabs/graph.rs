@@ -6,7 +6,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use crate::{
+use crate::{GlobalTimer, tabs::Navigatable};
+use paiagram_core::{
     colors::PredefinedColor,
     graph::{GraphIntervalSpatialIndex, GraphSpatialIndex, Node},
     settings::ProjectSettings,
@@ -14,7 +15,6 @@ use crate::{
         Trip, TripClass, TripSpatialIndex,
         class::{Class, DisplayedStroke},
     },
-    ui::{GlobalTimer, tabs::Navigatable},
 };
 
 mod gpu_draw;
@@ -182,7 +182,7 @@ impl super::Tab for GraphTab {
         if ui.button("Arrange graph").clicked() {
             world
                 .run_system_cached_with(
-                    crate::graph::arrange::auto_arrange_graph,
+                    paiagram_core::graph::arrange::auto_arrange_graph,
                     (ui.ctx().clone(), self.arrange_iterations),
                 )
                 .unwrap();
@@ -200,16 +200,16 @@ impl super::Tab for GraphTab {
             };
             world
                 .run_system_cached_with(
-                    crate::graph::arrange::arrange_via_osm,
+                    paiagram_core::graph::arrange::arrange_via_osm,
                     (ui.ctx().clone(), area_name),
                 )
                 .unwrap();
         }
-        if let Some(task) = world.get_resource::<crate::graph::arrange::GraphLayoutTask>() {
+        if let Some(task) = world.get_resource::<paiagram_core::graph::arrange::GraphLayoutTask>() {
             let (finished, total, queued_retry) = task.progress();
             let mode = match task.kind {
-                crate::graph::arrange::GraphLayoutKind::ForceDirected => "Force",
-                crate::graph::arrange::GraphLayoutKind::OSM => "OSM",
+                paiagram_core::graph::arrange::GraphLayoutKind::ForceDirected => "Force",
+                paiagram_core::graph::arrange::GraphLayoutKind::OSM => "OSM",
             };
             ui.label(format!(
                 "Arrange ({mode}) progress: {finished}/{total} | retry queued: {queued_retry}"

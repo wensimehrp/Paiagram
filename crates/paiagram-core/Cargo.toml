@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+paiagram-rw = { path = "../paiagram-rw" }
+egui_dock = { path = "../egui_dock", features = ["serde"] }
+serde = "1.0.228"
+rand = "0.9.2"
 bevy = { version = "0.18.0", default-features = false, features = [
     "multi_threaded",
     "bevy_state",
@@ -17,12 +21,9 @@ bevy = { version = "0.18.0", default-features = false, features = [
     "http",
 ] }
 bevy_reflect = { version = "*", features = ["petgraph"] }
-egui_dock = { path = "../../egui_dock", features = ["serde"] }
 petgraph = { version = "0.8.3", features = ["serde-1", "rayon"] }
 derive_more = { version = "2.1.0", features = ["full"] }
 serde_json = "1.0.145"
-serde = "1.0.228"
-rand = "0.9.2"
 ib-matcher = { version = "0.4.0", features = ["pinyin", "romaji"] }
 rfd = "0.17.2"
 pest = "2.8.5"
@@ -66,7 +67,14 @@ itertools = "0.14.0"
 gtfs-structures = { version = "0.46.1", default-features = false }
 utm = "0.1.6"
 egui-phosphor = "0.11.0"
-wgpu = { version = "27.0.1", features = ["vulkan", "gles", "dx12", "metal", "webgpu", "webgl"] }
+wgpu = { version = "27.0.1", features = [
+    "vulkan",
+    "gles",
+    "dx12",
+    "metal",
+    "webgpu",
+    "webgl",
+] }
 bytemuck = { version = "1.23.2", features = ["extern_crate_alloc"] }
 wasmi = "1.0.9"
 anyhow = "1.0.101"

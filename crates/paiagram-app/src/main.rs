@@ -5,10 +5,10 @@ use bevy::{ecs::system::RunSystemOnce, log::LogPlugin, prelude::*};
 #[cfg(not(target_arch = "wasm32"))]
 use clap::Parser;
 
-use paiagram_core::{
-    entry, graph, i18n, import, problems, route, rw, settings, station, trip, ui,
-};
 use paiagram_core::trip::class;
+use paiagram_core::{entry, graph, i18n, import, problems, route, settings, station, trip};
+use paiagram_rw::{read::ReadPlugin, save::SavePlugin};
+use paiagram_ui as ui;
 
 struct PaiagramApp {
     bevy_app: App,
@@ -53,10 +53,10 @@ impl PaiagramApp {
             settings::SettingsPlugin,
             problems::ProblemsPlugin,
             class::ClassPlugin,
-            rw::read::ReadPlugin,
-            rw::save::SavePlugin,
+            ReadPlugin,
+            SavePlugin,
             bevy::diagnostic::DiagnosticsPlugin,
-            bevy::diagnostic::FrameTimeDiagnosticsPlugin::new(2000),
+            bevy::diagnostic::FrameTimeDiagnosticsPlugin::default(),
         ));
         info!("Initialized Bevy App.");
         #[cfg(not(target_arch = "wasm32"))]

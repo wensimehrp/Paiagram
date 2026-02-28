@@ -1,8 +1,8 @@
 use super::Tab;
-use crate::trip::class::{Class, DisplayedStroke};
 use bevy::prelude::*;
 use egui::Ui;
 use moonshine_core::prelude::MapEntities;
+use paiagram_core::trip::class::{Class, DisplayedStroke};
 use serde::{Deserialize, Serialize};
 
 #[derive(Default, PartialEq, Clone, Serialize, Deserialize, MapEntities)]

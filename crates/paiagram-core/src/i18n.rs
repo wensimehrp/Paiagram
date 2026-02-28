@@ -33,12 +33,17 @@ impl Language {
 
 pub fn init() {
     let default_identifier = Language::default().identifier();
+    // TODO: move these strings
     load_translations_from_text(
         default_identifier,
-        include_str!("../assets/locales/en-CA.ftl"),
+        include_str!("../../paiagram-ui/assets/locales/en-CA.ftl"),
     )
     .unwrap();
-    load_translations_from_text("zh-Hans", include_str!("../assets/locales/zh-Hans.ftl")).unwrap();
+    load_translations_from_text(
+        "zh-Hans",
+        include_str!("../../paiagram-ui/assets/locales/zh-Hans.ftl"),
+    )
+    .unwrap();
     set_language(default_identifier);
     set_fallback(default_identifier);
 }

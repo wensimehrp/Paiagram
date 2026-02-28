@@ -3,13 +3,13 @@ default:
 
 # Download fonts
 get-fonts:
-    mkdir -p crates/paiagram-core/assets/fonts
+    mkdir -p crates/paiagram-ui/assets/fonts
     wget https://github.com/be5invis/Sarasa-Gothic/releases/download/v1.0.33/SarasaUiSC-TTF-1.0.33.7z
-    7z x SarasaUiSC-TTF-1.0.33.7z -ocrates/paiagram-core/assets/fonts -y
+    7z x SarasaUiSC-TTF-1.0.33.7z -ocrates/paiagram-ui/assets/fonts -y
     wget https://github.com/be5invis/Sarasa-Gothic/releases/download/v1.0.33/SarasaTermSC-TTF-1.0.33.7z
-    7z x SarasaTermSC-TTF-1.0.33.7z -ocrates/paiagram-core/assets/fonts -y
+    7z x SarasaTermSC-TTF-1.0.33.7z -ocrates/paiagram-ui/assets/fonts -y
     wget https://github.com/ButTaiwan/diapro/releases/download/v1.200/DiaProV1200.zip
-    7z x DiaProV1200.zip -ocrates/paiagram-core/assets/fonts -y
+    7z x DiaProV1200.zip -ocrates/paiagram-ui/assets/fonts -y
 
 # Build rust docs
 rust-docs:

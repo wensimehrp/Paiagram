@@ -6,7 +6,6 @@ use std::path::PathBuf;
 use crate::{
     graph::Graph,
     interval::Interval,
-    rw::save::{LoadCandidate, SaveData},
     station::Station,
     trip::class::{Class, ClassBundle},
     units::{
@@ -21,6 +20,7 @@ use bevy::{
     tasks::{AsyncComputeTaskPool, Task, block_on, futures_lite::future::poll_once},
 };
 use moonshine_core::kind::*;
+use paiagram_rw::save::{LoadCandidate, SaveData};
 
 mod gtfs;
 mod oudia;
@@ -203,7 +203,6 @@ fn infer_path_from_url(url: &str) -> Option<PathBuf> {
 }
 
 pub fn load_and_trigger(path: &PathBuf, content: Vec<u8>, commands: &mut Commands) -> Result<()> {
-    let filename = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
     match path.extension().and_then(|s| s.to_str()) {
         Some("pyetgr") | Some("json") => {
             let content = String::from_utf8(content)?;

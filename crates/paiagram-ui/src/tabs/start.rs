@@ -1,4 +1,4 @@
-use crate::{
+use paiagram_core::{
     interval::IntervalQuery,
     station::{PlatformQuery, StationQuery},
     trip::TripQuery,
@@ -64,7 +64,7 @@ impl Tab for StartTab {
         }
         if ui.button("Merge stations by name").clicked() {
             world
-                .run_system_cached(crate::graph::merge_station_by_name)
+                .run_system_cached(paiagram_core::graph::merge_station_by_name)
                 .unwrap();
         }
     }
@@ -158,7 +158,7 @@ fn show_about(ui: &mut Ui) {
             ScrollArea::vertical()
                 .max_height(400.0)
                 .show(ui, |ui| {
-                    ui.monospace(include_str!("../../../LICENSE.md"));
+                    ui.monospace(include_str!("../../../../LICENSE.md"));
                 });
         });
 

@@ -46,7 +46,6 @@ fn dialog(trigger: On<ReadFile>, mut commands: Commands) {
 fn poll(mut commands: Commands, mut tasks: Query<(Entity, &mut SelectedFile)>) {
     for (entity, mut selected_file) in tasks.iter_mut() {
         if let Some(result) = future::block_on(future::poll_once(&mut selected_file.0)) {
-            // file is chosen, or not
             if let Some(res) = result {
                 selected_file.1(&mut commands, res);
             }

@@ -1,7 +1,6 @@
 use bevy::prelude::*;
 
 pub mod graphviz;
-pub mod typst_diagram;
 // pub mod typst_timetable;
 
 pub trait ExportObject<S = ()> {
@@ -14,7 +13,7 @@ pub trait ExportObject<S = ()> {
         let mut filename = String::new();
         filename.push_str(self.filename().as_ref());
         filename.push_str(self.extension().as_ref());
-        crate::rw::write::write_file(buffer, filename);
+        paiagram_rw::write::write_file(buffer, filename);
     }
     fn filename(&self) -> impl AsRef<str> {
         "exported_file"

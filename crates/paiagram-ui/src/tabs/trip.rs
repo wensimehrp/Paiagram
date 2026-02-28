@@ -1,4 +1,4 @@
-use crate::{
+use paiagram_core::{
     entry::{AdjustEntryMode, EntryModeAdjustment, EntryQuery, TravelMode},
     station::{PlatformQuery, StationQuery},
     trip::TripQuery,

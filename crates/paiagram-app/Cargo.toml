@@ -6,6 +6,8 @@ license.workspace = true
 
 [dependencies]
 paiagram-core = { path = "../paiagram-core" }
+paiagram-ui = { path = "../paiagram-ui" }
+paiagram-rw = { path = "../paiagram-rw" }
 bevy = { version = "0.18.0", default-features = false, features = [
     "multi_threaded",
     "bevy_state",

@@ -1,0 +1,17 @@
+[package]
+name = "paiagram-raptor"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+paiagram-core = { path = "../paiagram-core" }
+raptor = "0.1.1"
+bevy = { version = "0.18.0", default-features = false, features = [
+    "multi_threaded",
+    "bevy_state",
+    "std",
+    "bevy_log",
+    "serialize",
+    "reflect_auto_register",
+] }

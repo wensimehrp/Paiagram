@@ -8,11 +8,9 @@ pub mod interval;
 pub mod plugin;
 pub mod problems;
 pub mod route;
-pub mod rw;
 pub mod settings;
 pub mod station;
 pub mod trip;
-pub mod ui;
 pub mod units;
 pub mod vehicle;
 

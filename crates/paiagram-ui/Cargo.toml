@@ -1,0 +1,46 @@
+[package]
+name = "paiagram-ui"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+paiagram-core = { path = "../paiagram-core" }
+paiagram-raptor = { path = "../paiagram-raptor" }
+paiagram-rw = { path = "../paiagram-rw" }
+egui_dock = { path = "../egui_dock", features = ["serde"] }
+bevy = { version = "0.18.0", default-features = false }
+moonshine-core = "0.5.1"
+serde = "1.0.228"
+serde_json = "1.0.145"
+egui = { version = "0.33.3", default-features = false, features = [
+    "rayon",
+    "persistence",
+    "serde",
+] }
+eframe = { version = "0.33.3", default-features = false, features = [
+    "accesskit",
+    "wgpu",
+    "persistence",
+    "wayland",
+    "web_screen_reader",
+] }
+egui-i18n = { version = "0.1.2", features = ["fluent"] }
+egui_table = "0.7.0"
+egui-phosphor = "0.11.0"
+bevy-inspector-egui = { version = "0.36.0", default-features = false }
+urlencoding = "2.1.3"
+rfd = "0.17.2"
+instant = { version = "0.1.13", features = ["wasm-bindgen"] }
+strum = "0.27.2"
+strum_macros = "0.27.1"
+git-version = "0.3.9"
+either = "1.13.0"
+rayon = "1.10.0"
+emath = "0.33.3"
+wgpu = { version = "27.0.1" }
+bytemuck = { version = "1.23.2" }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"

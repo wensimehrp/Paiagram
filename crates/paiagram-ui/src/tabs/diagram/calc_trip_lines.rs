@@ -5,7 +5,7 @@ use bevy::{
 use egui::{Pos2, Rect};
 use rayon::prelude::*;
 
-use crate::{
+use paiagram_core::{
     entry::{EntryMode, EntryQuery},
     route::Route,
     settings::ProjectSettings,
@@ -76,7 +76,7 @@ pub fn calc(
         InRef<[Entity]>,
     ),
     routes: Query<&Route>,
-    trip_q: Query<crate::trip::TripQuery>,
+    trip_q: Query<paiagram_core::trip::TripQuery>,
     entries: Query<EntryQuery>,
     stations: Query<(), With<Station>>,
     platforms: Query<&ChildOf, With<Platform>>,
@@ -213,7 +213,7 @@ pub fn calc(
         });
     }
 
-    let repeat_freq_ticks = Tick::from_timetable_time(crate::units::time::TimetableTime(
+    let repeat_freq_ticks = Tick::from_timetable_time(paiagram_core::units::time::TimetableTime(
         settings.repeat_frequency.0,
     ));
 

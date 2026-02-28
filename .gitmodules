@@ -1,4 +1,4 @@
 [submodule "egui_dock"]
-	path = egui_dock
+	path = crates/egui_dock
 	url = https://github.com/wensimehrp/egui_dock
 	branch = wensim

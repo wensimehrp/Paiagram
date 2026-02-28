@@ -1,4 +1,4 @@
-use crate::{
+use paiagram_core::{
     i18n::Language,
     settings::{ProjectSettings, UserPreferences},
 };

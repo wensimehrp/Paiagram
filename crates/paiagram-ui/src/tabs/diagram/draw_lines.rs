@@ -1,6 +1,6 @@
-use crate::units::time::{Tick, TimetableTime};
 use bevy::prelude::*;
 use egui::{Color32, FontId, Painter, Pos2, Rect, Stroke, Visuals};
+use paiagram_core::units::time::{Tick, TimetableTime};
 
 pub fn draw_station_lines<'a>(
     vertical_offset: f32,

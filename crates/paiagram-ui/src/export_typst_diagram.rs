@@ -1,16 +1,17 @@
-use crate::route::Route;
-use crate::ui::tabs::diagram::DrawnTrip;
-use crate::ui::tabs::diagram::calc_trip_lines::{CalcContext, calc};
-use crate::units::time::{Tick, TimetableTime};
+use crate::tabs::diagram::DrawnTrip;
+use crate::tabs::diagram::calc_trip_lines::{CalcContext, calc};
 use bevy::prelude::*;
 use egui::Color32;
 use egui::{Pos2, Rect};
+use paiagram_core::export::ExportObject;
+use paiagram_core::route::Route;
+use paiagram_core::units::time::{Tick, TimetableTime};
 use serde::Serialize;
 use std::io::Write;
 
 pub struct TypstModule;
 
-impl super::ExportObject<()> for TypstModule {
+impl ExportObject<()> for TypstModule {
     fn export_to_buffer(&mut self, world: &mut World, buffer: &mut Vec<u8>, input: ()) {
         buffer.write(include_bytes!("./typst_diagram.typ")).unwrap();
     }
@@ -57,7 +58,7 @@ fn default_calc_context(route: &Route, route_entity: Entity) -> CalcContext {
     }
 }
 
-impl super::ExportObject<(Entity, &[Entity])> for TypstDiagram {
+impl ExportObject<(Entity, &[Entity])> for TypstDiagram {
     fn export_to_buffer(
         &mut self,
         world: &mut World,

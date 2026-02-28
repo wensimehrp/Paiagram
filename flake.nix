@@ -55,6 +55,7 @@
           cargoLock.lockFile = ./Cargo.lock;
           nativeBuildInputs = [
             pkgs.pkg-config
+            pkgs.openssl # TODO: remove this
             pkgs.makeWrapper
           ];
           buildInputs = runtimeLibs;
@@ -70,6 +71,7 @@
             buildInputs = [
               rustToolchain
               pkg-config
+              openssl # TODO: remove this
               wasm-bindgen-cli_0_2_108
               just
               wget

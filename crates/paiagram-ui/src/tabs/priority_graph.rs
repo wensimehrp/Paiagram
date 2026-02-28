@@ -9,13 +9,13 @@ use either::Either;
 use moonshine_core::prelude::MapEntities;
 use serde::{Deserialize, Serialize};
 
-use crate::{
+use crate::tabs::Navigatable;
+use paiagram_core::{
     colors::DisplayColor,
     entry::EntryQuery,
     route::{Route, RouteByDirectionTrips},
     station::{ParentStationOrStation, Station},
     trip::TripQuery,
-    ui::tabs::Navigatable,
     units::time::TimetableTime,
 };
 
@@ -231,7 +231,7 @@ fn draw_priority_lines(
     // let route = route_q.get(route_entity).unwrap();
     let stroke = Stroke {
         width: 2.0,
-        color: DisplayColor::Predefined(crate::colors::PredefinedColor::Amber).get(false),
+        color: DisplayColor::Predefined(paiagram_core::colors::PredefinedColor::Amber).get(false),
     };
     let mut line_map: EntityHashMap<Vec<Pos2>> = EntityHashMap::new();
     for (station_idx, map) in maps.iter().enumerate() {

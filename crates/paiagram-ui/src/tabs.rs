@@ -5,7 +5,7 @@ use egui::{Id, Response, Ui, WidgetText};
 use egui_i18n::tr;
 use moonshine_core::prelude::MapEntities;
 
-// use crate::interface::StatusBarState;
+// use paiagram_core::interface::StatusBarState;
 
 pub mod classes;
 // pub mod diagram;

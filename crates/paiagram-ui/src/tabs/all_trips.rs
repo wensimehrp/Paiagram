@@ -5,7 +5,7 @@ use emath::Numeric;
 use moonshine_core::prelude::MapEntities;
 use serde::{Deserialize, Serialize};
 
-use crate::{
+use paiagram_core::{
     entry::{EntryQuery, EntryQueryItem, TravelMode},
     route::{
         AllTripsDisplayMode, Route, RouteByDirectionTrips, RouteDisplayModes,
