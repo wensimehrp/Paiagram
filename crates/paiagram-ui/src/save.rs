@@ -25,6 +25,9 @@ pub fn apply_loaded_scene(world: &mut World) {
 fn make_scene(world: &World, entities: impl Iterator<Item = Entity>) -> DynamicScene {
     DynamicSceneBuilder::from_world(world)
         .deny_all_resources()
+        .allow_resource::<crate::MainUiState>()
+        .allow_resource::<crate::GlobalTimer>()
+        .allow_resource::<paiagram_core::graph::Graph>()
         .allow_all_components()
         .extract_entities(entities)
         .extract_resources()
