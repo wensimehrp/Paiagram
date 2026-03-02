@@ -1,7 +1,9 @@
 use std::borrow::Cow;
 
 use bevy::ecs::world::World;
-use egui::{Id, Response, Ui, WidgetText};
+use egui::{
+    Context, Id, Key, KeyboardShortcut, Modifiers, NumExt, Response, Ui, Vec2, WidgetText, vec2,
+};
 use egui_i18n::tr;
 use moonshine_core::prelude::MapEntities;
 
@@ -41,6 +43,47 @@ pub mod all_tabs {
     pub use super::trip::TripTab;
     // pub use super::station_timetable::StationTimetableTab;
     // pub use super::vehicle::VehicleTab;
+}
+
+fn handle_keyboard_navigation(ui: &Ui) -> Vec2 {
+    const PAN_SPEED: f32 = 500.0;
+    let key_pan_delta = ui.ctx().input(|input| {
+        let mut delta = Vec2::ZERO;
+        if input.key_down(Key::ArrowUp) {
+            delta.y += PAN_SPEED;
+        }
+        if input.key_down(Key::ArrowDown) {
+            delta.y -= PAN_SPEED;
+        }
+        if input.key_down(Key::ArrowLeft) {
+            delta.x += PAN_SPEED;
+        }
+        if input.key_down(Key::ArrowRight) {
+            delta.x -= PAN_SPEED;
+        }
+        delta.x *= input.stable_dt;
+        delta.y *= input.stable_dt;
+        delta
+    });
+    let dt = ui.ctx().input(|input| input.stable_dt).at_most(0.1);
+    let mut requires_repaint = false;
+    let smoothed_delta = ui.ctx().data_mut(|data| {
+        let smoothed_delta: &mut Vec2 =
+            data.get_temp_mut_or(ui.id().with("keyboard pan info"), vec2(0.0, 0.0));
+        let t = egui::emath::exponential_smooth_factor(0.9, 0.3, dt);
+        *smoothed_delta = emath::lerp(*smoothed_delta..=key_pan_delta, t);
+        let diff = (*smoothed_delta - key_pan_delta).length();
+        if diff < 0.01 {
+            *smoothed_delta = key_pan_delta
+        } else {
+            requires_repaint = true
+        }
+        *smoothed_delta
+    });
+    if requires_repaint {
+        ui.ctx().request_repaint();
+    }
+    smoothed_delta
 }
 
 pub trait Navigatable {
@@ -102,10 +145,11 @@ pub trait Navigatable {
         let zoom_delta = if self.allow_axis_zoom() {
             ui.input(|input| input.zoom_delta_2d())
         } else {
-            let zoom_delta = ui.input(|input| input.zoom_delta());
-            egui::vec2(zoom_delta, zoom_delta)
+            egui::Vec2::splat(ui.input(|input| input.zoom_delta()))
         };
-        let scroll_delta = ui.input(|input| input.smooth_scroll_delta);
+        let pan_delta = handle_keyboard_navigation(ui)
+            + response.drag_delta()
+            + ui.input(|input| input.smooth_scroll_delta);
         let zooming = (zoom_delta.x - 1.0).abs() > 0.001 || (zoom_delta.y - 1.0).abs() > 0.001;
 
         if zooming
@@ -140,11 +184,10 @@ pub trait Navigatable {
             && response.rect.contains(started_pos)
         {
             let ticks_per_screen_unit = 1.0 / self.zoom_x() as f64;
-            let pan_delta = response.drag_delta() + scroll_delta;
             let new_offset_x = self.offset_x() - ticks_per_screen_unit * pan_delta.x as f64;
             let new_offset_y = self.offset_y() - pan_delta.y as f64 / self.zoom_y() as f64;
-            moved |= scroll_delta.x != 0.0;
-            moved |= scroll_delta.y != 0.0;
+            moved |= pan_delta.x.abs() <= 0.1;
+            moved |= pan_delta.y.abs() <= 0.1;
             self.set_offset(new_offset_x, new_offset_y);
         }
 
