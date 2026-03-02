@@ -1,9 +1,7 @@
 use std::borrow::Cow;
 
 use bevy::ecs::world::World;
-use egui::{
-    Context, Id, Key, KeyboardShortcut, Modifiers, NumExt, Response, Ui, Vec2, WidgetText, vec2,
-};
+use egui::{Id, Key, NumExt, Response, Ui, Vec2, WidgetText, vec2};
 use egui_i18n::tr;
 use moonshine_core::prelude::MapEntities;
 
@@ -186,8 +184,8 @@ pub trait Navigatable {
             let ticks_per_screen_unit = 1.0 / self.zoom_x() as f64;
             let new_offset_x = self.offset_x() - ticks_per_screen_unit * pan_delta.x as f64;
             let new_offset_y = self.offset_y() - pan_delta.y as f64 / self.zoom_y() as f64;
-            moved |= pan_delta.x.abs() <= 0.1;
-            moved |= pan_delta.y.abs() <= 0.1;
+            moved |= pan_delta.x.abs() >= 0.01;
+            moved |= pan_delta.y.abs() >= 0.01;
             self.set_offset(new_offset_x, new_offset_y);
         }
 

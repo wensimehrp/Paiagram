@@ -425,7 +425,7 @@ impl<'w> Behavior<MainTab> for MainTabViewer<'w> {
             None => false,
             Some(Tile::Container(_)) => false,
             Some(Tile::Pane(MainTab::Start(_))) => false,
-            Some(Tile::Pane(_)) => true
+            Some(Tile::Pane(_)) => true,
         }
     }
     fn top_bar_right_ui(

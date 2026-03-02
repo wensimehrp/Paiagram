@@ -287,12 +287,10 @@ fn parse_station<'a>(
                 }
             }
             Pair(k, v) if k == "JikokuhyouJikokuDisplayKudari" => {
-                kudari_display =
-                    v.len() == 2 && v[0].as_ref() == "1" && v[1].as_ref() == "0";
+                kudari_display = v.len() == 2 && v[0].as_ref() == "1" && v[1].as_ref() == "0";
             }
             Pair(k, v) if k == "JikokuhyouJikokuDisplayNobori" => {
-                nobori_display =
-                    v.len() == 2 && v[0].as_ref() == "0" && v[1].as_ref() == "1";
+                nobori_display = v.len() == 2 && v[0].as_ref() == "0" && v[1].as_ref() == "1";
             }
             _ => {}
         }

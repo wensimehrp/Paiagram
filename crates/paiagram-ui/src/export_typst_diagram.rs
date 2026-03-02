@@ -63,10 +63,7 @@ fn default_calc_context(route: &Route, route_entity: Entity) -> CalcContext {
 }
 
 impl<'a> ExportObject for TypstDiagram<'a> {
-    fn export_to_buffer(
-        &mut self,
-        buffer: &mut Vec<u8>,
-    ) {
+    fn export_to_buffer(&mut self, buffer: &mut Vec<u8>) {
         let mut rendered_vehicle_buf = Vec::with_capacity(self.trips.len());
         let route = self.world.get::<Route>(self.route_entity).unwrap();
         let ctx = default_calc_context(&route, self.route_entity);
@@ -76,7 +73,10 @@ impl<'a> ExportObject for TypstDiagram<'a> {
         let mut stations_output = Vec::new();
         let mut trips_output = Vec::new();
         self.world
-            .run_system_cached_with(write_stations, (self.route_entity, &mut stations_output, 1.0))
+            .run_system_cached_with(
+                write_stations,
+                (self.route_entity, &mut stations_output, 1.0),
+            )
             .unwrap();
         self.world
             .run_system_cached_with(write_trips, (&rendered_vehicle_buf, &mut trips_output))

@@ -97,7 +97,7 @@ impl<'a> super::ExportObject for OuDia<'a> {
             make_disp_prop(),
             Structure::Pair(
                 "FileTypeAppComment".into(),
-                smallvec![concat!("Exported by Paiagram ", env!("CARGO_PKG_VERSION")).into()]
+                smallvec![concat!("Exported by Paiagram ", env!("CARGO_PKG_VERSION")).into()],
             ),
         ];
         let mut utf8_buf = Vec::new();
