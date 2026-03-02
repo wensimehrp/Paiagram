@@ -1,0 +1,35 @@
+name: Daily gh-pages Prune
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Reset gh-pages Branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          if git ls-remote --exit-code --heads origin gh-pages > /dev/null; then
+            git fetch --depth=1 origin gh-pages
+            git checkout -B gh-pages origin/gh-pages
+          else
+            git rm -rf . || true
+            echo "Waiting for next nightly build..." > index.html
+          fi
+
+          git checkout --orphan temp-pages
+          git add -A
+          git commit -m "Daily prune of deployment history"
+
+          git push origin temp-pages:gh-pages --force
