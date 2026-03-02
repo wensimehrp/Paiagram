@@ -34,3 +34,5 @@ of how performant the app is, here are some very inaccurate, for-reference-only 
 - This app runs at \~30fps on my classmate's Chromebook's Chrome browser after loading the same `sample.oud2` dataset.
   The app only lags when there are too many elements displayed on the screen, but even so the app still feels quite
   responsive.
+
+In some cases, the web version runs faster than the native version (e.g. a poorly configured Linux laptop).

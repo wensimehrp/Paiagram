@@ -27,6 +27,7 @@
     #chapter("export/oudia.typ")[OuDia]
     = Model
     #chapter("model/network.typ")[Network]
+    #chapter("model/trips-vehicles.typ")[Trips and Vehicles]
     = Panels
     #chapter("panels/index.typ")[Tiling System]
     #chapter("panels/diagram.typ")[Diagram]
