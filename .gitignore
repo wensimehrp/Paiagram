@@ -2,6 +2,7 @@
 /target
 *.json
 *.oud2
+*.oud
 *.kdl
 *.paiagram
 *.pyetgr
