@@ -23,12 +23,16 @@
     #chapter("import/qetrc.typ")[qETRC/pyETRC]
     #chapter("import/oudia.typ")[OuDia/OuDiaSecond]
     #chapter("import/gtfs.typ")[GTFS Static]
+    = Exporting
+    #chapter("export/oudia.typ")[OuDia]
     = Model
     #chapter("model/network.typ")[Network]
     = Panels
     #chapter("panels/index.typ")[Tiling System]
     #chapter("panels/diagram.typ")[Diagram]
     #chapter("panels/map.typ")[Map]
+    = Miscellaneous
+    #chapter("misc/linux-web.typ")[Linux Web]
   ],
 )
 

@@ -25,4 +25,12 @@ You can use the #link(links.home)[web version] or the desktop version. The web v
 versions of Firefox and Safari are also supported. You would, unfortunately, have to compile the desktop version
 yourself.
 
-The performance gap between both versions when processing small datasets is usually acceptable.
+The performance gap between both versions when processing small datasets is usually acceptable. To give you a rough idea
+of how performant the app is, here are some very inaccurate, for-reference-only benchmarks:
+
+- OuDiaSecond (Windows version, via Wine, which taxes the CPU a bit) runs at some PowerPoint level framerate on my
+  i9-13900HX laptop after loading the `sample.oud2` file. The app lags whenever I scroll down the timetable or the
+  diagram, regardless of how many items are displayed on the screen.
+- This app runs at \~30fps on my classmate's Chromebook's Chrome browser after loading the same `sample.oud2` dataset.
+  The app only lags when there are too many elements displayed on the screen, but even so the app still feels quite
+  responsive.
