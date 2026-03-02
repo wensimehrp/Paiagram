@@ -1,15 +1,16 @@
 use bevy::prelude::*;
 
 pub mod graphviz;
+pub mod oudia;
 // pub mod typst_timetable;
 
-pub trait ExportObject<S = ()> {
+pub trait ExportObject {
     /// Export contents to a `Vec<u8>` buffer, with optional parameters
-    fn export_to_buffer(&mut self, world: &mut World, buffer: &mut Vec<u8>, input: S);
+    fn export_to_buffer(&mut self, buffer: &mut Vec<u8>);
     /// Export contents and save them on disk, with optional parameters
-    fn export_to_file(&mut self, world: &mut World, input: S) {
+    fn export_to_file(&mut self) {
         let mut buffer = Vec::new();
-        self.export_to_buffer(world, &mut buffer, input);
+        self.export_to_buffer(&mut buffer);
         let mut filename = String::new();
         filename.push_str(self.filename().as_ref());
         filename.push_str(self.extension().as_ref());

@@ -12,76 +12,15 @@ use crate::{
     units::{distance::Distance, time::TimetableTime},
 };
 use bevy::{platform::collections::HashMap, prelude::*};
-use egui_i18n::tr;
 use itertools::Itertools;
 use moonshine_core::kind::*;
-use pest::Parser;
-use pest_derive::Parser;
+use paiagram_oudia::{Direction, PassingMode, TimetableEntry as OuDiaTimetableEntry, parse_oud2};
 
-#[derive(Parser)]
-#[grammar = "import/oudia.pest"]
-pub struct OUD2Parser;
-
-#[derive(Debug)]
-pub enum Structure<'a> {
-    Struct(&'a str, Vec<Structure<'a>>),
-    Pair(&'a str, Value<'a>),
-}
-
-#[derive(Debug)]
-pub enum Value<'a> {
-    Single(&'a str),
-    List(Vec<&'a str>),
-}
-
-pub fn parse_oud2_to_ast(file: &str) -> Result<Structure<'_>, pest::error::Error<Rule>> {
-    let oud2 = OUD2Parser::parse(Rule::file, file)?
-        .next()
-        .unwrap()
-        .into_inner()
-        .next()
-        .unwrap();
-    use pest::iterators::Pair;
-    fn parse_struct(pair: Pair<Rule>) -> Structure {
-        match pair.as_rule() {
-            Rule::r#struct => {
-                let mut inner = pair.into_inner();
-                let name = inner.next().unwrap().as_str();
-                let mut fields = Vec::new();
-                for field_pair in inner {
-                    let field_struct = parse_struct(field_pair);
-                    fields.push(field_struct);
-                }
-                Structure::Struct(name, fields)
-            }
-            Rule::wrapper => {
-                let inner = pair.into_inner();
-                let name = "file";
-                let mut fields = Vec::new();
-                for field_pair in inner {
-                    let field_struct = parse_struct(field_pair);
-                    fields.push(field_struct);
-                }
-                Structure::Struct(name, fields)
-            }
-            Rule::kvpair => {
-                let mut inner = pair.into_inner();
-                let key = inner.next().unwrap().as_str();
-                let val = inner.next().unwrap();
-                let val = match val.as_rule() {
-                    Rule::value => Value::Single(val.as_str()),
-                    Rule::list => {
-                        let list_vals = val.into_inner().map(|v| v.as_str()).collect();
-                        Value::List(list_vals)
-                    }
-                    _ => unreachable!(),
-                };
-                Structure::Pair(key, val)
-            }
-            _ => unreachable!(),
-        }
-    }
-    Ok(parse_struct(oud2))
+#[derive(Debug, Clone, Copy)]
+struct TimetableEntry {
+    passing_mode: PassingMode,
+    arrival: Option<TimetableTime>,
+    departure: Option<TimetableTime>,
 }
 
 pub fn load_oud(
@@ -99,8 +38,7 @@ pub fn load_oud(
         }
     };
     info!("Loading OUD/OUD2 data...");
-    let ast = parse_oud2_to_ast(&str).expect("Failed to parse OUD/OUD2 file");
-    let root = parse_ast(&ast).expect("Failed to convert OUD/OUD2 AST to internal representation");
+    let root = parse_oud2(&str).expect("Failed to parse OUD/OUD2 file");
     let mut station_map: HashMap<String, Instance<StationComponent>> = HashMap::new();
     for line in root.lines {
         let mut stations: Vec<Option<Instance<StationComponent>>> = vec![None; line.stations.len()];
@@ -124,12 +62,13 @@ pub fn load_oud(
             .classes
             .into_iter()
             .map(|it| {
+                let [r, g, b] = it.color;
                 commands
                     .spawn(ClassBundle {
                         class: ClassComponent::default(),
                         name: Name::new(it.name),
                         stroke: DisplayedStroke {
-                            color: DisplayColor::Custom(it.color),
+                            color: DisplayColor::Custom(egui::Color32::from_rgb(r, g, b)),
                             width: 1.0,
                         },
                     })
@@ -161,14 +100,27 @@ pub fn load_oud(
         // TODO: find a method to support multiple diagrams
         for diagram in line.diagrams.into_iter().take(1) {
             for train in diagram.trains {
+                let mut times: Vec<Option<TimetableEntry>> = train
+                    .times
+                    .into_iter()
+                    .map(|entry| entry.map(convert_timetable_entry))
+                    .collect();
+                let time_iter = times.iter_mut().flat_map(|t| {
+                    std::iter::once(t).flatten().flat_map(|t| {
+                        std::iter::once(&mut t.arrival)
+                            .flatten()
+                            .chain(std::iter::once(&mut t.departure).flatten())
+                    })
+                });
+                super::normalize_times(time_iter);
+
                 let trip_class = train
                     .class_index
                     .map_or(class_resource.default_class, |idx| class_instances[idx]);
                 commands
                     .spawn(TripBundle::new(&train.name, TripClass(trip_class.entity())))
                     .with_children(|bundle| {
-                        for (stop, mut times) in &train
-                            .times
+                        for (stop, mut times) in &times
                             .into_iter()
                             .enumerate()
                             .filter_map(|(i, time)| {
@@ -207,334 +159,10 @@ pub fn load_oud(
     }
 }
 
-#[derive(Debug)]
-struct Root {
-    version: String,
-    lines: Vec<LineMeta>,
-}
-
-#[derive(Debug)]
-struct LineMeta {
-    name: String,
-    stations: Vec<Station>,
-    diagrams: Vec<Diagram>,
-    classes: Vec<TrainClass>,
-}
-
-#[derive(Debug)]
-struct Station {
-    name: String,
-    branch_index: Option<usize>,
-    loop_index: Option<usize>,
-    break_interval: bool,
-}
-
-#[derive(Debug)]
-struct Diagram {
-    name: String,
-    trains: Vec<Train>,
-}
-
-#[derive(Debug, Clone, Copy)]
-enum Direction {
-    // kudari
-    Down,
-    // nobori
-    Up,
-}
-
-#[derive(Debug)]
-struct Train {
-    direction: Direction,
-    name: String,
-    times: Vec<Option<TimetableEntry>>,
-    class_index: Option<usize>,
-}
-
-#[derive(Debug, Clone, Copy)]
-enum PassingMode {
-    Stop,
-    Pass,
-    NoOperation,
-}
-
-#[derive(Debug, Clone, Copy)]
-struct TimetableEntry {
-    passing_mode: PassingMode,
-    arrival: Option<TimetableTime>,
-    departure: Option<TimetableTime>,
-    track: Option<usize>,
-}
-
-#[derive(Debug, Clone)]
-struct TrainClass {
-    name: String,
-    color: egui::Color32,
-}
-
-use Structure::*;
-use Value::*;
-use anyhow::{Context, Result, anyhow};
-pub fn parse_ast(ast: &Structure) -> Result<Root> {
-    let Struct(_, v) = ast else {
-        return Err(anyhow!("Expected root structure"));
-    };
-    let mut version = Option::None;
-    let mut lines = Vec::new();
-    let mut unnamed_line_counter = 0;
-    for field in v {
-        match field {
-            Struct(k, v) if *k == "Rosen" => {
-                lines.push(parse_line_meta(v, &mut unnamed_line_counter)?);
-            }
-            Pair(k, Single(v)) if *k == "FileType" => {
-                version = Some(v.to_string());
-            }
-            _ => {}
-        }
-    }
-    Ok(Root {
-        version: version.ok_or(anyhow!("File does not have a version"))?,
-        lines,
-    })
-}
-fn parse_line_meta(fields: &[Structure], unnamed_line_counter: &mut usize) -> Result<LineMeta> {
-    let mut name: Option<String> = None;
-    let mut stations = Vec::new();
-    let mut diagrams = Vec::new();
-    let mut classes = Vec::new();
-    let mut unnamed_station_counter = 0;
-    let mut unnamed_diagram_counter = 0;
-    let mut unnamed_train_counter = 0;
-    for field in fields {
-        match field {
-            Pair(k, Single(v)) if *k == "Rosenmei" => {
-                name = Some(v.to_string());
-            }
-            Struct(k, v) if *k == "Eki" => {
-                stations.push(parse_station(v, &mut unnamed_station_counter)?);
-            }
-            Struct(k, v) if *k == "Dia" => {
-                diagrams.push(parse_diagram(
-                    v,
-                    &mut unnamed_diagram_counter,
-                    &mut unnamed_train_counter,
-                )?);
-            }
-            Struct(k, v) if *k == "Ressyasyubetsu" => classes.push(parse_class(v)),
-            _ => {}
-        }
-    }
-    Ok(LineMeta {
-        name: name.unwrap_or_else(|| {
-            *unnamed_line_counter += 1;
-            let name = tr!("oud2-unnamed-line", {
-                number: unnamed_line_counter.to_string()
-            });
-            name
-        }),
-        stations,
-        diagrams,
-        classes,
-    })
-}
-
-fn parse_station(fields: &[Structure], unnamed_station_counter: &mut usize) -> Result<Station> {
-    let mut name: Option<String> = None;
-    let mut branch_index: Option<usize> = None;
-    let mut loop_index: Option<usize> = None;
-    let mut kudari_display = false;
-    let mut nobori_display = false;
-    for field in fields {
-        match field {
-            Pair(k, Single(v)) if *k == "Ekimei" => {
-                name = Some(v.to_string());
-            }
-            // The "brunch" here is intended - it is spelling mistake in the original software
-            Pair(k, Single(v)) if *k == "BrunchCoreEkiIndex" => {
-                branch_index = Some(
-                    v.parse::<usize>()
-                        .map_err(|e| anyhow!("Failed to parse branch index: {}", e))?,
-                );
-            }
-            Pair(k, Single(v)) if *k == "LoopOriginEkiIndex" => {
-                loop_index = Some(
-                    v.parse::<usize>()
-                        .map_err(|e| anyhow!("Failed to parse loop index: {}", e))?,
-                );
-            }
-            Pair(k, List(v)) if *k == "JikokuhyouJikokuDisplayKudari" => {
-                kudari_display = v.len() == 2 && [v[0], v[1]] == ["1", "0"];
-            }
-            Pair(k, List(v)) if *k == "JikokuhyouJikokuDisplayNobori" => {
-                nobori_display = v.len() == 2 && [v[0], v[1]] == ["0", "1"];
-            }
-            _ => {}
-        }
-    }
-    let break_interval = kudari_display && nobori_display;
-    Ok(Station {
-        name: name.unwrap_or_else(|| {
-            *unnamed_station_counter += 1;
-            let name = tr!("oud2-unnamed-station", {
-                number: unnamed_station_counter.to_string()
-            });
-            name
-        }),
-        branch_index,
-        loop_index,
-        break_interval,
-    })
-}
-
-fn parse_diagram(
-    fields: &[Structure],
-    unnamed_diagram_counter: &mut usize,
-    unnamed_train_counter: &mut usize,
-) -> Result<Diagram> {
-    let mut name: Option<String> = None;
-    let mut trains: Vec<Train> = Vec::new();
-    for field in fields {
-        match field {
-            Pair(k, Single(v)) if *k == "DiaName" => {
-                name = Some(v.to_string());
-            }
-            Struct(k, v) if *k == "Kudari" => {
-                trains.extend(parse_trains(Direction::Down, v, unnamed_train_counter)?);
-            }
-            Struct(k, v) if *k == "Nobori" => {
-                trains.extend(parse_trains(Direction::Up, v, unnamed_train_counter)?);
-            }
-            _ => {}
-        }
-    }
-    Ok(Diagram {
-        name: name.unwrap_or_else(|| {
-            *unnamed_diagram_counter += 1;
-            let name = tr!("oud2-unnamed-diagram", {
-                number: unnamed_diagram_counter.to_string()
-            });
-            name
-        }),
-        trains,
-    })
-}
-
-fn parse_trains(
-    direction: Direction,
-    fields: &[Structure],
-    unnamed_train_counter: &mut usize,
-) -> Result<Vec<Train>> {
-    fn parse_time(str: &str) -> Result<Option<TimetableEntry>> {
-        let mut entry = TimetableEntry {
-            passing_mode: PassingMode::NoOperation,
-            arrival: None,
-            departure: None,
-            track: None,
-        };
-        if str.is_empty() {
-            return Ok(None);
-        }
-        let parts = OUD2Parser::parse(Rule::timetable_entry, str)
-            .map_err(|e| anyhow!(e))?
-            .next()
-            .ok_or(anyhow!("Unexpected error while unwrapping"))?;
-        for field in parts.into_inner() {
-            match field.as_rule() {
-                Rule::service_mode => match field.as_str() {
-                    "1" => entry.passing_mode = PassingMode::Stop,
-                    "2" => entry.passing_mode = PassingMode::Pass,
-                    _ => entry.passing_mode = PassingMode::NoOperation,
-                },
-                Rule::arrival => entry.arrival = TimetableTime::from_oud2_str(field.as_str()),
-                Rule::departure => entry.departure = TimetableTime::from_oud2_str(field.as_str()),
-                Rule::track => {
-                    // TODO
-                }
-                _ => {}
-            }
-        }
-        Ok(Some(entry))
-    }
-    let mut parse_trains = |fields: &[Structure]| -> Result<Train> {
-        let mut name: Option<String> = None;
-        let mut entries: Vec<Option<TimetableEntry>> = Vec::new();
-        let mut class_index: Option<usize> = None;
-        for field in fields {
-            match field {
-                Pair(k, Single(v)) if *k == "Ressyabangou" && !v.trim().is_empty() => {
-                    name = Some(v.to_string());
-                }
-                Pair(k, v) if *k == "EkiJikoku" => {
-                    let times = match v {
-                        Single(s) => &vec![*s],
-                        List(l) => l,
-                    };
-                    for time in times {
-                        entries.push(parse_time(time)?);
-                    }
-                }
-                Pair(k, Single(v)) if *k == "Syubetsu" => {
-                    class_index = Some(v.parse::<usize>().map_err(|e| anyhow!("{:?}", e))?)
-                }
-                _ => {}
-            }
-        }
-        let time_iter = entries.iter_mut().flat_map(|t| {
-            std::iter::once(t).flatten().flat_map(|t| {
-                std::iter::once(&mut t.arrival)
-                    .flatten()
-                    .chain(std::iter::once(&mut t.departure).flatten())
-            })
-        });
-        super::normalize_times(time_iter);
-        Ok(Train {
-            direction,
-            name: name.unwrap_or_else(|| {
-                *unnamed_train_counter += 1;
-                let name = tr!("oud2-unnamed-train", {
-                    number: unnamed_train_counter.to_string()
-                });
-                name
-            }),
-            times: entries,
-            class_index,
-        })
-    };
-    let mut trains = Vec::new();
-    for field in fields {
-        match field {
-            Struct(k, v) if *k == "Ressya" => {
-                trains.push(parse_trains(v)?);
-            }
-            _ => {}
-        }
-    }
-    Ok(trains)
-}
-
-fn parse_class(fields: &[Structure]) -> TrainClass {
-    let mut name: Option<String> = None;
-    let mut color: Option<egui::Color32> = None;
-    for field in fields {
-        match field {
-            Pair(k, Single(v)) if *k == "Syubetsumei" => {
-                name = Some(v.to_string());
-            }
-            Pair(k, Single(v)) if *k == "DiagramSenColor" => {
-                // AARRGGBB
-                let (r, g, b) = (
-                    u8::from_str_radix(&v[2..=3], 16).unwrap(),
-                    u8::from_str_radix(&v[4..=5], 16).unwrap(),
-                    u8::from_str_radix(&v[6..=7], 16).unwrap(),
-                );
-                color = Some(egui::Color32::from_rgb(r, g, b))
-            }
-            _ => {}
-        }
-    }
-    TrainClass {
-        name: name.unwrap(),
-        color: color.unwrap(),
+fn convert_timetable_entry(entry: OuDiaTimetableEntry) -> TimetableEntry {
+    TimetableEntry {
+        passing_mode: entry.passing_mode,
+        arrival: entry.arrival.map(TimetableTime),
+        departure: entry.departure.map(TimetableTime),
     }
 }

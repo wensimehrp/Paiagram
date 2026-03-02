@@ -6,6 +6,7 @@ members = [
     "crates/paiagram-timing",
     "crates/paiagram-ui",
     "crates/paiagram-rw",
+    "crates/paiagram-oudia",
 ]
 default-members = ["crates/paiagram-app"]
 resolver = "3"

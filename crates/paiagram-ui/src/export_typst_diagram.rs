@@ -11,8 +11,8 @@ use std::io::Write;
 
 pub struct TypstModule;
 
-impl ExportObject<()> for TypstModule {
-    fn export_to_buffer(&mut self, world: &mut World, buffer: &mut Vec<u8>, input: ()) {
+impl ExportObject for TypstModule {
+    fn export_to_buffer(&mut self, buffer: &mut Vec<u8>) {
         buffer.write(include_bytes!("./typst_diagram.typ")).unwrap();
     }
     fn extension(&self) -> impl AsRef<str> {
@@ -20,7 +20,11 @@ impl ExportObject<()> for TypstModule {
     }
 }
 
-pub struct TypstDiagram;
+pub struct TypstDiagram<'a> {
+    pub route_entity: Entity,
+    pub trips: &'a [Entity],
+    pub world: &'a mut World,
+}
 
 #[derive(Serialize)]
 struct OutputRoot {
@@ -58,25 +62,23 @@ fn default_calc_context(route: &Route, route_entity: Entity) -> CalcContext {
     }
 }
 
-impl ExportObject<(Entity, &[Entity])> for TypstDiagram {
+impl<'a> ExportObject for TypstDiagram<'a> {
     fn export_to_buffer(
         &mut self,
-        world: &mut World,
         buffer: &mut Vec<u8>,
-        (route_entity, trips): (Entity, &[Entity]),
     ) {
-        let mut rendered_vehicle_buf = Vec::with_capacity(trips.len());
-        let route = world.get::<Route>(route_entity).unwrap();
-        let ctx = default_calc_context(&route, route_entity);
-        world
-            .run_system_cached_with(calc, (&mut rendered_vehicle_buf, ctx, trips))
+        let mut rendered_vehicle_buf = Vec::with_capacity(self.trips.len());
+        let route = self.world.get::<Route>(self.route_entity).unwrap();
+        let ctx = default_calc_context(&route, self.route_entity);
+        self.world
+            .run_system_cached_with(calc, (&mut rendered_vehicle_buf, ctx, self.trips))
             .unwrap();
         let mut stations_output = Vec::new();
         let mut trips_output = Vec::new();
-        world
-            .run_system_cached_with(write_stations, (route_entity, &mut stations_output, 1.0))
+        self.world
+            .run_system_cached_with(write_stations, (self.route_entity, &mut stations_output, 1.0))
             .unwrap();
-        world
+        self.world
             .run_system_cached_with(write_trips, (&rendered_vehicle_buf, &mut trips_output))
             .unwrap();
         let root = OutputRoot {

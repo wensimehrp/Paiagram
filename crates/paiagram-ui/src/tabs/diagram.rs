@@ -5,8 +5,7 @@ use crate::{GlobalTimer, OpenOrFocus};
 use bevy::prelude::*;
 use egui::epaint::TextShape;
 use egui::{
-    Align2, Color32, FontId, Id, Margin, NumExt, Painter, Pos2, Rect, Sense, Stroke, Ui, Vec2,
-    WidgetText, vec2,
+    Align2, Color32, FontId, Id, Margin, NumExt, Painter, Pos2, Rect, Sense, Stroke, Ui, Vec2, vec2,
 };
 use egui_i18n::tr;
 use emath::Numeric;
@@ -238,15 +237,28 @@ impl Tab for DiagramTab {
     }
     fn export_display(&mut self, world: &mut World, ui: &mut Ui) {
         use crate::export_typst_diagram::{TypstDiagram, TypstModule};
+        use paiagram_core::export::oudia::OuDia;
         ui.strong(tr!("tab-diagram-save-typst-module"));
         ui.label(tr!("tab-diagram-save-typst-module-desc"));
         if ui.button(tr!("export")).clicked() {
-            TypstModule.export_to_file(world, ());
+            TypstModule.export_to_file();
         }
         ui.strong(tr!("tab-diagram-export-json-data"));
         ui.label(tr!("tab-diagram-export-json-data"));
         if ui.button(tr!("export")).clicked() {
-            TypstDiagram.export_to_file(world, (self.route_entity, &self.trips));
+            TypstDiagram {
+                route_entity: self.route_entity,
+                world: world,
+                trips: &self.trips,
+            }
+            .export_to_file();
+        }
+        if ui.button("Export to OuDia").clicked() {
+            OuDia {
+                route_entity: self.route_entity,
+                world: world,
+            }
+            .export_to_file();
         }
     }
     fn edit_display(&mut self, world: &mut World, ui: &mut Ui) {

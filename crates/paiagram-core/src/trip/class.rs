@@ -59,6 +59,7 @@ pub struct ClassBundle {
 
 #[derive(QueryData)]
 pub struct ClassQuery {
+    pub entity: Entity,
     pub vehicles: &'static Class,
     pub name: &'static Name,
     pub stroke: &'static DisplayedStroke,

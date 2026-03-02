@@ -1,0 +1,11 @@
+[package]
+name = "paiagram-oudia"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow = "1.0.101"
+pest = "2.8.6"
+pest_derive = "2.8.6"
+smallvec = "1.15.1"

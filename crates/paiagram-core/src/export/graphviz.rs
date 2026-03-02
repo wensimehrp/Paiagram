@@ -3,12 +3,15 @@ use petgraph::dot;
 
 use crate::graph::Graph;
 
-#[derive(Event)]
-pub struct Graphviz;
+pub struct Graphviz<'a> {
+    world: &'a mut World,
+}
 
-impl super::ExportObject for Graphviz {
-    fn export_to_buffer(&mut self, world: &mut World, buffer: &mut Vec<u8>, _input: ()) {
-        world.run_system_once_with(make_dot_string, buffer);
+impl<'a> super::ExportObject for Graphviz<'a> {
+    fn export_to_buffer(&mut self, buffer: &mut Vec<u8>) {
+        self.world
+            .run_system_once_with(make_dot_string, buffer)
+            .unwrap();
     }
     fn extension(&self) -> impl AsRef<str> {
         ".dot"
