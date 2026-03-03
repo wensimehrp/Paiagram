@@ -1,11 +1,9 @@
-name: Deploy WASM
+name: Nightly Build & Pages Deploy
 
 on:
   push:
     branches:
       - main
-    paths:
-      - 'crates/**'
   workflow_dispatch:
 
 concurrency:
@@ -34,15 +32,14 @@ jobs:
       - name: Download Sarasa fonts
         run: nix develop .#default --command just get-fonts
 
-      - name: Fetch submodules
-        run: git submodule update --init
-
       - name: Prepare Pages artifact
-        run: nix develop .#default --command just prep-wasm
+        run: nix develop .#default --command just nigthly-build
 
-      - name: Upload artifacts
-        uses: peaceiris/actions-gh-pages@v4
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v4
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./dist
-          destination_dir: ./nightly
+          path: dist
+
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4

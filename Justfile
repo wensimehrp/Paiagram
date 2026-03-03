@@ -28,14 +28,17 @@ build-wasm:
 
 prep-docs:
     shiroa build docs --mode static-html --path-to-root Paiagram/nightly-docs
-    rm -rf dist
-    mkdir -p dist
-    cp -r docs/dist/. dist
+    rm -rf dist/nightly-docs
+    mkdir -p dist/nightly-docs
+    cp -r docs/dist/. dist/nightly-docs
 
 prep-wasm: rust-docs build-wasm
-    rm -rf dist
-    mkdir -p dist
-    mkdir -p dist/api-docs
-    cp -r web/nightly/* dist
-    cp -r target/doc/* dist/api-docs/
-    cp -r wasm-out/* dist/
+    rm -rf dist/nigthly
+    mkdir -p dist/nigthly
+    mkdir -p dist/nigthly/api-docs
+    cp -r web/nightly/* dist/nigthly
+    cp -r target/doc/* dist/nigthly/api-docs/
+    cp -r wasm-out/* dist/nigthly/
+
+nigthly-build: prep-docs prep-wasm
+    cp -r web/* dist/
