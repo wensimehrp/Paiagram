@@ -55,8 +55,6 @@ impl PaiagramApp {
             class::ClassPlugin,
             ReadPlugin,
             SavePlugin,
-            bevy::diagnostic::DiagnosticsPlugin,
-            bevy::diagnostic::FrameTimeDiagnosticsPlugin::default(),
         ));
         info!("Initialized Bevy App.");
         #[cfg(not(target_arch = "wasm32"))]
