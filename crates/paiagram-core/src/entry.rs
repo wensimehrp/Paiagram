@@ -1,7 +1,7 @@
 use bevy::{ecs::query::QueryData, prelude::*};
 use moonshine_core::prelude::{MapEntities, ReflectMapEntities};
 
-use crate::units::time::{Duration, TimetableTime};
+use crate::{trip::TripQueryItem, units::time::{Duration, TimetableTime}};
 
 pub struct EntryPlugin;
 impl Plugin for EntryPlugin {
@@ -129,13 +129,14 @@ impl<'w, 's> EntryQueryItem<'w, 's> {
     pub fn stop_duration(&self) -> Option<Duration> {
         self.estimate.map(|e| e.dep - e.arr)
     }
-    pub fn travel_duration<'a>(
+    pub fn travel_duration(
         &self,
-        parent_q: &Query<'a, 'a, &crate::trip::TripSchedule>,
-        entry_q: &Query<'a, 'a, (&EntryMode, Option<&EntryEstimate>)>,
+        parent_it: &TripQueryItem,
+        entry_q: &Query<(&EntryMode, Option<&EntryEstimate>)>,
     ) -> Option<Duration> {
+        assert_eq!(parent_it.entity, self.parent_schedule.parent());
         let arr = self.estimate?.arr;
-        let parent_schedule = parent_q.get(self.parent_schedule.parent()).ok()?;
+        let parent_schedule = parent_it.schedule;
         let idx = parent_schedule.iter().position(|e| e == self.entity)?;
         if idx == 0 {
             return Some(arr.as_duration());
@@ -143,6 +144,7 @@ impl<'w, 's> EntryQueryItem<'w, 's> {
         let prev_dep = entry_q
             .iter_many(parent_schedule[0..idx].iter().rev())
             .find(|(mode, _)| match (mode.arr, mode.dep) {
+                (Some(TravelMode::For(_)), _) => true,
                 (Some(TravelMode::At(_)), _) => true,
                 (_, TravelMode::At(_)) => true,
                 _ => false,

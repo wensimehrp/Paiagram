@@ -1,6 +1,7 @@
 use super::{Navigatable, Tab};
 use crate::tabs::trip::TripTab;
 use crate::widgets::buttons;
+use crate::widgets::timetable_popup::{arrival_popup, departure_popup};
 use crate::{GlobalTimer, OpenOrFocus};
 use bevy::prelude::*;
 use egui::epaint::TextShape;
@@ -20,7 +21,7 @@ use paiagram_core::route::Route;
 use paiagram_core::station::Station;
 use paiagram_core::trip::class::DisplayedStroke;
 use paiagram_core::trip::routing::AddEntryToTrip;
-use paiagram_core::trip::{Trip, TripBundle, TripClass, TripSchedule};
+use paiagram_core::trip::{Trip, TripBundle, TripClass, TripQuery, TripSchedule};
 use paiagram_core::units::time::{Duration, Tick, TimetableTime};
 use paiagram_raptor::Journey;
 use serde::{Deserialize, Serialize};
@@ -785,6 +786,7 @@ fn main_display(tab: &mut DiagramTab, world: &mut World, ui: &mut egui::Ui) {
                             (i, j),
                             ui,
                             &mut painter,
+                            trip.entity,
                             tab.navi.zoom.x,
                             button_strength.min(selection_strength),
                         ),
@@ -938,21 +940,34 @@ fn handle_selection(drawn_trips: &[DrawnTrip], pos: Pos2) -> Option<SelectedItem
 }
 
 fn draw_handles(
-    (InRef(p), In(e), In(salt), InMut(ui), InMut(mut painter), In(zoom_x), In(strength)): (
+    (
+        InRef(p),
+        In(e),
+        In(salt),
+        InMut(ui),
+        InMut(mut painter),
+        In(parent_entity),
+        In(zoom_x),
+        In(strength),
+    ): (
         InRef<[Pos2]>,
         In<Entity>,
         In<impl std::hash::Hash + Copy>,
         InMut<Ui>,
         InMut<Painter>,
+        In<Entity>,
         In<f32>,
         In<f32>,
     ),
     entry_q: Query<EntryQuery>,
+    entry_mode_q: Query<(&EntryMode, Option<&EntryEstimate>)>,
+    trip_q: Query<TripQuery>,
     name_q: Query<&Name>,
     mut commands: Commands,
     mut prev_drag_delta: Local<Option<f32>>,
 ) {
     let entry = entry_q.get(e).unwrap();
+    let trip = trip_q.get(parent_entity).unwrap();
     if entry.is_derived() || strength <= 0.1 {
         return;
     }
@@ -981,6 +996,13 @@ fn draw_handles(
     let arrival_rect = Rect::from_center_size(arrival_pos, Vec2::splat(HANDLE_SIZE));
     let arrival_id = ui.id().with((e, "arr", salt));
     let arrival_response = ui.interact(arrival_rect, arrival_id, Sense::click_and_drag());
+    arrival_popup(
+        &arrival_response,
+        &entry,
+        &trip,
+        &entry_mode_q,
+        &mut commands,
+    );
     let arrival_fill = if arrival_response.hovered() {
         Color32::GRAY
     } else {
@@ -1058,6 +1080,7 @@ fn draw_handles(
     let departure_rect = Rect::from_center_size(departure_pos, Vec2::splat(HANDLE_SIZE));
     let departure_id = ui.id().with((e, "dep", salt));
     let departure_response = ui.interact(departure_rect, departure_id, dep_sense);
+    departure_popup(&departure_response, &entry, &mut commands);
     let departure_fill = if departure_response.hovered() {
         Color32::GRAY
     } else {

@@ -382,19 +382,15 @@ pub fn calc(
                             (height - ctx.y_offset as f32) * ctx.zoom_y + ctx.screen_rect.top(),
                         );
 
-                        let departure_pos = if entry.has_departure {
-                            Pos2::new(
-                                super::draw_lines::ticks_to_screen_x(
-                                    departure_ticks.0,
-                                    ctx.screen_rect,
-                                    ctx.ticks_per_screen_unit,
-                                    ctx.x_offset.0,
-                                ),
-                                (height - ctx.y_offset as f32) * ctx.zoom_y + ctx.screen_rect.top(),
-                            )
-                        } else {
-                            arrival_pos
-                        };
+                        let departure_pos = Pos2::new(
+                            super::draw_lines::ticks_to_screen_x(
+                                departure_ticks.0,
+                                ctx.screen_rect,
+                                ctx.ticks_per_screen_unit,
+                                ctx.x_offset.0,
+                            ),
+                            (height - ctx.y_offset as f32) * ctx.zoom_y + ctx.screen_rect.top(),
+                        );
 
                         segment.push(TripPoint {
                             arr: arrival_pos,

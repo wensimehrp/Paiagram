@@ -212,7 +212,7 @@ impl ops::SubAssign<Duration> for TimetableTime {
     }
 }
 
-#[derive(Reflect, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Reflect, Debug, Default, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Duration(pub i32);
 
 impl Duration {
@@ -224,6 +224,20 @@ impl Duration {
         let minutes = (self.0 % 3600) / 60;
         let seconds = self.0 % 60;
         (hours, minutes, seconds)
+    }
+}
+
+impl emath::Numeric for Duration {
+    const INTEGRAL: bool = true;
+    const MIN: Self = Self(i32::MIN);
+    const MAX: Self = Self(i32::MAX);
+
+    fn from_f64(num: f64) -> Self {
+        Self(num as i32)
+    }
+
+    fn to_f64(self) -> f64 {
+        self.0 as f64
     }
 }
 

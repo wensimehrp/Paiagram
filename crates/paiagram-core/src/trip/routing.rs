@@ -7,6 +7,7 @@ use crate::{
     },
     graph::Graph,
     interval::IntervalQuery,
+    station::ParentStationOrStation,
     trip::{Trip, TripClass, TripQuery, TripSchedule},
     units::{
         distance::Distance,
@@ -139,6 +140,7 @@ fn recalculate_estimate(
     changed_entries: Query<&ChildOf, Changed<EntryMode>>,
     trip_q: Query<TripQuery>,
     entry_q: Query<(Entity, &EntryMode, &EntryStop)>,
+    parent_station_or_station: Query<ParentStationOrStation>,
     interval_q: Query<IntervalQuery>,
     mut commands: Commands,
     graph: Res<Graph>,
@@ -217,22 +219,21 @@ fn recalculate_estimate(
                 }
                 continue;
             };
-            // stopping time should not be counted while average velocity
+            let initial_t = last_t;
+            let total_stop_dur: Duration = flexible_stack.iter().map(|(_, _, d)| *d).sum();
             let total_dur = match params {
                 UnwindParams::ForAt(d, _t) => d,
                 UnwindParams::ForFor(ad, _dd) => ad,
-                UnwindParams::At(t) => {
-                    t - last_t - flexible_stack.iter().map(|(_, _, d)| d).copied().sum()
-                }
+                UnwindParams::At(t) => t - initial_t,
             };
-            // if flexible_stack.is_empty() {
-            //     continue;
-            // }
+            // stopping time should not be counted while average velocity
+            let travel_dur = total_dur - total_stop_dur;
             let mut distance_stack = Vec::with_capacity(flexible_stack.len());
 
             for (ps, cs) in std::iter::once(last_s)
                 .chain(flexible_stack.iter().map(|(_, s, _)| *s))
                 .chain(std::iter::once(stop.entity()))
+                .map(|e| parent_station_or_station.get(e).unwrap().parent())
                 .tuple_windows()
             {
                 let Some(weight) = graph
@@ -250,50 +251,31 @@ fn recalculate_estimate(
             }
             debug_assert_eq!(distance_stack.len(), flexible_stack.len() + 1);
             let total_dis = distance_stack.iter().cloned().sum::<Distance>();
-            // if total_dur.0 <= 0 || total_dis.0 <= 0 {
-            //     for (e, _, _) in flexible_stack.drain(..) {
-            //         commands.entity(e).remove::<EntryEstimate>();
-            //     }
-            //     continue;
-            // }
             let mut fi = flexible_stack.drain(..);
             let mut di = distance_stack.drain(..);
-            match params {
-                UnwindParams::At(_) => {
-                    let average_v = total_dis / total_dur;
-                    while let (Some((e, _, dur)), Some(dis)) = (fi.next(), di.next()) {
-                        last_t += dis / average_v;
-                        commands.entity(e).insert(EntryEstimate {
-                            arr: last_t,
-                            dep: last_t + dur,
-                        });
-                    }
-                }
-                UnwindParams::ForAt(_, _) | UnwindParams::ForFor(_, _) => {
-                    while let (Some((e, _, dur)), Some(dis)) = (fi.next(), di.next()) {
-                        let frac = dis.0 as f32 / total_dis.0 as f32;
-                        last_t += Duration((frac * total_dis.0 as f32) as i32);
-                        commands.entity(e).insert(EntryEstimate {
-                            arr: last_t,
-                            dep: last_t + dur,
-                        });
-                    }
-                }
+            let average_v = total_dis / travel_dur;
+            while let (Some((e, _, dur)), Some(dis)) = (fi.next(), di.next()) {
+                last_t += dis / average_v;
+                commands.entity(e).insert(EntryEstimate {
+                    arr: last_t,
+                    dep: last_t + dur,
+                });
+                last_t += dur;
             }
             match params {
                 UnwindParams::At(_) => {}
-                UnwindParams::ForAt(_, t) => {
+                UnwindParams::ForAt(d, t) => {
                     commands.entity(entry_entity).insert(EntryEstimate {
-                        arr: last_t,
+                        arr: initial_t + d,
                         dep: t,
                     });
                 }
-                UnwindParams::ForFor(_, d) => {
+                UnwindParams::ForFor(ad, dd) => {
                     commands.entity(entry_entity).insert(EntryEstimate {
-                        arr: last_t,
-                        dep: last_t + d,
+                        arr: initial_t + ad,
+                        dep: initial_t + ad + dd,
                     });
-                    next_stable = Some((last_t + d, stop.entity()))
+                    next_stable = Some((initial_t + ad + dd, stop.entity()))
                 }
             }
         }

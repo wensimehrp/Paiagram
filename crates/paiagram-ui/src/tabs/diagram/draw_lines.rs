@@ -118,7 +118,7 @@ pub fn draw_time_lines(
             };
             let label = painter.layout_no_wrap(
                 text,
-                FontId::new(13.0, egui::FontFamily::Name("dia_pro".into())),
+                FontId::new(13.0, egui::FontFamily::Proportional),
                 current_stroke.color,
             );
             painter.galley(
