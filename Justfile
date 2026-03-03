@@ -33,12 +33,12 @@ prep-docs:
     cp -r docs/dist/. dist/nightly-docs
 
 prep-wasm: rust-docs build-wasm
-    rm -rf dist/nigthly
-    mkdir -p dist/nigthly
-    mkdir -p dist/nigthly/api-docs
-    cp -r web/nightly/* dist/nigthly
-    cp -r target/doc/* dist/nigthly/api-docs/
-    cp -r wasm-out/* dist/nigthly/
+    rm -rf dist/nightly
+    mkdir -p dist/nightly
+    mkdir -p dist/nightly/api-docs
+    cp -r web/nightly/* dist/nightly
+    cp -r target/doc/* dist/nightly/api-docs/
+    cp -r wasm-out/* dist/nightly/
 
-nigthly-build: prep-docs prep-wasm
+nightly-build: prep-docs prep-wasm
     cp -r web/* dist/
