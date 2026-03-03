@@ -13,6 +13,8 @@ impl MapEntities for InspectorTab {
 impl Tab for InspectorTab {
     const NAME: &'static str = "Inspector";
     fn main_display(&mut self, world: &mut World, ui: &mut egui::Ui) {
-        bevy_inspector_egui::bevy_inspector::ui_for_world(world, ui);
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            bevy_inspector_egui::bevy_inspector::ui_for_world(world, ui);
+        });
     }
 }
