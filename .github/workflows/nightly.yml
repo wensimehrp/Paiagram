@@ -32,6 +32,23 @@ jobs:
       - name: Download Sarasa fonts
         run: nix develop .#default --command just get-fonts
 
+      # TODO: move shiroa into nix instead of having it here
+      - name: Get shiroa latest commit hash
+        id: get-rev
+        run: echo "rev=$(git ls-remote https://github.com/Myriad-Dreamin/shiroa HEAD | awk '{ print $1 }')" >> $GITHUB_OUTPUT
+      - name: Cache shiroa
+        id: cache-shiroa
+        uses: actions/cache@v3
+        with:
+          path: ~/.cargo/bin/shiroa
+          key: ${{ runner.os }}-shiroa-${{ steps.get-rev.outputs.rev }}
+      - name: Install Rust
+        if: steps.cache-shiroa.outputs.cache-hit != 'true'
+        uses: dtolnay/rust-toolchain@stable
+      - name: Install shiroa
+        if: steps.cache-shiroa.outputs.cache-hit != 'true'
+        run: cargo install --git https://github.com/Myriad-Dreamin/shiroa --locked shiroa
+
       - name: Prepare Pages artifact
         run: nix develop .#default --command just nigthly-build
 
