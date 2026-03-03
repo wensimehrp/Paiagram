@@ -11,7 +11,9 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write
+  pages: write
+  contents: read
+  id-token: write
 
 jobs:
   build-and-deploy:
