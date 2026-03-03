@@ -8,9 +8,8 @@ mod widgets;
 
 use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 
-use bevy::diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
 use bevy::prelude::*;
-use egui::{Context, CornerRadius, Frame, Id, Margin, ScrollArea, Sense, Ui, UiBuilder};
+use egui::{Context, Frame, RichText, ScrollArea, Ui};
 use egui_tiles::{
     Behavior, ContainerKind, SimplificationOptions, Tile, TileId, Tiles, Tree, UiResponse,
 };
@@ -35,6 +34,7 @@ impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<MainUiState>()
             .init_resource::<AdditionalUiState>()
+            .init_resource::<FrameTimeHistory>()
             .init_resource::<GlobalTimer>()
             .init_resource::<UiModal>()
             .add_plugins(bevy_inspector_egui::DefaultInspectorConfigPlugin)
@@ -101,6 +101,35 @@ impl Modals {
 
 #[derive(Resource, Deref, DerefMut, Default)]
 struct UiModal(Option<Modals>);
+
+#[derive(Resource)]
+struct FrameTimeHistory {
+    values: [f32; Self::CAPACITY],
+    next_index: usize,
+}
+
+impl FrameTimeHistory {
+    const CAPACITY: usize = 255;
+
+    fn push(&mut self, dt_seconds: f32) {
+        self.values[self.next_index] = dt_seconds;
+        self.next_index = (self.next_index + 1) % Self::CAPACITY;
+    }
+
+    fn average_dt(&self) -> f32 {
+        let sum: f32 = self.values.iter().sum();
+        sum / Self::CAPACITY as f32
+    }
+}
+
+impl Default for FrameTimeHistory {
+    fn default() -> Self {
+        Self {
+            values: [0.0; Self::CAPACITY],
+            next_index: 0,
+        }
+    }
+}
 
 #[derive(Resource, Reflect)]
 #[reflect(Resource)]
@@ -228,19 +257,23 @@ impl MapEntities for MainTab {
 
 #[derive(Reflect, Resource, Serialize, Deserialize, Clone, Deref, DerefMut)]
 #[reflect(opaque, Resource, Serialize, Deserialize, MapEntities)]
-pub struct MainUiState(Tree<MainTab>);
+pub struct MainUiState {
+    #[deref]
+    tree: Tree<MainTab>,
+    maximized: Option<TileId>,
+}
 
 impl MainUiState {
     pub fn push_to_focused_leaf(&mut self, new_pane: MainTab) {
-        let new_id = self.0.tiles.insert_pane(new_pane);
+        let new_id = self.tree.tiles.insert_pane(new_pane);
 
         // Try to add it to the same Tabs container that is currently focused
-        if let Some(&active_id) = self.0.active_tiles().last() {
-            if let Some(parent_id) = self.0.tiles.parent_of(active_id) {
-                if let Some(Tile::Container(container)) = self.0.tiles.get_mut(parent_id) {
+        if let Some(&active_id) = self.tree.active_tiles().last() {
+            if let Some(parent_id) = self.tree.tiles.parent_of(active_id) {
+                if let Some(Tile::Container(container)) = self.tree.tiles.get_mut(parent_id) {
                     if container.kind() == ContainerKind::Tabs {
                         container.add_child(new_id);
-                        self.0.make_active(|id, _| id == new_id);
+                        self.tree.make_active(|id, _| id == new_id);
                         return;
                     }
                 }
@@ -257,17 +290,17 @@ impl MainUiState {
 
 impl Default for MainUiState {
     fn default() -> Self {
-        Self(Tree::new_tabs(
-            "main",
-            vec![MainTab::Start(StartTab::default())],
-        ))
+        Self {
+            tree: Tree::new_tabs("main", vec![MainTab::Start(StartTab::default())]),
+            maximized: None,
+        }
     }
 }
 
 impl MapEntities for MainUiState {
     fn map_entities<E: EntityMapper>(&mut self, entity_mapper: &mut E) {
         for pane in self
-            .0
+            .tree
             .tiles
             .iter_mut()
             .filter_map(|(_, p)| if let Tile::Pane(p) = p { Some(p) } else { None })
@@ -284,7 +317,7 @@ fn open_or_focus_tab(mut messages: MessageReader<OpenOrFocus>, mut state: ResMut
     for msg in messages.read() {
         let pane = &msg.0; // your pane data
 
-        if let Some(tile_id) = state.0.tiles.find_pane(pane) {
+        if let Some(tile_id) = state.tree.tiles.find_pane(pane) {
             // Already exists → just focus it
             state.make_active(|id, _| id == tile_id);
             state.set_visible(tile_id, true);
@@ -297,7 +330,8 @@ fn open_or_focus_tab(mut messages: MessageReader<OpenOrFocus>, mut state: ResMut
 
 struct MainTabViewer<'w> {
     world: &'w mut World,
-    last_focused_id: Option<TileId>,
+    last_focused_id: &'w mut Option<TileId>,
+    last_maximized_id: &'w mut Option<TileId>,
 }
 
 impl<'w> MainTabViewer<'w> {
@@ -406,7 +440,7 @@ impl<'w> Behavior<MainTab> for MainTabViewer<'w> {
             (drag_started_inside, clicked_inside)
         });
         if drag_started_inside || clicked_inside {
-            self.last_focused_id = Some(tile_id);
+            *self.last_focused_id = Some(tile_id);
         }
         Default::default()
     }
@@ -436,6 +470,10 @@ impl<'w> Behavior<MainTab> for MainTabViewer<'w> {
         _tabs: &egui_tiles::Tabs,
         _scroll_offset: &mut f32,
     ) {
+        // maximize
+        if ui.button("M").clicked() {
+            *self.last_maximized_id = *self.last_focused_id;
+        }
         let res = ui.button("+");
         egui::Popup::menu(&res).show(|ui| {
             self.add_popup(ui);
@@ -645,13 +683,13 @@ pub fn show_ui(ctx: &Context, world: &mut World) {
                         });
                     }
                 });
-                if let Some(fps) = world
-                    .resource::<DiagnosticsStore>()
-                    .get(&FrameTimeDiagnosticsPlugin::FPS)
-                    && let Some(val) = fps.smoothed()
-                {
-                    ui.monospace(format!("FPS: {:.2}", val));
-                }
+                let average_dt = {
+                    let mut frame_time_history = world.resource_mut::<FrameTimeHistory>();
+                    frame_time_history.push(ui.input(|r| r.stable_dt));
+                    frame_time_history.average_dt()
+                };
+                ui.monospace(format!("FPS: {:6.2}", 1.0_f32 / average_dt));
+                ui.monospace(format!("MS: {:5.2}", average_dt * 1000.0_f32));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let mut timer = world.resource_mut::<GlobalTimer>();
                     let mut seconds = timer.read_seconds();
@@ -706,18 +744,45 @@ pub fn show_ui(ctx: &Context, world: &mut World) {
                 .show(ctx, |ui| {
                     aus.ui(&mut tab_viewer, ui);
                 });
-            let mut tab_viewer = MainTabViewer {
-                world: &mut world,
-                last_focused_id: None,
-            };
             egui::CentralPanel::default()
                 .frame(Frame::default())
                 .show(ctx, |ui| {
-                    mus.0.ui(&mut tab_viewer, ui);
+                    let mut maximized = mus.maximized;
+                    if let Some(max_id) = mus.maximized
+                        && let Some(Tile::Pane(pane)) = mus.tree.tiles.get_mut(max_id)
+                    {
+                        let mut tab_viewer = MainTabViewer {
+                            world: &mut world,
+                            last_focused_id: &mut None,
+                            last_maximized_id: &mut None,
+                        };
+                        egui::TopBottomPanel::top("maximized_top")
+                            .exact_height(24.0)
+                            .show_inside(ui, |ui| {
+                                let res = ui.horizontal(|ui| {
+                                    ui.label(tab_viewer.tab_title_for_pane(pane));
+                                    ui.label(RichText::new("Maximized view").italics());
+                                    ui.with_layout(
+                                        egui::Layout::right_to_left(egui::Align::Center),
+                                        |ui| ui.button("x"),
+                                    )
+                                    .inner
+                                });
+                                if res.inner.clicked() {
+                                    maximized = None
+                                }
+                            });
+                        let _ = tab_viewer.pane_ui(ui, max_id, pane);
+                    } else {
+                        let mut tab_viewer = MainTabViewer {
+                            world: &mut world,
+                            last_focused_id: &mut aus.focused_id,
+                            last_maximized_id: &mut maximized,
+                        };
+                        mus.tree.ui(&mut tab_viewer, ui);
+                    }
+                    mus.maximized = maximized;
                 });
-            if let Some(id) = tab_viewer.last_focused_id {
-                aus.focused_id = Some(id);
-            }
         })
     });
 }
