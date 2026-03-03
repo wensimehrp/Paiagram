@@ -409,13 +409,13 @@ fn parse_class<'a>(fields: Vec<Structure<'a>>) -> Result<TrainClass> {
             }
             Pair(k, v) if k == "DiagramSenColor" => {
                 if let Some(v) = only_value(&v) {
-                    let (r, g, b) = (
+                    let (b, g, r) = (
                         u8::from_str_radix(&v[2..=3], 16)
-                            .map_err(|e| anyhow!("Invalid class color (R): {e}"))?,
+                            .map_err(|e| anyhow!("Invalid class color (B): {e}"))?,
                         u8::from_str_radix(&v[4..=5], 16)
                             .map_err(|e| anyhow!("Invalid class color (G): {e}"))?,
                         u8::from_str_radix(&v[6..=7], 16)
-                            .map_err(|e| anyhow!("Invalid class color (B): {e}"))?,
+                            .map_err(|e| anyhow!("Invalid class color (R): {e}"))?,
                     );
                     color = Some([r, g, b]);
                 }

@@ -168,9 +168,9 @@ fn make_classes(
         let color_string = format!(
             "00{:02X}{:02X}{:02X}",
             // color.a(),
-            color.r(),
+            color.b(),
             color.g(),
-            color.b()
+            color.r(),
         );
         Structure::Struct(
             "Ressyasyubetsu".into(),
