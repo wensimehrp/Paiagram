@@ -24,3 +24,6 @@ Time markings are on the top. Station markings are on the left.
 
 Each slanted line on the diagram represents a trip. The slanted line shows the trip's position at a given time. An
 intersection in two lines going the same direction (up/down) signals a collision in the two trips.
+
+You can click on each trip to edit its times. You can drag or click on handles on trip lines to shift the stop time or
+modify the travel mode.

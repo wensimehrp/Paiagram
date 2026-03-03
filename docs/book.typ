@@ -25,6 +25,7 @@
     #chapter("import/gtfs.typ")[GTFS Static]
     = Exporting
     #chapter("export/oudia.typ")[OuDia]
+    #chapter("export/typst-diagram.typ")[Typst Diagram]
     = Model
     #chapter("model/network.typ")[Network]
     #chapter("model/trips-vehicles.typ")[Trips and Vehicles]
