@@ -1,9 +1,10 @@
 use paiagram_core::{
     entry::{
-        AdjustEntryMode, EntryEstimate, EntryMode, EntryModeAdjustment, EntryQuery, TravelMode,
+        AdjustEntryMode, EntryEstimate, EntryMode, EntryModeAdjustment, EntryQuery, EntryQueryItem,
+        TravelMode,
     },
     station::{PlatformQuery, StationQuery},
-    trip::TripQuery,
+    trip::{TripQuery, TripQueryItem},
     units::time::{Duration, TimetableTime},
 };
 
@@ -53,99 +54,115 @@ fn show_trip(
     let trip = trip_q.get(tab.trip_entity).unwrap();
     ui.heading(trip.name.as_str());
     ui.label(trip.schedule.len().to_string());
-    const BUTTON_SIZE: Vec2 = vec2(70.0, 18.0);
-    egui::Grid::new(ui.id().with("lskdfjlsdkjflkdsjf"))
-        .num_columns(3)
-        .striped(true)
-        .show(ui, |ui| {
-            ui.label("Station");
-            ui.label("Arrival");
-            ui.label("Departure");
-            ui.end_row();
-            for it in entry_q.iter_many(trip.schedule) {
-                let platform = platform_q.get(it.stop()).unwrap();
-                let station = platform.station(&station_q);
-                ui.label(station.name.as_str());
-                let arr_res = match it.mode.arr {
-                    None => ui.add_sized(BUTTON_SIZE, egui::Button::new("||")),
-                    Some(TravelMode::Flexible) => {
-                        ui.add_sized(BUTTON_SIZE, egui::Button::new("〇"))
-                    }
-                    Some(TravelMode::At(t)) => {
-                        let mut new_t = t;
-                        let res = ui.add_sized(
-                            BUTTON_SIZE,
-                            egui::DragValue::new(&mut new_t)
-                                .custom_formatter(|v, _| TimetableTime::from_f64(v).to_string())
-                                .custom_parser(|s| {
-                                    TimetableTime::from_str(s).map(TimetableTime::to_f64)
-                                }),
-                        );
-                        if res.changed() {
-                            commands.trigger(AdjustEntryMode {
-                                entity: it.entity,
-                                adj: EntryModeAdjustment::ShiftArrival(new_t - t),
-                            });
-                        }
-                        res
-                    }
-                    Some(TravelMode::For(d)) => {
-                        let mut new_d = d;
-                        let res = ui.add_sized(
-                            BUTTON_SIZE,
-                            egui::DragValue::new(&mut new_d)
-                                .custom_formatter(|v, _| Duration::from_f64(v).to_string()),
-                        );
-                        if res.changed() {
-                            commands.trigger(AdjustEntryMode {
-                                entity: it.entity,
-                                adj: EntryModeAdjustment::ShiftArrival(new_d - d),
-                            });
-                        }
-                        res
-                    }
-                };
-                arrival_popup(&arr_res, &it, &trip, &entry_mode_q, &mut commands);
-
-                let dep_res = match it.mode.dep {
-                    TravelMode::Flexible => ui.add_sized(BUTTON_SIZE, egui::Button::new("...")),
-                    TravelMode::At(t) => {
-                        let mut new_t = t;
-                        let res = ui.add_sized(
-                            BUTTON_SIZE,
-                            egui::DragValue::new(&mut new_t)
-                                .custom_formatter(|v, _| TimetableTime::from_f64(v).to_string())
-                                .custom_parser(|s| {
-                                    TimetableTime::from_str(s).map(TimetableTime::to_f64)
-                                }),
-                        );
-                        if res.changed() {
-                            commands.trigger(AdjustEntryMode {
-                                entity: it.entity,
-                                adj: EntryModeAdjustment::ShiftDeparture(new_t - t),
-                            });
-                        }
-                        res
-                    }
-                    TravelMode::For(d) => {
-                        let mut new_d = d;
-                        // TODO: add parser
-                        let res = ui.add_sized(
-                            BUTTON_SIZE,
-                            egui::DragValue::new(&mut new_d)
-                                .custom_formatter(|v, _| Duration::from_f64(v).to_string()),
-                        );
-                        if res.changed() {
-                            commands.trigger(AdjustEntryMode {
-                                entity: it.entity,
-                                adj: EntryModeAdjustment::ShiftDeparture(new_d - d),
-                            });
-                        }
-                        res
-                    }
-                };
-                departure_popup(&dep_res, &it, &mut commands);
+    egui::ScrollArea::vertical().show(ui, |ui| {
+        egui::Grid::new(ui.id().with("lskdfjlsdkjflkdsjf"))
+            .num_columns(3)
+            .striped(true)
+            .show(ui, |ui| {
+                ui.label("Station");
+                ui.label("Arrival");
+                ui.label("Departure");
                 ui.end_row();
+                for it in entry_q.iter_many(trip.schedule) {
+                    row_ui(
+                        &platform_q,
+                        &station_q,
+                        &entry_mode_q,
+                        ui,
+                        &trip,
+                        &it,
+                        &mut commands,
+                    );
+                    ui.end_row();
+                }
+            });
+    });
+}
+
+fn row_ui(
+    platform_q: &Query<PlatformQuery>,
+    station_q: &Query<StationQuery>,
+    entry_mode_q: &Query<(&EntryMode, Option<&EntryEstimate>)>,
+    ui: &mut Ui,
+    trip: &TripQueryItem,
+    it: &EntryQueryItem,
+    mut commands: &mut Commands,
+) {
+    const BUTTON_SIZE: Vec2 = vec2(70.0, 18.0);
+    let platform = platform_q.get(it.stop()).unwrap();
+    let station = platform.station(&station_q);
+    ui.label(station.name.as_str());
+    let arr_res = match it.mode.arr {
+        None => ui.add_sized(BUTTON_SIZE, egui::Button::new("↓")),
+        Some(TravelMode::Flexible) => ui.add_sized(BUTTON_SIZE, egui::Button::new("〇")),
+        Some(TravelMode::At(t)) => {
+            let mut new_t = t;
+            let res = ui.add_sized(
+                BUTTON_SIZE,
+                egui::DragValue::new(&mut new_t)
+                    .custom_formatter(|v, _| TimetableTime::from_f64(v).to_string())
+                    .custom_parser(|s| TimetableTime::from_str(s).map(TimetableTime::to_f64)),
+            );
+            if res.changed() {
+                commands.trigger(AdjustEntryMode {
+                    entity: it.entity,
+                    adj: EntryModeAdjustment::ShiftArrival(new_t - t),
+                });
             }
-        });
+            res
+        }
+        Some(TravelMode::For(d)) => {
+            let mut new_d = d;
+            let res = ui.add_sized(
+                BUTTON_SIZE,
+                egui::DragValue::new(&mut new_d)
+                    .custom_formatter(|v, _| Duration::from_f64(v).to_string()),
+            );
+            if res.changed() {
+                commands.trigger(AdjustEntryMode {
+                    entity: it.entity,
+                    adj: EntryModeAdjustment::ShiftArrival(new_d - d),
+                });
+            }
+            res
+        }
+    };
+    arrival_popup(&arr_res, &it, &trip, &entry_mode_q, &mut commands);
+
+    let dep_res = match it.mode.dep {
+        TravelMode::Flexible => ui.add_sized(BUTTON_SIZE, egui::Button::new("...")),
+        TravelMode::At(t) => {
+            let mut new_t = t;
+            let res = ui.add_sized(
+                BUTTON_SIZE,
+                egui::DragValue::new(&mut new_t)
+                    .custom_formatter(|v, _| TimetableTime::from_f64(v).to_string())
+                    .custom_parser(|s| TimetableTime::from_str(s).map(TimetableTime::to_f64)),
+            );
+            if res.changed() {
+                commands.trigger(AdjustEntryMode {
+                    entity: it.entity,
+                    adj: EntryModeAdjustment::ShiftDeparture(new_t - t),
+                });
+            }
+            res
+        }
+        TravelMode::For(d) => {
+            let mut new_d = d;
+            // TODO: add parser
+            let res = ui.add_sized(
+                BUTTON_SIZE,
+                egui::DragValue::new(&mut new_d)
+                    .custom_formatter(|v, _| Duration::from_f64(v).to_string()),
+            );
+            if res.changed() {
+                commands.trigger(AdjustEntryMode {
+                    entity: it.entity,
+                    adj: EntryModeAdjustment::ShiftDeparture(new_d - d),
+                });
+            }
+            res
+        }
+    };
+    departure_popup(&dep_res, &it, &mut commands);
 }

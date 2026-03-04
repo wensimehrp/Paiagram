@@ -211,7 +211,9 @@ impl ops::SubAssign<Duration> for TimetableTime {
     }
 }
 
-#[derive(Reflect, Debug, Default, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Reflect, Debug, Default, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord,
+)]
 pub struct Duration(pub i32);
 
 impl Duration {

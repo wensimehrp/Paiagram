@@ -1,9 +1,8 @@
 use bevy::{
     prelude::*,
     scene::serde::{SceneDeserializer, SceneSerializer},
-    tasks::AsyncComputeTaskPool,
 };
-use cbor4ii::core::utils::SliceReader;
+use cbor4ii::core::utils::IoReader;
 use serde::de::DeserializeSeed;
 
 pub struct SavePlugin;
@@ -37,42 +36,29 @@ pub enum SaveData {
 pub struct LoadedScene(pub DynamicScene);
 
 pub fn save(scene: DynamicScene, registry: AppTypeRegistry, filename: String) {
-    AsyncComputeTaskPool::get()
-        .spawn(async move {
-            let reg = registry.read();
-            let serializer = SceneSerializer::new(&scene, &reg);
-            let serialized = cbor4ii::serde::to_vec(Vec::new(), &serializer).unwrap();
-            let compressed = lz4_flex::compress_prepend_size(&serialized);
-            super::write::write_file(compressed, filename);
-        })
-        .detach();
+    super::write::write_file(filename, move |writer| {
+        let reg = registry.read();
+        let serializer = SceneSerializer::new(&scene, &reg);
+        let mut encoder = lz4_flex::frame::FrameEncoder::new(writer);
+        cbor4ii::serde::to_writer(&mut encoder, &serializer)
+            .map_err(std::io::Error::other)
+            .and_then(|_| encoder.finish().map(|_| ()).map_err(std::io::Error::other))
+    });
 }
 
 pub fn save_ron(scene: DynamicScene, registry: AppTypeRegistry, filename: String) {
-    AsyncComputeTaskPool::get()
-        .spawn(async move {
-            let reg = registry.read();
-            let data = scene.serialize(&reg).unwrap().into_bytes();
-            super::write::write_file(data, filename);
-        })
-        .detach();
-}
-
-pub fn write_compressed_cbor(serialized_scene: Vec<u8>, filename: String) {
-    AsyncComputeTaskPool::get()
-        .spawn(async move {
-            let compressed = lz4_flex::compress_prepend_size(&serialized_scene);
-            super::write::write_file(compressed, filename);
-        })
-        .detach();
-}
-
-pub fn write_ron(ron_scene: Vec<u8>, filename: String) {
-    AsyncComputeTaskPool::get()
-        .spawn(async move {
-            super::write::write_file(ron_scene, filename);
-        })
-        .detach();
+    super::write::write_file(filename, move |writer| {
+        let reg = registry.read();
+        scene
+            .serialize(&reg)
+            .map_err(std::io::Error::other)
+            .and_then(|s| {
+                writer
+                    .write(s.as_bytes())
+                    .map(|_| ())
+                    .map_err(std::io::Error::other)
+            })
+    });
 }
 
 fn deserialize_load_candidate(world: &mut World) {
@@ -88,9 +74,10 @@ fn deserialize_load_candidate(world: &mut World) {
     let scene: DynamicScene;
     match data.0 {
         SaveData::CompressedCbor(d) => {
-            let decompressed = lz4_flex::decompress_size_prepended(&d).unwrap();
-            let mut deserializer =
-                cbor4ii::serde::Deserializer::new(SliceReader::new(decompressed.as_slice()));
+            let mut decoder = lz4_flex::frame::FrameDecoder::new(d.as_slice());
+            let mut deserializer = cbor4ii::serde::Deserializer::new(IoReader::new(
+                std::io::BufReader::new(&mut decoder),
+            ));
             scene = scene_deserializer.deserialize(&mut deserializer).unwrap();
         }
         SaveData::Ron(d) => {

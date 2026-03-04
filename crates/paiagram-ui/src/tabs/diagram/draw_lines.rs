@@ -118,8 +118,8 @@ pub fn draw_time_lines(
                 9 => {
                     offset += 13.0;
                     time.to_string()
-                },
-                _ => unreachable!()
+                }
+                _ => unreachable!(),
             };
             let label = painter.layout_no_wrap(
                 text,

@@ -1,7 +1,10 @@
 use bevy::{ecs::query::QueryData, prelude::*};
 use moonshine_core::prelude::{MapEntities, ReflectMapEntities};
 
-use crate::{trip::TripQueryItem, units::time::{Duration, TimetableTime}};
+use crate::{
+    trip::TripQueryItem,
+    units::time::{Duration, TimetableTime},
+};
 
 pub struct EntryPlugin;
 impl Plugin for EntryPlugin {

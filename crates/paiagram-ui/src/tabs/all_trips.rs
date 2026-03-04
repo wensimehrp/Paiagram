@@ -302,10 +302,9 @@ impl<'w> TableDelegate for AllTripsDisplayer<'w> {
                                         }),
                                 )
                             }
-                            None | Some(TravelMode::Flexible) => {
-                                ui.button(RichText::new("⇂").font(font))
-                            }
-                            _ => ui.label(RichText::new("⇂").font(font)),
+                            Some(TravelMode::Flexible) => ui.button(RichText::new("〇").font(font)),
+                            Some(TravelMode::For(d)) => ui.button(RichText::new("For")),
+                            None => ui.label(RichText::new("⇂").font(font)),
                         },
                     },
                 );

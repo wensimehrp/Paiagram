@@ -70,6 +70,10 @@ impl MapEntities for Graph {
         // construct a new graph instead
         let (nodes, edges) = self.capacity();
         let mut new_graph = DiGraphMap::with_capacity(nodes, edges);
+        for mut node in self.nodes() {
+            node.map_entities(entity_mapper);
+            new_graph.add_node(node);
+        }
         for (mut source, mut target, weight) in self.all_edges() {
             let mut weight = *weight;
             source.map_entities(entity_mapper);

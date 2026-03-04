@@ -8,5 +8,8 @@ a node in the graph. Stations are connected by one-way intervals. Intervals may 
 two-way path connecting two stations, you must first create an interval going from station A to B, then another from
 station B to A.
 
-The graph is automatically managed by Paiagram. You can edit the graph in the #cross-link("/panels/map.typ")[Map panel]. You
-can also export the graph to a #link("https://graphviz.org/")[Graphviz] `.dot` file for further processing.
+The graph is automatically managed by Paiagram. You can edit the graph in the #cross-link("/panels/map.typ")[Map panel].
+You can also export the graph to a #link("https://graphviz.org/")[Graphviz] `.dot` file for further processing.
+
+Due to technical limitations and for simplicity, you cannot add multiple intervals with the same direction between two
+stations. If you want to work with 2+ line intervals, the best way to achieve that is by using waypoints.

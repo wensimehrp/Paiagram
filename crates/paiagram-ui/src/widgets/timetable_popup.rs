@@ -7,8 +7,11 @@ use paiagram_core::{
     trip::TripQueryItem,
 };
 
+const POPUP_WIDTH: f32 = 130.0;
+
 pub fn departure_popup(response: &Response, entry: &EntryQueryItem, commands: &mut Commands) {
     egui::Popup::menu(&response).show(|ui| {
+        ui.set_width(POPUP_WIDTH);
         // at
         let at_time = entry.estimate.map(|e| e.dep);
         let mut adjustment = None;
@@ -48,7 +51,7 @@ pub fn departure_popup(response: &Response, entry: &EntryQueryItem, commands: &m
         if ui
             .add_enabled(
                 !matches!(entry.mode.dep, TravelMode::Flexible),
-                egui::Button::new("Flexible"),
+                egui::Button::new("Flexible").right_text("〇"),
             )
             .clicked()
         {
@@ -71,6 +74,7 @@ pub fn arrival_popup(
     commands: &mut Commands,
 ) {
     egui::Popup::menu(&response).show(|ui| {
+        ui.set_width(POPUP_WIDTH);
         // at
         let at_time = entry.estimate.map(|e| e.arr);
         let mut adjustment = None;
@@ -108,7 +112,7 @@ pub fn arrival_popup(
         if ui
             .add_enabled(
                 !matches!(entry.mode.arr, Some(TravelMode::Flexible)),
-                egui::Button::new("Flexible"),
+                egui::Button::new("Flexible").right_text("〇"),
             )
             .clicked()
         {
@@ -117,7 +121,7 @@ pub fn arrival_popup(
         if ui
             .add_enabled(
                 !matches!(entry.mode.arr, None),
-                egui::Button::new("Non-stop"),
+                egui::Button::new("Non-stop").right_text("↓"),
             )
             .clicked()
         {
