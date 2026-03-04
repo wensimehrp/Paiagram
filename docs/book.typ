@@ -25,6 +25,7 @@
     #chapter("import/oudia.typ")[OuDia/OuDiaSecond]
     #chapter("import/gtfs.typ")[GTFS Static]
     = Exporting
+    #chapter("export/paia.typ")[Paia (Native format)]
     #chapter("export/oudia.typ")[OuDia]
     #chapter("export/typst-diagram.typ")[Typst Diagram]
     = Model
