@@ -9,7 +9,7 @@ mod widgets;
 use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 
 use bevy::prelude::*;
-use egui::{Context, Frame, RichText, ScrollArea, Ui};
+use egui::{Context, Frame, Response, RichText, ScrollArea, Ui};
 use egui_tiles::{
     Behavior, ContainerKind, SimplificationOptions, Tile, TileId, Tiles, Tree, UiResponse,
 };
@@ -264,27 +264,30 @@ pub struct MainUiState {
 }
 
 impl MainUiState {
-    pub fn push_to_focused_leaf(&mut self, new_pane: MainTab) {
+    pub fn push_to_focused_leaf(&mut self, new_pane: MainTab) -> TileId {
         let new_id = self.tree.tiles.insert_pane(new_pane);
 
         // Try to add it to the same Tabs container that is currently focused
-        if let Some(&active_id) = self.tree.active_tiles().last() {
-            if let Some(parent_id) = self.tree.tiles.parent_of(active_id) {
-                if let Some(Tile::Container(container)) = self.tree.tiles.get_mut(parent_id) {
-                    if container.kind() == ContainerKind::Tabs {
-                        container.add_child(new_id);
-                        self.tree.make_active(|id, _| id == new_id);
-                        return;
-                    }
-                }
-            }
+        if let Some(&active_id) = self.tree.active_tiles().last()
+            && let Some(parent_id) = self.tree.tiles.parent_of(active_id)
+            && let Some(Tile::Container(container)) = self.tree.tiles.get_mut(parent_id)
+            && container.kind() == ContainerKind::Tabs
+        {
+            container.add_child(new_id);
+            self.tree.make_active(|id, _| id == new_id);
+            return new_id;
         }
 
         // Fallback: create a new top-level Tabs container
-        // let old_root = self.0.root;
-        // let tabs_id = self.0.tiles.insert_tab_tile(vec![old_root, new_id]);
-        // self.0.root = tabs_id;
-        // self.0.make_active(new_id);
+        let old_root = self.tree.root;
+        let tabs_id = if let Some(old_root) = old_root {
+            self.tree.tiles.insert_tab_tile(vec![old_root, new_id])
+        } else {
+            self.tree.tiles.insert_tab_tile(vec![new_id])
+        };
+        self.tree.root = Some(tabs_id);
+        self.tree.make_active(|id, _| id == new_id);
+        new_id
     }
 }
 
@@ -313,18 +316,24 @@ impl MapEntities for MainUiState {
 #[derive(Message)]
 struct OpenOrFocus(MainTab);
 
-fn open_or_focus_tab(mut messages: MessageReader<OpenOrFocus>, mut state: ResMut<MainUiState>) {
+fn open_or_focus_tab(
+    mut messages: MessageReader<OpenOrFocus>,
+    mut mus: ResMut<MainUiState>,
+    mut aus: ResMut<AdditionalUiState>,
+) {
     for msg in messages.read() {
         let pane = &msg.0; // your pane data
 
-        if let Some(tile_id) = state.tree.tiles.find_pane(pane) {
+        let focused_id = if let Some(tile_id) = mus.tree.tiles.find_pane(pane) {
             // Already exists → just focus it
-            state.make_active(|id, _| id == tile_id);
-            state.set_visible(tile_id, true);
+            mus.make_active(|id, _| id == tile_id);
+            mus.set_visible(tile_id, true);
+            tile_id
         } else {
             // New pane → add it to the currently focused container
-            state.push_to_focused_leaf(pane.clone());
-        }
+            mus.push_to_focused_leaf(pane.clone())
+        };
+        aus.focused_id = Some(focused_id);
     }
 }
 
@@ -426,21 +435,25 @@ impl<'w> Behavior<MainTab> for MainTabViewer<'w> {
     fn tab_title_for_pane(&mut self, pane: &MainTab) -> egui::WidgetText {
         for_all_tabs!(pane, p, p.title())
     }
+    fn on_tab_button(
+        &mut self,
+        _tiles: &Tiles<MainTab>,
+        tile_id: TileId,
+        button_response: Response,
+    ) -> Response {
+        if button_response.clicked() || button_response.dragged() {
+            *self.last_focused_id = Some(tile_id);
+        }
+        button_response
+    }
     fn pane_ui(&mut self, ui: &mut Ui, tile_id: TileId, tab: &mut MainTab) -> UiResponse {
         ui.painter()
             .rect_filled(ui.available_rect_before_wrap(), 0, ui.visuals().panel_fill);
         for_all_tabs!(tab, t, t.main_display(self.world, ui));
-        let clip = ui.clip_rect();
-        let press_origin = ui.ctx().input(|i| i.pointer.press_origin());
-        let pointer_inside = ui.rect_contains_pointer(clip);
-        let (drag_started_inside, clicked_inside) = ui.ctx().interaction_snapshot(|snap| {
-            let drag_started_inside = snap.drag_started.is_some()
-                && press_origin.is_some_and(|origin| clip.contains(origin));
-            let clicked_inside = pointer_inside && snap.clicked.is_some();
-            (drag_started_inside, clicked_inside)
-        });
-        if drag_started_inside || clicked_inside {
-            *self.last_focused_id = Some(tile_id);
+        if let Some(pos) = ui.input(|i| i.pointer.press_origin())
+            && ui.clip_rect().shrink(10.0).contains(pos)
+        {
+            *self.last_focused_id = Some(tile_id)
         }
         Default::default()
     }
@@ -662,25 +675,34 @@ pub fn show_ui(ctx: &Context, world: &mut World) {
                         });
                     }
                     ui.separator();
-                    if ui.button("Save compressed CBOR...").clicked() {
-                        save::save(world, "compressed.lz4".to_string());
+                    if ui.button("Save...").clicked() {
+                        save::save(world, "save.paia".to_string());
                     }
-                    if ui.button("Read compressed CBOR...").clicked() {
+                    if ui.button("Read...").clicked() {
                         world.commands().trigger(paiagram_rw::read::ReadFile {
-                            title: "Load LZ4 Files".to_string(),
-                            extensions: vec![("LZ4 Files".to_string(), vec!["lz4".to_string()])],
+                            title: "Load Save".to_string(),
+                            extensions: vec![(
+                                "Paiagram Savefiles".to_string(),
+                                vec!["paia".to_string()],
+                            )],
                             callback: paiagram_rw::save::add_load_candidate_compressed_cbor,
                         });
                     }
-                    if ui.button("Save RON...").clicked() {
-                        save::save_ron(world, "saved.ron".to_string());
-                    }
-                    if ui.button("Read RON...").clicked() {
-                        world.commands().trigger(paiagram_rw::read::ReadFile {
-                            title: "Load RON Files".to_string(),
-                            extensions: vec![("RON Files".to_string(), vec!["ron".to_string()])],
-                            callback: paiagram_rw::save::add_load_candidate_ron,
-                        });
+                    #[cfg(debug_assertions)]
+                    {
+                        if ui.button("Save RON...").clicked() {
+                            save::save_ron(world, "saved.ron".to_string());
+                        }
+                        if ui.button("Read RON...").clicked() {
+                            world.commands().trigger(paiagram_rw::read::ReadFile {
+                                title: "Load RON Files".to_string(),
+                                extensions: vec![(
+                                    "RON Files".to_string(),
+                                    vec!["ron".to_string()],
+                                )],
+                                callback: paiagram_rw::save::add_load_candidate_ron,
+                            });
+                        }
                     }
                 });
                 let average_dt = {

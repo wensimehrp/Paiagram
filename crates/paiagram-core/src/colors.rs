@@ -140,6 +140,33 @@ pub enum PredefinedColor {
 }
 
 impl PredefinedColor {
+    pub const ALL: [Self; 22] = [
+        Self::Red,
+        Self::Orange,
+        Self::Amber,
+        Self::Yellow,
+        Self::Lime,
+        Self::Green,
+        Self::Emerald,
+        Self::Teal,
+        Self::Cyan,
+        Self::Sky,
+        Self::Blue,
+        Self::Indigo,
+        Self::Violet,
+        Self::Purple,
+        Self::Fuchsia,
+        Self::Pink,
+        Self::Rose,
+        Self::Slate,
+        Self::Gray,
+        Self::Zinc,
+        Self::Neutral,
+        Self::Stone,
+    ];
+    pub fn from_index(i: usize) -> Self {
+        Self::ALL[i % 22]
+    }
     #[rustfmt::skip]
     pub fn name(self) -> impl AsRef<str> {
         match self {

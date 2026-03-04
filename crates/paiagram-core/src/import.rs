@@ -204,6 +204,9 @@ fn infer_path_from_url(url: &str) -> Option<PathBuf> {
 
 pub fn load_and_trigger(path: &PathBuf, content: Vec<u8>, commands: &mut Commands) -> Result<()> {
     match path.extension().and_then(|s| s.to_str()) {
+        Some("paia") => {
+            commands.insert_resource(LoadCandidate(SaveData::CompressedCbor(content)));
+        }
         Some("pyetgr") | Some("json") => {
             let content = String::from_utf8(content)?;
             commands.trigger(LoadQETRC { content });
@@ -218,9 +221,6 @@ pub fn load_and_trigger(path: &PathBuf, content: Vec<u8>, commands: &mut Command
         Some("oud") => {
             // oudia does not use utf-8
             commands.trigger(LoadOuDia::original(content))
-        }
-        Some("lz4") => {
-            commands.insert_resource(LoadCandidate(SaveData::CompressedCbor(content)));
         }
         Some("ron") => {
             commands.insert_resource(LoadCandidate(SaveData::Ron(content)));

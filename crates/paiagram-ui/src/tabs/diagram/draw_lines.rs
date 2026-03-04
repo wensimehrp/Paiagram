@@ -111,10 +111,15 @@ pub fn draw_time_lines(
             painter.vline(x, screen_rect.top()..=screen_rect.bottom(), current_stroke);
             drawn.push(tick);
             let time = Tick(tick).to_timetable_time();
+            let mut offset = screen_rect.top();
             let text = match i + first_visible_position {
                 0..=2 => time.to_hmsd().2.to_string(),
                 3..=8 => format!("{}:{:02}", time.to_hmsd().0, time.to_hmsd().1),
-                _ => time.to_string(),
+                9 => {
+                    offset += 13.0;
+                    time.to_string()
+                },
+                _ => unreachable!()
             };
             let label = painter.layout_no_wrap(
                 text,
@@ -124,7 +129,7 @@ pub fn draw_time_lines(
             painter.galley(
                 Pos2 {
                     x: x - label.size().x / 2.0,
-                    y: screen_rect.top(),
+                    y: offset,
                 },
                 label,
                 current_stroke.color,
