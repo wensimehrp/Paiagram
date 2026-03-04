@@ -5,7 +5,7 @@
   app: "https://wensimehrp.github.io/Paiagram/nightly",
   discussions: "https://github.com/WenSimEHRP/Paiagram/discussions",
   discord: "https://discord.com/channels/142724111502802944/1281691431395790908",
-  qq: "<WE DON'T HAVE A GROUP CHAT YET>",
+  qq: "1090842644",
   home: "https://wensimehrp.github.io/Paiagram"
 )
 
