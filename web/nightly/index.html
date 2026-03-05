@@ -100,17 +100,6 @@
             return merged.buffer;
         }
 
-        async function fetchArrayBuffer(url) {
-            const response = await fetch(url, { cache: "no-store" });
-            if (!response.ok) {
-                throw new Error(`Failed to fetch ${url}: ${response.status}`);
-            }
-            return {
-                bytes: await response.arrayBuffer(),
-                mime: response.headers.get("content-type") || guessMime(toKey(url)),
-            };
-        }
-
         async function fetchOptionalArrayBuffer(url) {
             const response = await fetch(url, { cache: "no-store" });
             if (!response.ok) {
@@ -131,38 +120,38 @@
         }
 
         async function fetchWasmWithChunkFallback() {
-            const direct = await fetchOptionalArrayBuffer(WASM_PATH);
-            if (direct) {
-                return {
-                    bytes: direct.bytes,
-                    mime: direct.mime || "application/wasm",
-                };
-            }
-
             const chunks = [];
+            // Loops through .00, .01, etc.
             for (let index = 0; index < MAX_WASM_CHUNKS; index += 1) {
                 const suffix = String(index).padStart(2, "0");
                 const chunkPath = `${WASM_PATH}.${suffix}`;
                 const response = await fetch(chunkPath, { cache: "no-store" });
 
                 if (response.ok) {
+                    const contentType = response.headers.get("Content-Type") || "";
+                    if (contentType.includes("text/html")) {
+                        break;
+                    }
                     chunks.push(await response.arrayBuffer());
                     continue;
                 }
 
-                if (chunks.length === 0) {
-                    throw new Error(`No wasm chunks found. First probe failed: ${chunkPath}`);
-                }
+                // Stop if we found some chunks and hit a 404 (natural end of file sequence)
+                if (chunks.length > 0) break;
 
-                break;
+                // Error if we couldn't even find the .00 chunk
+                throw new Error(`Primary wasm chunk not found: ${chunkPath}`);
             }
 
-            if (chunks.length === 0) {
-                throw new Error("No wasm bytes available");
+            const mergedBuffer = concatBuffers(chunks);
+            const view = new Uint8Array(mergedBuffer);
+
+            if (view.length < 4 || view[0] !== 0x00 || view[1] !== 0x61 || view[2] !== 0x73 || view[3] !== 0x6d) {
+                throw new Error("Invalid Wasm header. The server likely returned an HTML fallback page instead of binary data.");
             }
 
             return {
-                bytes: concatBuffers(chunks),
+                bytes: mergedBuffer,
                 mime: "application/wasm",
             };
         }
@@ -279,8 +268,7 @@
         }
 
         async function downloadFreshBundle() {
-            setLoading("Downloading latest Paiagram nightly build…");
-
+            setLoading("Downloading latest Paiagram nightly build chunks…");
             const glueSource = await fetchText(GLUE_PATH);
             const snippetPaths = parseSnippetImports(glueSource);
             const wasm = await fetchWasmWithChunkFallback();
@@ -400,7 +388,8 @@
                         throw new Error("Invalid wasm-bindgen glue module");
                     }
 
-                    await init(wasmRecord.bytes.slice(0));
+                    // Passing as an object clears the deprecation warning
+                    await init({ module_or_path: wasmRecord.bytes.slice(0) });
                 } finally {
                     URL.revokeObjectURL(glueBlobUrl);
                 }
@@ -411,44 +400,27 @@
         }
 
         async function start() {
-            let db = null;
-            if ("indexedDB" in window) {
-                db = await openDb();
-            }
-
+            let db = ("indexedDB" in window) ? await openDb() : null;
             const serverRevision = await fetchServerRevision();
-            let cache = { meta: null, assetMap: new Map() };
-            if (db) {
-                cache = await readCache(db);
-            }
+            let cache = db ? await readCache(db) : { meta: null, assetMap: new Map() };
 
             const hasBundle = hasCompleteCachedBundle(cache.assetMap);
-            const cacheIsCurrent = hasBundle && (
-                !!serverRevision && cache.meta?.serverRevision === serverRevision
-            );
+            const cacheIsCurrent = hasBundle && (!!serverRevision && cache.meta?.serverRevision === serverRevision);
 
             let assetMap = cache.assetMap;
             if (!cacheIsCurrent) {
                 assetMap = await downloadFreshBundle();
-                if (db) {
-                    await writeCache(db, {
-                        serverRevision,
-                        updatedAt: Date.now(),
-                    }, assetMap);
-                }
+                if (db) await writeCache(db, { serverRevision, updatedAt: Date.now() }, assetMap);
             } else {
                 setLoading("Loading Paiagram nightly build from cache…");
             }
-
             await loadFromAssetMap(assetMap);
         }
 
         start().then(removeLoading).catch((e) => {
             console.error("Failed to initialize Paiagram", e);
             const loading = document.getElementById("loading");
-            if (loading) {
-                loading.textContent = "Failed to load Paiagram Nightly Web Build. Please refresh and try again.";
-            }
+            if (loading) loading.textContent = `Failed to load Paiagram: ${e.message}`;
         });
 
         window.addEventListener("beforeunload", (event) => {
