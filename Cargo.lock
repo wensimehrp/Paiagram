@@ -4890,6 +4890,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "paiagram-soap"
+version = "0.1.0"
+dependencies = [
+ "petgraph",
+]
+
+[[package]]
 name = "paiagram-timing"
 version = "0.1.0"
 
