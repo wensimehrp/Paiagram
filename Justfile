@@ -29,9 +29,12 @@ build-wasm:
     wasm-opt -O4 --all-features --fast-math -o wasm-out/paiagram_bg.wasm wasm-out/paiagram_bg.wasm
     @du -sh wasm-out/paiagram_bg.wasm
     @du -s wasm-out/paiagram_bg.wasm
+# also split the file into chunks of 24m to prevent the upload file size limitation
+    split -b 24M -d --additional-suffix=.dat "wasm-out/paiagram_bg.wasm" "wasm-out/paiagram_bg.wasm."
+    rm -f wasm-out/paiagram_bg.wasm
 
 prep-docs:
-    shiroa build docs --mode static-html --path-to-root Paiagram/nightly-docs
+    shiroa build docs --mode static-html --path-to-root nightly-docs
     rm -rf dist/nightly-docs
     mkdir -p dist/nightly-docs
     cp -r docs/dist/. dist/nightly-docs
@@ -44,6 +47,7 @@ prep-wasm: rust-docs build-wasm
     cp -r target/doc/* dist/nightly/api-docs/
     cp -r wasm-out/* dist/nightly/
     cp crates/paiagram-ui/assets/fonts/SarasaUiSC-Regular.ttf dist/nightly/
+    git rev-parse HEAD > dist/nightly/git-revision.txt
 
 nightly-build: prep-docs prep-wasm
     cp -r web/* dist/

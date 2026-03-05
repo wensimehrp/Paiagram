@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Paiagram Nightly</title>
     <script defer src="https://cloud.umami.is/script.js"
-        data-website-id="1e645081-beea-4836-bd66-ead28c2c1976"></script>
+        data-website-id="067cd05f-b395-4813-916c-2063c383685f"></script>
     <style>
         html,
         body {
@@ -37,14 +37,414 @@
 <body>
     <div class="fallback" id="loading">Loading Paiagram Nightly Web Build…</div>
     <script type="module">
-        import init from "./paiagram.js";
+        const DB_NAME = "paiagram-nightly-cache";
+        const DB_VERSION = 1;
+        const ASSET_STORE = "assets";
+        const META_STORE = "meta";
+        const META_KEY = "nightly-build";
+
+        const GLUE_PATH = "./paiagram.js";
+        const WASM_PATH = "./paiagram_bg.wasm";
+        const FONT_PATHS = ["./SarasaUiSC-Regular.ttf"];
+        const SERVER_REVISION_PATH = "./git-revision.txt";
+        const MAX_WASM_CHUNKS = 256;
+
+        const textEncoder = new TextEncoder();
+        const textDecoder = new TextDecoder();
+
+        function setLoading(text) {
+            const loading = document.getElementById("loading");
+            if (loading) loading.textContent = text;
+        }
 
         function removeLoading() {
             const loading = document.getElementById("loading");
             if (loading) loading.remove();
         }
 
-        init().then(removeLoading).catch((e) => {
+        function toKey(pathOrUrl) {
+            return new URL(pathOrUrl, window.location.href).pathname;
+        }
+
+        function guessMime(pathname) {
+            if (pathname.endsWith(".js")) return "text/javascript";
+            if (pathname.endsWith(".wasm")) return "application/wasm";
+            if (pathname.endsWith(".ttf")) return "font/ttf";
+            if (pathname.endsWith(".woff2")) return "font/woff2";
+            if (pathname.endsWith(".woff")) return "font/woff";
+            if (pathname.endsWith(".otf")) return "font/otf";
+            return "application/octet-stream";
+        }
+
+        function parseSnippetImports(glueSource) {
+            const matches = glueSource.matchAll(/from\s+['"](\.\/snippets\/[^'"]+)['"]/g);
+            const snippetPaths = new Set();
+
+            for (const match of matches) {
+                snippetPaths.add(match[1]);
+            }
+
+            return [...snippetPaths];
+        }
+
+        function concatBuffers(buffers) {
+            const total = buffers.reduce((sum, bytes) => sum + bytes.byteLength, 0);
+            const merged = new Uint8Array(total);
+            let offset = 0;
+
+            for (const bytes of buffers) {
+                merged.set(new Uint8Array(bytes), offset);
+                offset += bytes.byteLength;
+            }
+
+            return merged.buffer;
+        }
+
+        async function fetchArrayBuffer(url) {
+            const response = await fetch(url, { cache: "no-store" });
+            if (!response.ok) {
+                throw new Error(`Failed to fetch ${url}: ${response.status}`);
+            }
+            return {
+                bytes: await response.arrayBuffer(),
+                mime: response.headers.get("content-type") || guessMime(toKey(url)),
+            };
+        }
+
+        async function fetchOptionalArrayBuffer(url) {
+            const response = await fetch(url, { cache: "no-store" });
+            if (!response.ok) {
+                return null;
+            }
+            return {
+                bytes: await response.arrayBuffer(),
+                mime: response.headers.get("content-type") || guessMime(toKey(url)),
+            };
+        }
+
+        async function fetchText(url) {
+            const response = await fetch(url, { cache: "no-store" });
+            if (!response.ok) {
+                throw new Error(`Failed to fetch ${url}: ${response.status}`);
+            }
+            return response.text();
+        }
+
+        async function fetchWasmWithChunkFallback() {
+            const direct = await fetchOptionalArrayBuffer(WASM_PATH);
+            if (direct) {
+                return {
+                    bytes: direct.bytes,
+                    mime: direct.mime || "application/wasm",
+                };
+            }
+
+            const chunks = [];
+            for (let index = 0; index < MAX_WASM_CHUNKS; index += 1) {
+                const suffix = String(index).padStart(2, "0");
+                const chunkPath = `${WASM_PATH}.${suffix}`;
+                const response = await fetch(chunkPath, { cache: "no-store" });
+
+                if (response.ok) {
+                    chunks.push(await response.arrayBuffer());
+                    continue;
+                }
+
+                if (chunks.length === 0) {
+                    throw new Error(`No wasm chunks found. First probe failed: ${chunkPath}`);
+                }
+
+                break;
+            }
+
+            if (chunks.length === 0) {
+                throw new Error("No wasm bytes available");
+            }
+
+            return {
+                bytes: concatBuffers(chunks),
+                mime: "application/wasm",
+            };
+        }
+
+        function openDb() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+                request.onupgradeneeded = () => {
+                    const db = request.result;
+                    if (!db.objectStoreNames.contains(ASSET_STORE)) {
+                        db.createObjectStore(ASSET_STORE);
+                    }
+                    if (!db.objectStoreNames.contains(META_STORE)) {
+                        db.createObjectStore(META_STORE);
+                    }
+                };
+
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error);
+            });
+        }
+
+        function txDone(transaction) {
+            return new Promise((resolve, reject) => {
+                transaction.oncomplete = () => resolve();
+                transaction.onerror = () => reject(transaction.error);
+                transaction.onabort = () => reject(transaction.error || new Error("IndexedDB transaction aborted"));
+            });
+        }
+
+        function readRecord(store, key) {
+            return new Promise((resolve, reject) => {
+                const request = store.get(key);
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error);
+            });
+        }
+
+        function readAllRecords(store) {
+            return new Promise((resolve, reject) => {
+                const request = store.getAll();
+                request.onsuccess = () => resolve(request.result || []);
+                request.onerror = () => reject(request.error);
+            });
+        }
+
+        async function readCache(db) {
+            const transaction = db.transaction([ASSET_STORE, META_STORE], "readonly");
+            const assetStore = transaction.objectStore(ASSET_STORE);
+            const metaStore = transaction.objectStore(META_STORE);
+
+            const [meta, assets] = await Promise.all([
+                readRecord(metaStore, META_KEY),
+                readAllRecords(assetStore),
+            ]);
+
+            await txDone(transaction);
+
+            const assetMap = new Map();
+            for (const record of assets) {
+                assetMap.set(record.key, record);
+            }
+
+            return { meta, assetMap };
+        }
+
+        async function writeCache(db, meta, assetMap) {
+            const transaction = db.transaction([ASSET_STORE, META_STORE], "readwrite");
+            const assetStore = transaction.objectStore(ASSET_STORE);
+            const metaStore = transaction.objectStore(META_STORE);
+
+            assetStore.clear();
+            for (const [key, record] of assetMap.entries()) {
+                assetStore.put({
+                    key,
+                    bytes: record.bytes,
+                    mime: record.mime,
+                    updatedAt: Date.now(),
+                }, key);
+            }
+
+            metaStore.put(meta, META_KEY);
+            await txDone(transaction);
+        }
+
+        async function fetchServerRevision() {
+            const response = await fetch(SERVER_REVISION_PATH, { cache: "no-store" });
+            if (!response.ok) {
+                return null;
+            }
+
+            const revision = (await response.text()).trim();
+            return revision.length > 0 ? revision : null;
+        }
+
+        function hasCompleteCachedBundle(assetMap) {
+            const glueRecord = assetMap.get(toKey(GLUE_PATH));
+            const wasmRecord = assetMap.get(toKey(WASM_PATH));
+            if (!glueRecord || !wasmRecord) {
+                return false;
+            }
+
+            const glueSource = textDecoder.decode(glueRecord.bytes);
+            const snippets = parseSnippetImports(glueSource);
+
+            for (const snippet of snippets) {
+                if (!assetMap.has(toKey(snippet))) {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        async function downloadFreshBundle() {
+            setLoading("Downloading latest Paiagram nightly build…");
+
+            const glueSource = await fetchText(GLUE_PATH);
+            const snippetPaths = parseSnippetImports(glueSource);
+            const wasm = await fetchWasmWithChunkFallback();
+
+            const bundle = new Map();
+            bundle.set(toKey(GLUE_PATH), {
+                key: toKey(GLUE_PATH),
+                bytes: textEncoder.encode(glueSource),
+                mime: "text/javascript",
+            });
+
+            bundle.set(toKey(WASM_PATH), {
+                key: toKey(WASM_PATH),
+                bytes: wasm.bytes,
+                mime: wasm.mime,
+            });
+
+            for (const snippetPath of snippetPaths) {
+                const source = await fetchText(snippetPath);
+                bundle.set(toKey(snippetPath), {
+                    key: toKey(snippetPath),
+                    bytes: textEncoder.encode(source),
+                    mime: "text/javascript",
+                });
+            }
+
+            for (const fontPath of FONT_PATHS) {
+                const font = await fetchOptionalArrayBuffer(fontPath);
+                if (font) {
+                    bundle.set(toKey(fontPath), {
+                        key: toKey(fontPath),
+                        bytes: font.bytes,
+                        mime: font.mime,
+                    });
+                }
+            }
+
+            return bundle;
+        }
+
+        function installCachedFetch(assetMap) {
+            const originalFetch = window.fetch.bind(window);
+
+            window.fetch = async (input, init) => {
+                const method = input instanceof Request ? input.method : (init?.method || "GET");
+                if (method && method.toUpperCase() !== "GET") {
+                    return originalFetch(input, init);
+                }
+
+                const requestUrl = input instanceof Request
+                    ? new URL(input.url)
+                    : new URL(input, window.location.href);
+                const cached = assetMap.get(requestUrl.pathname);
+
+                if (cached) {
+                    return new Response(cached.bytes.slice(0), {
+                        status: 200,
+                        headers: {
+                            "Content-Type": cached.mime || guessMime(requestUrl.pathname),
+                            "X-Paiagram-Cache": "indexeddb",
+                        },
+                    });
+                }
+
+                return originalFetch(input, init);
+            };
+
+            return () => {
+                window.fetch = originalFetch;
+            };
+        }
+
+        function buildSnippetBlobMap(assetMap) {
+            const blobMap = new Map();
+
+            for (const [key, record] of assetMap.entries()) {
+                if (!key.includes("/snippets/") || !key.endsWith(".js")) {
+                    continue;
+                }
+                const blobUrl = URL.createObjectURL(new Blob([record.bytes], { type: "text/javascript" }));
+                blobMap.set(key, blobUrl);
+            }
+
+            return blobMap;
+        }
+
+        function releaseBlobMap(blobMap) {
+            for (const url of blobMap.values()) {
+                URL.revokeObjectURL(url);
+            }
+        }
+
+        async function loadFromAssetMap(assetMap) {
+            const glueRecord = assetMap.get(toKey(GLUE_PATH));
+            const wasmRecord = assetMap.get(toKey(WASM_PATH));
+
+            if (!glueRecord || !wasmRecord) {
+                throw new Error("Cached bundle is incomplete");
+            }
+
+            const glueSource = textDecoder.decode(glueRecord.bytes);
+            const snippetBlobs = buildSnippetBlobMap(assetMap);
+            const stopFetchOverride = installCachedFetch(assetMap);
+
+            try {
+                const rewrittenGlue = glueSource.replace(/from\s+['"](\.\/snippets\/[^'"]+)['"]/g, (full, snippetPath) => {
+                    const key = toKey(snippetPath);
+                    const blobUrl = snippetBlobs.get(key);
+                    return blobUrl ? `from '${blobUrl}'` : full;
+                });
+
+                const glueBlobUrl = URL.createObjectURL(new Blob([rewrittenGlue], { type: "text/javascript" }));
+                try {
+                    const module = await import(glueBlobUrl);
+                    const init = module.default;
+                    if (typeof init !== "function") {
+                        throw new Error("Invalid wasm-bindgen glue module");
+                    }
+
+                    const wasmModule = new WebAssembly.Module(wasmRecord.bytes);
+                    await init(wasmModule);
+                } finally {
+                    URL.revokeObjectURL(glueBlobUrl);
+                }
+            } finally {
+                releaseBlobMap(snippetBlobs);
+                stopFetchOverride();
+            }
+        }
+
+        async function start() {
+            let db = null;
+            if ("indexedDB" in window) {
+                db = await openDb();
+            }
+
+            const serverRevision = await fetchServerRevision();
+            let cache = { meta: null, assetMap: new Map() };
+            if (db) {
+                cache = await readCache(db);
+            }
+
+            const hasBundle = hasCompleteCachedBundle(cache.assetMap);
+            const cacheIsCurrent = hasBundle && (
+                !!serverRevision && cache.meta?.serverRevision === serverRevision
+            );
+
+            let assetMap = cache.assetMap;
+            if (!cacheIsCurrent) {
+                assetMap = await downloadFreshBundle();
+                if (db) {
+                    await writeCache(db, {
+                        serverRevision,
+                        updatedAt: Date.now(),
+                    }, assetMap);
+                }
+            } else {
+                setLoading("Loading Paiagram nightly build from cache…");
+            }
+
+            await loadFromAssetMap(assetMap);
+        }
+
+        start().then(removeLoading).catch((e) => {
             console.error("Failed to initialize Paiagram", e);
             const loading = document.getElementById("loading");
             if (loading) {
