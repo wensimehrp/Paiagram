@@ -1,9 +1,9 @@
 # Paiagram
 
-[![Workflow Status](https://github.com/WenSimEHRP/Paiagram/actions/workflows/wasm.yml/badge.svg)](https://github.com/WenSimEHRP/Paiagram/actions/workflows/wasm.yml)
+[![Workflow Status](https://github.com/WenSimEHRP/Paiagram/actions/workflows/nightly.yml/badge.svg)](https://github.com/WenSimEHRP/Paiagram/actions/workflows/nightly.yml)
 [![Workflow Status](https://github.com/WenSimEHRP/Paiagram/actions/workflows/docs.yml/badge.svg)](https://github.com/WenSimEHRP/Paiagram/actions/workflows/docs.yml)
 ![GitHub License](https://img.shields.io/github/license/wensimehrp/paiagram)
-[![Website](https://img.shields.io/website?url=https%3A%2F%2Fwensimehrp.github.io%2FPaiagram&up_message=Try%20it%20online!&down_message=Service%20down&logo=github&label=Web%20build)](https://wensimehrp.github.io/Paiagram)
+[![Website](https://img.shields.io/website?url=https%3A%2F%2Fwensimehrp.github.io%2FPaiagram&up_message=Try%20it%20online!&down_message=Service%20down&logo=github&label=Web%20build)](https://paiagram.com)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/WenSimEHRP/Paiagram)
 
 ![A fictional railway network featuring mixed services](https://github.com/user-attachments/assets/3819f7b5-c33c-4e71-90a4-d61d8a4bb93b)
@@ -23,4 +23,4 @@ Paiagram is a timetable editor and visualizer that easily runs on any modern pot
 - Translations! You can use the app in Klingon if you wish to -- you'd need to translate it first, obviously.
 - Import your favourite OuDiaSecond and qETRC/pyETRC diagrams using the builtin import feature.
 - Try it on the web! You can download the app bundle and use it directly in your browser without installation. It works completely offline!
-  There's also an online build: <https://wensimehrp.github.io/Paiagram>
+  There's also an online build: <https://paiagram.com>
