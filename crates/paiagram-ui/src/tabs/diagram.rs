@@ -1,8 +1,10 @@
 use super::{Navigatable, Tab};
-use crate::tabs::trip::TripTab;
 use crate::widgets::buttons;
 use crate::widgets::timetable_popup::{arrival_popup, departure_popup};
-use crate::{GlobalTimer, OpenOrFocus};
+use crate::{
+    ExtendingTripSelection, GlobalTimer, SelectedItem, SelectedItems, TimetableEntrySelection,
+    display_entry_info,
+};
 use bevy::prelude::*;
 use egui::epaint::TextShape;
 use egui::{
@@ -14,14 +16,14 @@ use instant::Instant;
 use moonshine_core::prelude::MapEntities;
 use paiagram_core::entry::{
     AdjustEntryMode, EntryBundle, EntryEstimate, EntryMode, EntryModeAdjustment, EntryQuery,
-    EntryStop, IsDerivedEntry, TravelMode,
+    EntryStop, TravelMode,
 };
 use paiagram_core::export::ExportObject;
 use paiagram_core::route::Route;
 use paiagram_core::station::Station;
 use paiagram_core::trip::class::DisplayedStroke;
 use paiagram_core::trip::routing::AddEntryToTrip;
-use paiagram_core::trip::{Trip, TripBundle, TripClass, TripQuery, TripSchedule};
+use paiagram_core::trip::{Trip, TripBundle, TripClass, TripQuery};
 use paiagram_core::units::time::{Duration, Tick, TimetableTime};
 use paiagram_raptor::Journey;
 use serde::{Deserialize, Serialize};
@@ -29,24 +31,6 @@ use std::sync::Arc;
 pub mod calc_trip_lines;
 mod draw_lines;
 mod gpu_draw;
-
-/// The current selected item
-#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
-enum SelectedItem {
-    /// A timetable entry
-    TimetableEntry { entry: Entity, parent: Entity },
-    /// An interval connecting two stations
-    Interval(Entity, Entity),
-    /// A station
-    Station(Entity),
-    /// Extending a trip
-    ExtendingTrip {
-        entry: Entity,
-        previous_pos: Option<(TimetableTime, usize)>,
-        last_time: Option<TimetableTime>,
-        current_entry: Option<Entity>,
-    },
-}
 
 // TODO: dt & td graphs
 #[derive(Default, Clone)]
@@ -72,8 +56,6 @@ fn smooth_ms(previous: f32, new_value: f32) -> f32 {
 pub struct DiagramTab {
     /// X offset as ticks
     navi: DiagramTabNavigation,
-    #[serde(skip, default)]
-    selected: Option<SelectedItem>,
     #[entities]
     route_entity: Entity,
     #[entities] // TODO: use the trip cache instead
@@ -134,7 +116,6 @@ impl DiagramTab {
     pub fn new(route_entity: Entity) -> Self {
         Self {
             navi: DiagramTabNavigation::default(),
-            selected: None,
             route_entity,
             trips: Vec::new(),
             use_global_timer: false,
@@ -264,8 +245,9 @@ impl Tab for DiagramTab {
     }
     fn edit_display(&mut self, world: &mut World, ui: &mut Ui) {
         ui.checkbox(&mut self.use_global_timer, "Use global timer");
-        match self.selected {
-            None => {
+        let selected = world.resource::<SelectedItems>().clone();
+        match selected {
+            SelectedItems::None => {
                 ui.strong("New Trip");
                 ui.label("Create a new trip from scratch");
                 if ui.button("Create a new trip").clicked() {
@@ -277,15 +259,16 @@ impl Tab for DiagramTab {
                         .spawn(TripBundle::new("New Trip", TripClass(default_class)))
                         .id();
                     self.trips.push(new_trip);
-                    self.selected = Some(SelectedItem::ExtendingTrip {
-                        entry: new_trip,
-                        previous_pos: None,
-                        current_entry: None,
-                        last_time: None,
-                    })
+                    *world.resource_mut::<SelectedItems>() =
+                        SelectedItems::ExtendingTrip(ExtendingTripSelection {
+                            entry: new_trip,
+                            previous_pos: None,
+                            current_entry: None,
+                            last_time: None,
+                        })
                 }
             }
-            Some(SelectedItem::ExtendingTrip {
+            SelectedItems::ExtendingTrip(ExtendingTripSelection {
                 entry,
                 previous_pos,
                 current_entry,
@@ -296,56 +279,17 @@ impl Tab for DiagramTab {
                     ui.text_edit_singleline(n);
                 });
                 if ui.button("Complete").clicked() {
-                    self.selected = None
+                    *world.resource_mut::<SelectedItems>() = SelectedItems::None
                 }
             }
-            Some(SelectedItem::TimetableEntry { entry, parent }) => {
-                let is_derived = world.get::<IsDerivedEntry>(entry).is_some();
-                if is_derived && ui.button("Convert to explicit").clicked() {
-                    world.entity_mut(entry).remove::<IsDerivedEntry>();
-                } else if !is_derived && ui.button("Delete").clicked() {
-                    world.entity_mut(entry).despawn();
-                }
-                let mut name = world.get_mut::<Name>(parent).unwrap();
-                name.mutate(|n| {
-                    ui.text_edit_singleline(n);
-                });
-                if ui.button("Open trip view").clicked() {
-                    world.write_message(OpenOrFocus(crate::MainTab::Trip(TripTab::new(parent))));
-                }
-                if ui.button("Extend").clicked() {
-                    let mut last_time = None;
-                    world
-                        .run_system_cached_with(
-                            |(InMut(last_time), In(parent)): (
-                                InMut<Option<TimetableTime>>,
-                                In<Entity>,
-                            ),
-                             schedule_q: Query<&TripSchedule, With<Trip>>,
-                             entry_q: Query<&EntryEstimate>| {
-                                let Ok(schedule) = schedule_q.get(parent) else {
-                                    return;
-                                };
-                                let Some(time) =
-                                    schedule.iter().rev().find_map(|e| entry_q.get(e).ok())
-                                else {
-                                    return;
-                                };
-                                *last_time = Some(time.dep);
-                            },
-                            (&mut last_time, parent),
-                        )
-                        .unwrap();
-                    self.selected = Some(SelectedItem::ExtendingTrip {
-                        entry: parent,
-                        previous_pos: None,
-                        current_entry: None,
-                        last_time,
-                    })
-                }
+            SelectedItems::TimetableEntries(selected_entries) => {
+                world
+                    .run_system_cached_with(display_entry_info, (ui, selected_entries.as_slice()))
+                    .unwrap();
             }
-            Some(SelectedItem::Interval(a, b)) => {}
-            Some(SelectedItem::Station(s)) => {}
+            SelectedItems::Intervals(_) => {}
+            SelectedItems::Stations(_) => {}
+            SelectedItems::ExtendingRoute(_) => {}
         }
         ui.separator();
         ui.checkbox(&mut self.show_perf, "Show perf");
@@ -571,12 +515,8 @@ fn main_display(tab: &mut DiagramTab, world: &mut World, ui: &mut egui::Ui) {
         tab.perf.trips_calc,
         trips_calc_start.elapsed().as_secs_f32() * 1000.0,
     );
-    if let Some(SelectedItem::ExtendingTrip {
-        entry,
-        previous_pos,
-        current_entry,
-        last_time,
-    }) = &mut tab.selected
+    let selected_snapshot = world.resource::<SelectedItems>().clone();
+    if let SelectedItems::ExtendingTrip(mut extending_trip) = selected_snapshot
         && let (Some(interact_pos), is_touch_input) = ui.input(|r| {
             let pos = r.pointer.latest_pos().or(r.pointer.interact_pos());
             let is_touch = r.any_touches();
@@ -610,7 +550,6 @@ fn main_display(tab: &mut DiagramTab, world: &mut World, ui: &mut egui::Ui) {
                 data.get_temp_mut_or(ui.id().with("new line animation"), new_screen_pos.y);
             let t = egui::emath::exponential_smooth_factor(0.9, 0.05, dt);
             *smoothed = smoothed.lerp(new_screen_pos.y, t);
-            // *smoothed = smoothed.lerp(new_screen_pos, t);
             let diff = (*smoothed - new_screen_pos.y).abs();
             if diff < 1.0 {
                 *smoothed = new_screen_pos.y
@@ -637,7 +576,7 @@ fn main_display(tab: &mut DiagramTab, world: &mut World, ui: &mut egui::Ui) {
             FontId::proportional(13.0),
             ui.visuals().text_color(),
         );
-        if let Some((t, idx)) = *previous_pos {
+        if let Some((t, idx)) = extending_trip.previous_pos {
             let (_, h) = station_heights[idx];
             let prev_pos = Pos2::new(
                 ticks_to_screen_x(Tick::from_timetable_time(t)),
@@ -654,27 +593,25 @@ fn main_display(tab: &mut DiagramTab, world: &mut World, ui: &mut egui::Ui) {
         if add_or_populate_entry {
             let hovered_time = screen_x_to_seconds(interact_pos.x);
             // normalize the time until the time difference is positive and less than 24 hours.
-            let normalized_time = if let Some(last_time) = *last_time
-                && let Some((last_clicked_time, _)) = *previous_pos
+            let normalized_time = if let Some(last_time) = extending_trip.last_time
+                && let Some((last_clicked_time, _)) = extending_trip.previous_pos
             {
                 let diff = last_clicked_time - last_time;
                 hovered_time - diff
             } else {
                 hovered_time.normalized()
             };
-            let should_spawn = match current_entry {
+            let should_spawn = match extending_trip.current_entry {
                 Some(current_entry_unwrapped) => {
                     let stop = world
-                        .get::<EntryStop>(*current_entry_unwrapped)
+                        .get::<EntryStop>(current_entry_unwrapped)
                         .unwrap()
                         .entity();
                     if stop == new_station_entity {
-                        let mut mode = world
-                            .get_mut::<EntryMode>(*current_entry_unwrapped)
-                            .unwrap();
+                        let mut mode = world.get_mut::<EntryMode>(current_entry_unwrapped).unwrap();
                         mode.arr = Some(mode.dep);
                         mode.dep = TravelMode::At(normalized_time);
-                        *current_entry = None;
+                        extending_trip.current_entry = None;
                         false
                     } else {
                         true
@@ -691,28 +628,36 @@ fn main_display(tab: &mut DiagramTab, world: &mut World, ui: &mut egui::Ui) {
                     ))
                     .id();
                 world.write_message(AddEntryToTrip {
-                    trip: *entry,
+                    trip: extending_trip.entry,
                     entry: new_child,
                 });
-                *current_entry = Some(new_child);
+                extending_trip.current_entry = Some(new_child);
             }
-            *previous_pos = Some((hovered_time, new_station_idx));
-            *last_time = Some(normalized_time);
+            extending_trip.previous_pos = Some((hovered_time, new_station_idx));
+            extending_trip.last_time = Some(normalized_time);
         }
+        *world.resource_mut::<SelectedItems>() = SelectedItems::ExtendingTrip(extending_trip);
     } else if response.clicked()
         && let Some(pos) = response.interact_pointer_pos()
     {
-        if tab.selected.is_some() {
-            tab.selected = None
+        let clicked = handle_selection(&trip_line_buf, pos);
+        let ctrl_pressed = ui.input(|i| i.modifiers.ctrl || i.modifiers.command);
+        if ctrl_pressed {
+            world.resource_mut::<SelectedItems>().add_entry(clicked);
         } else {
-            tab.selected = handle_selection(&trip_line_buf, pos);
+            world.resource_mut::<SelectedItems>().set_or_reset(clicked);
         }
     }
-    let selection_strength = ui
-        .ctx()
-        .animate_bool(ui.id().with("selection"), tab.selected.is_some());
-    // let use_gpu = tab.use_gpu;
-    let mut selected_idx_rect: Option<(usize, Vec<Rect>)> = None;
+    let selected_snapshot = world.resource::<SelectedItems>().clone();
+    let selected_timetable_entries = match &selected_snapshot {
+        SelectedItems::TimetableEntries(entries) => entries.as_slice(),
+        _ => &[],
+    };
+    let selection_strength = ui.ctx().animate_bool(
+        ui.id().with("selection"),
+        !matches!(selected_snapshot, SelectedItems::None),
+    );
+    let mut selected_idx_rect: (Vec<usize>, Vec<Rect>) = (Vec::new(), Vec::new());
     let trips_draw_start = Instant::now();
     world
         .run_system_cached_with(
@@ -721,7 +666,7 @@ fn main_display(tab: &mut DiagramTab, world: &mut World, ui: &mut egui::Ui) {
                 &trip_line_buf,
                 ui,
                 &mut painter,
-                tab.selected,
+                selected_timetable_entries,
                 &mut selected_idx_rect,
                 button_strength,
             ),
@@ -762,7 +707,20 @@ fn main_display(tab: &mut DiagramTab, world: &mut World, ui: &mut egui::Ui) {
             Color32::from_white_alpha(s)
         },
     );
-    if let Some((idx, rects)) = selected_idx_rect {
+    let (indices, rects) = selected_idx_rect;
+    for rect in rects {
+        painter.rect(
+            rect,
+            8,
+            Color32::GRAY.gamma_multiply(0.5),
+            egui::Stroke {
+                width: 1.0,
+                color: Color32::GRAY,
+            },
+            egui::StrokeKind::Middle,
+        );
+    }
+    for idx in indices {
         let trip = &trip_line_buf[idx];
         let stroke = egui::Stroke {
             width: trip.stroke.width + 3.0 * selection_strength * trip.stroke.width,
@@ -794,18 +752,6 @@ fn main_display(tab: &mut DiagramTab, world: &mut World, ui: &mut egui::Ui) {
                     .unwrap();
             }
         }
-        for rect in rects {
-            painter.rect(
-                rect,
-                8,
-                Color32::BLUE.gamma_multiply(0.5),
-                egui::Stroke {
-                    width: 1.0,
-                    color: Color32::BLUE,
-                },
-                egui::StrokeKind::Middle,
-            );
-        }
     }
     tab.perf.frame = smooth_ms(tab.perf.frame, frame_start.elapsed().as_secs_f32() * 1000.0);
 }
@@ -813,36 +759,51 @@ fn main_display(tab: &mut DiagramTab, world: &mut World, ui: &mut egui::Ui) {
 /// Takes a buffer the calculate trains
 
 fn draw_trip_lines<'a>(
-    (InRef(trips), InMut(ui), InMut(painter), In(selected), InMut(ret), In(strength)): (
+    (
+        InRef(trips),
+        InMut(ui),
+        InMut(painter),
+        InRef(selected),
+        InMut((indices, rects)),
+        In(strength),
+    ): (
         InRef<[DrawnTrip]>,
         InMut<Ui>,
         InMut<Painter>,
-        In<Option<SelectedItem>>,
-        InMut<Option<(usize, Vec<Rect>)>>,
+        InRef<[TimetableEntrySelection]>,
+        InMut<(Vec<usize>, Vec<Rect>)>,
         In<f32>,
     ),
     name_q: Query<&Name, With<Trip>>,
 ) {
+    indices.clear();
+    rects.clear();
+
     for (idx, trip) in trips.iter().enumerate() {
-        if let Some(SelectedItem::TimetableEntry { entry, parent }) = selected
-            && trip.entity == parent
-        {
-            let rects = trip
-                .points
+        let selected_entries: Vec<Entity> = selected
+            .iter()
+            .filter(|TimetableEntrySelection { parent, .. }| *parent == trip.entity)
+            .map(|TimetableEntrySelection { entry, .. }| *entry)
+            .collect();
+
+        if selected_entries.is_empty() {
+            continue;
+        }
+
+        indices.push(idx);
+        rects.extend(
+            trip.points
                 .iter()
                 .flatten()
                 .zip(trip.entries.iter().flatten())
                 .filter_map(|(p, e)| {
-                    if *e == entry {
+                    if selected_entries.iter().any(|it| it == e) {
                         Some(Rect::from_two_pos(p[1], p[2]).expand(8.0))
                     } else {
                         None
                     }
-                })
-                .collect();
-            *ret = Some((idx, rects));
-            break;
-        }
+                }),
+        );
     }
     if strength < 0.1 {
         return;
@@ -878,7 +839,7 @@ fn draw_trip_lines<'a>(
     }
 }
 
-fn handle_selection(drawn_trips: &[DrawnTrip], pos: Pos2) -> Option<SelectedItem> {
+fn handle_selection(drawn_trips: &[DrawnTrip], pos: Pos2) -> SelectedItem {
     const VEHICLE_SELECTION_RADIUS: f32 = 7.0;
     const STATION_SELECTION_RADIUS: f32 = VEHICLE_SELECTION_RADIUS;
     for trip in drawn_trips {
@@ -928,7 +889,7 @@ fn handle_selection(drawn_trips: &[DrawnTrip], pos: Pos2) -> Option<SelectedItem
                 let dy = pos.y - py;
 
                 if dx * dx + dy * dy < VEHICLE_SELECTION_RADIUS.powi(2) {
-                    return Some(SelectedItem::TimetableEntry {
+                    return SelectedItem::TimetableEntries(TimetableEntrySelection {
                         entry: e,
                         parent: trip.entity,
                     });
@@ -936,7 +897,7 @@ fn handle_selection(drawn_trips: &[DrawnTrip], pos: Pos2) -> Option<SelectedItem
             }
         }
     }
-    return None;
+    SelectedItem::None
 }
 
 fn draw_handles(

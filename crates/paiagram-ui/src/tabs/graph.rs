@@ -1,11 +1,13 @@
 use bevy::prelude::*;
 use egui::{Align2, Color32, FontId, Margin, Painter, Rect, Sense, Stroke, Vec2};
-use instant::Instant;
 use moonshine_core::prelude::MapEntities;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::sync::Arc;
 
+use crate::SelectedItems;
+
+use crate::tabs::graph::gpu_draw::ShapeInstance;
 use crate::{GlobalTimer, tabs::Navigatable};
 use paiagram_core::{
     colors::PredefinedColor,
@@ -18,57 +20,6 @@ use paiagram_core::{
 };
 
 mod gpu_draw;
-
-#[derive(Clone)]
-struct GraphLabel {
-    pos: egui::Pos2,
-    text: String,
-    color: egui::Color32,
-}
-
-#[derive(Default, Clone)]
-struct GraphDrawItems {
-    shapes: Vec<gpu_draw::ShapeSpec>,
-    labels: Vec<GraphLabel>,
-}
-
-#[derive(Default, Clone)]
-struct CollectTimings {
-    index_query_ms: f32,
-    nodes_ms: f32,
-    edges_ms: f32,
-    trips_ms: f32,
-    label_cull_ms: f32,
-}
-
-#[derive(Default, Clone)]
-struct CollectedGraphDraw {
-    items: GraphDrawItems,
-    timings: CollectTimings,
-}
-
-#[derive(Default, Clone)]
-struct GraphPerf {
-    collect_ms: f32,
-    collect_index_query_ms: f32,
-    collect_nodes_ms: f32,
-    collect_edges_ms: f32,
-    collect_trips_ms: f32,
-    collect_label_cull_ms: f32,
-    gpu_upload_ms: f32,
-    text_ms: f32,
-    frame_ms: f32,
-    shape_count: usize,
-    label_count: usize,
-}
-
-fn smooth_ms(previous: f32, new_value: f32) -> f32 {
-    if previous <= 0.0 {
-        new_value
-    } else {
-        previous * 0.8 + new_value * 0.2
-    }
-}
 
 fn segment_visible(viewport: Rect, a: egui::Pos2, b: egui::Pos2) -> bool {
     if viewport.contains(a) || viewport.contains(b) {
@@ -90,10 +41,6 @@ pub struct GraphTab {
     #[serde(skip, default)]
     osm_area_name: String,
     #[serde(skip, default)]
-    show_perf: bool,
-    #[serde(skip, default)]
-    perf: GraphPerf,
-    #[serde(skip, default)]
     gpu_state: Arc<egui::mutex::Mutex<gpu_draw::GpuGraphRendererState>>,
 }
 
@@ -107,8 +54,6 @@ impl Default for GraphTab {
             navi: GraphNavigation::default(),
             arrange_iterations: default_arrange_iterations(),
             osm_area_name: String::new(),
-            show_perf: false,
-            perf: GraphPerf::default(),
             gpu_state: Arc::new(egui::mutex::Mutex::new(
                 gpu_draw::GpuGraphRendererState::default(),
             )),
@@ -219,29 +164,23 @@ impl super::Tab for GraphTab {
             }
         }
         ui.separator();
-        ui.checkbox(&mut self.show_perf, "Show perf");
-        if self.show_perf {
-            ui.monospace(format!(
-                "CPU collect: {:.2} ms\n  - Index query: {:.2} ms\n  - Nodes: {:.2} ms\n  - Edges: {:.2} ms\n  - Trips: {:.2} ms\n  - Label cull: {:.2} ms\nGPU upload prep: {:.2} ms\nText draw: {:.2} ms\nFrame total: {:.2} ms\nShapes: {}\nLabels: {}",
-                self.perf.collect_ms,
-                self.perf.collect_index_query_ms,
-                self.perf.collect_nodes_ms,
-                self.perf.collect_edges_ms,
-                self.perf.collect_trips_ms,
-                self.perf.collect_label_cull_ms,
-                self.perf.gpu_upload_ms,
-                self.perf.text_ms,
-                self.perf.frame_ms,
-                self.perf.shape_count,
-                self.perf.label_count,
-            ));
+        let selected_sample = world.resource_mut::<SelectedItems>();
+        match selected_sample.clone() {
+            SelectedItems::None | SelectedItems::Intervals(_) | SelectedItems::ExtendingTrip(_) => {
+            }
+            SelectedItems::TimetableEntries(entries) => {
+                world
+                    .run_system_cached_with(crate::display_entry_info, (ui, entries.as_slice()))
+                    .unwrap();
+            }
+            SelectedItems::Stations(stations) => for station in stations {},
+            SelectedItems::ExtendingRoute(r) => {}
         }
     }
 }
 
 fn display(tab: &mut GraphTab, world: &mut World, ui: &mut egui::Ui) {
-    let frame_start = Instant::now();
-    let (response, painter) =
+    let (response, mut painter) =
         ui.allocate_painter(ui.available_size_before_wrap(), Sense::click_and_drag());
     tab.navi.visible = response.rect;
     tab.navi.handle_navigation(ui, &response);
@@ -254,30 +193,6 @@ fn display(tab: &mut GraphTab, world: &mut World, ui: &mut egui::Ui) {
         },
         tab.navi.zoom,
     );
-
-    let collect_start = Instant::now();
-    let collected = world
-        .run_system_cached_with(collect_draw_items, (ui.visuals().dark_mode, &tab.navi))
-        .unwrap();
-    tab.perf.collect_ms = smooth_ms(
-        tab.perf.collect_ms,
-        collect_start.elapsed().as_secs_f32() * 1000.0,
-    );
-    tab.perf.collect_index_query_ms = smooth_ms(
-        tab.perf.collect_index_query_ms,
-        collected.timings.index_query_ms,
-    );
-    tab.perf.collect_nodes_ms = smooth_ms(tab.perf.collect_nodes_ms, collected.timings.nodes_ms);
-    tab.perf.collect_edges_ms = smooth_ms(tab.perf.collect_edges_ms, collected.timings.edges_ms);
-    tab.perf.collect_trips_ms = smooth_ms(tab.perf.collect_trips_ms, collected.timings.trips_ms);
-    tab.perf.collect_label_cull_ms = smooth_ms(
-        tab.perf.collect_label_cull_ms,
-        collected.timings.label_cull_ms,
-    );
-    let draw_items = collected.items;
-    tab.perf.shape_count = draw_items.shapes.len();
-    tab.perf.label_count = draw_items.labels.len();
-
     let mut state = tab.gpu_state.lock();
     if let Some(target_format) = ui.ctx().data(|data| {
         data.get_temp::<eframe::egui_wgpu::wgpu::TextureFormat>(egui::Id::new("wgpu_target_format"))
@@ -290,33 +205,19 @@ fn display(tab: &mut GraphTab, world: &mut World, ui: &mut egui::Ui) {
     {
         state.msaa_samples = msaa_samples;
     }
-    let gpu_upload_start = Instant::now();
-    gpu_draw::write_instances(&draw_items.shapes, &mut state);
-    tab.perf.gpu_upload_ms = smooth_ms(
-        tab.perf.gpu_upload_ms,
-        gpu_upload_start.elapsed().as_secs_f32() * 1000.0,
-    );
+    world
+        .run_system_cached_with(
+            push_draw_items,
+            (
+                ui.visuals().dark_mode,
+                &tab.navi,
+                &mut state.instances,
+                &mut painter,
+            ),
+        )
+        .unwrap();
     let callback = gpu_draw::paint_callback(response.rect, tab.gpu_state.clone());
     painter.add(callback);
-
-    let text_start = Instant::now();
-    for label in &draw_items.labels {
-        painter.text(
-            label.pos,
-            Align2::LEFT_CENTER,
-            &label.text,
-            FontId::proportional(13.0),
-            label.color,
-        );
-    }
-    tab.perf.text_ms = smooth_ms(
-        tab.perf.text_ms,
-        text_start.elapsed().as_secs_f32() * 1000.0,
-    );
-    tab.perf.frame_ms = smooth_ms(
-        tab.perf.frame_ms,
-        frame_start.elapsed().as_secs_f32() * 1000.0,
-    );
 }
 
 fn draw_world_grid(painter: &Painter, viewport: Rect, offset: Vec2, zoom: f32) {
@@ -374,8 +275,13 @@ fn draw_world_grid(painter: &Painter, viewport: Rect, offset: Vec2, zoom: f32) {
     }
 }
 
-fn collect_draw_items(
-    (In(is_dark), InRef(navi)): (In<bool>, InRef<GraphNavigation>),
+fn push_draw_items(
+    (In(is_dark), InRef(navi), InMut(buffer), InMut(painter)): (
+        In<bool>,
+        InRef<GraphNavigation>,
+        InMut<Vec<ShapeInstance>>,
+        InMut<Painter>,
+    ),
     nodes: Query<(Entity, &Node, Option<&Name>)>,
     spatial_index: Res<GraphSpatialIndex>,
     interval_spatial_index: Res<GraphIntervalSpatialIndex>,
@@ -384,7 +290,8 @@ fn collect_draw_items(
     trip_meta_q: Query<(&Name, &TripClass), With<Trip>>,
     stroke_q: Query<&DisplayedStroke, With<Class>>,
     timer: Res<GlobalTimer>,
-) -> CollectedGraphDraw {
+) {
+    buffer.clear();
     let time = timer.read_seconds();
     let repeat_time = settings.repeat_frequency.0 as f64;
     let query_time = if repeat_time > 0.0 {
@@ -392,8 +299,6 @@ fn collect_draw_items(
     } else {
         time
     };
-    let mut out = GraphDrawItems::default();
-    let mut timings = CollectTimings::default();
     let color = PredefinedColor::Neutral.get(is_dark);
     let view = navi.visible_rect();
     let view_expanded = view.expand2(Vec2::splat(12.0));
@@ -406,43 +311,35 @@ fn collect_draw_items(
     let min_y = visible_y.start - margin_y;
     let max_y = visible_y.end + margin_y;
 
-    let index_query_start = Instant::now();
     let candidate_nodes: Vec<Entity> = if spatial_index.is_empty() {
         nodes.iter().map(|(entity, _, _)| entity).collect()
     } else {
         spatial_index.entities_in_xy_aabb(min_x, min_y, max_x, max_y)
     };
-    timings.index_query_ms = index_query_start.elapsed().as_secs_f32() * 1000.0;
 
-    let mut screen_pos_by_entity: HashMap<Entity, egui::Pos2> = HashMap::new();
-    let mut visible_nodes: HashSet<Entity> = HashSet::new();
-
-    let nodes_start = Instant::now();
     for entity in candidate_nodes {
         let Ok((_, node, name)) = nodes.get(entity) else {
             continue;
         };
         let [x, y] = node.pos.to_xy_arr();
         let pos = navi.xy_to_screen_pos(x, y);
-        screen_pos_by_entity.insert(entity, pos);
 
         if !view_expanded.contains(pos) {
             continue;
         }
-        visible_nodes.insert(entity);
-        out.shapes
-            .push(gpu_draw::ShapeSpec::circle(pos, 6.0, color));
+        // out.station_entities.push(entity);
+        buffer.push(gpu_draw::ShapeInstance::circle(pos, 6.0, color));
         if let Some(name) = name {
-            out.labels.push(GraphLabel {
-                pos: pos + Vec2 { x: 7.0, y: 0.0 },
-                text: name.to_string(),
+            painter.text(
+                pos + Vec2 { x: 7.0, y: 0.0 },
+                Align2::LEFT_CENTER,
+                name.as_ref(),
+                FontId::proportional(13.0),
                 color,
-            });
+            );
         }
     }
-    timings.nodes_ms = nodes_start.elapsed().as_secs_f32() * 1000.0;
 
-    let edges_start = Instant::now();
     let mut rendered_intervals: HashSet<Entity> = HashSet::new();
     for segment in interval_spatial_index.query_xy_aabb(min_x, min_y, max_x, max_y) {
         if !rendered_intervals.insert(segment.interval) {
@@ -453,12 +350,10 @@ fn collect_draw_items(
         if !segment_visible(view_expanded, spos, tpos) {
             continue;
         }
-        out.shapes
-            .push(gpu_draw::ShapeSpec::segment(spos, tpos, 1.0, color));
+        // out.interval_entities.push(segment.interval);
+        buffer.push(gpu_draw::ShapeInstance::segment(spos, tpos, 1.0, color));
     }
-    timings.edges_ms = edges_start.elapsed().as_secs_f32() * 1000.0;
 
-    let trips_start = Instant::now();
     for sample in
         trip_spatial_index.query_xy_time(min_x..=max_x, min_y..=max_y, query_time..=query_time)
     {
@@ -479,20 +374,15 @@ fn collect_draw_items(
             let f = (query_time - sample.t1) / (sample.t2 - sample.t1).max(f64::EPSILON);
             pos0.lerp(pos1, f as f32)
         };
-        out.shapes
-            .push(gpu_draw::ShapeSpec::stealth_arrow(pos0, pos1, pos, color));
-        out.labels.push(GraphLabel {
-            pos: pos + Vec2 { x: 7.0, y: 0.0 },
-            text: name.to_string(),
+        // out.interval_entities.push(sample.trip);
+        buffer
+            .push(gpu_draw::ShapeInstance::stealth_arrow(pos0, pos1, pos, color));
+        painter.text(
+            pos + Vec2 { x: 7.0, y: 0.0 },
+            Align2::LEFT_CENTER,
+            name.as_ref(),
+            FontId::proportional(13.0),
             color,
-        });
-    }
-    timings.trips_ms = trips_start.elapsed().as_secs_f32() * 1000.0;
-
-    timings.label_cull_ms = 0.0;
-
-    CollectedGraphDraw {
-        items: out,
-        timings,
+        );
     }
 }

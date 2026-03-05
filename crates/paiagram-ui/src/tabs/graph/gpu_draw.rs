@@ -4,31 +4,34 @@ use egui::{Color32, Pos2, Rect, Vec2, mutex::Mutex};
 use egui_wgpu::CallbackTrait;
 use std::sync::Arc;
 
-#[derive(Clone, Copy)]
-pub struct ShapeSpec {
-    pub a: Pos2,
-    pub b: Pos2,
-    pub size: f32,
-    pub color: Color32,
-    pub kind: u32,
-}
-
-impl ShapeSpec {
+impl ShapeInstance {
     pub fn segment(a: Pos2, b: Pos2, width: f32, color: Color32) -> Self {
+        let rgba = color.to_array();
         Self {
-            a,
-            b,
+            a: [a.x, a.y],
+            b: [b.x, b.y],
             size: width,
-            color,
+            color: [
+                rgba[0] as f32 / 255.0,
+                rgba[1] as f32 / 255.0,
+                rgba[2] as f32 / 255.0,
+                rgba[3] as f32 / 255.0,
+            ],
             kind: 0,
         }
     }
     pub fn circle(center: Pos2, radius: f32, color: Color32) -> Self {
+        let rgba = color.to_array();
         Self {
-            a: center,
-            b: center,
+            a: [center.x, center.y],
+            b: [center.x, center.y],
             size: radius,
-            color,
+            color: [
+                rgba[0] as f32 / 255.0,
+                rgba[1] as f32 / 255.0,
+                rgba[2] as f32 / 255.0,
+                rgba[3] as f32 / 255.0,
+            ],
             kind: 1,
         }
     }
@@ -41,11 +44,17 @@ impl ShapeSpec {
         } else {
             Vec2::X
         };
+        let rgba = color.to_array();
         Self {
-            a: center,
-            b: center + unit_direction,
+            a: [center.x, center.y],
+            b: [center.x + unit_direction.x, center.y + unit_direction.y],
             size: 14.0,
-            color,
+            color: [
+                rgba[0] as f32 / 255.0,
+                rgba[1] as f32 / 255.0,
+                rgba[2] as f32 / 255.0,
+                rgba[3] as f32 / 255.0,
+            ],
             kind: 2,
         }
     }
@@ -53,7 +62,7 @@ impl ShapeSpec {
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-struct ShapeInstance {
+pub struct ShapeInstance {
     a: [f32; 2],
     b: [f32; 2],
     size: f32,
@@ -64,7 +73,7 @@ struct ShapeInstance {
 pub struct GpuGraphRendererState {
     pub target_format: Option<wgpu::TextureFormat>,
     pub msaa_samples: u32,
-    instances: Vec<ShapeInstance>,
+    pub instances: Vec<ShapeInstance>,
 }
 
 impl Default for GpuGraphRendererState {
@@ -74,29 +83,6 @@ impl Default for GpuGraphRendererState {
             msaa_samples: 1,
             instances: Vec::new(),
         }
-    }
-}
-
-pub fn write_instances(shapes: &[ShapeSpec], state: &mut GpuGraphRendererState) {
-    state.instances.clear();
-    state.instances.reserve(shapes.len());
-    for s in shapes {
-        if s.size <= f32::EPSILON {
-            continue;
-        }
-        let rgba = s.color.to_array();
-        state.instances.push(ShapeInstance {
-            a: [s.a.x, s.a.y],
-            b: [s.b.x, s.b.y],
-            size: s.size,
-            color: [
-                rgba[0] as f32 / 255.0,
-                rgba[1] as f32 / 255.0,
-                rgba[2] as f32 / 255.0,
-                rgba[3] as f32 / 255.0,
-            ],
-            kind: s.kind,
-        });
     }
 }
 

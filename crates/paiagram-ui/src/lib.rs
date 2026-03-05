@@ -19,10 +19,11 @@ use tabs::{Tab, all_tabs::*};
 
 use paiagram_core::units::time::Tick;
 use paiagram_core::{
+    entry::{EntryEstimate, IsDerivedEntry},
     import::{DownloadFile, LoadGTFS, LoadOuDia, LoadQETRC},
     route::Route,
     settings::UserPreferences,
-    trip::Trip,
+    trip::{Trip, TripSchedule},
     units::time::TimetableTime,
     vehicle::Vehicle,
 };
@@ -34,6 +35,7 @@ impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<MainUiState>()
             .init_resource::<AdditionalUiState>()
+            .init_resource::<SelectedItems>()
             .init_resource::<FrameTimeHistory>()
             .init_resource::<GlobalTimer>()
             .init_resource::<UiModal>()
@@ -50,28 +52,173 @@ impl Plugin for UiPlugin {
     }
 }
 
-// TODO: move to selected item resource
-/// The current selected item
-#[derive(Reflect, Clone, PartialEq, Eq)]
-pub enum SelectedItem {
-    /// A timetable entry
-    TimetableEntry { entry: Entity, parent: Entity },
-    /// An interval connecting two stations
-    Interval(Entity, Entity),
-    /// A station
-    Station(Entity),
-    /// Extending a trip
-    ExtendingTrip {
-        entry: Entity,
-        previous_pos: Option<(TimetableTime, usize)>,
-        last_time: Option<TimetableTime>,
-        current_entry: Option<Entity>,
-    },
+#[derive(Reflect, Clone, Copy, PartialEq)]
+pub struct TimetableEntrySelection {
+    pub entry: Entity,
+    pub parent: Entity,
 }
 
-#[derive(Reflect, Resource, Deref, DerefMut)]
+#[derive(Reflect, Clone, Copy, PartialEq)]
+pub struct IntervalSelection {
+    pub source: Entity,
+    pub target: Entity,
+}
+
+#[derive(Reflect, Clone, Copy, PartialEq)]
+pub struct StationSelection {
+    pub station: Entity,
+}
+
+#[derive(Reflect, Clone, Copy, PartialEq)]
+pub struct ExtendingRouteSelection {
+    pub station: Entity,
+    pub previous_pos: (f32, f32),
+}
+
+#[derive(Reflect, Clone, Copy, PartialEq)]
+pub struct ExtendingTripSelection {
+    pub entry: Entity,
+    pub previous_pos: Option<(TimetableTime, usize)>,
+    pub last_time: Option<TimetableTime>,
+    pub current_entry: Option<Entity>,
+}
+
+pub(crate) fn display_entry_info(
+    (InMut(ui), InRef(selected_entries)): (InMut<Ui>, InRef<[TimetableEntrySelection]>),
+    mut commands: Commands,
+    mut selected_items: ResMut<SelectedItems>,
+    is_derived_q: Query<(), With<IsDerivedEntry>>,
+    mut names_q: Query<&mut Name>,
+    schedule_q: Query<&TripSchedule, With<Trip>>,
+    entry_q: Query<&EntryEstimate>,
+    mut open_or_focus: MessageWriter<OpenOrFocus>,
+) {
+    for (idx, TimetableEntrySelection { entry, parent }) in
+        selected_entries.iter().copied().enumerate()
+    {
+        ui.strong(format!("Entry {}", idx + 1));
+
+        let is_derived = is_derived_q.get(entry).is_ok();
+        if is_derived && ui.button("Convert to explicit").clicked() {
+            commands.entity(entry).remove::<IsDerivedEntry>();
+        } else if !is_derived && ui.button("Delete").clicked() {
+            commands.entity(entry).despawn();
+        }
+
+        if let Ok(mut name) = names_q.get_mut(parent) {
+            name.mutate(|n| {
+                ui.text_edit_singleline(n);
+            });
+        }
+
+        if ui.button("Open trip view").clicked() {
+            open_or_focus.write(OpenOrFocus(crate::MainTab::Trip(TripTab::new(parent))));
+        }
+
+        ui.separator();
+    }
+
+    if selected_entries.len() == 1 {
+        let parent = selected_entries[0].parent;
+        if ui.button("Extend").clicked() {
+            let mut last_time = None;
+            if let Ok(schedule) = schedule_q.get(parent)
+                && let Some(time) = schedule.iter().rev().find_map(|e| entry_q.get(e).ok())
+            {
+                last_time = Some(time.dep);
+            }
+            *selected_items = SelectedItems::ExtendingTrip(ExtendingTripSelection {
+                entry: parent,
+                previous_pos: None,
+                current_entry: None,
+                last_time,
+            });
+        }
+    }
+}
+
+#[derive(Reflect, Resource, Clone, PartialEq)]
 #[reflect(Resource)]
-pub struct SelectedItems(Vec<SelectedItem>);
+pub enum SelectedItems {
+    None,
+    TimetableEntries(Vec<TimetableEntrySelection>),
+    Intervals(Vec<IntervalSelection>),
+    Stations(Vec<StationSelection>),
+    ExtendingRoute(ExtendingRouteSelection),
+    ExtendingTrip(ExtendingTripSelection),
+}
+
+impl SelectedItems {
+    pub(crate) fn add_entry(&mut self, item: SelectedItem) {
+        fn toggle_vec<T: PartialEq>(v: &mut Vec<T>, item: T) -> bool {
+            if let Some(idx) = v.iter().position(|entry| *entry == item) {
+                v.remove(idx);
+            } else {
+                v.push(item);
+            }
+            v.is_empty()
+        }
+
+        match item {
+            SelectedItem::None => {}
+            SelectedItem::TimetableEntries(it) => {
+                if let Self::TimetableEntries(v) = self {
+                    if toggle_vec(v, it) {
+                        *self = Self::None;
+                    }
+                } else if matches!(self, Self::None) {
+                    *self = Self::TimetableEntries(vec![it]);
+                }
+            }
+            SelectedItem::Intervals(it) => {
+                if let Self::Intervals(v) = self {
+                    if toggle_vec(v, it) {
+                        *self = Self::None;
+                    }
+                } else if matches!(self, Self::None) {
+                    *self = Self::Intervals(vec![it]);
+                }
+            }
+            SelectedItem::Stations(it) => {
+                if let Self::Stations(v) = self {
+                    if toggle_vec(v, it) {
+                        *self = Self::None;
+                    }
+                } else if matches!(self, Self::None) {
+                    *self = Self::Stations(vec![it]);
+                }
+            }
+        }
+    }
+
+    pub(crate) fn set_or_reset(&mut self, item: SelectedItem) {
+        match item {
+            SelectedItem::None => *self = Self::None,
+            SelectedItem::TimetableEntries(it) => *self = Self::TimetableEntries(vec![it]),
+            SelectedItem::Intervals(it) => *self = Self::Intervals(vec![it]),
+            SelectedItem::Stations(it) => *self = Self::Stations(vec![it]),
+        }
+    }
+}
+
+pub enum SelectedItem {
+    None,
+    TimetableEntries(TimetableEntrySelection),
+    Intervals(IntervalSelection),
+    Stations(StationSelection),
+}
+
+impl Default for SelectedItems {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
+impl Default for SelectedItem {
+    fn default() -> Self {
+        Self::None
+    }
+}
 
 enum Modals {
     OpenUrl(String),
