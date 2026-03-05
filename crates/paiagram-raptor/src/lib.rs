@@ -3,6 +3,8 @@
 
 // TODO: in case if the crate author updates, switch to iterators instead of vectors
 
+use std::borrow::Cow;
+
 use bevy::{ecs::system::SystemParam, prelude::*};
 use paiagram_core::entry::EntryQuery;
 use paiagram_core::station::{ParentStationOrStation, PlatformEntries, StationQuery};
@@ -53,9 +55,9 @@ impl raptor::Timetable for RaptorTimetable<'_, '_> {
     type Stop = Entity;
     type Trip = Entity;
 
-    fn get_routes_serving_stop(&self, stop: Self::Stop) -> Vec<Self::Route> {
+    fn get_routes_serving_stop(&self, stop: Self::Stop) -> Cow<'_, [Self::Route]> {
         let Ok(station) = self.station_query.get(stop) else {
-            return Vec::new();
+            return Cow::Borrowed(&[]);
         };
 
         let mut routes = std::collections::BTreeSet::new();
@@ -139,11 +141,11 @@ impl raptor::Timetable for RaptorTimetable<'_, '_> {
         }
     }
 
-    fn get_footpaths_from(&self, _stop: Self::Stop) -> Vec<Self::Stop> {
-        Vec::new()
+    fn get_footpaths_from(&self, _stop: Self::Stop) -> Cow<'_, [Self::Stop]> {
+        Cow::Borrowed(&[])
     }
 
-    fn get_stops_after(&self, route: Self::Route, stop: Self::Stop) -> Vec<Self::Stop> {
+    fn get_stops_after(&self, route: Self::Route, stop: Self::Stop) -> Cow<'_, [Self::Stop]> {
         self.route_stop_sequence(route)
             .into_iter()
             .skip_while(|&s| s != stop)
