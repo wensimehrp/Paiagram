@@ -299,9 +299,23 @@ impl Default for GraphIntervalSpatialIndexState {
     }
 }
 
-fn lon_lat_to_xy(lon: f64, lat: f64) -> (f64, f64) {
-    let (northing, easting, _) = utm::to_utm_wgs84_no_zone(lat, lon);
-    (easting, -northing)
+// EPSG:3857
+const EARTH_RADIUS_METERS: f64 = 6_378_137.0;
+const WEB_MERCATOR_MAX_LAT: f64 = 85.051_128_78;
+
+pub fn lon_lat_to_xy(lon: f64, lat: f64) -> (f64, f64) {
+    let x = EARTH_RADIUS_METERS * lon.to_radians();
+    let lat = lat.clamp(-WEB_MERCATOR_MAX_LAT, WEB_MERCATOR_MAX_LAT);
+    let lat_rad = lat.to_radians();
+    let y = -EARTH_RADIUS_METERS * (std::f64::consts::FRAC_PI_4 + lat_rad / 2.0).tan().ln();
+    (x, y)
+}
+
+pub fn xy_to_lon_lat(x: f64, y: f64) -> (f64, f64) {
+    let lon = (x / EARTH_RADIUS_METERS).to_degrees();
+    let lat = (2.0 * (-y / EARTH_RADIUS_METERS).exp().atan() - std::f64::consts::FRAC_PI_2)
+        .to_degrees();
+    (lon, lat)
 }
 
 // TODO: partial update
@@ -431,8 +445,9 @@ impl NodePos {
     pub fn new(lon: f64, lat: f64) -> Self {
         Self { lon, lat }
     }
-    pub fn new_xy(x: f64, y: f64) -> Self {
-        Self::new(x, y)
+    pub fn from_xy(x: f64, y: f64) -> Self {
+        let (lon, lat) = xy_to_lon_lat(x, y);
+        Self::new(lon, lat)
     }
     pub fn to_xy(&self) -> (f64, f64) {
         lon_lat_to_xy(self.lon, self.lat)

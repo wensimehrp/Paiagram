@@ -98,7 +98,7 @@ pub fn apply_force_directed_layout(
             continue;
         };
         let (nx, ny) = layout(idx);
-        pos.pos = NodePos::new_xy(nx as f64, ny as f64);
+        pos.pos = NodePos::from_xy(nx as f64, ny as f64);
     }
 }
 
@@ -127,7 +127,7 @@ pub fn auto_arrange_graph(
                 let (x, y) = layout(idx);
                 (
                     *graph.node_weight(idx).unwrap(),
-                    NodePos::new_xy(x as f64, y as f64),
+                    NodePos::from_xy(x as f64, y as f64),
                 )
             })
             .collect();
