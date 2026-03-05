@@ -11,9 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  pages: write
   contents: read
-  id-token: write
 
 jobs:
   build-and-deploy:
@@ -54,11 +52,9 @@ jobs:
       - name: Prepare Pages artifact
         run: nix develop .#default --command just nightly-build
 
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v4
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
         with:
-          path: dist
-
-      - name: Deploy to GitHub Pages
-        id: deploy
-        uses: actions/deploy-pages@v4
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist --project-name=paiagram --branch=main
