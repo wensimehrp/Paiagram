@@ -4910,13 +4910,13 @@ dependencies = [
  "eframe",
  "egui",
  "egui-i18n",
- "egui-phosphor",
  "egui_table",
  "egui_tiles",
  "either",
  "emath",
  "git-version",
  "instant",
+ "js-sys",
  "moonshine-core",
  "paiagram-core",
  "paiagram-raptor",
@@ -5378,12 +5378,14 @@ checksum = "973443cf09a9c8656b574a866ab68dfa19f0867d0340648c7d2f6a71b8a8ea68"
 
 [[package]]
 name = "raptor"
-version = "0.1.1"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "96101b0977128278a3b996312e32fa3ebf885d78ba49fcf74af55a2ca6a0c6ac"
+checksum = "1897f86004ee34a700a24bdc486ffafe576030923feab974e41e7783475c67fe"
 dependencies = [
  "gtfs-structures",
+ "log",
  "smallvec",
+ "thiserror 2.0.18",
 ]
 
 [[package]]

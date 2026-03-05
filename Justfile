@@ -24,7 +24,11 @@ build-wasm:
         --target web \
         --no-typescript \
         target/wasm32-unknown-unknown/release/paiagram.wasm
+    @du -sh target/wasm32-unknown-unknown/release/paiagram.wasm
+    @du -s target/wasm32-unknown-unknown/release/paiagram.wasm
     wasm-opt -O4 --all-features --fast-math -o wasm-out/paiagram_bg.wasm wasm-out/paiagram_bg.wasm
+    @du -sh wasm-out/paiagram_bg.wasm
+    @du -s wasm-out/paiagram_bg.wasm
 
 prep-docs:
     shiroa build docs --mode static-html --path-to-root Paiagram/nightly-docs
@@ -39,6 +43,7 @@ prep-wasm: rust-docs build-wasm
     cp -r web/nightly/* dist/nightly
     cp -r target/doc/* dist/nightly/api-docs/
     cp -r wasm-out/* dist/nightly/
+    cp crates/paiagram-ui/assets/fonts/SarasaUiSC-Regular.ttf dist/nightly/
 
 nightly-build: prep-docs prep-wasm
     cp -r web/* dist/

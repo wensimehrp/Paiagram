@@ -7,6 +7,8 @@ pub mod tabs;
 mod widgets;
 
 use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
+#[cfg(not(target_arch = "wasm32"))]
+use std::path::PathBuf;
 
 use bevy::prelude::*;
 use egui::{Context, Frame, Response, RichText, ScrollArea, Ui};
@@ -30,6 +32,8 @@ use paiagram_core::{
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::JsCast;
 pub struct UiPlugin;
 impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
@@ -968,27 +972,111 @@ fn sync_ui(InRef(ctx): InRef<Context>, preferences: Res<UserPreferences>) {
 }
 
 pub fn apply_custom_fonts(ctx: &Context) {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let sarasa = load_sarasa_local();
+        ctx.set_fonts(build_font_definitions(sarasa));
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        ctx.set_fonts(build_font_definitions(None));
+        download_sarasa_and_apply(ctx.clone());
+    }
+}
+
+fn build_font_definitions(sarasa: Option<Vec<u8>>) -> egui::FontDefinitions {
     let mut fonts = egui::FontDefinitions::default();
-    fonts.font_data.insert(
-        "my_font".to_owned(),
-        std::sync::Arc::new(egui::FontData::from_static(include_bytes!(
-            "../assets/fonts/SarasaUiSC-Regular.ttf"
-        ))),
-    );
+
+    let has_sarasa = sarasa.is_some();
+    if let Some(bytes) = sarasa {
+        fonts.font_data.insert(
+            "my_font".to_owned(),
+            std::sync::Arc::new(egui::FontData::from_owned(bytes)),
+        );
+    }
+
     fonts.font_data.insert(
         "dia_pro".to_owned(),
         std::sync::Arc::new(egui::FontData::from_static(include_bytes!(
             "../assets/fonts/DiaPro-Regular.ttf"
         ))),
     );
+
+    if has_sarasa {
+        fonts
+            .families
+            .get_mut(&egui::FontFamily::Proportional)
+            .unwrap()
+            .insert(0, "my_font".to_owned());
+    }
+
+    let mut dia_pro_family = vec!["dia_pro".to_owned()];
+    if has_sarasa {
+        dia_pro_family.push("my_font".to_owned());
+    }
     fonts
         .families
-        .get_mut(&egui::FontFamily::Proportional)
-        .unwrap()
-        .insert(0, "my_font".to_owned());
-    fonts.families.insert(
-        egui::FontFamily::Name("dia_pro".into()),
-        vec!["dia_pro".to_owned(), "my_font".to_owned()],
-    );
-    ctx.set_fonts(fonts);
+        .insert(egui::FontFamily::Name("dia_pro".into()), dia_pro_family);
+
+    fonts
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn load_sarasa_local() -> Option<Vec<u8>> {
+    let mut candidates = vec![
+        PathBuf::from("assets/fonts/SarasaUiSC-Regular.ttf"),
+        PathBuf::from("crates/paiagram-ui/assets/fonts/SarasaUiSC-Regular.ttf"),
+    ];
+
+    if let Ok(exe) = std::env::current_exe()
+        && let Some(parent) = exe.parent()
+    {
+        candidates.push(parent.join("assets/fonts/SarasaUiSC-Regular.ttf"));
+    }
+
+    for path in candidates {
+        if let Ok(bytes) = std::fs::read(&path) {
+            return Some(bytes);
+        }
+    }
+
+    None
+}
+
+#[cfg(target_arch = "wasm32")]
+fn download_sarasa_and_apply(ctx: Context) {
+    wasm_bindgen_futures::spawn_local(async move {
+        let Some(window) = eframe::web_sys::window() else {
+            return;
+        };
+
+        let Ok(response) = wasm_bindgen_futures::JsFuture::from(
+            window.fetch_with_str("SarasaUiSC-Regular.ttf"),
+        )
+        .await
+        else {
+            return;
+        };
+
+        let Ok(response) = response.dyn_into::<eframe::web_sys::Response>() else {
+            return;
+        };
+
+        if !response.ok() {
+            return;
+        }
+
+        let Ok(array_buffer_promise) = response.array_buffer() else {
+            return;
+        };
+
+        let Ok(array_buffer) = wasm_bindgen_futures::JsFuture::from(array_buffer_promise).await
+        else {
+            return;
+        };
+
+        let bytes = js_sys::Uint8Array::new(&array_buffer).to_vec();
+        ctx.set_fonts(build_font_definitions(Some(bytes)));
+    });
 }
