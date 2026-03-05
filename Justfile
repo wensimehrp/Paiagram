@@ -32,12 +32,6 @@ build-wasm:
     split -b 24M -d "wasm-out/paiagram_bg.wasm" "wasm-out/paiagram_bg.wasm."
     rm -f wasm-out/paiagram_bg.wasm
 
-prep-docs:
-    shiroa build docs --mode static-html --path-to-root nightly-docs
-    rm -rf dist/nightly-docs
-    mkdir -p dist/nightly-docs
-    cp -r docs/dist/. dist/nightly-docs
-
 prep-wasm: rust-docs build-wasm
     rm -rf dist/nightly
     mkdir -p dist/nightly
@@ -48,5 +42,13 @@ prep-wasm: rust-docs build-wasm
     cp crates/paiagram-ui/assets/fonts/SarasaUiSC-Regular.ttf dist/nightly/
     git rev-parse HEAD > dist/nightly/git-revision.txt
 
-nightly-build: prep-docs prep-wasm
-    cp -r web/* dist/
+prep-docs:
+    rm -rf dist/docs
+    mkdir -p dist/docs
+    shiroa build docs --mode static-html --path-to-root /docs
+    cp -r docs/dist/. dist/docs
+
+prep-main:
+    rm -rf dist/main
+    mkdir -p dist/main
+    cp -r web/main/. dist/main
