@@ -5,42 +5,26 @@ use egui::{Id, Key, NumExt, Response, Ui, Vec2, WidgetText, vec2};
 use egui_i18n::tr;
 use moonshine_core::prelude::MapEntities;
 
-// use paiagram_core::interface::StatusBarState;
-
 pub mod classes;
-// pub mod diagram;
 pub mod diagram;
-// pub mod displayed_lines;
 pub mod graph;
 pub mod inspector;
-// pub mod minesweeper;
-// pub mod overview;
-// pub mod services;
 pub mod all_trips;
 pub mod priority_graph;
 pub mod settings;
 pub mod start;
 pub mod trip;
-// pub mod station_timetable;
-// pub mod tree_view;
-// pub mod vehicle;
 
 pub mod all_tabs {
     pub use super::classes::ClassesTab;
     pub use super::diagram::DiagramTab;
-    // pub use super::displayed_lines::DisplayedLinesTab;
     pub use super::graph::GraphTab;
     pub use super::inspector::InspectorTab;
-    // pub use super::minesweeper::MinesweeperTab;
-    // pub use super::overview::OverviewTab;
-    // pub use super::services::ServicesTab;
     pub use super::all_trips::AllTripsTab;
     pub use super::priority_graph::PriorityGraphTab;
     pub use super::settings::SettingsTab;
     pub use super::start::StartTab;
     pub use super::trip::TripTab;
-    // pub use super::station_timetable::StationTimetableTab;
-    // pub use super::vehicle::VehicleTab;
 }
 
 fn handle_keyboard_navigation(ui: &Ui) -> Vec2 {

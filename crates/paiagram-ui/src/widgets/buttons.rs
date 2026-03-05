@@ -1,5 +1,5 @@
 use bevy::math::ops::sqrt;
-use egui::{Color32, Frame, Painter, Pos2, Rect, Response, Shape, Stroke, Style, Ui};
+use egui::{Color32, Painter, Pos2, Shape, Stroke};
 
 pub fn circle_button_shape(
     painter: &mut Painter,
