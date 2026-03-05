@@ -400,8 +400,7 @@
                         throw new Error("Invalid wasm-bindgen glue module");
                     }
 
-                    const wasmModule = new WebAssembly.Module(wasmRecord.bytes);
-                    await init(wasmModule);
+                    await init(wasmRecord.bytes.slice(0));
                 } finally {
                     URL.revokeObjectURL(glueBlobUrl);
                 }

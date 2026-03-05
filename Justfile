@@ -29,7 +29,7 @@ build-wasm:
     wasm-opt -O4 --all-features --fast-math -o wasm-out/paiagram_bg.wasm wasm-out/paiagram_bg.wasm
     @du -sh wasm-out/paiagram_bg.wasm
     @du -s wasm-out/paiagram_bg.wasm
-    split -b 24M -d --additional-suffix=.dat "wasm-out/paiagram_bg.wasm" "wasm-out/paiagram_bg.wasm."
+    split -b 24M -d "wasm-out/paiagram_bg.wasm" "wasm-out/paiagram_bg.wasm."
     rm -f wasm-out/paiagram_bg.wasm
 
 prep-docs:
