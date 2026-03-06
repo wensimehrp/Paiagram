@@ -375,8 +375,9 @@ fn push_draw_items(
             pos0.lerp(pos1, f as f32)
         };
         // out.interval_entities.push(sample.trip);
-        buffer
-            .push(gpu_draw::ShapeInstance::stealth_arrow(pos0, pos1, pos, color));
+        buffer.push(gpu_draw::ShapeInstance::stealth_arrow(
+            pos0, pos1, pos, color,
+        ));
         painter.text(
             pos + Vec2 { x: 7.0, y: 0.0 },
             Align2::LEFT_CENTER,

@@ -2,11 +2,11 @@
 
 #let links = (
   repo: "https://github.com/WenSimEHRP/Paiagram",
-  app: "https://wensimehrp.github.io/Paiagram/nightly",
+  app: "https://paiagram.com/nightly",
   discussions: "https://github.com/WenSimEHRP/Paiagram/discussions",
   discord: "https://discord.com/channels/142724111502802944/1281691431395790908",
   qq: "1090842644",
-  home: "https://wensimehrp.github.io/Paiagram"
+  home: "https://paiagram.com"
 )
 
 #show: book

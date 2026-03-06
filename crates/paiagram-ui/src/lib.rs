@@ -6,16 +6,18 @@ pub mod save;
 pub mod tabs;
 mod widgets;
 
-use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 
 use bevy::prelude::*;
-use egui::{Context, Frame, Response, RichText, ScrollArea, Ui};
+use egui::{Context, Frame, Response, RichText, ScrollArea, Stroke, Ui};
 use egui_tiles::{
     Behavior, ContainerKind, SimplificationOptions, Tile, TileId, Tiles, Tree, UiResponse,
 };
 use moonshine_core::prelude::{MapEntities, ReflectMapEntities};
+use paiagram_core::colors::PredefinedColor;
+use paiagram_core::import::LoadLlt;
 use serde::{Deserialize, Serialize};
 use tabs::{Tab, all_tabs::*};
 
@@ -31,9 +33,9 @@ use paiagram_core::{
 };
 
 #[cfg(target_arch = "wasm32")]
-use wasm_bindgen::prelude::*;
-#[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsCast;
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
 pub struct UiPlugin;
 impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
@@ -270,6 +272,14 @@ impl FrameTimeHistory {
     fn average_dt(&self) -> f32 {
         let sum: f32 = self.values.iter().sum();
         sum / Self::CAPACITY as f32
+    }
+
+    fn previous_n(&self, n: usize) -> impl Iterator<Item = f32> {
+        let count = n.min(Self::CAPACITY);
+        (0..count).map(move |i| {
+            let index = (self.next_index + Self::CAPACITY - 1 - i) % Self::CAPACITY;
+            self.values[index]
+        })
     }
 }
 
@@ -825,6 +835,17 @@ pub fn show_ui(ctx: &Context, world: &mut World) {
                             },
                         });
                     }
+                    if ui.button("Read LLT...").clicked() {
+                        world.commands().trigger(paiagram_rw::read::ReadFile {
+                            title: "Load LLT Files".to_string(),
+                            extensions: vec![("LLT Files".to_string(), vec!["json".to_string()])],
+                            callback: |c, s| {
+                                c.trigger(LoadLlt {
+                                    content: String::from_utf8(s).unwrap(),
+                                });
+                            },
+                        });
+                    }
                     ui.separator();
                     if ui.button("Save...").clicked() {
                         save::save(world, "save.paia".to_string());
@@ -856,13 +877,39 @@ pub fn show_ui(ctx: &Context, world: &mut World) {
                         }
                     }
                 });
-                let average_dt = {
-                    let mut frame_time_history = world.resource_mut::<FrameTimeHistory>();
-                    frame_time_history.push(ui.input(|r| r.stable_dt));
-                    frame_time_history.average_dt()
-                };
+                let mut frame_time_history = world.resource_mut::<FrameTimeHistory>();
+                frame_time_history.push(ui.input(|r| r.stable_dt));
+                let average_dt = frame_time_history.average_dt();
                 ui.monospace(format!("FPS: {:6.2}", 1.0_f32 / average_dt));
                 ui.monospace(format!("MS: {:5.2}", average_dt * 1000.0_f32));
+                ui.horizontal(|ui| {
+                    const GAP: f32 = 4.0;
+                    const SAMPLE_COUNT: usize = 16;
+                    let stroke = Stroke {
+                        color: PredefinedColor::Blue.get(ui.visuals().dark_mode),
+                        width: 3.0,
+                    };
+                    let max = frame_time_history
+                        .previous_n(SAMPLE_COUNT)
+                        .fold(0.0_f32, f32::max)
+                        .max(f32::EPSILON);
+                    let graph_width = SAMPLE_COUNT as f32 * (stroke.width + GAP) - GAP;
+                    let graph_height = ui.available_height();
+                    let (rect, _) = ui.allocate_exact_size(
+                        egui::vec2(graph_width, graph_height),
+                        egui::Sense::hover(),
+                    );
+                    for (idx, f) in frame_time_history.previous_n(SAMPLE_COUNT).enumerate() {
+                        let height = rect.height() * (f / max).clamp(0.0, 1.0);
+                        let x =
+                            rect.right() - idx as f32 * (stroke.width + GAP) - stroke.width * 0.5;
+                        let points = [
+                            egui::pos2(x, rect.bottom()),
+                            egui::pos2(x, rect.bottom() - height),
+                        ];
+                        ui.painter().line_segment(points, stroke);
+                    }
+                });
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let mut timer = world.resource_mut::<GlobalTimer>();
                     let mut seconds = timer.read_seconds();
@@ -1051,10 +1098,9 @@ fn download_sarasa_and_apply(ctx: Context) {
             return;
         };
 
-        let Ok(response) = wasm_bindgen_futures::JsFuture::from(
-            window.fetch_with_str("SarasaUiSC-Regular.ttf"),
-        )
-        .await
+        let Ok(response) =
+            wasm_bindgen_futures::JsFuture::from(window.fetch_with_str("SarasaUiSC-Regular.ttf"))
+                .await
         else {
             return;
         };

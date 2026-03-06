@@ -5,22 +5,22 @@ use egui::{Id, Key, NumExt, Response, Ui, Vec2, WidgetText, vec2};
 use egui_i18n::tr;
 use moonshine_core::prelude::MapEntities;
 
+pub mod all_trips;
 pub mod classes;
 pub mod diagram;
 pub mod graph;
 pub mod inspector;
-pub mod all_trips;
 pub mod priority_graph;
 pub mod settings;
 pub mod start;
 pub mod trip;
 
 pub mod all_tabs {
+    pub use super::all_trips::AllTripsTab;
     pub use super::classes::ClassesTab;
     pub use super::diagram::DiagramTab;
     pub use super::graph::GraphTab;
     pub use super::inspector::InspectorTab;
-    pub use super::all_trips::AllTripsTab;
     pub use super::priority_graph::PriorityGraphTab;
     pub use super::settings::SettingsTab;
     pub use super::start::StartTab;

@@ -313,8 +313,8 @@ pub fn lon_lat_to_xy(lon: f64, lat: f64) -> (f64, f64) {
 
 pub fn xy_to_lon_lat(x: f64, y: f64) -> (f64, f64) {
     let lon = (x / EARTH_RADIUS_METERS).to_degrees();
-    let lat = (2.0 * (-y / EARTH_RADIUS_METERS).exp().atan() - std::f64::consts::FRAC_PI_2)
-        .to_degrees();
+    let lat =
+        (2.0 * (-y / EARTH_RADIUS_METERS).exp().atan() - std::f64::consts::FRAC_PI_2).to_degrees();
     (lon, lat)
 }
 

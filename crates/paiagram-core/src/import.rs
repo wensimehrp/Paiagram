@@ -23,6 +23,7 @@ use moonshine_core::kind::*;
 use paiagram_rw::save::{LoadCandidate, SaveData};
 
 mod gtfs;
+mod llt;
 mod oudia;
 mod qetrc;
 
@@ -32,6 +33,7 @@ impl Plugin for ImportPlugin {
         app.add_observer(qetrc::load_qetrc)
             .add_observer(oudia::load_oud)
             .add_observer(gtfs::load_gtfs_static)
+            .add_observer(llt::load_llt)
             .add_observer(download_file)
             .add_systems(Update, pull_file);
     }
@@ -39,6 +41,11 @@ impl Plugin for ImportPlugin {
 
 #[derive(Event)]
 pub struct LoadQETRC {
+    pub content: String,
+}
+
+#[derive(Event)]
+pub struct LoadLlt {
     pub content: String,
 }
 
@@ -130,13 +137,14 @@ pub(crate) fn add_interval_pair(
     to: Entity,
     length: Distance,
 ) {
-    if graph.contains_edge(from, to) || graph.contains_edge(to, from) {
-        return;
+    if !graph.contains_edge(from, to) {
+        let e1: Instance<Interval> = commands.spawn_instance(Interval { length }).into();
+        graph.add_edge(from, to, e1.entity());
     }
-    let e1: Instance<Interval> = commands.spawn_instance(Interval { length }).into();
-    let e2: Instance<Interval> = commands.spawn_instance(Interval { length }).into();
-    graph.add_edge(from, to, e1.entity());
-    graph.add_edge(to, from, e2.entity());
+    if !graph.contains_edge(to, from) {
+        let e2: Instance<Interval> = commands.spawn_instance(Interval { length }).into();
+        graph.add_edge(to, from, e2.entity());
+    }
 }
 
 #[derive(Component)]

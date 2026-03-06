@@ -26,6 +26,17 @@ impl Default for DisplayedStroke {
 }
 
 impl DisplayedStroke {
+    pub fn from_seed(data: impl AsRef<[u8]>) -> Self {
+        let bytes = data.as_ref();
+        let mut sum = 0u8;
+        for byte in bytes.iter().copied() {
+            sum = sum.wrapping_add(byte);
+        }
+        Self {
+            color: DisplayColor::Predefined(PredefinedColor::from_index(sum as usize)),
+            width: 1.0,
+        }
+    }
     pub fn egui_stroke(&self, is_dark: bool) -> egui::Stroke {
         egui::Stroke {
             color: self.color.get(is_dark),

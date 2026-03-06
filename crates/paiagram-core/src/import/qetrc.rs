@@ -199,17 +199,13 @@ pub fn load_qetrc(event: On<super::LoadQETRC>, mut commands: Commands, mut graph
                 )
             })
             .collect();
-        super::normalize_times(
-            entries
-                .iter_mut()
-                .flat_map(|(a, d, _)| std::iter::once(a).chain(std::iter::once(d))),
-        );
+        super::normalize_times(entries.iter_mut().flat_map(|(a, d, _)| [a, d]));
         let trip_class =
             super::make_class(&service.service_type, &mut class_map, &mut commands, || {
                 ClassBundle {
                     class: Class::default(),
                     name: Name::new(service.service_type.clone()),
-                    stroke: DisplayedStroke::default(),
+                    stroke: DisplayedStroke::from_seed(service.service_type.as_bytes()),
                 }
             });
         let trip_entity = commands
