@@ -809,7 +809,7 @@ extern "C" {
     fn toggle_fullscreen(id: &str);
 }
 
-pub fn show_ui(ctx: &Context, world: &mut World) {
+pub fn show_ui(ctx: &Context, world: &mut World, cpu_time: Option<f32>) {
     world.run_system_cached_with(sync_ui, ctx).unwrap();
     world.resource_scope(|world, mut modal: Mut<UiModal>| {
         let Some(m) = &mut modal.0 else { return };
@@ -904,10 +904,11 @@ pub fn show_ui(ctx: &Context, world: &mut World) {
                 frame_time_history.push(ui.input(|r| r.stable_dt));
                 let average_dt = frame_time_history.average_dt();
                 ui.monospace(format!("FPS: {:6.2}", 1.0_f32 / average_dt));
-                ui.monospace(format!("MS: {:5.2}", average_dt * 1000.0_f32));
+                ui.monospace(format!("FRAME: {:5.2}ms", average_dt * 1000.0_f32));
+                ui.monospace(format!("CPU: {:5.2}ms", cpu_time.unwrap_or(0.0) * 1000.0_f32));
                 ui.horizontal(|ui| {
                     const GAP: f32 = 4.0;
-                    const SAMPLE_COUNT: usize = 16;
+                    const SAMPLE_COUNT: usize = 32;
                     let stroke = Stroke {
                         color: PredefinedColor::Blue.get(ui.visuals().dark_mode),
                         width: 3.0,
