@@ -117,43 +117,55 @@ pub fn load_oud(
                 let trip_class = train
                     .class_index
                     .map_or(class_resource.default_class, |idx| class_instances[idx]);
-                commands
-                    .spawn(TripBundle::new(&train.name, TripClass(trip_class.entity())))
-                    .with_children(|bundle| {
-                        for (stop, mut times) in &times
-                            .into_iter()
-                            .enumerate()
-                            .filter_map(|(i, time)| {
-                                let time = time?;
-                                if matches!(time.passing_mode, PassingMode::NoOperation) {
-                                    return None;
-                                }
-                                let station_index = match train.direction {
-                                    Direction::Down => i,
-                                    Direction::Up => station_instances.len() - 1 - i,
-                                };
-                                let stop = station_instances[station_index];
-                                Some((stop, time))
-                            })
-                            .chunk_by(|(s, _t)| *s)
-                        {
-                            let (_, first_time) = times.next().unwrap();
-                            let last_time = times.last().map(|(_, t)| t).unwrap_or(first_time);
-                            let arrival = if matches!(first_time.passing_mode, PassingMode::Pass) {
-                                None
-                            } else {
-                                Some(
-                                    first_time
-                                        .arrival
-                                        .map_or(TravelMode::Flexible, |t| TravelMode::At(t)),
-                                )
-                            };
-                            let departure = last_time
-                                .departure
-                                .map_or(TravelMode::Flexible, |t| TravelMode::At(t));
-                            bundle.spawn(EntryBundle::new(arrival, departure, stop.entity()));
+
+                let times_iter = times
+                    .into_iter()
+                    .enumerate()
+                    .filter_map(|(i, time)| {
+                        let time = time?;
+                        if matches!(time.passing_mode, PassingMode::NoOperation) {
+                            return None;
                         }
-                    });
+                        let station_index = match train.direction {
+                            Direction::Down => i,
+                            Direction::Up => station_instances.len() - 1 - i,
+                        };
+                        let stop = station_instances[station_index];
+                        Some((stop, time))
+                    })
+                    .chunk_by(|(s, _t)| *s);
+
+                let nominal_entries: Vec<_> = times_iter
+                    .into_iter()
+                    .map(|(stop, mut times)| {
+                        let (_, first_time) = times.next().unwrap();
+                        let last_time = times.last().map(|(_, t)| t).unwrap_or(first_time);
+                        let arrival = if matches!(first_time.passing_mode, PassingMode::Pass) {
+                            None
+                        } else {
+                            Some(
+                                first_time
+                                    .arrival
+                                    .map_or(TravelMode::Flexible, |t| TravelMode::At(t)),
+                            )
+                        };
+                        let departure = last_time
+                            .departure
+                            .map_or(TravelMode::Flexible, |t| TravelMode::At(t));
+                        commands
+                            .spawn(EntryBundle::new(arrival, departure, stop.entity()))
+                            .id()
+                    })
+                    .collect();
+
+                commands
+                    .spawn_empty()
+                    .add_children(&nominal_entries)
+                    .insert(TripBundle::new(
+                        &train.name,
+                        TripClass(trip_class.entity()),
+                        nominal_entries,
+                    ));
             }
         }
     }

@@ -86,11 +86,11 @@ impl MapEntities for Graph {
 }
 
 impl Graph {
-    pub fn route_between<'w>(
+    pub fn route_between(
         &self,
         source: Entity,
         target: Entity,
-        interval_q: &Query<'w, 'w, IntervalQuery>,
+        interval_q: &Query<IntervalQuery>,
     ) -> Option<(i32, Vec<Entity>)> {
         astar(
             &self.map,

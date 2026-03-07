@@ -109,6 +109,24 @@ impl EntryBundle {
     }
 }
 
+/// Bundle for easy spawning
+#[derive(Bundle)]
+pub struct DerivedEntryBundle {
+    mode: EntryMode,
+    stop: EntryStop,
+    derived: IsDerivedEntry,
+}
+
+impl DerivedEntryBundle {
+    pub fn new(stop: Entity) -> Self {
+        Self {
+            mode: EntryMode::new_derived(),
+            stop: EntryStop(stop),
+            derived: IsDerivedEntry,
+        }
+    }
+}
+
 #[derive(QueryData)]
 pub struct EntryQuery {
     pub entity: Entity,
@@ -140,7 +158,10 @@ impl<'w, 's> EntryQueryItem<'w, 's> {
         assert_eq!(parent_it.entity, self.parent_schedule.parent());
         let arr = self.estimate?.arr;
         let parent_schedule = parent_it.schedule;
-        let idx = parent_schedule.iter().position(|e| e == self.entity)?;
+        let idx = parent_schedule
+            .iter()
+            .copied()
+            .position(|e| e == self.entity)?;
         if idx == 0 {
             return Some(arr.as_duration());
         }

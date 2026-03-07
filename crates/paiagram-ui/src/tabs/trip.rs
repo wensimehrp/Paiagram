@@ -63,7 +63,7 @@ fn show_trip(
                 ui.label("Arrival");
                 ui.label("Departure");
                 ui.end_row();
-                for it in entry_q.iter_many(trip.schedule) {
+                for it in entry_q.iter_many(trip.schedule.iter()) {
                     row_ui(
                         &platform_q,
                         &station_q,

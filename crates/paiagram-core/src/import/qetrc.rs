@@ -208,22 +208,28 @@ pub fn load_qetrc(event: On<super::LoadQETRC>, mut commands: Commands, mut graph
                     stroke: DisplayedStroke::from_seed(service.service_type.as_bytes()),
                 }
             });
+        let nominal_entries: Vec<Entity> = entries
+            .into_iter()
+            .map(|(arr, dep, stop)| {
+                if dep < arr {
+                    info!(?arr, ?dep, ?service.service_number)
+                }
+                debug_assert!(dep >= arr);
+                let arr = (dep != arr).then(|| TravelMode::At(arr));
+                let dep = TravelMode::At(dep);
+                commands
+                    .spawn(EntryBundle::new(arr, dep, stop.entity()))
+                    .id()
+            })
+            .collect();
         let trip_entity = commands
-            .spawn(TripBundle::new(
+            .spawn_empty()
+            .add_children(&nominal_entries)
+            .insert(TripBundle::new(
                 &service.service_number[0],
                 TripClass(trip_class.entity()),
+                nominal_entries,
             ))
-            .with_children(|bundle| {
-                for (arr, dep, stop) in entries {
-                    if dep < arr {
-                        info!(?arr, ?dep, ?service.service_number)
-                    }
-                    debug_assert!(dep >= arr);
-                    let arr = (dep != arr).then(|| TravelMode::At(arr));
-                    let dep = TravelMode::At(dep);
-                    bundle.spawn(EntryBundle::new(arr, dep, stop.entity()));
-                }
-            })
             .id();
         trip_pool.insert(service.service_number[0].clone(), trip_entity);
     }

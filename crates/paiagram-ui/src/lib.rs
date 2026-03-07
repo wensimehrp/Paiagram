@@ -27,7 +27,7 @@ use paiagram_core::{
     import::{DownloadFile, LoadGTFS, LoadOuDia, LoadQETRC},
     route::Route,
     settings::UserPreferences,
-    trip::{Trip, TripSchedule},
+    trip::{ConvertDerivedEntryToExplicit, Trip, TripSchedule},
     units::time::TimetableTime,
     vehicle::Vehicle,
 };
@@ -106,7 +106,7 @@ pub(crate) fn display_entry_info(
 
         let is_derived = is_derived_q.get(entry).is_ok();
         if is_derived && ui.button("Convert to explicit").clicked() {
-            commands.entity(entry).remove::<IsDerivedEntry>();
+            commands.trigger(ConvertDerivedEntryToExplicit { entity: entry });
         } else if !is_derived && ui.button("Delete").clicked() {
             commands.entity(entry).despawn();
         }
@@ -129,7 +129,7 @@ pub(crate) fn display_entry_info(
         if ui.button("Extend").clicked() {
             let mut last_time = None;
             if let Ok(schedule) = schedule_q.get(parent)
-                && let Some(time) = schedule.iter().rev().find_map(|e| entry_q.get(e).ok())
+                && let Some(time) = schedule.iter().rev().find_map(|e| entry_q.get(*e).ok())
             {
                 last_time = Some(time.dep);
             }

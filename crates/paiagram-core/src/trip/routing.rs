@@ -2,13 +2,11 @@ use bevy::prelude::*;
 use itertools::Itertools;
 
 use crate::{
-    entry::{
-        EntryBundle, EntryEstimate, EntryMode, EntryQuery, EntryStop, IsDerivedEntry, TravelMode,
-    },
+    entry::{DerivedEntryBundle, EntryEstimate, EntryMode, EntryStop, IsDerivedEntry, TravelMode},
     graph::Graph,
     interval::IntervalQuery,
     station::ParentStationOrStation,
-    trip::{Trip, TripClass, TripQuery, TripSchedule},
+    trip::{TripClass, TripNominalSchedule, TripQuery, TripSchedule},
     units::{
         distance::Distance,
         time::{Duration, TimetableTime},
@@ -24,11 +22,7 @@ impl Plugin for RoutingPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<AddEntryToTrip>()
             .init_resource::<RecalculateCandidates>()
-            .add_observer(remove_entries)
-            .add_systems(PreUpdate, edit_entries)
-            .add_systems(Update, clear_route)
-            .add_systems(PostUpdate, recalculate_route)
-            .add_systems(Last, recalculate_estimate);
+            .add_systems(Update, (add_entries, recalculate_route, recalculate_estimate).chain());
     }
 }
 
@@ -38,91 +32,89 @@ pub struct AddEntryToTrip {
     pub entry: Entity,
 }
 
-fn remove_entries(
-    trigger: On<Remove, EntryMode>,
-    filter: Query<&ChildOf, Without<IsDerivedEntry>>,
-    mut recalculate_candidates: ResMut<RecalculateCandidates>,
-) {
-    if let Ok(p) = filter.get(trigger.entity) {
-        recalculate_candidates.0.push(p.parent())
-    }
-}
-
-fn edit_entries(
-    mut added_entries: MessageReader<AddEntryToTrip>,
+pub fn add_entries(
+    mut msgs: MessageReader<AddEntryToTrip>,
     mut commands: Commands,
-    mut candidates: ResMut<RecalculateCandidates>,
+    mut trips: Query<&mut TripNominalSchedule>,
 ) {
-    for AddEntryToTrip { trip, entry } in added_entries.read().copied() {
+    for AddEntryToTrip { trip, entry } in msgs.read().copied() {
         commands.entity(trip).add_child(entry);
-        candidates.0.push(trip);
+        trips.get_mut(trip).unwrap().push(entry);
     }
 }
 
-fn clear_route(
-    added_trips: Query<Entity, (Added<TripSchedule>, With<Trip>)>,
-    changed_entries: Query<&ChildOf, (Changed<EntryStop>, Without<IsDerivedEntry>)>,
-    trips_q: Query<&TripSchedule, With<Trip>>,
+pub fn recalculate_route(
+    changed_schedule: Query<
+        (Entity, &TripNominalSchedule, &mut TripSchedule),
+        Changed<TripNominalSchedule>,
+    >,
+    entry_q: Query<(Entity, &EntryStop)>,
     derived_q: Query<Entity, With<IsDerivedEntry>>,
+    graph: Res<Graph>,
+    parent_station_or_station: Query<ParentStationOrStation>,
     mut commands: Commands,
-    mut recalculate_candidates: ResMut<RecalculateCandidates>,
+    interval_q: Query<IntervalQuery>,
 ) {
-    let recalculate_candidate = added_trips
-        .iter()
-        .chain(changed_entries.iter().map(|it| it.parent()));
-    recalculate_candidates.0.extend(recalculate_candidate);
-    recalculate_candidates.0.sort_unstable();
-    recalculate_candidates.0.dedup();
-    for trip_entity in recalculate_candidates.0.iter().copied() {
-        let schedule = trips_q.get(trip_entity).unwrap();
-        for e in derived_q.iter_many(schedule) {
-            commands.entity(e).despawn();
+    for (trip_entity, nominal_schedule, mut actual_schedule) in changed_schedule {
+        for derived_entity in derived_q.iter_many(actual_schedule.iter()) {
+            commands.entity(derived_entity).despawn();
         }
+        recalculate_inner(
+            nominal_schedule,
+            trip_entity,
+            &mut actual_schedule,
+            &graph,
+            &mut commands,
+            &parent_station_or_station,
+            &entry_q,
+            &interval_q,
+        );
     }
 }
 
-fn recalculate_route(
-    trips_q: Query<&TripSchedule, With<Trip>>,
-    entry_q: Query<EntryQuery>,
-    interval_q: Query<IntervalQuery>,
-    graph: Res<Graph>,
-    mut commands: Commands,
-    mut recalculate_candidates: ResMut<RecalculateCandidates>,
+fn recalculate_inner(
+    route: &[Entity],
+    trip_entity: Entity,
+    buffer: &mut Vec<Entity>,
+    graph: &Graph,
+    commands: &mut Commands,
+    parent_station_or_station: &Query<ParentStationOrStation>,
+    entry_q: &Query<(Entity, &EntryStop)>,
+    interval_q: &Query<IntervalQuery>,
 ) {
-    for trip_entity in recalculate_candidates.0.drain(..) {
-        let schedule = trips_q.get(trip_entity).unwrap();
-        let original = schedule.iter().collect::<Vec<_>>();
-        let mut inserted = 0usize;
-        for (idx, (source_entry, target_entry)) in original.iter().tuple_windows().enumerate() {
-            let source = entry_q.get(*source_entry).unwrap();
-            let target = entry_q.get(*target_entry).unwrap();
-            debug_assert!(!(source.is_derived() || target.is_derived()));
-            let Some((_, mut route)) =
-                graph.route_between(source.stop(), target.stop(), &interval_q)
-            else {
-                continue;
-            };
-            if route.first().copied() == Some(source.stop()) {
-                route.remove(0);
-            }
-            if route.last().copied() == Some(target.stop()) {
-                route.pop();
-            }
-            if route.is_empty() {
-                continue;
-            }
-            let mut collected = Vec::with_capacity(route.len());
-            for node in route {
-                let entry = commands
-                    .spawn((EntryBundle::new_derived(node), IsDerivedEntry))
-                    .id();
-                collected.push(entry);
-            }
-            commands
-                .entity(trip_entity)
-                .insert_children(idx + 1 + inserted, &collected);
-            inserted += collected.len();
+    buffer.clear();
+    let mut route_iter = entry_q.iter_many(route.iter()).map(|(a, c)| {
+        (
+            a,
+            parent_station_or_station.get(c.entity()).unwrap().parent(),
+        )
+    });
+    let Some((prev_entity, mut prev_stop)) = route_iter.next() else {
+        return;
+    };
+    buffer.push(prev_entity);
+    for (curr_entity, stops) in route_iter.map(|(curr_entity, curr_stop)| {
+        if prev_stop == curr_stop || graph.contains_edge(prev_stop.entity(), curr_stop.entity()) {
+            prev_stop = curr_stop;
+            return (curr_entity, Vec::new());
         }
+        let Some((_, mut station_list)) =
+            graph.route_between(prev_stop.entity(), curr_stop.entity(), interval_q)
+        else {
+            prev_stop = curr_stop;
+            return (curr_entity, Vec::new());
+        };
+        prev_stop = curr_stop;
+        station_list.remove(0);
+        station_list.pop();
+        return (curr_entity, station_list);
+    }) {
+        for stop in stops {
+            let e = commands.spawn(DerivedEntryBundle::new(stop)).id();
+            commands.entity(trip_entity).add_child(e);
+            buffer.push(e)
+        }
+        buffer.push(curr_entity);
     }
 }
 
@@ -134,7 +126,7 @@ enum UnwindParams {
 }
 
 /// Recalculate the estimates for updated routes.
-/// This should always run after [`recalculate_route_on_new_trip`].
+/// This should always run after [`recalculate_route`].
 fn recalculate_estimate(
     changed_trips: Query<Entity, (Changed<TripSchedule>, With<TripClass>)>,
     changed_entries: Query<&ChildOf, Changed<EntryMode>>,
@@ -157,7 +149,7 @@ fn recalculate_estimate(
         let mut last_stable: Option<(TimetableTime, Entity)> = None;
         let mut next_stable: Option<(TimetableTime, Entity)> = None;
         let mut unwind_params: Option<UnwindParams> = None;
-        'iter_entries: for (entry_entity, mode, stop) in entry_q.iter_many(q.schedule) {
+        'iter_entries: for (entry_entity, mode, stop) in entry_q.iter_many(q.schedule.iter()) {
             if let Some(v) = next_stable.take() {
                 last_stable = Some(v);
             }

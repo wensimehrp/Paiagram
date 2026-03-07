@@ -143,7 +143,7 @@ fn calculate_priority(
     let get_times = |stop: Entity| -> Vec<(Entity, TimetableTime)> {
         let mut v = Vec::new();
         for trip in trip_q.iter_many(trips) {
-            for e in entry_q.iter_many(trip.schedule) {
+            for e in entry_q.iter_many(trip.schedule.iter()) {
                 if parent_station_or_station.get(e.stop()).unwrap().parent() == stop
                     && let Some(es) = e.estimate
                 {

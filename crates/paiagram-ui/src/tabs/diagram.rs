@@ -256,7 +256,11 @@ impl Tab for DiagramTab {
                         .default_class;
                     let new_trip = world
                         .commands()
-                        .spawn(TripBundle::new("New Trip", TripClass(default_class)))
+                        .spawn(TripBundle::new(
+                            "New Trip",
+                            TripClass(default_class),
+                            Vec::new(),
+                        ))
                         .id();
                     self.trips.push(new_trip);
                     *world.resource_mut::<SelectedItems>() =

@@ -1,5 +1,5 @@
 use crate::{
-    entry,
+    entry::{self, EntryMode},
     graph::Node,
     settings::ProjectSettings,
     station::Station,
@@ -32,6 +32,8 @@ impl Plugin for TripPlugin {
                 )
                     .chain(),
             )
+            .add_observer(update_nominal_schedule)
+            .add_observer(convert_derived_entry_to_explicit)
             .add_observer(update_add_trip_vehicles)
             .add_observer(update_remove_trip_vehicles)
             .add_observer(update_remove_vehicle_trips);
@@ -297,22 +299,23 @@ fn apply_trip_spatial_index_task(
 pub struct Trip;
 
 /// Trip bundle.
-/// Spawn with [`EntityCommands::with_children`]
 #[derive(Bundle)]
 pub struct TripBundle {
     trip: Trip,
     vehicles: TripVehicles,
     name: Name,
     class: TripClass,
+    nominal_schedule: TripNominalSchedule,
 }
 
 impl TripBundle {
-    pub fn new(name: &str, class: TripClass) -> Self {
+    pub fn new(name: &str, class: TripClass, nominal_schedule: Vec<Entity>) -> Self {
         Self {
             trip: Trip,
             vehicles: TripVehicles::default(),
             name: Name::from(name),
             class,
+            nominal_schedule: TripNominalSchedule(nominal_schedule),
         }
     }
 }
@@ -336,8 +339,20 @@ pub struct TripVehicles(#[entities] pub SmallVec<[Entity; 1]>);
 #[require(Name)]
 pub struct TripClass(#[entities] pub Entity);
 
-/// A type alias for [`Children`]
-pub type TripSchedule = Children;
+#[derive(Reflect, Component, MapEntities, Deref, DerefMut)]
+#[component(map_entities)]
+#[reflect(Component, MapEntities)]
+pub struct TripNominalSchedule(#[entities] pub Vec<Entity>);
+
+#[derive(Reflect, Default, Component, MapEntities, Deref, DerefMut)]
+#[component(map_entities)]
+#[reflect(Component, MapEntities)]
+pub struct TripSchedule(#[entities] pub Vec<Entity>);
+
+#[derive(Debug, EntityEvent)]
+pub struct ConvertDerivedEntryToExplicit {
+    pub entity: Entity,
+}
 
 /// Common query data for trips
 #[derive(QueryData)]
@@ -364,6 +379,73 @@ impl<'w, 's> TripQueryItem<'w, 's> {
     pub fn stroke<'a>(&self, q: &Query<'a, 'a, &DisplayedStroke, With<Class>>) -> DisplayedStroke {
         q.get(self.class.entity()).unwrap().clone()
     }
+}
+
+fn update_nominal_schedule(
+    msg: On<Remove, EntryMode>,
+    parent_q: Query<&ChildOf>,
+    mut schedule_q: Query<&mut TripNominalSchedule>,
+) {
+    let Ok(parent) = parent_q.get(msg.entity) else {
+        return;
+    };
+    let Ok(mut schedule) = schedule_q.get_mut(parent.parent()) else {
+        return;
+    };
+    if let Some(idx) = schedule.iter().position(|e| *e == msg.entity) {
+        schedule.remove(idx);
+    }
+}
+
+fn convert_derived_entry_to_explicit(
+    msg: On<ConvertDerivedEntryToExplicit>,
+    mut commands: Commands,
+    parent_q: Query<&ChildOf>,
+    schedule_q: Query<&TripSchedule, With<Trip>>,
+    mut nominal_q: Query<&mut TripNominalSchedule, With<Trip>>,
+) {
+    let entry = msg.entity;
+    let parent = parent_q.get(entry).unwrap();
+    let trip = parent.parent();
+    let schedule = schedule_q.get(trip).unwrap();
+    let mut nominal = nominal_q.get_mut(trip).unwrap();
+
+    if !nominal.iter().any(|e| *e == entry) {
+        let Some(schedule_idx) = schedule.iter().position(|e| *e == entry) else {
+            nominal.push(entry);
+            commands.entity(entry).remove::<entry::IsDerivedEntry>();
+            return;
+        };
+
+        let prev_nominal = schedule[..schedule_idx]
+            .iter()
+            .rev()
+            .find(|candidate| nominal.iter().any(|e| e == *candidate))
+            .copied();
+        let next_nominal = schedule[schedule_idx + 1..]
+            .iter()
+            .find(|candidate| nominal.iter().any(|e| e == *candidate))
+            .copied();
+
+        let insert_idx = if let Some(next) = next_nominal {
+            nominal
+                .iter()
+                .position(|e| *e == next)
+                .unwrap_or(nominal.len())
+        } else if let Some(prev) = prev_nominal {
+            nominal
+                .iter()
+                .position(|e| *e == prev)
+                .map(|i| i + 1)
+                .unwrap_or(nominal.len())
+        } else {
+            nominal.len()
+        };
+
+        nominal.insert(insert_idx, entry);
+    }
+
+    commands.entity(entry).remove::<entry::IsDerivedEntry>();
 }
 
 /// Helper function that manually synchronizes [`TripVehicles`] and [`Vehicle`].

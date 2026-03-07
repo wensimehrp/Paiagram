@@ -178,7 +178,7 @@ pub fn calc(
         let stroke = class_strokes.get(trip.class.0).copied().unwrap_or_default();
 
         let mut trip_entries_vec: Vec<TripEntryData> = Vec::new();
-        for entry_entity in trip.schedule.iter() {
+        for entry_entity in trip.schedule.iter().copied() {
             let Ok(entry) = entries.get(entry_entity) else {
                 continue;
             };

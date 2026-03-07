@@ -146,17 +146,34 @@ pub fn load_llt(msg: On<super::LoadLlt>, mut graph: ResMut<Graph>, mut commands:
                 name: Name::new(r#type.clone()),
                 stroke: DisplayedStroke::from_seed(r#type.as_bytes()),
             });
+
+        let nominal_schedule: Vec<_> = entries
+            .into_iter()
+            .map(|(arr, dep, stop)| {
+                let (arr, dep) = match (arr, dep) {
+                    (None, None) => (None, TravelMode::Flexible),
+                    (Some(t), None) | (None, Some(t)) => (None, TravelMode::At(t)),
+                    (Some(at), Some(dt)) => {
+                        if at == dt {
+                            (None, TravelMode::At(dt))
+                        } else {
+                            (Some(TravelMode::At(at)), TravelMode::At(dt))
+                        }
+                    }
+                };
+                commands
+                    .spawn(EntryBundle::new(arr, dep, stop.entity()))
+                    .id()
+            })
+            .collect();
+
         commands
-            .spawn(TripBundle::new(&trip_name, TripClass(trip_class.entity())))
-            .with_children(|bundle| {
-                for (arr, dep, stop) in entries {
-                    let (arr, dep) = match (arr, dep) {
-                        (None, None) => (None, TravelMode::Flexible),
-                        (Some(t), None) | (None, Some(t)) => (None, TravelMode::At(t)),
-                        (Some(at), Some(dt)) => (Some(TravelMode::At(at)), TravelMode::At(dt)),
-                    };
-                    bundle.spawn(EntryBundle::new(arr, dep, stop.entity()));
-                }
-            });
+            .spawn_empty()
+            .add_children(&nominal_schedule)
+            .insert(TripBundle::new(
+                &trip_name,
+                TripClass(trip_class.entity()),
+                nominal_schedule,
+            ));
     }
 }

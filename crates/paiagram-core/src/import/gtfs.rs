@@ -280,18 +280,28 @@ pub fn load_gtfs_static(
             entry_payloads.push((stop_entity, arr_mode, departure));
         }
 
-        let trip_entity = commands
-            .spawn(TripBundle::new(&trip_name, TripClass(trip_class.entity())))
-            .with_children(|bundle| {
-                for (stop_entity, arr_mode, departure) in entry_payloads {
-                    let arr_mode = arr_mode.map(TravelMode::At);
-                    bundle.spawn(EntryBundle::new(
+        let nominal_schedule: Vec<_> = entry_payloads
+            .into_iter()
+            .map(|(stop_entity, arr_mode, departure)| {
+                let arr_mode = arr_mode.map(TravelMode::At);
+                commands
+                    .spawn(EntryBundle::new(
                         arr_mode,
                         TravelMode::At(departure),
                         stop_entity,
-                    ));
-                }
+                    ))
+                    .id()
             })
+            .collect();
+
+        let trip_entity = commands
+            .spawn_empty()
+            .add_children(&nominal_schedule)
+            .insert(TripBundle::new(
+                &trip_name,
+                TripClass(trip_class.entity()),
+                nominal_schedule,
+            ))
             .id();
 
         if let Some(block_id) = &trip.block_id {
