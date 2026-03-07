@@ -19,6 +19,7 @@ use egui_tiles::{
 use moonshine_core::prelude::{MapEntities, ReflectMapEntities};
 use paiagram_core::colors::PredefinedColor;
 use paiagram_core::import::LoadLlt;
+use paiagram_core::station::StationQuery;
 use paiagram_rw::read::CallbackFn;
 use serde::{Deserialize, Serialize};
 use tabs::{Tab, all_tabs::*};
@@ -153,6 +154,26 @@ pub(crate) fn display_entry_info(
                 last_time,
             });
         }
+    }
+}
+
+pub(crate) fn display_station_info(
+    (InMut(ui), InRef(selected_stations)): (InMut<Ui>, InRef<[StationSelection]>),
+    station_q: Query<StationQuery>,
+    mut commands: Commands,
+) {
+    for station in station_q.iter_many(selected_stations.iter().map(|it| it.station)) {
+        ui.label(station.name.as_ref());
+    }
+    if selected_stations.len() >= 2 && ui.button("Create new route").clicked() {
+        let stations: Vec<_> = selected_stations.iter().map(|it| it.station).collect();
+        commands.spawn((
+            Name::new("New Route"),
+            Route {
+                lengths: vec![10.0; stations.len()],
+                stops: stations,
+            },
+        ));
     }
 }
 

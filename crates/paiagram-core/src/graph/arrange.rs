@@ -127,7 +127,7 @@ pub fn auto_arrange_graph(
                 let (x, y) = layout(idx);
                 (
                     *graph.node_weight(idx).unwrap(),
-                    NodePos::from_xy(x as f64, y as f64),
+                    NodePos::from_xy(x as f64 * 10000.0, y as f64 * 10000.0),
                 )
             })
             .collect();

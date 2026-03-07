@@ -439,6 +439,21 @@ pub struct NodePos {
     pub lat: f64,
 }
 
+impl std::fmt::Display for NodePos {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let lat_dir = if self.lat < 0.0 { 'S' } else { 'N' };
+        let lon_dir = if self.lon < 0.0 { 'W' } else { 'E' };
+        write!(
+            f,
+            "{:.4}°{}, {:.4}°{}",
+            self.lat.abs(),
+            lat_dir,
+            self.lon.abs(),
+            lon_dir
+        )
+    }
+}
+
 impl Default for NodePos {
     fn default() -> Self {
         Self::new(0.0, 0.0)

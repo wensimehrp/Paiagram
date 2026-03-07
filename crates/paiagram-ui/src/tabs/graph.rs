@@ -1,8 +1,7 @@
-use bevy::ecs::entity::EntityHashSet;
 use bevy::prelude::*;
 use egui::{Align2, Color32, FontId, Margin, Painter, Pos2, Rect, Sense, Stroke, Ui, Vec2};
 use moonshine_core::prelude::MapEntities;
-use paiagram_core::graph::{AddIntervalPair, Graph, NodePos};
+use paiagram_core::graph::{AddIntervalPair, NodePos};
 use paiagram_core::station::CreateNewStation;
 use paiagram_core::units::distance::Distance;
 use serde::{Deserialize, Serialize};
@@ -183,7 +182,11 @@ impl super::Tab for GraphTab {
                     .run_system_cached_with(crate::display_entry_info, (ui, entries.as_slice()))
                     .unwrap();
             }
-            SelectedItems::Stations(stations) => for station in stations {},
+            SelectedItems::Stations(stations) => {
+                world
+                    .run_system_cached_with(crate::display_station_info, (ui, stations.as_slice()))
+                    .unwrap();
+            }
             SelectedItems::ExtendingRoute(r) => {}
         }
     }
@@ -203,6 +206,7 @@ fn display(tab: &mut GraphTab, world: &mut World, ui: &mut egui::Ui) {
         },
         tab.navi.zoom,
     );
+    draw_scale_bar(&painter, tab.navi.visible, tab.navi.zoom, ui.visuals().text_color());
     let mut state = tab.gpu_state.lock();
     if let Some(target_format) = ui.ctx().data(|data| {
         data.get_temp::<eframe::egui_wgpu::wgpu::TextureFormat>(egui::Id::new("wgpu_target_format"))
@@ -305,12 +309,17 @@ fn display(tab: &mut GraphTab, world: &mut World, ui: &mut egui::Ui) {
             .circle_filled(pos, 6.0, PredefinedColor::Red.get(ui.visuals().dark_mode));
         let res = ui.interact(rect, ui.id().with("popup response"), Sense::click());
         let inner = |ui: &mut Ui| {
+            ui.set_width(230.0);
             ui.text_edit_singleline(&mut tab.new_station_name);
-            if ui.button("New Station").clicked() {
+            let coor = NodePos::from_xy(x, y);
+            if ui
+                .add(egui::Button::new("New Station").right_text(coor.to_string()))
+                .clicked()
+            {
                 tab.clicked_coor = None;
                 world.trigger(CreateNewStation {
                     name: tab.new_station_name.clone(),
-                    pos: NodePos::from_xy(x, y),
+                    pos: coor,
                 });
                 tab.new_station_name.clear();
             }
@@ -319,6 +328,7 @@ fn display(tab: &mut GraphTab, world: &mut World, ui: &mut egui::Ui) {
                 .add(egui::Label::new("∷").sense(Sense::drag()))
                 .on_hover_cursor(egui::CursorIcon::Grab);
             if res.dragged() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
                 let new_pos = pos + res.drag_delta();
                 tab.clicked_coor = Some(tab.navi.screen_pos_to_xy(new_pos));
             }
@@ -327,6 +337,91 @@ fn display(tab: &mut GraphTab, world: &mut World, ui: &mut egui::Ui) {
             .open_memory(Some(egui::SetOpenCommand::Bool(true)))
             .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
             .show(inner);
+    }
+}
+
+fn draw_scale_bar(painter: &Painter, viewport: Rect, zoom: f32, color: Color32) {
+    if zoom <= 0.0 || !viewport.is_positive() {
+        return;
+    }
+
+    let desired_px = 120.0f64;
+    let meters_per_px = 1.0 / zoom as f64;
+    let raw_meters = desired_px * meters_per_px;
+    let bar_meters = round_to_1_2_5(raw_meters).max(1.0);
+    let bar_px = (bar_meters as f32 * zoom).max(1.0);
+
+    let margin = 14.0;
+    let baseline_y = viewport.bottom() - margin;
+    let left_x = viewport.left() + margin;
+    let right_x = left_x + bar_px;
+
+    let stroke = Stroke::new(1.6, color);
+    painter.line_segment([Pos2::new(left_x, baseline_y), Pos2::new(right_x, baseline_y)], stroke);
+
+    let tick_len = 7.0;
+    painter.line_segment(
+        [
+            Pos2::new(left_x, baseline_y),
+            Pos2::new(left_x, baseline_y - tick_len),
+        ],
+        stroke,
+    );
+    painter.line_segment(
+        [
+            Pos2::new(right_x, baseline_y),
+            Pos2::new(right_x, baseline_y - tick_len),
+        ],
+        stroke,
+    );
+
+    let mid_tick_len = 5.0;
+    for fraction in [0.25f32, 0.5, 0.75] {
+        let x = left_x + bar_px * fraction;
+        painter.line_segment(
+            [Pos2::new(x, baseline_y), Pos2::new(x, baseline_y - mid_tick_len)],
+            stroke,
+        );
+    }
+
+    painter.text(
+        Pos2::new(left_x, baseline_y - tick_len - 3.0),
+        Align2::LEFT_BOTTOM,
+        format_scale_label(bar_meters),
+        FontId::proportional(12.0),
+        color,
+    );
+}
+
+fn round_to_1_2_5(value: f64) -> f64 {
+    if value <= 0.0 {
+        return 0.0;
+    }
+    let exponent = value.log10().floor();
+    let base = 10.0f64.powf(exponent);
+    let normalized = value / base;
+    let rounded = if normalized <= 1.0 {
+        1.0
+    } else if normalized <= 2.0 {
+        2.0
+    } else if normalized <= 5.0 {
+        5.0
+    } else {
+        10.0
+    };
+    rounded * base
+}
+
+fn format_scale_label(meters: f64) -> String {
+    if meters >= 1000.0 {
+        let km = meters / 1000.0;
+        if (km - km.round()).abs() < 1e-6 {
+            format!("{:.0} km", km)
+        } else {
+            format!("{:.1} km", km)
+        }
+    } else {
+        format!("{:.0} m", meters)
     }
 }
 
