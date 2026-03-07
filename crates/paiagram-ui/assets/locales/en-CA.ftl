@@ -94,3 +94,8 @@ colour-gray     = Gray
 colour-zinc     = Zinc
 colour-neutral  = Neutral
 colour-stone    = Stone
+
+# read files
+read-file-prompt   = Read {$name}…
+read-file-title    = Load {$name} files
+read-file-filetype = {$name} Files

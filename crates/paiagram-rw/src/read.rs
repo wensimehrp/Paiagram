@@ -12,7 +12,7 @@ impl Plugin for ReadPlugin {
     }
 }
 
-type CallbackFn = fn(&mut Commands, Vec<u8>);
+pub type CallbackFn = fn(&mut Commands, Vec<u8>);
 
 #[derive(Component)]
 struct SelectedFile(Task<Option<Vec<u8>>>, CallbackFn);

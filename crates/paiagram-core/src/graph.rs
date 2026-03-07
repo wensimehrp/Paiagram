@@ -8,10 +8,13 @@ use crate::interval::IntervalQuery;
 use crate::route::Route;
 use crate::station::Platforms;
 use crate::station::Station;
+use crate::units::distance::Distance;
 use bevy::ecs::entity::EntityHashMap;
 use bevy::ecs::entity::EntityHashSet;
 use bevy::tasks::{AsyncComputeTaskPool, Task, block_on, futures_lite::future::poll_once};
 use bevy::{ecs::entity::EntityHash, prelude::*};
+use moonshine_core::kind::Instance;
+use moonshine_core::kind::SpawnInstance;
 use moonshine_core::prelude::{MapEntities, ReflectMapEntities};
 use petgraph::prelude::DiGraphMap;
 use petgraph::{algo::astar, visit::EdgeRef};
@@ -47,7 +50,8 @@ impl Plugin for GraphPlugin {
                     .chain(),
             )
             .add_observer(update_graph_on_station_removal)
-            .add_observer(update_graph_on_interval_removal);
+            .add_observer(update_graph_on_interval_removal)
+            .add_observer(add_interval_pair);
         #[cfg(debug_assertions)]
         {
             use bevy::time::common_conditions::on_real_timer;
@@ -659,5 +663,27 @@ pub fn merge_station_by_name(
 
     for duplicate in remap.into_keys() {
         commands.entity(duplicate).despawn();
+    }
+}
+
+#[derive(Event, Clone, Copy)]
+pub struct AddIntervalPair {
+    pub source: Entity,
+    pub target: Entity,
+    pub length: Distance,
+}
+
+fn add_interval_pair(msg: On<AddIntervalPair>, mut graph: ResMut<Graph>, mut commands: Commands) {
+    if !graph.contains_edge(msg.source, msg.target) {
+        let e1: Instance<Interval> = commands
+            .spawn_instance(Interval { length: msg.length })
+            .into();
+        graph.add_edge(msg.source, msg.target, e1.entity());
+    }
+    if !graph.contains_edge(msg.target, msg.source) {
+        let e2: Instance<Interval> = commands
+            .spawn_instance(Interval { length: msg.length })
+            .into();
+        graph.add_edge(msg.target, msg.source, e2.entity());
     }
 }

@@ -12,12 +12,14 @@ use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 
 use bevy::prelude::*;
 use egui::{Context, Frame, Response, RichText, ScrollArea, Stroke, Ui};
+use egui_i18n::tr;
 use egui_tiles::{
     Behavior, ContainerKind, SimplificationOptions, Tile, TileId, Tiles, Tree, UiResponse,
 };
 use moonshine_core::prelude::{MapEntities, ReflectMapEntities};
 use paiagram_core::colors::PredefinedColor;
 use paiagram_core::import::LoadLlt;
+use paiagram_rw::read::CallbackFn;
 use serde::{Deserialize, Serialize};
 use tabs::{Tab, all_tabs::*};
 
@@ -58,31 +60,42 @@ impl Plugin for UiPlugin {
     }
 }
 
-#[derive(Reflect, Clone, Copy, PartialEq)]
-pub struct TimetableEntrySelection {
+#[derive(Reflect, Clone, Copy)]
+pub(crate) struct TimetableEntrySelection {
     pub entry: Entity,
     pub parent: Entity,
 }
 
-#[derive(Reflect, Clone, Copy, PartialEq)]
-pub struct IntervalSelection {
+impl PartialEq for TimetableEntrySelection {
+    fn eq(&self, other: &Self) -> bool {
+        self.entry == other.entry
+    }
+}
+
+#[derive(Reflect, Clone, Copy, PartialEq, Hash)]
+pub(crate) struct IntervalSelection {
     pub source: Entity,
     pub target: Entity,
 }
 
-#[derive(Reflect, Clone, Copy, PartialEq)]
-pub struct StationSelection {
+#[derive(Reflect, Clone, Copy)]
+pub(crate) struct StationSelection {
     pub station: Entity,
 }
 
-#[derive(Reflect, Clone, Copy, PartialEq)]
-pub struct ExtendingRouteSelection {
-    pub station: Entity,
-    pub previous_pos: (f32, f32),
+impl PartialEq for StationSelection {
+    fn eq(&self, other: &Self) -> bool {
+        self.station == other.station
+    }
 }
 
 #[derive(Reflect, Clone, Copy, PartialEq)]
-pub struct ExtendingTripSelection {
+pub(crate) struct ExtendingRouteSelection {
+    pub prev_station: Entity,
+}
+
+#[derive(Reflect, Clone, Copy, PartialEq)]
+pub(crate) struct ExtendingTripSelection {
     pub entry: Entity,
     pub previous_pos: Option<(TimetableTime, usize)>,
     pub last_time: Option<TimetableTime>,
@@ -145,7 +158,7 @@ pub(crate) fn display_entry_info(
 
 #[derive(Reflect, Resource, Clone, PartialEq)]
 #[reflect(Resource)]
-pub enum SelectedItems {
+pub(crate) enum SelectedItems {
     None,
     TimetableEntries(Vec<TimetableEntrySelection>),
     Intervals(Vec<IntervalSelection>),
@@ -205,6 +218,20 @@ impl SelectedItems {
             SelectedItem::Stations(it) => *self = Self::Stations(vec![it]),
         }
     }
+
+    pub(crate) fn station_selection(&self) -> &[StationSelection] {
+        match self {
+            Self::Stations(s) => s.as_slice(),
+            _ => &[],
+        }
+    }
+
+    pub(crate) fn entry_selection(&self) -> &[TimetableEntrySelection] {
+        match self {
+            Self::TimetableEntries(s) => s.as_slice(),
+            _ => &[],
+        }
+    }
 }
 
 pub enum SelectedItem {
@@ -212,6 +239,15 @@ pub enum SelectedItem {
     TimetableEntries(TimetableEntrySelection),
     Intervals(IntervalSelection),
     Stations(StationSelection),
+}
+
+impl SelectedItem {
+    pub fn is_none(&self) -> bool {
+        matches!(self, Self::None)
+    }
+    pub fn is_some(&self) -> bool {
+        !matches!(self, Self::None)
+    }
 }
 
 impl Default for SelectedItems {
@@ -375,14 +411,9 @@ macro_rules! for_all_tabs {
     ($tab:expr, $t:ident, $body:expr) => {
         match $tab {
             MainTab::Start($t) => $body,
-            // MainTab::Vehicle($t) => $body,
-            // MainTab::StationTimetable($t) => $body,
             MainTab::Diagram($t) => $body,
-            // MainTab::DisplayedLines($t) => $body,
             MainTab::Settings($t) => $body,
             MainTab::Classes($t) => $body,
-            // MainTab::Services($t) => $body,
-            // MainTab::Minesweeper($t) => $body,
             MainTab::Graph($t) => $body,
             MainTab::Inspector($t) => $body,
             MainTab::Trip($t) => $body,
@@ -395,14 +426,9 @@ macro_rules! for_all_tabs {
 #[derive(Serialize, Deserialize, Clone, PartialEq)]
 pub enum MainTab {
     Start(StartTab),
-    // Vehicle(VehicleTab),
-    // StationTimetable(StationTimetableTab),
     Diagram(DiagramTab),
-    // DisplayedLines(DisplayedLinesTab),
     Settings(SettingsTab),
     Classes(ClassesTab),
-    // Services(ServicesTab),
-    // Minesweeper(MinesweeperTab),
     Graph(GraphTab),
     Inspector(InspectorTab),
     Trip(TripTab),
@@ -791,61 +817,37 @@ pub fn show_ui(ctx: &Context, world: &mut World) {
                         world.resource_mut::<UiModal>().0 = Some(Modals::OpenUrl(String::new()));
                     }
                     ui.separator();
-                    if ui.button("Read OuDia...").clicked() {
-                        world.commands().trigger(paiagram_rw::read::ReadFile {
-                            title: "Load OuDia Files".to_string(),
-                            extensions: vec![("OuDia Files".to_string(), vec!["oud".to_string()])],
-                            callback: |c, s| {
-                                c.trigger(LoadOuDia::original(s));
-                            },
+                    let mut read_file = |name: &str, extensions: &[&str], cb: CallbackFn| {
+                        if ui.button(tr!("read-file-prompt", {name: name})).clicked() {
+                            world.commands().trigger(paiagram_rw::read::ReadFile {
+                                title: tr!("read-file-title", {name: name}),
+                                extensions: vec![(
+                                    tr!("read-file-filetype", {name: name}),
+                                    extensions.iter().map(|s| s.to_string()).collect(),
+                                )],
+                                callback: cb,
+                            });
+                        }
+                    };
+                    read_file("OuDia", &["oud"], |c, s| {
+                        c.trigger(LoadOuDia::original(s));
+                    });
+                    read_file("OuDiaSecond", &["oud2"], |c, s| {
+                        c.trigger(LoadOuDia::second(String::from_utf8(s).unwrap()));
+                    });
+                    read_file("qETRC/pyETRC", &["pyetgr", "json"], |c, s| {
+                        c.trigger(LoadQETRC {
+                            content: String::from_utf8(s).unwrap(),
                         });
-                    }
-                    if ui.button("Read OuDiaSecond...").clicked() {
-                        world.commands().trigger(paiagram_rw::read::ReadFile {
-                            title: "Load OuDiaSecond Files".to_string(),
-                            extensions: vec![(
-                                "OuDiaSecond Files".to_string(),
-                                vec!["oud2".to_string()],
-                            )],
-                            callback: |c, s| {
-                                c.trigger(LoadOuDia::second(String::from_utf8(s).unwrap()));
-                            },
+                    });
+                    read_file("GTFS", &["zip"], |c, s| {
+                        c.trigger(LoadGTFS { content: s });
+                    });
+                    read_file("LLT", &["json"], |c, s| {
+                        c.trigger(LoadLlt {
+                            content: String::from_utf8(s).unwrap(),
                         });
-                    }
-                    if ui.button("Read qETRC/pyETRC...").clicked() {
-                        world.commands().trigger(paiagram_rw::read::ReadFile {
-                            title: "Load qETRC Files".to_string(),
-                            extensions: vec![(
-                                "qETRC Files".to_string(),
-                                vec!["json".to_string(), "pyetgr".to_string()],
-                            )],
-                            callback: |c, s| {
-                                c.trigger(LoadQETRC {
-                                    content: String::from_utf8(s).unwrap(),
-                                });
-                            },
-                        });
-                    }
-                    if ui.button("Read GTFS...").clicked() {
-                        world.commands().trigger(paiagram_rw::read::ReadFile {
-                            title: "Load GTFS Files".to_string(),
-                            extensions: vec![("GTFS Files".to_string(), vec!["zip".to_string()])],
-                            callback: |c, s| {
-                                c.trigger(LoadGTFS { content: s });
-                            },
-                        });
-                    }
-                    if ui.button("Read LLT...").clicked() {
-                        world.commands().trigger(paiagram_rw::read::ReadFile {
-                            title: "Load LLT Files".to_string(),
-                            extensions: vec![("LLT Files".to_string(), vec!["json".to_string()])],
-                            callback: |c, s| {
-                                c.trigger(LoadLlt {
-                                    content: String::from_utf8(s).unwrap(),
-                                });
-                            },
-                        });
-                    }
+                    });
                     ui.separator();
                     if ui.button("Save...").clicked() {
                         save::save(world, "save.paia".to_string());

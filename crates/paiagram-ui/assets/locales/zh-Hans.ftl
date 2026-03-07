@@ -89,3 +89,8 @@ colour-gray     = 灰色
 colour-zinc     = 锌色
 colour-neutral  = 中性
 colour-stone    = 石色
+
+# read files
+read-file-prompt   = 读取 {$name}…
+read-file-title    = 读取 {$name} 文件
+read-file-filetype = {$name} 文件

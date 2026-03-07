@@ -1,11 +1,15 @@
+use bevy::ecs::entity::EntityHashSet;
 use bevy::prelude::*;
-use egui::{Align2, Color32, FontId, Margin, Painter, Rect, Sense, Stroke, Vec2};
+use egui::{Align2, Color32, FontId, Margin, Painter, Pos2, Rect, Sense, Stroke, Ui, Vec2};
 use moonshine_core::prelude::MapEntities;
+use paiagram_core::graph::{AddIntervalPair, Graph, NodePos};
+use paiagram_core::station::CreateNewStation;
+use paiagram_core::units::distance::Distance;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use crate::SelectedItems;
+use crate::{SelectedItem, SelectedItems, StationSelection, TimetableEntrySelection};
 
 use crate::tabs::graph::gpu_draw::ShapeInstance;
 use crate::{GlobalTimer, tabs::Navigatable};
@@ -36,6 +40,10 @@ fn segment_visible(viewport: Rect, a: egui::Pos2, b: egui::Pos2) -> bool {
 #[derive(Serialize, Deserialize, Clone, MapEntities)]
 pub struct GraphTab {
     navi: GraphNavigation,
+    #[serde(skip, default)]
+    clicked_coor: Option<(f64, f64)>,
+    #[serde(skip, default)]
+    new_station_name: String,
     #[serde(skip, default = "default_arrange_iterations")]
     arrange_iterations: u32,
     #[serde(skip, default)]
@@ -52,6 +60,8 @@ impl Default for GraphTab {
     fn default() -> Self {
         Self {
             navi: GraphNavigation::default(),
+            clicked_coor: None,
+            new_station_name: String::new(),
             arrange_iterations: default_arrange_iterations(),
             osm_area_name: String::new(),
             gpu_state: Arc::new(egui::mutex::Mutex::new(
@@ -205,7 +215,27 @@ fn display(tab: &mut GraphTab, world: &mut World, ui: &mut egui::Ui) {
     {
         state.msaa_samples = msaa_samples;
     }
-    world
+    let interact_pos = response
+        .clicked()
+        .then_some(ui.input(|r| r.pointer.interact_pos()))
+        .flatten();
+    let (selected_stations, selected_trips) = {
+        let selected_items = world.resource::<SelectedItems>();
+        let station_set: Vec<_> = selected_items
+            .station_selection()
+            .iter()
+            .map(|it| it.station)
+            .collect();
+        let mut trip_set: Vec<_> = selected_items
+            .entry_selection()
+            .iter()
+            .map(|it| it.parent)
+            .collect();
+        trip_set.sort_unstable();
+        trip_set.dedup();
+        (station_set, trip_set)
+    };
+    let selected_item = world
         .run_system_cached_with(
             push_draw_items,
             (
@@ -213,11 +243,91 @@ fn display(tab: &mut GraphTab, world: &mut World, ui: &mut egui::Ui) {
                 &tab.navi,
                 &mut state.instances,
                 &mut painter,
+                interact_pos,
+                &selected_stations,
+                &selected_trips,
             ),
         )
         .unwrap();
     let callback = gpu_draw::paint_callback(response.rect, tab.gpu_state.clone());
     painter.add(callback);
+    // handle selection
+
+    let selected_items = world.resource_mut::<SelectedItems>().into_inner();
+    let shift_pressed = ui.input(|i| i.modifiers.shift);
+    if shift_pressed
+        && let SelectedItems::Stations(stations) = selected_items
+        && stations.len() == 1
+        && let Some(hover_pos) = ui.input(|r| r.pointer.hover_pos())
+    {
+        let entity = stations[0].station;
+        let (x, y) = world.get::<Node>(entity).unwrap().pos.to_xy();
+        let pos = tab.navi.xy_to_screen_pos(x, y);
+        ui.painter()
+            .line_segment([pos, hover_pos], Stroke::new(1.0, Color32::BLUE));
+    }
+    // TODO: fix the lifetime here
+    let selected_items = world.resource_mut::<SelectedItems>().into_inner();
+    match (selected_item, selected_items) {
+        (Some(SelectedItem::Stations(station)), SelectedItems::Stations(stations))
+            if shift_pressed && stations.len() == 1 =>
+        {
+            let prev_station = stations[0];
+            stations[0] = station;
+            world.trigger(AddIntervalPair {
+                source: prev_station.station,
+                target: station.station,
+                length: Distance::from_m(1000),
+            });
+        }
+        (Some(item), items) => {
+            let ctrl_pressed = ui.input(|i| i.modifiers.ctrl || i.modifiers.command);
+            if ctrl_pressed {
+                items.add_entry(item);
+            } else {
+                items.set_or_reset(item);
+            }
+        }
+        (None, _) => {}
+    }
+    // create new station
+    if response.secondary_clicked()
+        && let Some(pos) = ui.input(|r| r.pointer.interact_pos())
+    {
+        tab.clicked_coor = Some(tab.navi.screen_pos_to_xy(pos));
+    } else if response.clicked() {
+        tab.clicked_coor = None
+    }
+    if let Some((x, y)) = tab.clicked_coor {
+        let pos = tab.navi.xy_to_screen_pos(x, y);
+        let rect = Rect::from_pos(pos).expand(8.0);
+        ui.painter()
+            .circle_filled(pos, 6.0, PredefinedColor::Red.get(ui.visuals().dark_mode));
+        let res = ui.interact(rect, ui.id().with("popup response"), Sense::click());
+        let inner = |ui: &mut Ui| {
+            ui.text_edit_singleline(&mut tab.new_station_name);
+            if ui.button("New Station").clicked() {
+                tab.clicked_coor = None;
+                world.trigger(CreateNewStation {
+                    name: tab.new_station_name.clone(),
+                    pos: NodePos::from_xy(x, y),
+                });
+                tab.new_station_name.clear();
+            }
+            // response for panning
+            let res = ui
+                .add(egui::Label::new("∷").sense(Sense::drag()))
+                .on_hover_cursor(egui::CursorIcon::Grab);
+            if res.dragged() {
+                let new_pos = pos + res.drag_delta();
+                tab.clicked_coor = Some(tab.navi.screen_pos_to_xy(new_pos));
+            }
+        };
+        egui::Popup::menu(&res)
+            .open_memory(Some(egui::SetOpenCommand::Bool(true)))
+            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+            .show(inner);
+    }
 }
 
 fn draw_world_grid(painter: &Painter, viewport: Rect, offset: Vec2, zoom: f32) {
@@ -276,11 +386,22 @@ fn draw_world_grid(painter: &Painter, viewport: Rect, offset: Vec2, zoom: f32) {
 }
 
 fn push_draw_items(
-    (In(is_dark), InRef(navi), InMut(buffer), InMut(painter)): (
+    (
+        In(is_dark),
+        InRef(navi),
+        InMut(buffer),
+        InMut(painter),
+        In(maybe_interact_pos),
+        InRef(selected_stations),
+        InRef(selected_trips),
+    ): (
         In<bool>,
         InRef<GraphNavigation>,
         InMut<Vec<ShapeInstance>>,
         InMut<Painter>,
+        In<Option<Pos2>>,
+        InRef<[Entity]>,
+        InRef<[Entity]>,
     ),
     nodes: Query<(Entity, &Node, Option<&Name>)>,
     spatial_index: Res<GraphSpatialIndex>,
@@ -290,8 +411,9 @@ fn push_draw_items(
     trip_meta_q: Query<(&Name, &TripClass), With<Trip>>,
     stroke_q: Query<&DisplayedStroke, With<Class>>,
     timer: Res<GlobalTimer>,
-) {
+) -> Option<SelectedItem> {
     buffer.clear();
+    let mut selected = SelectedItem::None;
     let time = timer.read_seconds();
     let repeat_time = settings.repeat_frequency.0 as f64;
     let query_time = if repeat_time > 0.0 {
@@ -311,11 +433,11 @@ fn push_draw_items(
     let min_y = visible_y.start - margin_y;
     let max_y = visible_y.end + margin_y;
 
-    let candidate_nodes: Vec<Entity> = if spatial_index.is_empty() {
-        nodes.iter().map(|(entity, _, _)| entity).collect()
-    } else {
-        spatial_index.entities_in_xy_aabb(min_x, min_y, max_x, max_y)
-    };
+    const STATION_SELECTION_RADIUS: f32 = 10.0;
+    const SELECTION_RADIUS: f32 = 10.0;
+
+    let candidate_nodes: Vec<Entity> =
+        spatial_index.entities_in_xy_aabb(min_x, min_y, max_x, max_y);
 
     for entity in candidate_nodes {
         let Ok((_, node, name)) = nodes.get(entity) else {
@@ -324,10 +446,28 @@ fn push_draw_items(
         let [x, y] = node.pos.to_xy_arr();
         let pos = navi.xy_to_screen_pos(x, y);
 
+        if let Some(interact_pos) = maybe_interact_pos
+            && selected.is_none()
+        {
+            let r = Rect::from_pos(pos).expand(STATION_SELECTION_RADIUS);
+            if r.contains(interact_pos) {
+                selected = SelectedItem::Stations(StationSelection { station: entity })
+            };
+        }
+
+        if selected_stations.contains(&entity) {
+            painter.circle(
+                pos,
+                SELECTION_RADIUS,
+                Color32::RED.gamma_multiply(0.5),
+                Stroke::new(1.0, Color32::RED),
+            );
+        }
+
         if !view_expanded.contains(pos) {
             continue;
         }
-        // out.station_entities.push(entity);
+
         buffer.push(gpu_draw::ShapeInstance::circle(pos, 6.0, color));
         if let Some(name) = name {
             painter.text(
@@ -341,6 +481,8 @@ fn push_draw_items(
     }
 
     let mut rendered_intervals: HashSet<Entity> = HashSet::new();
+
+    // TODO: interval selection
     for segment in interval_spatial_index.query_xy_aabb(min_x, min_y, max_x, max_y) {
         if !rendered_intervals.insert(segment.interval) {
             continue;
@@ -350,7 +492,6 @@ fn push_draw_items(
         if !segment_visible(view_expanded, spos, tpos) {
             continue;
         }
-        // out.interval_entities.push(segment.interval);
         buffer.push(gpu_draw::ShapeInstance::segment(spos, tpos, 1.0, color));
     }
 
@@ -374,7 +515,28 @@ fn push_draw_items(
             let f = (query_time - sample.t1) / (sample.t2 - sample.t1).max(f64::EPSILON);
             pos0.lerp(pos1, f as f32)
         };
-        // out.interval_entities.push(sample.trip);
+
+        if let Some(interact_pos) = maybe_interact_pos
+            && selected.is_none()
+        {
+            let r = Rect::from_pos(pos).expand(STATION_SELECTION_RADIUS);
+            if r.contains(interact_pos) {
+                selected = SelectedItem::TimetableEntries(TimetableEntrySelection {
+                    entry: sample.entry1,
+                    parent: sample.trip,
+                })
+            };
+        }
+
+        if selected_trips.contains(&sample.trip) {
+            painter.circle(
+                pos,
+                SELECTION_RADIUS,
+                Color32::BLUE.gamma_multiply(0.5),
+                Stroke::new(1.0, Color32::BLUE),
+            );
+        }
+
         buffer.push(gpu_draw::ShapeInstance::stealth_arrow(
             pos0, pos1, pos, color,
         ));
@@ -386,4 +548,5 @@ fn push_draw_items(
             color,
         );
     }
+    maybe_interact_pos.map(|_| selected)
 }

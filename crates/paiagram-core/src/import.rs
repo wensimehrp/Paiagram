@@ -130,6 +130,7 @@ pub(crate) fn make_class(
     class_entity
 }
 
+// TODO: remove this function
 pub(crate) fn add_interval_pair(
     graph: &mut Graph,
     commands: &mut Commands,

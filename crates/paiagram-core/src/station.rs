@@ -1,11 +1,14 @@
-use crate::trip::class::DisplayedStroke;
+use crate::{
+    graph::{Graph, Node, NodePos},
+    trip::class::DisplayedStroke,
+};
 use bevy::{ecs::query::QueryData, prelude::*};
 use moonshine_core::prelude::{MapEntities, ReflectMapEntities};
 
 pub struct StationPlugin;
 impl Plugin for StationPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, update_station_position);
+        app.add_observer(add_new_station);
     }
 }
 
@@ -43,14 +46,15 @@ pub struct Station;
 pub struct StationBundle {
     station: Station,
     name: Name,
-    // platforms: Platforms,
+    node: Node,
 }
 
 impl StationBundle {
-    pub fn new(name: String) -> Self {
+    pub fn new(name: String, node: Node) -> Self {
         Self {
             station: Station,
             name: name.into(),
+            node,
         }
     }
 }
@@ -150,19 +154,15 @@ impl<'w, 'q> PlatformQueryItem<'w, 'q> {
     }
 }
 
-fn update_station_position(
-    changed_positions: Populated<
-        &ChildOf,
-        (
-            With<Platform>,
-            Without<Station>,
-            Changed<crate::graph::Node>,
-        ),
-    >,
-    positions: Query<&crate::graph::Node, (Without<Station>, With<Platform>)>,
-    mut stations: Query<(&mut crate::graph::Node, &Platforms), With<Station>>,
-) {
-    for parent in changed_positions {
-        // TODO: calculate the station position based on the child's position
-    }
+#[derive(Event)]
+pub struct CreateNewStation {
+    pub name: String,
+    pub pos: NodePos,
+}
+
+fn add_new_station(msg: On<CreateNewStation>, mut commands: Commands, mut graph: ResMut<Graph>) {
+    let entity = commands
+        .spawn(StationBundle::new(msg.name.clone(), Node { pos: msg.pos }))
+        .id();
+    graph.add_node(entity);
 }
