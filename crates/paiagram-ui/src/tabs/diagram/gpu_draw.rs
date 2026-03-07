@@ -42,6 +42,16 @@ impl Default for GpuTripBatch {
     }
 }
 
+#[repr(u32)]
+#[derive(Clone, Copy)]
+enum CurveType {
+    None = 0,
+    Cap = 1,
+    Cup = 2,
+    CapCup = 3,
+    CupCap = 4,
+}
+
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct SegmentInstance {
@@ -72,18 +82,77 @@ pub fn write_vertices(trips: &[DrawnTrip], is_dark: bool, state: &mut GpuTripRen
         batch.vertices.clear();
         batch.curve_vertices.clear();
         for group in &trip.points {
-            for (idx, window) in group
-                .as_flattened()
+            let flattened = group.as_flattened();
+            for (idx, window) in flattened
                 .windows(2)
                 .enumerate()
                 .filter(|(_, w)| w[0] != w[1])
             {
+                let u = idx.checked_sub(2).map(|j| flattened[j]);
                 let a = window[0];
                 let b = window[1];
+                let v = flattened.get(idx + 3).copied();
                 if idx % 4 == 1 {
-                    push_segment_instance(&mut batch.curve_vertices, a, b, batch.width, color, 1);
+                    let curve_type = match (u, v) {
+                        (Some(u), Some(v)) => {
+                            let incoming_up = u.y > a.y;
+                            let incoming_down = u.y < a.y;
+                            let outgoing_up = v.y > b.y;
+                            let outgoing_down = v.y < b.y;
+
+                            if incoming_up && outgoing_down {
+                                CurveType::CapCup
+                            } else if incoming_down && outgoing_up {
+                                CurveType::CupCap
+                            } else if incoming_up || outgoing_up {
+                                CurveType::Cap
+                            } else if incoming_down || outgoing_down {
+                                CurveType::Cup
+                            } else {
+                                CurveType::CapCup
+                            }
+                        }
+                        (None, None) => CurveType::CapCup,
+                        (Some(u), None) => {
+                            let incoming_up = u.y > a.y;
+                            let incoming_down = u.y < a.y;
+                            if incoming_up {
+                                CurveType::Cap
+                            } else if incoming_down {
+                                CurveType::Cup
+                            } else {
+                                CurveType::CapCup
+                            }
+                        }
+                        (None, Some(v)) => {
+                            let outgoing_up = v.y > b.y;
+                            let outgoing_down = v.y < b.y;
+                            if outgoing_up {
+                                CurveType::Cap
+                            } else if outgoing_down {
+                                CurveType::Cup
+                            } else {
+                                CurveType::CupCap
+                            }
+                        }
+                    };
+                    push_segment_instance(
+                        &mut batch.curve_vertices,
+                        a,
+                        b,
+                        batch.width,
+                        color,
+                        curve_type as u32,
+                    );
                 } else {
-                    push_segment_instance(&mut batch.vertices, a, b, batch.width, color, 0);
+                    push_segment_instance(
+                        &mut batch.vertices,
+                        a,
+                        b,
+                        batch.width,
+                        color,
+                        CurveType::None as u32,
+                    );
                 }
             }
         }

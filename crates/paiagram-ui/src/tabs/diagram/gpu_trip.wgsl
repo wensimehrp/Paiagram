@@ -12,7 +12,7 @@ struct VertexIn {
     @location(1) b: vec2<f32>,
     @location(2) width: f32,
     @location(3) color: vec4<f32>,
-    @location(4) curve: u32,
+    @location(4) curve_type: u32,
 };
 
 struct VertexOut {
@@ -28,23 +28,40 @@ fn vs_main(input: VertexIn, @builtin(vertex_index) vertex_index: u32) -> VertexO
 
     let seg_index = vertex_index / 6u;
     let local = vertex_index % 6u;
-    let is_curve = input.curve != 0u;
+    let is_curve = input.curve_type != 0u;
     var seg_a = input.a;
     var seg_b = input.b;
     if (is_curve) {
-        let mid = (input.a + input.b) * 0.5;
-        let min_y = min(input.a.y, input.b.y);
-        let curve_height = max(8.0, abs(dx) * 0.15 + 6.0);
-        let control = vec2<f32>(mid.x, min_y - curve_height);
-
         let seg_count: u32 = 8u;
         let t0 = f32(seg_index) / f32(seg_count);
         let t1 = f32(seg_index + 1u) / f32(seg_count);
 
-        let omt0 = 1.0 - t0;
-        let omt1 = 1.0 - t1;
-        let curve_p0 = omt0 * omt0 * input.a + 2.0 * omt0 * t0 * control + t0 * t0 * input.b;
-        let curve_p1 = omt1 * omt1 * input.a + 2.0 * omt1 * t1 * control + t1 * t1 * input.b;
+        let curve_height = max(8.0, abs(dx) * 0.15 + 6.0);
+        var curve_p0 = input.a + (input.b - input.a) * t0;
+        var curve_p1 = input.a + (input.b - input.a) * t1;
+
+        if (input.curve_type == 1u || input.curve_type == 2u) {
+            let mid = (input.a + input.b) * 0.5;
+            let min_y = min(input.a.y, input.b.y);
+            let max_y = max(input.a.y, input.b.y);
+            let control = select(
+                vec2<f32>(mid.x, max_y + curve_height),
+                vec2<f32>(mid.x, min_y - curve_height),
+                input.curve_type == 1u,
+            );
+            let omt0 = 1.0 - t0;
+            let omt1 = 1.0 - t1;
+            curve_p0 = omt0 * omt0 * input.a + 2.0 * omt0 * t0 * control + t0 * t0 * input.b;
+            curve_p1 = omt1 * omt1 * input.a + 2.0 * omt1 * t1 * control + t1 * t1 * input.b;
+        } else if (input.curve_type == 3u || input.curve_type == 4u) {
+            let tau = 6.28318530718;
+            let amp = curve_height * 0.2;
+            let dir = select(1.0, -1.0, input.curve_type == 3u);
+            let y0 = dir * amp * sin(t0 * tau);
+            let y1 = dir * amp * sin(t1 * tau);
+            curve_p0 = curve_p0 + vec2<f32>(0.0, y0);
+            curve_p1 = curve_p1 + vec2<f32>(0.0, y1);
+        }
 
         seg_a = select(curve_p0, input.a, seg_index >= seg_count);
         seg_b = select(curve_p1, input.a, seg_index >= seg_count);
