@@ -234,7 +234,7 @@ impl SelectedItems {
     }
 }
 
-pub enum SelectedItem {
+pub(crate) enum SelectedItem {
     None,
     TimetableEntries(TimetableEntrySelection),
     Intervals(IntervalSelection),

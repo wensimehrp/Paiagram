@@ -1,13 +1,14 @@
-#import "../book.typ": book-page
+#import "../book.typ": book-page, links
 
 #show: book-page.with(title: "Importing OuDia and OuDiaSecond Files")
 
-#link("https://web.archive.org/web/20250831042417/http://take-okm.a.la9.jp/oudia/")[OuDia]
-and #link("http://oudiasecond.seesaa.net/")[OuDiaSecond] are popular Japanese timetabling applications. Paiagram
-provides builtin support for reading their output formats, `.oud` and `.oud2`.
+#link(links.oudia)[OuDia]
+and #link(links.oudia-second)[OuDiaSecond] are popular Japanese timetabling applications. Paiagram provides builtin
+support for reading their output formats, `.oud` and `.oud2`.
 
-You can also checkout the #link("https://wensimehrp.github.io/oudia-to-kdl/")[oud-to-kdl] converter to convert both file
-formats to #link("https://kdl.dev/")[KDL] in case if you want to process the `oud` format using a custom script.
+You can also checkout the #link(links.oud-to-kdl)[oud-to-kdl] converter to convert both file formats to #link(
+  "https://kdl.dev/",
+)[KDL] in case if you want to process the `oud` format using a custom script.
 
 = Importing in the App
 

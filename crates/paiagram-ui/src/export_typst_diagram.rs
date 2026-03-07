@@ -13,7 +13,7 @@ pub struct TypstModule;
 
 impl ExportObject for TypstModule {
     fn export_to_buffer(&mut self, buffer: &mut Vec<u8>) {
-        buffer.write(include_bytes!("./typst_diagram.typ")).unwrap();
+        buffer.write_all(include_bytes!("./typst_diagram.typ")).unwrap();
     }
     fn extension(&self) -> impl AsRef<str> {
         ".typ"

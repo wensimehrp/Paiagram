@@ -37,3 +37,13 @@ of how performant the app is, here are some very inaccurate, for-reference-only 
   responsive.
 
 In some cases, the web version runs faster than the native version (e.g. a poorly configured Linux laptop).
+
+= Related Projects
+
+Here are some related projects you might be interested in:
+
+- #link(links.oudia)[OuDia]: Japanese diagramming tool created by take-okm.
+- #link(links.oudia-second)[OuDiaSecond]: Japanese diagramming tool developed by diagram-mania. Successor of OuDia.
+- #link(links.pyetrc)[pyETRC]: predecessor of qETRC.
+- #link(links.qetrc)[qETRC] (#link(links.qetrc-docs)[documentation]): diagramming tool developed by x.e.p..
+- #link(links.sono-sujiya)[Sono Sujiya]: versatile diagramming tool focusing on GTFS i/o.
