@@ -4,8 +4,8 @@ use bevy::ecs::entity::EntityHashMap;
 use bevy::prelude::*;
 use either::Either;
 use encoding_rs::SHIFT_JIS;
-use paiagram_oudia::Structure;
 use paiagram_oudia::write::serialize_to;
+use paiagram_oudia::{Structure, pair, structure};
 use smallvec::{SmallVec, smallvec};
 
 use crate::class::ClassQuery;
@@ -15,35 +15,26 @@ use crate::station::{ParentStationOrStation, Station};
 use crate::trip::{TripQuery, TripQueryItem};
 
 fn make_disp_prop() -> Structure<'static> {
-    #[rustfmt::skip]
-    let stuff: &[[&str; 2]] = &[
-        ["JikokuhyouFont", "PointTextHeight=9;Facename=ＭＳ ゴシック"],
-        ["JikokuhyouFont", "PointTextHeight=9;Facename=ＭＳ ゴシック;Bold=1"],
-        ["JikokuhyouFont", "PointTextHeight=9;Facename=ＭＳ ゴシック;Itaric=1"],
-        ["JikokuhyouFont", "PointTextHeight=9;Facename=ＭＳ ゴシック;Bold=1;Itaric=1"],
-        ["JikokuhyouFont", "PointTextHeight=9;Facename=ＭＳ ゴシック"],
-        ["JikokuhyouFont", "PointTextHeight=9;Facename=ＭＳ ゴシック"],
-        ["JikokuhyouFont", "PointTextHeight=9;Facename=ＭＳ ゴシック"],
-        ["JikokuhyouFont", "PointTextHeight=9;Facename=ＭＳ ゴシック"],
-        ["JikokuhyouVFont", "PointTextHeight=9;Facename=@ＭＳ ゴシック"],
-        ["DiaEkimeiFont", "PointTextHeight=9;Facename=ＭＳ ゴシック"],
-        ["DiaJikokuFont", "PointTextHeight=9;Facename=ＭＳ ゴシック"],
-        ["DiaRessyaFont", "PointTextHeight=9;Facename=ＭＳ ゴシック"],
-        ["CommentFont", "PointTextHeight=9;Facename=ＭＳ ゴシック"],
-        ["DiaMojiColor", "00000000"],
-        ["DiaHaikeiColor", "00FFFFFF"],
-        ["DiaRessyaColor", "00000000"],
-        ["DiaJikuColor", "00C0C0C0"],
-        ["EkimeiLength", "6"],
-        ["JikokuhyouRessyaWidth", "5"],
-    ];
-    Structure::Struct(
-        "DispProp".into(),
-        stuff
-            .iter()
-            .copied()
-            .map(|[key, val]| Structure::Pair(key.into(), smallvec![val.into()]))
-            .collect(),
+    structure!("DispProp" =>
+        pair!("JikokuhyouFont"        => "PointTextHeight=9;Facename=ＭＳ ゴシック"),
+        pair!("JikokuhyouFont"        => "PointTextHeight=9;Facename=ＭＳ ゴシック;Bold=1"),
+        pair!("JikokuhyouFont"        => "PointTextHeight=9;Facename=ＭＳ ゴシック;Itaric=1"),
+        pair!("JikokuhyouFont"        => "PointTextHeight=9;Facename=ＭＳ ゴシック;Bold=1;Itaric=1"),
+        pair!("JikokuhyouFont"        => "PointTextHeight=9;Facename=ＭＳ ゴシック"),
+        pair!("JikokuhyouFont"        => "PointTextHeight=9;Facename=ＭＳ ゴシック"),
+        pair!("JikokuhyouFont"        => "PointTextHeight=9;Facename=ＭＳ ゴシック"),
+        pair!("JikokuhyouFont"        => "PointTextHeight=9;Facename=ＭＳ ゴシック"),
+        pair!("JikokuhyouVFont"       => "PointTextHeight=9;Facename=@ＭＳ ゴシック"),
+        pair!("DiaEkimeiFont"         => "PointTextHeight=9;Facename=ＭＳ ゴシック"),
+        pair!("DiaJikokuFont"         => "PointTextHeight=9;Facename=ＭＳ ゴシック"),
+        pair!("DiaRessyaFont"         => "PointTextHeight=9;Facename=ＭＳ ゴシック"),
+        pair!("CommentFont"           => "PointTextHeight=9;Facename=ＭＳ ゴシック"),
+        pair!("DiaMojiColor"          => "00000000"),
+        pair!("DiaHaikeiColor"        => "00FFFFFF"),
+        pair!("DiaRessyaColor"        => "00000000"),
+        pair!("DiaJikuColor"          => "00C0C0C0"),
+        pair!("EkimeiLength"          => "6"),
+        pair!("JikokuhyouRessyaWidth" => "5"),
     )
 }
 
@@ -57,15 +48,12 @@ impl<'a> super::ExportObject for OuDia<'a> {
         ".oud"
     }
     fn export_to_buffer(&mut self, buffer: &mut Vec<u8>) {
-        let mut route_buf = vec![Structure::Pair(
-            "Rosenmei".into(),
-            smallvec![
-                self.world
-                    .get::<Name>(self.route_entity)
-                    .unwrap()
-                    .to_string()
-                    .into()
-            ],
+        let mut route_buf = vec![pair!(
+            "Rosenmei" =>
+            self.world
+                .get::<Name>(self.route_entity)
+                .unwrap()
+                .to_string()
         )];
         self.world
             .run_system_cached_with(make_stations, (self.route_entity, &mut route_buf))
@@ -81,23 +69,16 @@ impl<'a> super::ExportObject for OuDia<'a> {
             )
             .unwrap();
         route_buf.extend_from_slice(&[
-            Structure::Pair("KitenJikoku".into(), smallvec!["200".into()]),
-            Structure::Pair(
-                "DiagramDgrYZahyouKyoriDefault".into(),
-                smallvec!["60".into()],
-            ),
-            Structure::Pair(
-                "Comment".into(),
-                smallvec![concat!("Exported by Paiagram ", env!("CARGO_PKG_VERSION")).into()],
-            ),
+            pair!("KitenJikoku" => "200"),
+            pair!("DiagramDgrYZahyouKyoriDefault" => "60"),
+            pair!("Comment" => concat!("Exported by Paiagram ", env!("CARGO_PKG_VERSION"))),
         ]);
         let root = vec![
-            Structure::Pair("FileType".into(), smallvec!["OuDia.1.02".into()]),
+            pair!("FileType" => "OuDia.1.02"),
             Structure::Struct("Rosen".into(), route_buf),
             make_disp_prop(),
-            Structure::Pair(
-                "FileTypeAppComment".into(),
-                smallvec![concat!("Exported by Paiagram ", env!("CARGO_PKG_VERSION")).into()],
+            pair!("FileTypeAppComment" =>
+                concat!("Exported by Paiagram ", env!("CARGO_PKG_VERSION")),
             ),
         ];
         let mut utf8_buf = Vec::new();
@@ -125,22 +106,11 @@ fn make_stations(
         return;
     };
     let make_station = |e: Entity, departure_display: &'static str| -> Structure<'static> {
-        Structure::Struct(
-            "Eki".into(),
-            vec![
-                // 駅名
-                Structure::Pair(
-                    "Ekimei".into(),
-                    smallvec![station_name_q.get(e).unwrap().to_string().into()],
-                ),
-                Structure::Pair(
-                    // 駅時刻形式
-                    "Ekijikokukeisiki".into(),
-                    smallvec![departure_display.into()],
-                ),
-                // 駅規模
-                Structure::Pair("Ekikibo".into(), smallvec!["Ekikibo_Ippan".into()]),
-            ],
+        let name = station_name_q.get(e).unwrap().to_string();
+        structure!("Eki" =>
+            pair!("Ekimei" => name),                        // 駅名
+            pair!("Ekijikokukeisiki" => departure_display), // 駅時刻形式
+            pair!("Ekikibo"=> "Ekikibo_Ippan"),             // 駅規模
         )
     };
 
@@ -172,26 +142,14 @@ fn make_classes(
             color.g(),
             color.r(),
         );
-        Structure::Struct(
-            "Ressyasyubetsu".into(),
-            vec![
-                Structure::Pair("Syubetsumei".into(), smallvec![it.name.to_string().into()]),
-                Structure::Pair("Ryakusyou".into(), smallvec![it.name.to_string().into()]),
-                Structure::Pair(
-                    "JikokuhyouMojiColor".into(),
-                    smallvec![color_string.clone().into()],
-                ),
-                Structure::Pair("JikokuhyouFontIndex".into(), smallvec!["0".into()]),
-                Structure::Pair("DiagramSenColor".into(), smallvec![color_string.into()]),
-                Structure::Pair(
-                    "DiagramSenStyle".into(),
-                    smallvec!["SenStyle_Jissen".into()],
-                ),
-                Structure::Pair(
-                    "StopMarkDrawType".into(),
-                    smallvec!["EStopMarkDrawType_DrawOnStop".into()],
-                ),
-            ],
+        structure!("Ressyasyubetsu" =>
+            pair!("Syubetsumei"         => it.name.to_string()),
+            pair!("Ryakusyou"           => it.name.to_string()),
+            pair!("JikokuhyouMojiColor" => color_string.clone()),
+            pair!("JikokuhyouFontIndex" => "0"),
+            pair!("DiagramSenColor"     => color_string),
+            pair!("DiagramSenStyle"     => "SenStyle_Jissen"),
+            pair!("StopMarkDrawType"    => "EStopMarkDrawType_DrawOnStop"),
         )
     });
     buf.extend(iter);
@@ -321,11 +279,6 @@ fn make_trainset_by_direction<'a>(
     const NO_OPERATION: &str = "";
     for it in trips_iter {
         let a = class_map.get(&it.class.entity());
-        let mut entries = vec![
-            Structure::Pair("Houkou".into(), smallvec![magic_word.into()]),
-            Structure::Pair("Syubetsu".into(), smallvec![a.unwrap().to_string().into()]),
-            Structure::Pair("Ressyabangou".into(), smallvec![it.name.to_string().into()]),
-        ];
         let mut v: SmallVec<[Cow<'static, str>; 1]> = smallvec![NO_OPERATION.into(); stops.len()];
         let schedule_it = entry_q.iter_many(it.schedule.iter());
         let mut next_abs_idx = 0;
@@ -344,8 +297,14 @@ fn make_trainset_by_direction<'a>(
                 next_abs_idx = abs_idx + 1;
             }
         }
-        entries.push(Structure::Pair("EkiJikoku".into(), v));
-        trips.push(Structure::Struct("Ressya".into(), entries));
+        trips.push(
+            structure!("Ressya" =>
+                pair!("Houkou"       => magic_word),
+                pair!("Syubetsu"     => a.unwrap().to_string()),
+                pair!("Ressyabangou" => it.name.to_string()),
+                Structure::Pair("EkiJikoku".into(), v)
+            )
+        );
     }
     Structure::Struct(magic_word.into(), trips)
 }

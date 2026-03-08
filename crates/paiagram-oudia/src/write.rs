@@ -1,5 +1,6 @@
 use crate::Structure;
 
+/// Recursively serializes a [`Structure`].
 pub fn serialize_to<'a>(
     buf: &mut impl std::io::Write,
     values: &[Structure<'a>],
@@ -29,6 +30,7 @@ pub fn serialize_to<'a>(
     Ok(())
 }
 
+/// Serializes a [`Structure`] and outputs a string
 pub fn serialize_to_string<'a>(values: &[Structure<'a>]) -> std::io::Result<String> {
     let mut buf = Vec::new();
     serialize_to(&mut buf, values)?;

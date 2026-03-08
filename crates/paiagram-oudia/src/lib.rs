@@ -78,6 +78,20 @@ pub enum Structure<'a> {
     Pair(Cow<'a, str>, SmallVec<[Cow<'a, str>; 1]>),
 }
 
+#[macro_export]
+macro_rules! structure {
+    ($k:expr => $($x:expr),+ $(,)?) => {
+        $crate::Structure::Struct($k.into(), vec![$($x.into(),)+])
+    };
+}
+
+#[macro_export]
+macro_rules! pair {
+    ($k:expr => $($x:expr),+ $(,)?) => {
+        $crate::Structure::Pair($k.into(), smallvec::smallvec![$($x.into(),)+])
+    };
+}
+
 pub fn parse_oud2(file: &str) -> Result<Root> {
     let ast = parse_oud2_to_ast(file)?;
     parse_ast(ast)
