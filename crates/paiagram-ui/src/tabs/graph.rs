@@ -23,6 +23,7 @@ use paiagram_core::{
 };
 
 mod gpu_draw;
+mod underlay;
 
 fn segment_visible(viewport: Rect, a: egui::Pos2, b: egui::Pos2) -> bool {
     if viewport.contains(a) || viewport.contains(b) {
@@ -39,6 +40,9 @@ fn segment_visible(viewport: Rect, a: egui::Pos2, b: egui::Pos2) -> bool {
 #[derive(Serialize, Deserialize, Clone, MapEntities)]
 pub struct GraphTab {
     navi: GraphNavigation,
+    underlay_tile_type: underlay::UnderlayTileType,
+    #[serde(skip, default)]
+    underlay_tile_change: Option<underlay::UnderlayTileType>,
     #[serde(skip, default)]
     clicked_coor: Option<(f64, f64)>,
     #[serde(skip, default)]
@@ -59,6 +63,8 @@ impl Default for GraphTab {
     fn default() -> Self {
         Self {
             navi: GraphNavigation::default(),
+            underlay_tile_type: underlay::UnderlayTileType::None,
+            underlay_tile_change: None,
             clicked_coor: None,
             new_station_name: String::new(),
             arrange_iterations: default_arrange_iterations(),
@@ -132,6 +138,10 @@ impl super::Tab for GraphTab {
             .show(ui, |ui| display(self, world, ui));
     }
     fn edit_display(&mut self, world: &mut World, ui: &mut egui::Ui) {
+        self.underlay_tile_change = ui
+            .add(&mut self.underlay_tile_type)
+            .changed()
+            .then_some(self.underlay_tile_type);
         ui.add(egui::Slider::new(&mut self.arrange_iterations, 100..=10000).text("Iterations"));
         if ui.button("Arrange graph").clicked() {
             world
@@ -197,16 +207,12 @@ fn display(tab: &mut GraphTab, world: &mut World, ui: &mut egui::Ui) {
         ui.allocate_painter(ui.available_size_before_wrap(), Sense::click_and_drag());
     tab.navi.visible = response.rect;
     tab.navi.handle_navigation(ui, &response);
-    draw_world_grid(
-        &painter,
-        tab.navi.visible,
-        Vec2 {
-            x: tab.navi.x_offset as f32,
-            y: tab.navi.y_offset as f32,
-        },
-        tab.navi.zoom,
-    );
-    draw_scale_bar(&painter, tab.navi.visible, tab.navi.zoom, ui.visuals().text_color());
+    world
+        .run_system_cached_with(
+            underlay::draw_underlay,
+            (&mut painter, &tab.navi, ui, tab.underlay_tile_change),
+        )
+        .unwrap();
     let mut state = tab.gpu_state.lock();
     if let Some(target_format) = ui.ctx().data(|data| {
         data.get_temp::<eframe::egui_wgpu::wgpu::TextureFormat>(egui::Id::new("wgpu_target_format"))
@@ -337,146 +343,6 @@ fn display(tab: &mut GraphTab, world: &mut World, ui: &mut egui::Ui) {
             .open_memory(Some(egui::SetOpenCommand::Bool(true)))
             .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
             .show(inner);
-    }
-}
-
-fn draw_scale_bar(painter: &Painter, viewport: Rect, zoom: f32, color: Color32) {
-    if zoom <= 0.0 || !viewport.is_positive() {
-        return;
-    }
-
-    let desired_px = 120.0f64;
-    let meters_per_px = 1.0 / zoom as f64;
-    let raw_meters = desired_px * meters_per_px;
-    let bar_meters = round_to_1_2_5(raw_meters).max(1.0);
-    let bar_px = (bar_meters as f32 * zoom).max(1.0);
-
-    let margin = 14.0;
-    let baseline_y = viewport.bottom() - margin;
-    let left_x = viewport.left() + margin;
-    let right_x = left_x + bar_px;
-
-    let stroke = Stroke::new(1.6, color);
-    painter.line_segment([Pos2::new(left_x, baseline_y), Pos2::new(right_x, baseline_y)], stroke);
-
-    let tick_len = 7.0;
-    painter.line_segment(
-        [
-            Pos2::new(left_x, baseline_y),
-            Pos2::new(left_x, baseline_y - tick_len),
-        ],
-        stroke,
-    );
-    painter.line_segment(
-        [
-            Pos2::new(right_x, baseline_y),
-            Pos2::new(right_x, baseline_y - tick_len),
-        ],
-        stroke,
-    );
-
-    let mid_tick_len = 5.0;
-    for fraction in [0.25f32, 0.5, 0.75] {
-        let x = left_x + bar_px * fraction;
-        painter.line_segment(
-            [Pos2::new(x, baseline_y), Pos2::new(x, baseline_y - mid_tick_len)],
-            stroke,
-        );
-    }
-
-    painter.text(
-        Pos2::new(left_x, baseline_y - tick_len - 3.0),
-        Align2::LEFT_BOTTOM,
-        format_scale_label(bar_meters),
-        FontId::proportional(12.0),
-        color,
-    );
-}
-
-fn round_to_1_2_5(value: f64) -> f64 {
-    if value <= 0.0 {
-        return 0.0;
-    }
-    let exponent = value.log10().floor();
-    let base = 10.0f64.powf(exponent);
-    let normalized = value / base;
-    let rounded = if normalized <= 1.0 {
-        1.0
-    } else if normalized <= 2.0 {
-        2.0
-    } else if normalized <= 5.0 {
-        5.0
-    } else {
-        10.0
-    };
-    rounded * base
-}
-
-fn format_scale_label(meters: f64) -> String {
-    if meters >= 1000.0 {
-        let km = meters / 1000.0;
-        if (km - km.round()).abs() < 1e-6 {
-            format!("{:.0} km", km)
-        } else {
-            format!("{:.1} km", km)
-        }
-    } else {
-        format!("{:.0} m", meters)
-    }
-}
-
-fn draw_world_grid(painter: &Painter, viewport: Rect, offset: Vec2, zoom: f32) {
-    if zoom <= 0.0 {
-        return;
-    }
-
-    // Transitions like diagram.rs: Linear fade between MIN and MAX screen spacing
-    const MIN_WIDTH: f32 = 32.0;
-    const MAX_WIDTH: f32 = 120.0;
-
-    // Use a neutral gray without querying visuals
-    let base_color = Color32::from_gray(160);
-
-    for p in ((-5)..=5).rev() {
-        let spacing = 10.0f32.powi(p);
-        let screen_spacing = spacing * zoom;
-
-        // Strength calculation identical to diagram.rs (1.5 scaling factor)
-        let strength =
-            ((screen_spacing * 1.5 - MIN_WIDTH) / (MAX_WIDTH - MIN_WIDTH)).clamp(0.0, 1.0);
-        if strength <= 0.0 {
-            continue;
-        }
-
-        let stroke = Stroke::new(0.6, base_color.gamma_multiply(strength));
-
-        // Vertical lines
-        let mut n = (offset.x / spacing).floor();
-        loop {
-            let world_x = n * spacing;
-            let screen_x_rel = (world_x - offset.x) * zoom;
-            if screen_x_rel > viewport.width() {
-                break;
-            }
-            if screen_x_rel >= 0.0 {
-                painter.vline(viewport.left() + screen_x_rel, viewport.y_range(), stroke);
-            }
-            n += 1.0;
-        }
-
-        // Horizontal lines
-        let mut m = (offset.y / spacing).floor();
-        loop {
-            let world_y = m * spacing;
-            let screen_y_rel = (world_y - offset.y) * zoom;
-            if screen_y_rel > viewport.height() {
-                break;
-            }
-            if screen_y_rel >= 0.0 {
-                painter.hline(viewport.x_range(), viewport.top() + screen_y_rel, stroke);
-            }
-            m += 1.0;
-        }
     }
 }
 

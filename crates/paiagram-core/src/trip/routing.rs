@@ -15,14 +15,12 @@ use crate::{
 
 pub struct RoutingPlugin;
 
-#[derive(Default, Resource)]
-struct RecalculateCandidates(Vec<Entity>);
-
 impl Plugin for RoutingPlugin {
     fn build(&self, app: &mut App) {
-        app.add_message::<AddEntryToTrip>()
-            .init_resource::<RecalculateCandidates>()
-            .add_systems(Update, (add_entries, recalculate_route, recalculate_estimate).chain());
+        app.add_message::<AddEntryToTrip>().add_systems(
+            Update,
+            (add_entries, recalculate_route, recalculate_estimate).chain(),
+        );
     }
 }
 

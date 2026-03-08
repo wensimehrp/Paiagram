@@ -768,21 +768,23 @@ impl<'w> egui_tiles::Behavior<AdditionalTab> for AdditionalTabViewer<'w> {
     ) -> egui_tiles::UiResponse {
         ui.painter()
             .rect_filled(ui.available_rect_before_wrap(), 0, ui.visuals().panel_fill);
-        let Some(ref mut focused) = self.focused_tab else {
-            ui.label("Nothing focused");
-            return Default::default();
-        };
-        match *tab {
-            AdditionalTab::Edit => {
-                for_all_tabs!(focused, t, t.edit_display(self.world, ui));
+        egui::Frame::new().inner_margin(6.0).show(ui, |ui| {
+            let Some(ref mut focused) = self.focused_tab else {
+                ui.label("Nothing focused");
+                return;
+            };
+            match *tab {
+                AdditionalTab::Edit => {
+                    for_all_tabs!(focused, t, t.edit_display(self.world, ui));
+                }
+                AdditionalTab::Properties => {
+                    for_all_tabs!(focused, t, t.display_display(self.world, ui));
+                }
+                AdditionalTab::Export => {
+                    for_all_tabs!(focused, t, t.export_display(self.world, ui));
+                }
             }
-            AdditionalTab::Properties => {
-                for_all_tabs!(focused, t, t.display_display(self.world, ui));
-            }
-            AdditionalTab::Export => {
-                for_all_tabs!(focused, t, t.export_display(self.world, ui));
-            }
-        }
+        });
         Default::default()
     }
 }
@@ -905,7 +907,10 @@ pub fn show_ui(ctx: &Context, world: &mut World, cpu_time: Option<f32>) {
                 let average_dt = frame_time_history.average_dt();
                 ui.monospace(format!("FPS: {:6.2}", 1.0_f32 / average_dt));
                 ui.monospace(format!("FRAME: {:5.2}ms", average_dt * 1000.0_f32));
-                ui.monospace(format!("CPU: {:5.2}ms", cpu_time.unwrap_or(0.0) * 1000.0_f32));
+                ui.monospace(format!(
+                    "CPU: {:5.2}ms",
+                    cpu_time.unwrap_or(0.0) * 1000.0_f32
+                ));
                 ui.horizontal(|ui| {
                     const GAP: f32 = 4.0;
                     const SAMPLE_COUNT: usize = 32;
