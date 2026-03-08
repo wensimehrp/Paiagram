@@ -36,7 +36,7 @@ jobs:
         run: nix develop .#default --command just prep-wasm
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v7
         with:
           name: wasm-pages
           path: ./dist/nightly
