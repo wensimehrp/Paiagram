@@ -7,6 +7,10 @@ settings-show-performance-stats = Show performance analytics
 settings-enable-autosave = Enable autosave
 settings-autosave-interval = Autosave interval (minutes)
 settings-enable-developer-mode = Enable Developer Mode
+settings-preferences = Preferences
+settings-dark-mode = Dark Mode
+settings-language = Language
+settings-project-settings = Project Settings
 
 # Side panel
 side-panel-edit = Edit
@@ -24,6 +28,12 @@ side-panel-export-fallback-2 = This is considered a bug. Feel free to open a tic
 # Tabs
 # Start tab
 tab-start = Start
+tab-start-merge-stations-by-name = Merge stations by name
+tab-start-amount-vehicles = Amount of vehicles:
+tab-start-amount-trips = Amount of trips:
+tab-start-amount-stations = Amount of stations:
+tab-start-amount-platforms = Amount of platforms:
+tab-start-amount-intervals = Amount of intervals:
 tab-start-version = Version: {$version}
 tab-start-revision = Revision: {$revision}
 tab-start-description = A high-performance transport timetable diagramming and analysis tool built with egui and Bevy.
@@ -49,12 +59,24 @@ tab-graph-auto-arrange-desc = Automatically arrange the graph using a force-dire
 tab-graph-auto-arrange-iterations = Iterations
 tab-graph-arrange-via-osm = Arrange via OSM
 tab-graph-arrange-button = Arrange
+tab-graph-arrange-mode-force = Force
+tab-graph-arrange-mode-osm = OSM
+tab-graph-arrange-progress = Arrange ({$mode}) progress: {$finished}/{$total} | retry queued: {$queued_retry}
 # tip: use local examples of area names
 tab-graph-arrange-via-osm-desc = Use online sources to arrange the current the graph. This leverages OpenStreetMap data, and by clicking "{tab-graph-arrange-button}" you agree to OpenStreetMap's Terms of Use. You can query with an optional area name to limit the scope (e.g., Vancouver, Halifax).
 tab-graph-arrange-via-osm-terms = Terms of Use
 tab-graph-osm-area-name = Area filter:
 tab-graph-animation = Animation controls
 tab-graph-animation-desc = Animate trains on the graph.
+tab-graph-underlay-none = None
+tab-graph-underlay-openstreetmap = OpenStreetMap
+tab-graph-underlay-amap = Amap
+tab-graph-underlay-chiriin = Chiri-in Chizu
+
+# Trip tab
+trip-table-station = Station
+trip-table-arrival = Arrival
+trip-table-departure = Departure
 
 # new lines desc
 new-displayed-line = New Displayed Line

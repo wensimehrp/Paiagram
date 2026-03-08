@@ -3,6 +3,7 @@ use egui::{
     Align2, Color32, CornerRadius, FontId, Mesh, Painter, Pos2, Rect, Shape, Stroke, Ui, Widget,
     pos2,
 };
+use egui_i18n::tr;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use walkers::mercator;
@@ -25,15 +26,27 @@ impl Widget for &mut UnderlayTileType {
     fn ui(self, ui: &mut egui::Ui) -> egui::Response {
         let mut changed = false;
         changed |= ui
-            .radio_value(self, UnderlayTileType::None, "None")
+            .radio_value(self, UnderlayTileType::None, tr!("tab-graph-underlay-none"))
             .changed();
         changed |= ui
-            .radio_value(self, UnderlayTileType::OpenStreetMap, "OpenStreetMap")
+            .radio_value(
+                self,
+                UnderlayTileType::OpenStreetMap,
+                tr!("tab-graph-underlay-openstreetmap"),
+            )
             .changed();
         changed |= ui
-            .radio_value(self, UnderlayTileType::AutoNavi, "Amap")
+            .radio_value(
+                self,
+                UnderlayTileType::AutoNavi,
+                tr!("tab-graph-underlay-amap"),
+            )
             .changed();
-        let mut res = ui.radio_value(self, UnderlayTileType::ChiriinChizu, "Chiri-in Chizu");
+        let mut res = ui.radio_value(
+            self,
+            UnderlayTileType::ChiriinChizu,
+            tr!("tab-graph-underlay-chiriin"),
+        );
         if changed {
             res.mark_changed();
         }
@@ -98,7 +111,7 @@ pub fn draw_underlay(
     mut visited: Local<HashSet<TileId>>,
     mut stack: Local<Vec<TileId>>,
     mut tiles: Local<Option<Option<HttpTiles>>>,
-) {
+) -> Option<Attribution> {
     let text_color = painter.ctx().style().visuals.text_color();
 
     draw_world_grid(
@@ -122,8 +135,7 @@ pub fn draw_underlay(
     }
 
     let Some(tiles) = tiles else {
-        draw_scale_bar(&painter, navi.visible_rect(), navi.zoom_x(), text_color);
-        return;
+        return None;
     };
 
     let graph_zoom = navi.zoom_x() as f64;
@@ -182,71 +194,7 @@ pub fn draw_underlay(
             }
         }
     }
-
-    draw_scale_bar(&painter, navi.visible_rect(), navi.zoom_x(), text_color);
-    draw_attribution(ui, navi.visible_rect(), &tiles.attribution());
-}
-
-fn draw_scale_bar(painter: &Painter, viewport: Rect, zoom: f32, color: egui::Color32) {
-    if zoom <= 0.0 || !viewport.is_positive() {
-        return;
-    }
-
-    let desired_px = 120.0f64;
-    let meters_per_px = 1.0 / zoom as f64;
-    let raw_meters = desired_px * meters_per_px;
-    let bar_meters = round_to_1_2_5(raw_meters).max(1.0);
-    let bar_px = (bar_meters as f32 * zoom).max(1.0);
-
-    let margin = 10.0;
-    let baseline_y = viewport.bottom() - margin;
-    let left_x = viewport.left() + margin;
-    let right_x = left_x + bar_px;
-
-    let stroke = Stroke::new(1.6, color);
-    painter.line_segment(
-        [
-            Pos2::new(left_x, baseline_y),
-            Pos2::new(right_x, baseline_y),
-        ],
-        stroke,
-    );
-
-    let tick_len = 7.0;
-    painter.line_segment(
-        [
-            Pos2::new(left_x, baseline_y),
-            Pos2::new(left_x, baseline_y - tick_len),
-        ],
-        stroke,
-    );
-    painter.line_segment(
-        [
-            Pos2::new(right_x, baseline_y),
-            Pos2::new(right_x, baseline_y - tick_len),
-        ],
-        stroke,
-    );
-
-    let mid_tick_len = 5.0;
-    for fraction in [0.25f32, 0.5, 0.75] {
-        let x = left_x + bar_px * fraction;
-        painter.line_segment(
-            [
-                Pos2::new(x, baseline_y),
-                Pos2::new(x, baseline_y - mid_tick_len),
-            ],
-            stroke,
-        );
-    }
-
-    painter.text(
-        Pos2::new(left_x, baseline_y - tick_len - 3.0),
-        Align2::LEFT_BOTTOM,
-        format_scale_label(bar_meters),
-        FontId::proportional(12.0),
-        color,
-    );
+    Some(tiles.attribution())
 }
 
 fn draw_world_grid(painter: &Painter, viewport: Rect, offset_x: f32, offset_y: f32, zoom: f32) {
@@ -294,60 +242,6 @@ fn draw_world_grid(painter: &Painter, viewport: Rect, offset_x: f32, offset_y: f
             }
             m += 1.0;
         }
-    }
-}
-
-fn draw_attribution(ui: &mut Ui, viewport: Rect, attribution: &Attribution) {
-    let margin = 6.0;
-    let font_id = FontId::proportional(13.0);
-    let color = ui.style().visuals.hyperlink_color;
-    let text = format!("© {}", attribution.text);
-    let galley = ui.painter().layout_no_wrap(text.clone(), font_id, color);
-    let size = galley.size();
-    let min = Pos2::new(
-        viewport.right() - margin - size.x,
-        viewport.bottom() - margin - size.y,
-    );
-    let rect = Rect::from_min_size(min, size);
-    let mut r = CornerRadius::ZERO;
-    r.nw = 4;
-    ui.painter()
-        .rect_filled(rect.expand(margin), r, Color32::WHITE.gamma_multiply(0.5));
-    ui.put(
-        rect,
-        egui::Hyperlink::from_label_and_url(text, attribution.url).open_in_new_tab(true),
-    );
-}
-
-fn round_to_1_2_5(value: f64) -> f64 {
-    if value <= 0.0 {
-        return 0.0;
-    }
-    let exponent = value.log10().floor();
-    let base = 10.0f64.powf(exponent);
-    let normalized = value / base;
-    let rounded = if normalized <= 1.0 {
-        1.0
-    } else if normalized <= 2.0 {
-        2.0
-    } else if normalized <= 5.0 {
-        5.0
-    } else {
-        10.0
-    };
-    rounded * base
-}
-
-fn format_scale_label(meters: f64) -> String {
-    if meters >= 1000.0 {
-        let km = meters / 1000.0;
-        if (km - km.round()).abs() < 1e-6 {
-            format!("{:.0} km", km)
-        } else {
-            format!("{:.1} km", km)
-        }
-    } else {
-        format!("{:.0} m", meters)
     }
 }
 

@@ -62,7 +62,7 @@ impl Tab for StartTab {
             }
             CurrentField::Misc => {}
         }
-        if ui.button("Merge stations by name").clicked() {
+        if ui.button(tr!("tab-start-merge-stations-by-name")).clicked() {
             world
                 .run_system_cached(paiagram_core::graph::merge_station_by_name)
                 .unwrap();
@@ -96,23 +96,23 @@ fn show_start(
     platforms: Query<PlatformQuery>,
     intervals: Query<IntervalQuery>,
 ) {
-    ui.heading("Paiagram");
+    ui.heading(tr!("program-name"));
     egui::Grid::new("start info grid")
         .num_columns(2)
         .show(ui, |ui| {
-            ui.label("Amount of vehicles:");
+            ui.label(tr!("tab-start-amount-vehicles"));
             ui.label(vehicles.count().to_string());
             ui.end_row();
-            ui.label("Amount of trips:");
+            ui.label(tr!("tab-start-amount-trips"));
             ui.label(trips.count().to_string());
             ui.end_row();
-            ui.label("Amount of stations:");
+            ui.label(tr!("tab-start-amount-stations"));
             ui.label(stations.count().to_string());
             ui.end_row();
-            ui.label("Amount of platforms:");
+            ui.label(tr!("tab-start-amount-platforms"));
             ui.label(platforms.count().to_string());
             ui.end_row();
-            ui.label("Amount of intervals:");
+            ui.label(tr!("tab-start-amount-intervals"));
             ui.label(intervals.count().to_string());
         });
 }

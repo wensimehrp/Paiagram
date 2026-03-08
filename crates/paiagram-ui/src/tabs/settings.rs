@@ -31,13 +31,13 @@ fn show_settings(
     mut preferences: ResMut<UserPreferences>,
     mut settings: ResMut<ProjectSettings>,
 ) {
-    ui.heading("Preferences");
-    ui.checkbox(&mut preferences.dark_mode, "Dark Mode");
-    egui::ComboBox::new(ui.id().with("settings box"), "Language").show_ui(ui, |ui| {
+    ui.heading(tr!("settings-preferences"));
+    ui.checkbox(&mut preferences.dark_mode, tr!("settings-dark-mode"));
+    egui::ComboBox::new(ui.id().with("settings box"), tr!("settings-language")).show_ui(ui, |ui| {
         for lang in Language::iter() {
             ui.selectable_value(&mut preferences.lang, lang, lang.name());
         }
     });
-    ui.heading("Project Settings");
+    ui.heading(tr!("settings-project-settings"));
     ui.text_edit_multiline(&mut settings.remarks);
 }

@@ -13,6 +13,7 @@ use crate::widgets::timetable_popup::{arrival_popup, departure_popup};
 use super::Tab;
 use bevy::prelude::*;
 use egui::{Ui, Vec2, vec2};
+use egui_i18n::tr;
 use emath::Numeric;
 use moonshine_core::prelude::MapEntities;
 use serde::{Deserialize, Serialize};
@@ -59,9 +60,9 @@ fn show_trip(
             .num_columns(3)
             .striped(true)
             .show(ui, |ui| {
-                ui.label("Station");
-                ui.label("Arrival");
-                ui.label("Departure");
+                ui.label(tr!("trip-table-station"));
+                ui.label(tr!("trip-table-arrival"));
+                ui.label(tr!("trip-table-departure"));
                 ui.end_row();
                 for it in entry_q.iter_many(trip.schedule.iter()) {
                     row_ui(

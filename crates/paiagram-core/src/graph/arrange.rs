@@ -280,9 +280,30 @@ pub fn arrange_via_osm(
     let queued_in_task = Arc::clone(&queued_for_retry);
 
     let mut task_queue: VecDeque<(Vec<(Entity, String)>, usize)> = stations
-        .chunks(50)
+        .chunks(100)
         .map(|chunk| (chunk.to_vec(), 0))
         .collect();
+
+    let (area_def, area_filter) = match area_name.as_ref() {
+        Some(area) => {
+            // Check if the input is a 2-letter ISO code (e.g., "CN", "US", "FR")
+            if area.len() == 2 && area.chars().all(|c| c.is_ascii_alphabetic()) {
+                let country_code = area.to_uppercase();
+                info!(?country_code);
+                (
+                    format!(r#"area["ISO3166-1"="{country_code}"]->.searchArea;"#),
+                    "(area.searchArea)",
+                )
+            } else {
+                info!(?area);
+                (
+                    format!(r#"area[name="{}"]->.searchArea;"#, area),
+                    "(area.searchArea)",
+                )
+            }
+        }
+        None => (String::new(), ""),
+    };
 
     let task = AsyncComputeTaskPool::get().spawn(async move {
         let mut known_positions: HashMap<Entity, NodePos> = HashMap::new();
@@ -299,17 +320,8 @@ pub fn arrange_via_osm(
                 .collect::<Vec<_>>()
                 .join("|");
 
-            let (area_def, area_filter) = match area_name.as_ref() {
-                Some(area) => (
-                    format!(r#"area[name="{}"]->.searchArea;"#, area),
-                    "(area.searchArea)",
-                ),
-                None => (String::new(), ""),
-            };
-
             let query = format!(
-                r#"[out:json];{}(node[~"^(railway|public_transport|station|subway|light_rail)$"~"^(station|halt|stop|tram_stop|subway_entrance|monorail_station|light_rail_station|narrow_gauge_station|funicular_station|preserved|disused_station|stop_position|platform|stop_area|subway|railway|tram|yes)$"][~"name(:.*)?"~"^({})$"]{};);out;"#,
-                area_def, names_regex, area_filter
+                r#"[out:json];{area_def}(node[~"^(railway|public_transport|station|subway|light_rail)$"~"^(station|halt|stop|tram_stop|subway_entrance|monorail_station|light_rail_station|narrow_gauge_station|funicular_station|preserved|disused_station|stop_position|platform|stop_area|subway|railway|tram|yes)$"][~"name(:.*)?"~"^({names_regex})$"]{area_filter};);out;"#,
             );
 
             let mut osm_data: Option<OSMResponse> = None;

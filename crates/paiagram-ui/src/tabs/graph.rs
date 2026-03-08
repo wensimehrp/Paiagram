@@ -1,5 +1,8 @@
 use bevy::prelude::*;
-use egui::{Align2, Color32, FontId, Margin, Painter, Pos2, Rect, Sense, Stroke, Ui, Vec2};
+use egui::{
+    Align2, Color32, CornerRadius, FontId, Margin, Painter, Pos2, Rect, Sense, Stroke, Ui, Vec2,
+};
+use egui_i18n::tr;
 use moonshine_core::prelude::MapEntities;
 use paiagram_core::graph::{AddIntervalPair, NodePos};
 use paiagram_core::station::CreateNewStation;
@@ -7,6 +10,7 @@ use paiagram_core::units::distance::Distance;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::sync::Arc;
+use walkers::sources::Attribution;
 
 use crate::{SelectedItem, SelectedItems, StationSelection, TimetableEntrySelection};
 
@@ -142,8 +146,11 @@ impl super::Tab for GraphTab {
             .add(&mut self.underlay_tile_type)
             .changed()
             .then_some(self.underlay_tile_type);
-        ui.add(egui::Slider::new(&mut self.arrange_iterations, 100..=10000).text("Iterations"));
-        if ui.button("Arrange graph").clicked() {
+        ui.add(
+            egui::Slider::new(&mut self.arrange_iterations, 100..=10000)
+                .text(tr!("tab-graph-auto-arrange-iterations")),
+        );
+        if ui.button(tr!("tab-graph-auto-arrange")).clicked() {
             world
                 .run_system_cached_with(
                     paiagram_core::graph::arrange::auto_arrange_graph,
@@ -153,10 +160,10 @@ impl super::Tab for GraphTab {
         }
         ui.separator();
         ui.horizontal(|ui| {
-            ui.label("OSM area:");
+            ui.label(tr!("tab-graph-osm-area-name"));
             ui.text_edit_singleline(&mut self.osm_area_name);
         });
-        if ui.button("Arrange via OSM").clicked() {
+        if ui.button(tr!("tab-graph-arrange-via-osm")).clicked() {
             let area_name = if self.osm_area_name.is_empty() {
                 None
             } else {
@@ -172,11 +179,21 @@ impl super::Tab for GraphTab {
         if let Some(task) = world.get_resource::<paiagram_core::graph::arrange::GraphLayoutTask>() {
             let (finished, total, queued_retry) = task.progress();
             let mode = match task.kind {
-                paiagram_core::graph::arrange::GraphLayoutKind::ForceDirected => "Force",
-                paiagram_core::graph::arrange::GraphLayoutKind::OSM => "OSM",
+                paiagram_core::graph::arrange::GraphLayoutKind::ForceDirected => {
+                    tr!("tab-graph-arrange-mode-force")
+                }
+                paiagram_core::graph::arrange::GraphLayoutKind::OSM => {
+                    tr!("tab-graph-arrange-mode-osm")
+                }
             };
-            ui.label(format!(
-                "Arrange ({mode}) progress: {finished}/{total} | retry queued: {queued_retry}"
+            ui.label(tr!(
+                "tab-graph-arrange-progress",
+                {
+                    mode: mode,
+                    finished: finished,
+                    total: total,
+                    queued_retry: queued_retry
+                }
             ));
             if total > 0 {
                 ui.add(egui::ProgressBar::new(finished as f32 / total as f32));
@@ -207,7 +224,7 @@ fn display(tab: &mut GraphTab, world: &mut World, ui: &mut egui::Ui) {
         ui.allocate_painter(ui.available_size_before_wrap(), Sense::click_and_drag());
     tab.navi.visible = response.rect;
     tab.navi.handle_navigation(ui, &response);
-    world
+    let attribution = world
         .run_system_cached_with(
             underlay::draw_underlay,
             (&mut painter, &tab.navi, ui, tab.underlay_tile_change),
@@ -261,8 +278,18 @@ fn display(tab: &mut GraphTab, world: &mut World, ui: &mut egui::Ui) {
         .unwrap();
     let callback = gpu_draw::paint_callback(response.rect, tab.gpu_state.clone());
     painter.add(callback);
-    // handle selection
 
+    if let Some(attribution) = attribution {
+        draw_attribution(ui, response.rect, &attribution);
+    }
+    draw_scale_bar(
+        &painter,
+        response.rect,
+        tab.navi.zoom,
+        ui.visuals().text_color(),
+    );
+
+    // handle selection
     let selected_items = world.resource_mut::<SelectedItems>().into_inner();
     let shift_pressed = ui.input(|i| i.modifiers.shift);
     if shift_pressed
@@ -276,8 +303,39 @@ fn display(tab: &mut GraphTab, world: &mut World, ui: &mut egui::Ui) {
         ui.painter()
             .line_segment([pos, hover_pos], Stroke::new(1.0, Color32::BLUE));
     }
-    // TODO: fix the lifetime here
+    let selected_items = world.resource::<SelectedItems>();
+    if let SelectedItems::Stations(stations) = selected_items {
+        for station in stations.clone().iter() {
+            let coor = world.get::<Node>(station.station).unwrap().pos;
+            let (x, y) = coor.to_xy();
+            let pos = tab.navi.xy_to_screen_pos(x, y);
+            let rect = Rect::from_pos(pos).expand(8.0);
+            let res = ui.interact(
+                rect,
+                ui.id().with(station.station).with("popup response"),
+                Sense::empty(),
+            );
+            let inner = |ui: &mut Ui| {
+                let res = ui
+                    .add(egui::Label::new("∷").sense(Sense::drag()))
+                    .on_hover_cursor(egui::CursorIcon::Grab);
+                if res.dragged() {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+                    let new_pos = pos + res.drag_delta();
+                    let (x, y) = tab.navi.screen_pos_to_xy(new_pos);
+                    let new_coor = NodePos::from_xy(x, y);
+                    world.get_mut::<Node>(station.station).unwrap().pos = new_coor;
+                }
+                ui.label(coor.to_string());
+            };
+            egui::Popup::menu(&res)
+                .open_memory(Some(egui::SetOpenCommand::Bool(true)))
+                .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+                .show(inner);
+        }
+    }
     let selected_items = world.resource_mut::<SelectedItems>().into_inner();
+    // TODO: fix the lifetime here
     match (selected_item, selected_items) {
         (Some(SelectedItem::Stations(station)), SelectedItems::Stations(stations))
             if shift_pressed && stations.len() == 1 =>
@@ -344,6 +402,122 @@ fn display(tab: &mut GraphTab, world: &mut World, ui: &mut egui::Ui) {
             .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
             .show(inner);
     }
+}
+
+fn draw_scale_bar(painter: &Painter, viewport: Rect, zoom: f32, color: egui::Color32) {
+    if zoom <= 0.0 || !viewport.is_positive() {
+        return;
+    }
+
+    let desired_px = 120.0f64;
+    let meters_per_px = 1.0 / zoom as f64;
+    let raw_meters = desired_px * meters_per_px;
+    let bar_meters = round_to_1_2_5(raw_meters).max(1.0);
+    let bar_px = (bar_meters as f32 * zoom).max(1.0);
+
+    let margin = 10.0;
+    let baseline_y = viewport.bottom() - margin;
+    let left_x = viewport.left() + margin;
+    let right_x = left_x + bar_px;
+
+    let stroke = Stroke::new(1.6, color);
+    painter.line_segment(
+        [
+            Pos2::new(left_x, baseline_y),
+            Pos2::new(right_x, baseline_y),
+        ],
+        stroke,
+    );
+
+    let tick_len = 7.0;
+    painter.line_segment(
+        [
+            Pos2::new(left_x, baseline_y),
+            Pos2::new(left_x, baseline_y - tick_len),
+        ],
+        stroke,
+    );
+    painter.line_segment(
+        [
+            Pos2::new(right_x, baseline_y),
+            Pos2::new(right_x, baseline_y - tick_len),
+        ],
+        stroke,
+    );
+
+    let mid_tick_len = 5.0;
+    for fraction in [0.25f32, 0.5, 0.75] {
+        let x = left_x + bar_px * fraction;
+        painter.line_segment(
+            [
+                Pos2::new(x, baseline_y),
+                Pos2::new(x, baseline_y - mid_tick_len),
+            ],
+            stroke,
+        );
+    }
+
+    painter.text(
+        Pos2::new(left_x, baseline_y - tick_len - 3.0),
+        Align2::LEFT_BOTTOM,
+        format_scale_label(bar_meters),
+        FontId::proportional(12.0),
+        color,
+    );
+}
+
+fn round_to_1_2_5(value: f64) -> f64 {
+    if value <= 0.0 {
+        return 0.0;
+    }
+    let exponent = value.log10().floor();
+    let base = 10.0f64.powf(exponent);
+    let normalized = value / base;
+    let rounded = if normalized <= 1.0 {
+        1.0
+    } else if normalized <= 2.0 {
+        2.0
+    } else if normalized <= 5.0 {
+        5.0
+    } else {
+        10.0
+    };
+    rounded * base
+}
+
+fn format_scale_label(meters: f64) -> String {
+    if meters >= 1000.0 {
+        let km = meters / 1000.0;
+        if (km - km.round()).abs() < 1e-6 {
+            format!("{:.0} km", km)
+        } else {
+            format!("{:.1} km", km)
+        }
+    } else {
+        format!("{:.0} m", meters)
+    }
+}
+
+fn draw_attribution(ui: &mut Ui, viewport: Rect, attribution: &Attribution) {
+    let margin = 6.0;
+    let font_id = FontId::proportional(13.0);
+    let color = ui.style().visuals.hyperlink_color;
+    let text = format!("© {}", attribution.text);
+    let galley = ui.painter().layout_no_wrap(text.clone(), font_id, color);
+    let size = galley.size();
+    let min = Pos2::new(
+        viewport.right() - margin - size.x,
+        viewport.bottom() - margin - size.y,
+    );
+    let rect = Rect::from_min_size(min, size);
+    let mut r = CornerRadius::ZERO;
+    r.nw = 4;
+    ui.painter()
+        .rect_filled(rect.expand(margin), r, Color32::WHITE.gamma_multiply(0.5));
+    ui.put(
+        rect,
+        egui::Hyperlink::from_label_and_url(text, attribution.url).open_in_new_tab(true),
+    );
 }
 
 fn push_draw_items(
