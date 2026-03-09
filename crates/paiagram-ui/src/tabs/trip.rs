@@ -1,20 +1,17 @@
 use paiagram_core::{
-    entry::{
-        AdjustEntryMode, EntryEstimate, EntryMode, EntryModeAdjustment, EntryQuery, EntryQueryItem,
-        TravelMode,
-    },
+    entry::{EntryEstimate, EntryMode, EntryQuery, EntryQueryItem, TravelMode},
     station::{PlatformQuery, StationQuery},
     trip::{TripQuery, TripQueryItem},
-    units::time::{Duration, TimetableTime},
 };
 
-use crate::widgets::timetable_popup::{arrival_popup, departure_popup};
+use crate::widgets::timetable_popup::{
+    arrival_popup, departure_popup, shift_at_value, shift_for_value,
+};
 
 use super::Tab;
 use bevy::prelude::*;
 use egui::{Ui, Vec2, vec2};
 use egui_i18n::tr;
-use emath::Numeric;
 use moonshine_core::prelude::MapEntities;
 use serde::{Deserialize, Serialize};
 
@@ -96,74 +93,15 @@ fn row_ui(
     let arr_res = match it.mode.arr {
         None => ui.add_sized(BUTTON_SIZE, egui::Button::new("↓")),
         Some(TravelMode::Flexible) => ui.add_sized(BUTTON_SIZE, egui::Button::new("〇")),
-        Some(TravelMode::At(t)) => {
-            let mut new_t = t;
-            let res = ui.add_sized(
-                BUTTON_SIZE,
-                egui::DragValue::new(&mut new_t)
-                    .custom_formatter(|v, _| TimetableTime::from_f64(v).to_string())
-                    .custom_parser(|s| TimetableTime::from_str(s).map(TimetableTime::to_f64)),
-            );
-            if res.changed() {
-                commands.trigger(AdjustEntryMode {
-                    entity: it.entity,
-                    adj: EntryModeAdjustment::ShiftArrival(new_t - t),
-                });
-            }
-            res
-        }
-        Some(TravelMode::For(d)) => {
-            let mut new_d = d;
-            let res = ui.add_sized(
-                BUTTON_SIZE,
-                egui::DragValue::new(&mut new_d)
-                    .custom_formatter(|v, _| Duration::from_f64(v).to_string()),
-            );
-            if res.changed() {
-                commands.trigger(AdjustEntryMode {
-                    entity: it.entity,
-                    adj: EntryModeAdjustment::ShiftArrival(new_d - d),
-                });
-            }
-            res
-        }
+        Some(TravelMode::At(t)) => shift_at_value(t, it.entity, ui, commands, BUTTON_SIZE, true),
+        Some(TravelMode::For(d)) => shift_for_value(d, it.entity, ui, commands, BUTTON_SIZE, true),
     };
     arrival_popup(&arr_res, &it, &trip, &entry_mode_q, &mut commands);
 
     let dep_res = match it.mode.dep {
         TravelMode::Flexible => ui.add_sized(BUTTON_SIZE, egui::Button::new("...")),
-        TravelMode::At(t) => {
-            let mut new_t = t;
-            let res = ui.add_sized(
-                BUTTON_SIZE,
-                egui::DragValue::new(&mut new_t)
-                    .custom_formatter(|v, _| TimetableTime::from_f64(v).to_string())
-                    .custom_parser(|s| TimetableTime::from_str(s).map(TimetableTime::to_f64)),
-            );
-            if res.changed() {
-                commands.trigger(AdjustEntryMode {
-                    entity: it.entity,
-                    adj: EntryModeAdjustment::ShiftDeparture(new_t - t),
-                });
-            }
-            res
-        }
-        TravelMode::For(d) => {
-            let mut new_d = d;
-            // TODO: add parser
-            let res = ui.add_sized(
-                BUTTON_SIZE,
-                egui::DragValue::new(&mut new_d)
-                    .custom_formatter(|v, _| Duration::from_f64(v).to_string()),
-            );
-            if res.changed() {
-                commands.trigger(AdjustEntryMode {
-                    entity: it.entity,
-                    adj: EntryModeAdjustment::ShiftDeparture(new_d - d),
-                });
-            }
-            res
-        }
+        TravelMode::At(t) => shift_at_value(t, it.entity, ui, commands, BUTTON_SIZE, false),
+        TravelMode::For(d) => shift_for_value(d, it.entity, ui, commands, BUTTON_SIZE, false),
     };
     departure_popup(&dep_res, &it, &mut commands);
 }

@@ -256,30 +256,27 @@ impl Duration {
     pub fn from_secs(s: i32) -> Self {
         Self(s)
     }
+    pub fn from_hms(h: i32, m: i32, s: i32) -> Self {
+        Self(h * 3600 + m * 60 + s)
+    }
+    pub fn to_string_no_arrow(&self) -> String {
+        TimetableTime(self.0).to_string()
+    }
     #[inline]
     pub fn from_str(s: &str) -> Option<Self> {
-        let parts: Vec<&str> = s.split(':').collect();
-        match parts.len() {
-            2 => {
-                let h = parts[0].parse::<i32>().ok()?;
-                let m = parts[1].parse::<i32>().ok()?;
-                Some(Duration(h * 3600 + m * 60))
-            }
-            3 => {
-                let h = parts[0].parse::<i32>().ok()?;
-                let m = parts[1].parse::<i32>().ok()?;
-                let sec = parts[2].parse::<i32>().ok()?;
-                Some(Duration(h * 3600 + m * 60 + sec))
-            }
-            _ => None,
+        let time_parts = if let Some((_, rhs)) = s.rsplit_once('→') {
+            rhs
+        } else {
+            s
         }
+        .trim();
+        Some(Self(TimetableTime::from_str(time_parts)?.0))
     }
 }
 
 impl std::fmt::Display for Duration {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let (h, m, s) = self.to_hms();
-        write!(f, ">> {:02}:{:02}:{:02}", h, m, s)
+        write!(f, "→ {}", self.to_string_no_arrow())
     }
 }
 
