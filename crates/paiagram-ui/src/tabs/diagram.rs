@@ -28,7 +28,6 @@ use paiagram_raptor::Journey;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 pub mod calc_trip_lines;
-mod draw;
 mod draw_lines;
 mod gpu_draw;
 
