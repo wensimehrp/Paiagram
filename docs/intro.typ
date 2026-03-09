@@ -19,15 +19,16 @@ if you do want something to be added into the program, #link("https://github.com
 
 = Getting Started
 
+You can use the #link(links.home)[web version] or the desktop version. The web version runs on Chromium 113+. Latest
+versions of Firefox and Safari are also supported. Despite the fact that Paiagram supports Linux and Windows, we do not
+provide a pre-compiled version just yet. You would, unfortunately, have to compile the desktop version yourself.
+
 If you have any trouble using the application, feel free to ask in #link(links.discussions)[GitHub discussions], or in
 our QQ group chat: #raw(links.qq).
 
-You can use the #link(links.home)[web version] or the desktop version. The web version runs on Chromium 113+. Latest
-versions of Firefox and Safari are also supported. You would, unfortunately, have to compile the desktop version
-yourself.
-
-The performance gap between both versions when processing small datasets is usually acceptable. To give you a rough idea
-of how performant the app is, here are some very inaccurate, for-reference-only benchmarks:
+The performance gap between the web version and the desktop version when processing small datasets is usually
+acceptable. To give you a rough idea of how performant the app is, here are some very inaccurate, for-reference-only
+benchmarks:
 
 - OuDiaSecond (Windows version, via Wine, which taxes the CPU a bit) runs at some PowerPoint level framerate on my
   i9-13900HX laptop after loading the `sample.oud2` file. The app lags whenever I scroll down the timetable or the
