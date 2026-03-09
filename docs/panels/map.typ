@@ -7,7 +7,11 @@ network.
 
 = Viewing
 
+Stations in your netowrk would be displayed as dots. The lines connecting stations are the intervals connecting the
+stations. Trips are displayed as arrowheads traversing on intervals.
 
+You can click on a dot to focus a station, a line to focus (an) interval(s), or an arrowhead to focus a trip. The
+details would be displayed on the right panel.
 
 = Map Underlay
 
