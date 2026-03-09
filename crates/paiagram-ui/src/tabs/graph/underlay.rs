@@ -1,8 +1,5 @@
 use bevy::ecs::system::{In, InMut, InRef, Local};
-use egui::{
-    Align2, Color32, CornerRadius, FontId, Mesh, Painter, Pos2, Rect, Shape, Stroke, Ui, Widget,
-    pos2,
-};
+use egui::{Mesh, Painter, Rect, Shape, Stroke, Ui, Widget, pos2};
 use egui_i18n::tr;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -13,13 +10,23 @@ use walkers::{HttpTiles, Tile, TileId, Tiles};
 use crate::tabs::Navigatable;
 use paiagram_core::graph::{lon_lat_to_xy, xy_to_lon_lat};
 
-#[derive(Default, Clone, Copy, Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Default, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub enum UnderlayTileType {
     None,
     #[default]
     OpenStreetMap,
-    ChiriinChizu,
+    ChiriinChizu(ChiriinChizuVariant),
     AutoNavi,
+}
+
+#[derive(Default, Clone, Copy, Serialize, Deserialize, PartialEq, Debug)]
+pub enum ChiriinChizuVariant {
+    #[default]
+    Standard,
+    Light,
+    White,
+    English,
+    Satellite,
 }
 
 impl Widget for &mut UnderlayTileType {
@@ -35,18 +42,54 @@ impl Widget for &mut UnderlayTileType {
                 tr!("tab-graph-underlay-openstreetmap"),
             )
             .changed();
-        changed |= ui
-            .radio_value(
-                self,
-                UnderlayTileType::AutoNavi,
-                tr!("tab-graph-underlay-amap"),
-            )
-            .changed();
         let mut res = ui.radio_value(
             self,
-            UnderlayTileType::ChiriinChizu,
-            tr!("tab-graph-underlay-chiriin"),
+            UnderlayTileType::AutoNavi,
+            tr!("tab-graph-underlay-amap"),
         );
+        ui.horizontal(|ui| {
+            let variant_id = ui.id().with("chiriin variant");
+            let selected = ui
+                .ctx()
+                .memory_mut(|r| *r.data.get_temp_mut_or_default(variant_id));
+            changed |= ui
+                .radio_value(
+                    self,
+                    UnderlayTileType::ChiriinChizu(selected),
+                    tr!("tab-graph-underlay-chiriin"),
+                )
+                .changed();
+            let mut new_selected = selected;
+            ui.add_enabled_ui(matches!(self, UnderlayTileType::ChiriinChizu(_)), |ui| {
+                egui::ComboBox::new("variant", "")
+                    .selected_text(format!("{:?}", selected))
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(
+                            &mut new_selected,
+                            ChiriinChizuVariant::Standard,
+                            "Standard",
+                        );
+                        ui.selectable_value(&mut new_selected, ChiriinChizuVariant::Light, "Light");
+                        ui.selectable_value(&mut new_selected, ChiriinChizuVariant::White, "White");
+                        ui.selectable_value(
+                            &mut new_selected,
+                            ChiriinChizuVariant::English,
+                            "English",
+                        );
+                        ui.selectable_value(
+                            &mut new_selected,
+                            ChiriinChizuVariant::Satellite,
+                            "Satellite",
+                        );
+                    });
+            });
+            if new_selected != selected {
+                *self = UnderlayTileType::ChiriinChizu(new_selected);
+                changed = true;
+            };
+            ui.ctx()
+                .memory_mut(|r| *r.data.get_temp_mut_or_default(variant_id) = new_selected);
+        });
         if changed {
             res.mark_changed();
         }
@@ -54,15 +97,21 @@ impl Widget for &mut UnderlayTileType {
     }
 }
 
-pub struct ChiriinChizu;
+pub struct ChiriinChizu(ChiriinChizuVariant);
 
 impl TileSource for ChiriinChizu {
     fn tile_url(&self, tile_id: TileId) -> String {
         let z = tile_id.zoom;
         let x = tile_id.x;
         let y = tile_id.y;
-        let id = "std";
-        format!("https://cyberjapandata.gsi.go.jp/xyz/{id}/{z}/{x}/{y}.png")
+        let (id, format) = match self.0 {
+            ChiriinChizuVariant::Standard => ("std", "png"),
+            ChiriinChizuVariant::Satellite => ("seamlessphoto", "jpg"),
+            ChiriinChizuVariant::English => ("english", "png"),
+            ChiriinChizuVariant::White => ("blank", "png"),
+            ChiriinChizuVariant::Light => ("pale", "png"),
+        };
+        format!("https://cyberjapandata.gsi.go.jp/xyz/{id}/{z}/{x}/{y}.{format}")
     }
     fn attribution(&self) -> Attribution {
         Attribution {
@@ -112,8 +161,6 @@ pub fn draw_underlay(
     mut stack: Local<Vec<TileId>>,
     mut tiles: Local<Option<Option<HttpTiles>>>,
 ) -> Option<Attribution> {
-    let text_color = painter.ctx().style().visuals.text_color();
-
     draw_world_grid(
         &painter,
         navi.visible_rect(),
@@ -123,14 +170,15 @@ pub fn draw_underlay(
     );
 
     let tiles = tiles.get_or_insert(None);
-
     let ctx = ui.ctx().clone();
 
     match new_type {
         None => {}
         Some(UnderlayTileType::None) => *tiles = None,
         Some(UnderlayTileType::OpenStreetMap) => *tiles = Some(HttpTiles::new(OpenStreetMap, ctx)),
-        Some(UnderlayTileType::ChiriinChizu) => *tiles = Some(HttpTiles::new(ChiriinChizu, ctx)),
+        Some(UnderlayTileType::ChiriinChizu(v)) => {
+            *tiles = Some(HttpTiles::new(ChiriinChizu(v), ctx))
+        }
         Some(UnderlayTileType::AutoNavi) => *tiles = Some(HttpTiles::new(AutoNavi, ctx)),
     }
 

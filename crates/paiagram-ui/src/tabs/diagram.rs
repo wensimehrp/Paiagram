@@ -12,7 +12,6 @@ use egui::{
 };
 use egui_i18n::tr;
 use emath::Numeric;
-use instant::Instant;
 use moonshine_core::prelude::MapEntities;
 use paiagram_core::entry::{
     AdjustEntryMode, EntryBundle, EntryEstimate, EntryMode, EntryModeAdjustment, EntryQuery,
@@ -29,28 +28,9 @@ use paiagram_raptor::Journey;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 pub mod calc_trip_lines;
+mod draw;
 mod draw_lines;
 mod gpu_draw;
-
-// TODO: dt & td graphs
-#[derive(Default, Clone)]
-struct DiagramPerf {
-    frame: f32,
-    station_lines: f32,
-    time_lines: f32,
-    trips_collect: f32,
-    trips_calc: f32,
-    trips_draw: f32,
-    gpu_prep: f32,
-}
-
-fn smooth_ms(previous: f32, new_value: f32) -> f32 {
-    if previous <= 0.0 {
-        new_value
-    } else {
-        previous * 0.8 + new_value * 0.2
-    }
-}
 
 #[derive(Serialize, Deserialize, Clone, MapEntities)]
 pub struct DiagramTab {
@@ -65,10 +45,6 @@ pub struct DiagramTab {
     raptor_params: RaptorParams,
     #[serde(skip, default)]
     gpu_state: Arc<egui::mutex::Mutex<gpu_draw::GpuTripRendererState>>,
-    #[serde(skip, default)]
-    show_perf: bool,
-    #[serde(skip, default)]
-    perf: DiagramPerf,
 }
 
 #[derive(Clone, Default)]
@@ -123,8 +99,6 @@ impl DiagramTab {
             gpu_state: Arc::new(egui::mutex::Mutex::new(
                 gpu_draw::GpuTripRendererState::default(),
             )),
-            show_perf: false,
-            perf: DiagramPerf::default(),
         }
     }
 }
@@ -274,9 +248,9 @@ impl Tab for DiagramTab {
             }
             SelectedItems::ExtendingTrip(ExtendingTripSelection {
                 entry,
-                previous_pos,
-                current_entry,
-                last_time,
+                previous_pos: _,
+                current_entry: _,
+                last_time: _,
             }) => {
                 let mut name = world.get_mut::<Name>(entry).unwrap();
                 name.mutate(|n| {
@@ -296,25 +270,6 @@ impl Tab for DiagramTab {
             SelectedItems::ExtendingRoute(_) => {}
         }
         ui.separator();
-        ui.checkbox(&mut self.show_perf, "Show perf");
-        if self.show_perf {
-            ui.monospace(format!(
-                "Station lines: {:.2} ms\nTime lines: {:.2} ms\nTrips collect: {:.2} ms\nTrips calc: {:.2} ms\nTrips draw: {:.2} ms\nGPU prep: {:.2} ms\nFrame: {:.2} ms",
-                self.perf.station_lines,
-                self.perf.time_lines,
-                self.perf.trips_collect,
-                self.perf.trips_calc,
-                self.perf.trips_draw,
-                self.perf.gpu_prep,
-                self.perf.frame,
-            ));
-            if let Some(info) = ui
-                .ctx()
-                .data(|data| data.get_temp::<String>(Id::new("wgpu_adapter_info")))
-            {
-                ui.monospace(&info);
-            }
-        }
     }
     fn display_display(&mut self, world: &mut World, ui: &mut Ui) {
         ui.label("Find a route between...");
@@ -408,7 +363,6 @@ impl Tab for DiagramTab {
 }
 
 fn main_display(tab: &mut DiagramTab, world: &mut World, ui: &mut egui::Ui) {
-    let frame_start = Instant::now();
     let route = world
         .get::<Route>(tab.route_entity)
         .expect("Entity should have a route");
@@ -458,7 +412,6 @@ fn main_display(tab: &mut DiagramTab, world: &mut World, ui: &mut egui::Ui) {
         .ctx()
         .animate_bool(ui.id().with("all buttons animation"), show_button);
 
-    let station_lines_start = Instant::now();
     draw_lines::draw_station_lines(
         tab.navi.y_offset as f32,
         &mut painter,
@@ -469,12 +422,7 @@ fn main_display(tab: &mut DiagramTab, world: &mut World, ui: &mut egui::Ui) {
         ui.visuals(),
         &world, // FIXME: make this a system instead of passing world into it
     );
-    tab.perf.station_lines = smooth_ms(
-        tab.perf.station_lines,
-        station_lines_start.elapsed().as_secs_f32() * 1000.0,
-    );
 
-    let time_lines_start = Instant::now();
     draw_lines::draw_time_lines(
         tab.navi.x_offset.0,
         &mut painter,
@@ -483,22 +431,13 @@ fn main_display(tab: &mut DiagramTab, world: &mut World, ui: &mut egui::Ui) {
         &(visible_ticks.start.0..visible_ticks.end.0),
         ui.pixels_per_point(),
     );
-    tab.perf.time_lines = smooth_ms(
-        tab.perf.time_lines,
-        time_lines_start.elapsed().as_secs_f32() * 1000.0,
-    );
 
-    let trips_collect_start = Instant::now();
     world
         .run_system_cached_with(
             calc_trip_lines::calculate_trips,
             (&mut tab.trips, tab.route_entity),
         )
         .unwrap();
-    tab.perf.trips_collect = smooth_ms(
-        tab.perf.trips_collect,
-        trips_collect_start.elapsed().as_secs_f32() * 1000.0,
-    );
 
     let mut trip_line_buf = Vec::new();
     // Calculate the visible trains
@@ -508,17 +447,13 @@ fn main_display(tab: &mut DiagramTab, world: &mut World, ui: &mut egui::Ui) {
         ticks_per_screen_unit,
         visible_ticks.clone(),
     );
-    let trips_calc_start = Instant::now();
     world
         .run_system_cached_with(
             calc_trip_lines::calc,
             (&mut trip_line_buf, calc_context, &tab.trips),
         )
         .unwrap();
-    tab.perf.trips_calc = smooth_ms(
-        tab.perf.trips_calc,
-        trips_calc_start.elapsed().as_secs_f32() * 1000.0,
-    );
+
     let selected_snapshot = world.resource::<SelectedItems>().clone();
     if let SelectedItems::ExtendingTrip(mut extending_trip) = selected_snapshot
         && let (Some(interact_pos), is_touch_input) = ui.input(|r| {
@@ -661,8 +596,8 @@ fn main_display(tab: &mut DiagramTab, world: &mut World, ui: &mut egui::Ui) {
         ui.id().with("selection"),
         !matches!(selected_snapshot, SelectedItems::None),
     );
+
     let mut selected_idx_rect: (Vec<usize>, Vec<Rect>) = (Vec::new(), Vec::new());
-    let trips_draw_start = Instant::now();
     world
         .run_system_cached_with(
             draw_trip_lines,
@@ -676,12 +611,9 @@ fn main_display(tab: &mut DiagramTab, world: &mut World, ui: &mut egui::Ui) {
             ),
         )
         .unwrap();
-    tab.perf.trips_draw = smooth_ms(
-        tab.perf.trips_draw,
-        trips_draw_start.elapsed().as_secs_f32() * 1000.0,
-    );
 
     let mut state = tab.gpu_state.lock();
+
     if let Some(target_format) = ui.ctx().data(|data| {
         data.get_temp::<eframe::egui_wgpu::wgpu::TextureFormat>(Id::new("wgpu_target_format"))
     }) {
@@ -693,14 +625,11 @@ fn main_display(tab: &mut DiagramTab, world: &mut World, ui: &mut egui::Ui) {
     {
         state.msaa_samples = msaa_samples;
     }
-    let gpu_prep_start = Instant::now();
+
     gpu_draw::write_vertices(&trip_line_buf, ui.visuals().dark_mode, &mut state);
-    tab.perf.gpu_prep = smooth_ms(
-        tab.perf.gpu_prep,
-        gpu_prep_start.elapsed().as_secs_f32() * 1000.0,
-    );
     let callback = gpu_draw::paint_callback(response.rect, tab.gpu_state.clone());
     painter.add(callback);
+
     let s = (selection_strength * 0.5 * u8::MAX as f32) as u8;
     painter.rect_filled(
         response.rect,
@@ -757,7 +686,6 @@ fn main_display(tab: &mut DiagramTab, world: &mut World, ui: &mut egui::Ui) {
             }
         }
     }
-    tab.perf.frame = smooth_ms(tab.perf.frame, frame_start.elapsed().as_secs_f32() * 1000.0);
 }
 
 /// Takes a buffer the calculate trains

@@ -310,23 +310,26 @@ fn display(tab: &mut GraphTab, world: &mut World, ui: &mut egui::Ui) {
             let (x, y) = coor.to_xy();
             let pos = tab.navi.xy_to_screen_pos(x, y);
             let rect = Rect::from_pos(pos).expand(8.0);
-            let res = ui.interact(
-                rect,
-                ui.id().with(station.station).with("popup response"),
-                Sense::empty(),
-            );
+            let res = ui
+                .interact(
+                    rect,
+                    ui.id().with(station.station).with("popup response"),
+                    Sense::drag(),
+                )
+                .on_hover_cursor(egui::CursorIcon::Grab);
+            if res.dragged() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+                let new_pos = pos + res.drag_delta();
+                let (x, y) = tab.navi.screen_pos_to_xy(new_pos);
+                let new_coor = NodePos::from_xy(x, y);
+                world.get_mut::<Node>(station.station).unwrap().pos = new_coor;
+            }
             let inner = |ui: &mut Ui| {
-                let res = ui
-                    .add(egui::Label::new("∷").sense(Sense::drag()))
-                    .on_hover_cursor(egui::CursorIcon::Grab);
-                if res.dragged() {
-                    ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
-                    let new_pos = pos + res.drag_delta();
-                    let (x, y) = tab.navi.screen_pos_to_xy(new_pos);
-                    let new_coor = NodePos::from_xy(x, y);
-                    world.get_mut::<Node>(station.station).unwrap().pos = new_coor;
-                }
-                ui.label(coor.to_string());
+                ui.set_width(150.0);
+                world.get_mut::<Name>(station.station).unwrap().mutate(|s| {
+                    ui.text_edit_singleline(s);
+                });
+                ui.small(coor.to_string());
             };
             egui::Popup::menu(&res)
                 .open_memory(Some(egui::SetOpenCommand::Bool(true)))
@@ -371,15 +374,19 @@ fn display(tab: &mut GraphTab, world: &mut World, ui: &mut egui::Ui) {
         let rect = Rect::from_pos(pos).expand(8.0);
         ui.painter()
             .circle_filled(pos, 6.0, PredefinedColor::Red.get(ui.visuals().dark_mode));
-        let res = ui.interact(rect, ui.id().with("popup response"), Sense::click());
+        let res = ui
+            .interact(rect, ui.id().with("popup response"), Sense::drag())
+            .on_hover_cursor(egui::CursorIcon::Grab);
+        if res.dragged() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+            let new_pos = pos + res.drag_delta();
+            tab.clicked_coor = Some(tab.navi.screen_pos_to_xy(new_pos));
+        }
         let inner = |ui: &mut Ui| {
-            ui.set_width(230.0);
+            ui.set_width(200.0);
             ui.text_edit_singleline(&mut tab.new_station_name);
             let coor = NodePos::from_xy(x, y);
-            if ui
-                .add(egui::Button::new("New Station").right_text(coor.to_string()))
-                .clicked()
-            {
+            if ui.button("New Station").clicked() {
                 tab.clicked_coor = None;
                 world.trigger(CreateNewStation {
                     name: tab.new_station_name.clone(),
@@ -387,15 +394,7 @@ fn display(tab: &mut GraphTab, world: &mut World, ui: &mut egui::Ui) {
                 });
                 tab.new_station_name.clear();
             }
-            // response for panning
-            let res = ui
-                .add(egui::Label::new("∷").sense(Sense::drag()))
-                .on_hover_cursor(egui::CursorIcon::Grab);
-            if res.dragged() {
-                ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
-                let new_pos = pos + res.drag_delta();
-                tab.clicked_coor = Some(tab.navi.screen_pos_to_xy(new_pos));
-            }
+            ui.small(coor.to_string());
         };
         egui::Popup::menu(&res)
             .open_memory(Some(egui::SetOpenCommand::Bool(true)))
