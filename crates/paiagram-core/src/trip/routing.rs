@@ -203,7 +203,7 @@ fn recalculate_estimate(
             let Some(params) = unwind_params.take() else {
                 continue;
             };
-            let Some((mut last_t, last_s)) = last_stable else {
+            let Some((last_t, last_s)) = last_stable else {
                 for (e, _, _) in flexible_stack.drain(..) {
                     commands.entity(e).remove::<EntryEstimate>();
                 }
@@ -243,14 +243,23 @@ fn recalculate_estimate(
             let total_dis = distance_stack.iter().cloned().sum::<Distance>();
             let mut fi = flexible_stack.drain(..);
             let mut di = distance_stack.drain(..);
-            let average_v = total_dis / travel_dur;
+            let total_dis_m = total_dis.0 as f64;
+            let travel_dur_s = travel_dur.0 as f64;
+            let mut last_t_f = last_t.0 as f64;
             while let (Some((e, _, dur)), Some(dis)) = (fi.next(), di.next()) {
-                last_t += dis / average_v;
+                let dis_m = dis.0 as f64;
+                let travel_leg_s = if total_dis_m == 0.0 {
+                    0.0
+                } else {
+                    travel_dur_s * (dis_m / total_dis_m)
+                };
+                last_t_f += travel_leg_s;
+                let arr = TimetableTime(last_t_f.round() as i32);
                 commands.entity(e).insert(EntryEstimate {
-                    arr: last_t,
-                    dep: last_t + dur,
+                    arr,
+                    dep: arr + dur,
                 });
-                last_t += dur;
+                last_t_f += dur.0 as f64;
             }
             match params {
                 UnwindParams::At(_) => {}
