@@ -212,10 +212,8 @@ fn start_trip_spatial_index_rebuild(
             // include the previous arr time
             let t0 = estimate0.arr.0 as f64;
             let t1 = estimate0.dep.0 as f64;
-            let t2 = estimate1.arr.0 as f64;
-            if t1 < t0 || t2 < t1 {
-                continue;
-            }
+            // we do a .max(t1) here to make that the last entry gets included properly
+            let t2 = (estimate1.arr.0 as f64).max(t1);
 
             if repeat_time > 0.0 {
                 let dep_duration = t1 - t0;
