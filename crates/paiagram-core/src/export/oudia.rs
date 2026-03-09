@@ -297,14 +297,12 @@ fn make_trainset_by_direction<'a>(
                 next_abs_idx = abs_idx + 1;
             }
         }
-        trips.push(
-            structure!("Ressya" =>
-                pair!("Houkou"       => magic_word),
-                pair!("Syubetsu"     => a.unwrap().to_string()),
-                pair!("Ressyabangou" => it.name.to_string()),
-                Structure::Pair("EkiJikoku".into(), v)
-            )
-        );
+        trips.push(structure!("Ressya" =>
+            pair!("Houkou"       => magic_word),
+            pair!("Syubetsu"     => a.unwrap().to_string()),
+            pair!("Ressyabangou" => it.name.to_string()),
+            Structure::Pair("EkiJikoku".into(), v)
+        ));
     }
     Structure::Struct(magic_word.into(), trips)
 }

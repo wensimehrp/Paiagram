@@ -98,7 +98,14 @@ fn classify_curve_type(u: Option<Pos2>, a: Pos2, b: Pos2, v: Option<Pos2>) -> u3
     }
 }
 
-fn push_curve(mesh: &mut epaint::Mesh, a: Pos2, b: Pos2, width: f32, color: Color32, curve_type: u32) {
+fn push_curve(
+    mesh: &mut epaint::Mesh,
+    a: Pos2,
+    b: Pos2,
+    width: f32,
+    color: Color32,
+    curve_type: u32,
+) {
     let dx = b.x - a.x;
     let curve_height = 8.0_f32.max(dx.abs() * 0.15 + 6.0);
     for seg_index in 0..CURVE_SEGMENTS {
