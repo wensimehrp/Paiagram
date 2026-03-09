@@ -25,6 +25,7 @@ eframe = { version = "0.33.3", default-features = false, features = [
     "wayland",
     "web_screen_reader",
 ] }
+# TODO: investigate why 0.2.0 causes a bug
 egui-i18n = { version = "0.1.2", features = ["fluent"] }
 egui_table = "0.7.0"
 bevy-inspector-egui = { version = "0.36.0", default-features = false }
