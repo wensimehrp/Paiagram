@@ -4,17 +4,23 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Paiagram</title>
+    <title data-l10n-id="page-title">Paiagram</title>
     <link rel="stylesheet" href="style.css">
     <script defer src="https://cloud.umami.is/script.js"
         data-website-id="067cd05f-b395-4813-916c-2063c383685f"></script>
+    <script type="module" src="./l10n.js"></script>
 </head>
 
 <body>
     <main>
         <h1>Paiagram</h1>
 
-        <p>
+        <select id="lang-selector">
+            <option value="en-CA">English</option>
+            <option value="zh-Hans">简体中文</option>
+        </select>
+
+        <p class="badges">
             <a href="https://github.com/WenSimEHRP/Paiagram/actions/workflows/nightly.yml">
                 <img src="https://github.com/WenSimEHRP/Paiagram/actions/workflows/nightly.yml/badge.svg"
                     alt="Workflow Status">
@@ -23,43 +29,46 @@
                 <img src="https://github.com/WenSimEHRP/Paiagram/actions/workflows/docs.yml/badge.svg"
                     alt="Workflow Status">
             </a>
-            <img src="https://img.shields.io/github/license/wensimehrp/paiagram" alt="GitHub License">
+            <a href="https://github.com/WenSimEHRP/Paiagram"><img
+                    src="https://img.shields.io/github/license/wensimehrp/paiagram" alt="GitHub License"></a>
             <a href="https://github.com/WenSimEHRP/Paiagram"><img alt="GitHub Repo stars"
                     src="https://img.shields.io/github/stars/wensimehrp/paiagram">
             </a>
         </p>
 
-        <p>timetables are just a click away.</p>
+        <p data-l10n-id="intro">timetables are just a click away.</p>
 
         <div class="notice">
-            <strong>Linux & Browser Requirements:</strong> This program requires <b>WebGPU</b>. Please use the latest
-            Chrome, Chromium, or enable WebGPU in your browser settings. Supports latest Firefox and Safari.
+            <strong data-l10n-id="notice-title">Linux & Browser Requirements:</strong>
+            <span data-l10n-id="notice-body">This program requires <b>WebGPU</b>. Please use the latest
+                Chrome, Chromium, or enable WebGPU in your browser settings. Supports latest Firefox and Safari.
+            </span>
         </div>
 
         <nav>
-            <a class="link-card" href="./nightly">
-                <span>Nightly Web Build</span>
-                <small>Run the program directly in your browser.</small>
+            <a class="link-card link-card-main" href="./nightly">
+                <span data-l10n-id="nightly-title-text">Nightly Web Build</span>
+                <small data-l10n-id="nightly-subtitle">Run the program directly in your browser.</small>
             </a>
             <a class="link-card" href="./2026-03-07/?load=example.paia">
-                <span>Demo</span>
-                <small>See Paiagram in action with a demo.</small>
+                <span data-l10n-id="demo-title">Demo</span>
+                <small data-l10n-id="demo-subtitle">See Paiagram in action with a demo.</small>
             </a>
             <a class="link-card" href="https://github.com/WenSimEHRP/Paiagram/releases">
-                <span>Nightly Download</span>
-                <small>Downloads for Windows and MacOS.</small>
+                <span data-l10n-id="download-title">Nightly Download</span>
+                <small data-l10n-id="download-subtitle">Downloads for Windows and MacOS.</small>
             </a>
             <a class="link-card" href="./docs">
-                <span>Documentation</span>
-                <small>Browse the latest documentation.</small>
+                <span data-l10n-id="docs-title">Documentation</span>
+                <small data-l10n-id="docs-subtitle">Browse the latest documentation.</small>
             </a>
             <a class="link-card" href="./nightly/api-docs/paiagram/">
-                <span>API Reference</span>
-                <small>See implementation details.</small>
+                <span data-l10n-id="api-title">API Reference</span>
+                <small data-l10n-id="api-subtitle">See implementation details.</small>
             </a>
             <a class="link-card" href="https://github.com/wensimehrp/Paiagram">
-                <span>GitHub Repository</span>
-                <small>Access the source code.</small>
+                <span data-l10n-id="github-title">GitHub Repository</span>
+                <small data-l10n-id="github-subtitle">Access the source code.</small>
             </a>
         </nav>
     </main>
