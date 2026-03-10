@@ -1,19 +1,21 @@
 [workspace]
-members = [
-    "crates/paiagram-core",
-    "crates/paiagram-app",
-    "crates/paiagram-raptor",
-    "crates/paiagram-ui",
-    "crates/paiagram-rw",
-    "crates/paiagram-oudia",
-    "crates/paiagram-soap",
-]
+members = ["crates/*"]
 default-members = ["crates/paiagram-app"]
 resolver = "3"
 
 [workspace.package]
+version = "0.1.0"
 edition = "2024"
-license = "AGPL-3.0-only"
+license = "MPL-2.0"
+license-file = "LICENSE.md"
+authors = ["Jeremy Gao <wensimehrp@gmail.com>"]
+description = "Web/desktop timetabling application"
+documentation = "https://paiagram.com/docs"
+readme = "README.md"
+repository = "https://github.com/wensimehrp/paiagram"
+homepage = "https://paiagram.com"
+keywords = ["timetabling", "scheduler", "web", "diagram"]
+categories = ["visualization"]
 
 # Enable a small amount of optimization in the dev profile.
 [profile.dev]
