@@ -8,7 +8,6 @@ use clap::Parser;
 use paiagram_core::trip::class;
 use paiagram_core::{entry, graph, i18n, import, problems, route, settings, station, trip};
 use paiagram_rw::{read::ReadPlugin, save::SavePlugin};
-use paiagram_ui as ui;
 
 struct PaiagramApp {
     bevy_app: App,
@@ -20,7 +19,7 @@ impl PaiagramApp {
             style.spacing.window_margin = egui::Margin::same(2);
             style.interaction.selectable_labels = false;
         });
-        ui::apply_custom_fonts(&cc.egui_ctx);
+        paiagram_ui::apply_custom_fonts(&cc.egui_ctx);
         if let Some(render_state) = cc.wgpu_render_state.as_ref() {
             cc.egui_ctx.data_mut(|data| {
                 data.insert_temp(
@@ -43,7 +42,7 @@ impl PaiagramApp {
         app.add_plugins(MinimalPlugins);
         app.add_plugins(LogPlugin::default());
         app.add_plugins((
-            ui::UiPlugin,
+            paiagram_ui::UiPlugin,
             entry::EntryPlugin,
             graph::GraphPlugin,
             route::RoutePlugin,
@@ -114,7 +113,7 @@ impl eframe::App for PaiagramApp {
     }
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         self.bevy_app.update();
-        ui::show_ui(ctx, self.bevy_app.world_mut(), frame.info().cpu_usage);
+        paiagram_ui::show_ui(ctx, self.bevy_app.world_mut(), frame.info().cpu_usage);
     }
 }
 

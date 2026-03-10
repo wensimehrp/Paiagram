@@ -1,6 +1,7 @@
 //! # UI
 //! Module for the user interface.
 
+mod command_palette;
 pub mod export_typst_diagram;
 pub mod save;
 pub mod tabs;
@@ -11,7 +12,9 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 
 use bevy::prelude::*;
-use egui::{Context, Frame, Response, RichText, ScrollArea, Stroke, Ui};
+use egui::{
+    Context, Frame, Key, KeyboardShortcut, Modifiers, Response, RichText, ScrollArea, Stroke, Ui,
+};
 use egui_i18n::tr;
 use egui_tiles::{
     Behavior, ContainerKind, SimplificationOptions, Tile, TileId, Tiles, Tree, UiResponse,
@@ -48,6 +51,7 @@ impl Plugin for UiPlugin {
             .init_resource::<FrameTimeHistory>()
             .init_resource::<GlobalTimer>()
             .init_resource::<UiModal>()
+            .init_resource::<command_palette::CommandPalette>()
             .add_plugins(bevy_inspector_egui::DefaultInspectorConfigPlugin)
             .add_message::<OpenOrFocus>()
             .add_systems(
@@ -820,6 +824,19 @@ pub fn show_ui(ctx: &Context, world: &mut World, cpu_time: Option<f32>) {
             modal.0 = None
         }
     });
+
+    // check if ctrl+p clicked
+    world.resource_scope(
+        |world, mut command_palette: Mut<command_palette::CommandPalette>| {
+            if ctx
+                .input_mut(|r| r.consume_shortcut(&KeyboardShortcut::new(Modifiers::CTRL, Key::P)))
+            {
+                command_palette.toggle();
+            };
+            command_palette.show(ctx, world);
+        },
+    );
+
     egui::TopBottomPanel::top("top panel")
         .exact_height(32.0)
         .show(ctx, |ui| {
