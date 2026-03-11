@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use crate::{
     graph::{Graph, Node, NodePos},
     trip::class::DisplayedStroke,
@@ -5,10 +7,14 @@ use crate::{
 use bevy::{ecs::query::QueryData, prelude::*};
 use moonshine_core::prelude::{MapEntities, ReflectMapEntities};
 
+mod fetch_name;
+use fetch_name::StationNamePending;
+
 pub struct StationPlugin;
 impl Plugin for StationPlugin {
     fn build(&self, app: &mut App) {
-        app.add_observer(add_new_station);
+        app.add_plugins(fetch_name::FetchNamePlugin)
+            .add_observer(add_new_station);
     }
 }
 
@@ -50,10 +56,10 @@ pub struct StationBundle {
 }
 
 impl StationBundle {
-    pub fn new(name: String, node: Node) -> Self {
+    pub fn new(name: Cow<'static, str>, node: Node) -> Self {
         Self {
             station: Station,
-            name: name.into(),
+            name: Name::new(name),
             node,
         }
     }
@@ -156,13 +162,22 @@ impl<'w, 'q> PlatformQueryItem<'w, 'q> {
 
 #[derive(Event)]
 pub struct CreateNewStation {
-    pub name: String,
+    pub name: Option<String>,
     pub pos: NodePos,
 }
 
 fn add_new_station(msg: On<CreateNewStation>, mut commands: Commands, mut graph: ResMut<Graph>) {
-    let entity = commands
-        .spawn(StationBundle::new(msg.name.clone(), Node { pos: msg.pos }))
-        .id();
+    let entity = if let Some(s) = msg.name.as_ref() {
+        commands
+            .spawn(StationBundle::new(s.clone().into(), Node { pos: msg.pos }))
+            .id()
+    } else {
+        commands
+            .spawn((
+                StationBundle::new("Name Pending".into(), Node { pos: msg.pos }),
+                StationNamePending::new(msg.pos),
+            ))
+            .id()
+    };
     graph.add_node(entity);
 }

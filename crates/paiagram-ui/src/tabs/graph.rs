@@ -388,10 +388,12 @@ fn display(tab: &mut GraphTab, world: &mut World, ui: &mut egui::Ui) {
             let coor = NodePos::from_xy(x, y);
             if ui.button("New Station").clicked() {
                 tab.clicked_coor = None;
-                world.trigger(CreateNewStation {
-                    name: tab.new_station_name.clone(),
-                    pos: coor,
-                });
+                let name = if tab.new_station_name.is_empty() {
+                    None
+                } else {
+                    Some(tab.new_station_name.clone())
+                };
+                world.trigger(CreateNewStation { name, pos: coor });
                 tab.new_station_name.clear();
             }
             ui.small(coor.to_string());

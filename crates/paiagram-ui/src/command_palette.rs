@@ -123,6 +123,7 @@ impl CommandPalette {
     ) -> bool {
         scroll_to_selected_alternative |= ui.input(|i| i.key_pressed(Key::ArrowUp));
         scroll_to_selected_alternative |= ui.input(|i| i.key_pressed(Key::ArrowDown));
+
         let item_height = 16.0;
 
         let mut num_alternatives: usize = 0;
@@ -141,16 +142,21 @@ impl CommandPalette {
         if query_changed {
             *matcher = build_matcher();
             matched.clear();
+            let mut match_string = String::new();
             for (e, name, matched_type) in names {
-                let matched_type = match matched_type {
-                    (Some(_), _, _) => MatchedType::Trip,
-                    (_, Some(_), _) => MatchedType::Station,
-                    (_, _, Some(_)) => MatchedType::Route,
+                match_string.clear();
+                let (matched_type, matched_str) = match matched_type {
+                    (Some(_), _, _) => (MatchedType::Trip,      "trip"),
+                    (_, Some(_), _) => (MatchedType::Station,   "station"),
+                    (_, _, Some(_)) => (MatchedType::Route,     "route"),
                     (None, None, None) => unreachable!(),
                 };
-                if matcher.is_match(name.as_str()) {
+                match_string.push_str(name.as_str());
+                match_string.push(' ');
+                match_string.push_str(matched_str);
+                if matcher.is_match(match_string.as_str()) {
                     matched.push((e, name.to_string(), matched_type));
-                    if matched.len() >= 5000 {
+                    if matched.len() >= 100 {
                         break;
                     }
                 }
