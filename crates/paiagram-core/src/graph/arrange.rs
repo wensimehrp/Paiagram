@@ -152,10 +152,27 @@ struct OSMResponse {
 
 #[derive(Deserialize)]
 struct OSMElement {
-    lat: f64,
-    lon: f64,
+    lat: Option<f64>,
+    lon: Option<f64>,
+    center: Option<OSMCenter>,
     #[serde(default)]
     tags: std::collections::HashMap<String, String>,
+}
+
+#[derive(Deserialize)]
+struct OSMCenter {
+    lat: f64,
+    lon: f64,
+}
+
+impl OSMElement {
+    fn pos(&self) -> Option<NodePos> {
+        match (self.lon, self.lat, self.center.as_ref()) {
+            (Some(lon), Some(lat), _) => Some(NodePos::new(lon, lat)),
+            (_, _, Some(center)) => Some(NodePos::new(center.lon, center.lat)),
+            _ => None,
+        }
+    }
 }
 
 fn escape_overpass_regex(input: &str) -> String {
@@ -172,21 +189,78 @@ fn escape_overpass_regex(input: &str) -> String {
     out
 }
 
+fn name_tag_weight(key: &str) -> f64 {
+    match key {
+        "name" => 0.06,
+        _ if key.starts_with("name:") => 0.05,
+        "official_name" => 0.04,
+        _ if key.starts_with("official_name:") => 0.04,
+        "short_name" => 0.03,
+        _ if key.starts_with("short_name:") => 0.03,
+        "loc_name" => 0.02,
+        _ if key.starts_with("loc_name:") => 0.02,
+        "alt_name" => 0.01,
+        _ if key.starts_with("alt_name:") => 0.01,
+        "old_name" => 0.0,
+        _ if key.starts_with("old_name:") => 0.0,
+        _ => -1.0,
+    }
+}
+
+fn station_kind_weight(tags: &HashMap<String, String>) -> f64 {
+    let railway_weight: f64 = match tags.get("railway").map(String::as_str) {
+        Some("station") => 0.60,
+        Some("halt") => 0.55,
+        Some("tram_stop") => 0.45,
+        Some("stop") => 0.40,
+        Some("light_rail") | Some("subway") | Some("monorail_station") => 0.40,
+        Some("stop_position") => 0.20,
+        Some("platform") => 0.15,
+        Some("disused_station") | Some("preserved") => 0.10,
+        Some(_) | None => 0.0,
+    };
+    let public_transport_weight: f64 = match tags.get("public_transport").map(String::as_str) {
+        Some("station") => 0.50,
+        Some("stop_area") => 0.35,
+        Some("platform") => 0.20,
+        Some("stop_position") => 0.15,
+        Some(_) | None => 0.0,
+    };
+    let station_weight: f64 = match tags.get("station").map(String::as_str) {
+        Some("subway") | Some("light_rail") => 0.20,
+        Some(_) | None => 0.0,
+    };
+    railway_weight
+        .max(public_transport_weight)
+        .max(station_weight)
+}
+
 fn best_name_match<'a>(elements: &'a [OSMElement], station_name: &str) -> Option<&'a OSMElement> {
     let mut best: Option<(&OSMElement, f64)> = None;
     for element in elements {
+        if element.pos().is_none() {
+            continue;
+        }
+        let base_weight = station_kind_weight(&element.tags);
         for (key, value) in &element.tags {
-            if !key.starts_with("name") {
+            let name_weight = name_tag_weight(key);
+            if name_weight < 0.0 {
                 continue;
             }
-            if value == station_name {
-                return Some(element);
-            }
-            let score = strsim::jaro_winkler(station_name, value);
-            if score > 0.9
-                && best
-                    .as_ref()
-                    .is_none_or(|(_, best_score)| score > *best_score)
+
+            let score = if value == station_name {
+                2.0 + base_weight + name_weight
+            } else {
+                let similarity = strsim::jaro_winkler(station_name, value);
+                if similarity <= 0.9 {
+                    continue;
+                }
+                similarity + base_weight + name_weight
+            };
+
+            if best
+                .as_ref()
+                .is_none_or(|(_, best_score)| score > *best_score)
             {
                 best = Some((element, score));
             }
@@ -403,8 +477,10 @@ pub fn arrange_via_osm(
             let mut matched_count = 0usize;
             for (entity, name) in chunk {
                 if let Some(element) = best_name_match(&osm_data.elements, &name) {
-                    known_positions.insert(entity, NodePos::new(element.lon, element.lat));
-                    matched_count += 1;
+                    if let Some(pos) = element.pos() {
+                        known_positions.insert(entity, pos);
+                        matched_count += 1;
+                    }
                 }
                 finished_in_task.fetch_add(1, Ordering::Relaxed);
             }
