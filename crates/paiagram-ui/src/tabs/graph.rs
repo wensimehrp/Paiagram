@@ -273,6 +273,8 @@ fn display(tab: &mut GraphTab, world: &mut World, ui: &mut egui::Ui) {
                 interact_pos,
                 &selected_stations,
                 &selected_trips,
+                ui.ctx()
+                    .animate_bool(ui.id().with("gugugaga"), tab.navi.zoom > 0.002),
             ),
         )
         .unwrap();
@@ -530,6 +532,7 @@ fn push_draw_items(
         In(maybe_interact_pos),
         InRef(selected_stations),
         InRef(selected_trips),
+        In(text_strength),
     ): (
         In<bool>,
         InRef<GraphNavigation>,
@@ -538,6 +541,7 @@ fn push_draw_items(
         In<Option<Pos2>>,
         InRef<[Entity]>,
         InRef<[Entity]>,
+        In<f32>,
     ),
     nodes: Query<(Entity, &Node, Option<&Name>)>,
     spatial_index: Res<GraphSpatialIndex>,
@@ -605,13 +609,15 @@ fn push_draw_items(
         }
 
         buffer.push(gpu_draw::ShapeInstance::circle(pos, 6.0, color));
-        if let Some(name) = name {
+        if text_strength > 0.05
+            && let Some(name) = name
+        {
             painter.text(
                 pos + Vec2 { x: 7.0, y: 0.0 },
                 Align2::LEFT_CENTER,
                 name.as_ref(),
                 FontId::proportional(13.0),
-                color,
+                color.gamma_multiply(text_strength),
             );
         }
     }
@@ -676,13 +682,15 @@ fn push_draw_items(
         buffer.push(gpu_draw::ShapeInstance::stealth_arrow(
             pos0, pos1, pos, color,
         ));
-        painter.text(
-            pos + Vec2 { x: 7.0, y: 0.0 },
-            Align2::LEFT_CENTER,
-            name.as_ref(),
-            FontId::proportional(13.0),
-            color,
-        );
+        if text_strength > 0.05 {
+            painter.text(
+                pos + Vec2 { x: 7.0, y: 0.0 },
+                Align2::LEFT_CENTER,
+                name.as_ref(),
+                FontId::proportional(13.0),
+                color.gamma_multiply(text_strength),
+            );
+        }
     }
     maybe_interact_pos.map(|_| selected)
 }
