@@ -608,7 +608,7 @@ fn push_draw_items(
             continue;
         }
 
-        buffer.push(gpu_draw::ShapeInstance::circle(pos, 6.0, color));
+        buffer.push(gpu_draw::ShapeInstance::circle(pos, 4.0, color));
         if text_strength > 0.05
             && let Some(name) = name
         {
