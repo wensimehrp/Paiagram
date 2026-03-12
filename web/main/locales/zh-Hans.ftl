@@ -1,4 +1,11 @@
 page-title = 派途运行图
+not_found_page_title = 404 — 派途运行图
+not_found_heading = 页面未找到
+not_found_body = 请求的页面不存在、已被移动，或链接不正确
+not_found_home_title = 返回首页
+not_found_home_subtitle = 回到主页
+not_found_report_title = 报告问题
+not_found_report_subtitle = 哎呀发生什么事情了告诉我呗
 
 intro = 时刻表跃然指上
 notice-title = Linux 与浏览器要求：
