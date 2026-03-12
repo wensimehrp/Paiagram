@@ -1,5 +1,6 @@
 use super::MainTab;
 use super::OpenOrFocus;
+use crate::tabs::Tab;
 use crate::tabs::all_tabs::*;
 use bevy::prelude::*;
 use egui::{Context, Key, NumExt, Ui};
@@ -32,9 +33,10 @@ pub struct CommandPalette {
 }
 
 enum MatchedType {
-    Route,
-    Station,
-    Trip,
+    Route(Entity),
+    Station(Entity),
+    Trip(Entity),
+    Tab(fn() -> MainTab),
 }
 
 impl CommandPalette {
@@ -117,7 +119,7 @@ impl CommandPalette {
             In(query_changed),
         ): (InMut<Self>, InMut<Ui>, In<bool>, In<bool>, In<bool>),
         names: Query<(Entity, &Name, AnyOf<(&Trip, &Station, &Route)>)>,
-        mut matched: Local<Vec<(Entity, String, MatchedType)>>,
+        mut matched: Local<Vec<(String, MatchedType)>>,
         mut matcher: Local<Option<IbMatcher>>,
         mut commands: Commands,
     ) -> bool {
@@ -143,34 +145,51 @@ impl CommandPalette {
             *matcher = build_matcher();
             matched.clear();
             let mut match_string = String::new();
+            const PANEL_INFO: &[(&str, fn() -> MainTab)] = &[
+                (StartTab::NAME, || MainTab::Start(StartTab::default())),
+                (SettingsTab::NAME, || MainTab::Settings(SettingsTab)),
+                (InspectorTab::NAME, || MainTab::Inspector(InspectorTab)),
+                (ClassesTab::NAME, || MainTab::Classes(ClassesTab)),
+            ];
+            for (name, ptr) in PANEL_INFO.iter().copied() {
+                match_string.clear();
+                match_string.push_str(name);
+                match_string.push_str(" (Tab)");
+                if !matcher.is_match(match_string.as_str()) {
+                    continue;
+                }
+                matched.push((name.to_string(), MatchedType::Tab(ptr)));
+            }
             for (e, name, matched_type) in names {
                 match_string.clear();
                 let (matched_type, matched_str) = match matched_type {
-                    (Some(_), _, _) => (MatchedType::Trip,      "trip"),
-                    (_, Some(_), _) => (MatchedType::Station,   "station"),
-                    (_, _, Some(_)) => (MatchedType::Route,     "route"),
+                    (Some(_), _, _) => (MatchedType::Trip(e), "trip"),
+                    (_, Some(_), _) => (MatchedType::Station(e), "station"),
+                    (_, _, Some(_)) => (MatchedType::Route(e), "route"),
                     (None, None, None) => unreachable!(),
                 };
                 match_string.push_str(name.as_str());
-                match_string.push(' ');
+                match_string.push_str(" ");
                 match_string.push_str(matched_str);
-                if matcher.is_match(match_string.as_str()) {
-                    matched.push((e, name.to_string(), matched_type));
-                    if matched.len() >= 100 {
-                        break;
-                    }
+                if !matcher.is_match(match_string.as_str()) {
+                    continue;
+                }
+                matched.push((name.to_string(), matched_type));
+                if matched.len() >= 100 {
+                    break;
                 }
             }
         }
 
-        for (i, (entity, name, matched_type)) in matched.iter().enumerate() {
+        for (i, (name, matched_type)) in matched.iter().enumerate() {
             let selected = i == panel.selected_alternative;
             let response = ui.add_sized(
                 egui::vec2(ui.available_width(), item_height),
                 egui::Button::new(name).right_text(match matched_type {
-                    MatchedType::Route => "(Route)",
-                    MatchedType::Station => "(Station)",
-                    MatchedType::Trip => "(Trip)",
+                    MatchedType::Route(_) => "(Route)",
+                    MatchedType::Station(_) => "(Station)",
+                    MatchedType::Trip(_) => "(Trip)",
+                    MatchedType::Tab(_) => "(Tab)",
                 }),
             );
             if response.clicked() {
@@ -185,12 +204,13 @@ impl CommandPalette {
 
                 if enter_pressed {
                     commands.write_message(OpenOrFocus(match matched_type {
-                        MatchedType::Route => MainTab::Diagram(DiagramTab::new(*entity)),
-                        MatchedType::Station => {
+                        MatchedType::Route(e) => MainTab::Diagram(DiagramTab::new(*e)),
+                        MatchedType::Station(_e) => {
                             // TODO: finish stations
                             MainTab::Settings(SettingsTab)
                         }
-                        MatchedType::Trip => MainTab::Trip(TripTab::new(*entity)),
+                        MatchedType::Trip(e) => MainTab::Trip(TripTab::new(*e)),
+                        MatchedType::Tab(f) => f(),
                     }));
                     selected_and_determined |= true;
                 }
