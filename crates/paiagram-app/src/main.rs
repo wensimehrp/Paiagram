@@ -1,13 +1,11 @@
-#[cfg(not(target_arch = "wasm32"))]
-use std::path::PathBuf;
-
 use bevy::{ecs::system::RunSystemOnce, log::LogPlugin, prelude::*};
-#[cfg(not(target_arch = "wasm32"))]
 use clap::Parser;
-
+use paiagram_core::settings::UserPreferences;
 use paiagram_core::trip::class;
 use paiagram_core::{entry, graph, i18n, import, problems, route, settings, station, trip};
 use paiagram_rw::{read::ReadPlugin, save::SavePlugin};
+use serde::Deserialize;
+use std::path::PathBuf;
 
 struct PaiagramApp {
     bevy_app: App,
@@ -57,54 +55,32 @@ impl PaiagramApp {
         ));
         info!("Initialized Bevy App.");
         #[cfg(not(target_arch = "wasm32"))]
-        {
-            let args = Cli::parse();
-            if let Err(e) = app.world_mut().run_system_once_with(handle_args, args) {
-                error!("Failed to handle command line arguments: {:?}", e);
-            } else {
-                info!("Command line arguments handled successfully.");
-            }
-        }
+        let args = Arguments::parse();
         #[cfg(target_arch = "wasm32")]
-        {
-            info!("Handling web args...");
-            if let Some(search) =
-                eframe::web_sys::window().and_then(|it| it.location().search().ok())
-            {
-                info!(?search);
-                let query = search.strip_prefix('?').unwrap_or(&search);
-                for pair in query.split('&') {
-                    let mut iter: std::str::SplitN<'_, char> = pair.splitn(2, '=');
-                    let key = iter.next().unwrap_or_default();
-                    if key != "load" {
-                        continue;
-                    }
-                    let value = iter.next().unwrap_or_default();
-                    app.world_mut()
-                        .run_system_cached_with(handle_arg_pair, (key, value))
-                        .unwrap();
-                }
-            }
+        let args = parse_web_arguments();
+        if let Err(e) = app.world_mut().run_system_once_with(handle_args, args) {
+            error!("Failed to web arguments: {:?}", e);
+        } else {
+            info!("Arguments handled successfully.");
         }
         Self { bevy_app: app }
     }
 }
 
 #[cfg(target_arch = "wasm32")]
-fn handle_arg_pair((InRef(key), InRef(val)): (InRef<str>, InRef<str>), mut commands: Commands) {
-    match key {
-        "load" => {
-            let Some(decoded) = urlencoding::decode(val).ok() else {
-                return;
-            };
-            commands.trigger(import::DownloadFile {
-                url: decoded.to_string(),
-            });
-        }
-        key => {
-            warn!("Unknown key in url: {}", key)
+fn parse_web_arguments() -> Arguments {
+    if let Some(search) =
+        eframe::web_sys::window().and_then(|window| window.location().search().ok())
+    {
+        info!(?search, "Handling web args...");
+        let query = search.strip_prefix('?').unwrap_or(&search);
+        match serde_html_form::from_str::<Arguments>(&query) {
+            Ok(args) => return args,
+            Err(error) => error!("Failed to parse web args: {error}"),
         }
     }
+
+    Arguments::default()
 }
 
 impl eframe::App for PaiagramApp {
@@ -117,43 +93,53 @@ impl eframe::App for PaiagramApp {
     }
 }
 
-#[derive(Parser)]
+/// Arguments for the application.
+#[derive(Parser, Default, Deserialize)]
 #[command(version, about, long_about = None)]
-#[cfg(not(target_arch = "wasm32"))]
-struct Cli {
+struct Arguments {
     #[arg(
         short = 'o',
         long = "open",
         help = "Path to a .paiagram file (or any other compatible file formats) to open on startup",
         num_args = 1..
     )]
+    #[serde(default)]
     open: Option<Vec<PathBuf>>,
-    #[arg(
-        long = "fresh",
-        help = "Start with a fresh state, ignoring any autosave"
-    )]
-    fresh: bool,
-    #[arg(
-        long = "jgrpp",
-        help = "Path to a set of OpenTTD JGRPP .json timetable export files. You may specify multiple by using the * syntax (usually this is expanded by your shell). Example: --jgrpp ~/.local/share/openttd/orderlist/*.json",
-        num_args = 1..
-    )]
-    jgrpp_paths: Option<Vec<String>>,
+    #[arg(long = "locale", help = "Set the localization")]
+    #[serde(default)]
+    locale: Option<String>,
 }
 
-#[cfg(not(target_arch = "wasm32"))]
-fn handle_args(cli: In<Cli>, mut commands: Commands) {
-    for path in cli.open.iter().flatten() {
-        let content = match std::fs::read(path) {
-            Ok(c) => c,
-            Err(e) => {
-                error!("Could not open {:?}: {:?}", path, e);
+fn handle_args(args: In<Arguments>, mut commands: Commands, mut languages: ResMut<UserPreferences>) {
+    for path in args.open.iter().flatten() {
+        #[cfg(target_arch = "wasm32")]
+        {
+            commands.trigger(import::DownloadFile {
+                url: path.to_string_lossy().into_owned(),
+            });
+            continue;
+        }
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let content = match std::fs::read(path) {
+                Ok(c) => c,
+                Err(e) => {
+                    error!("Could not open {:?}: {:?}", path, e);
+                    continue;
+                }
+            };
+            if let Err(e) = import::load_and_trigger(path, content, &mut commands) {
+                error!("Could not load {:?}: {:#?}", path, e);
                 continue;
             }
-        };
-        if let Err(e) = import::load_and_trigger(path, content, &mut commands) {
-            error!("Could not load {:?}: {:#?}", path, e);
-            continue;
+        }
+    }
+    if let Some(locale) = args.locale.as_deref() {
+        if languages.lang.set(locale) {
+            info!("Successfully set language {}", locale);
+        } else {
+            error!("Unknown language identifier: {}", locale);
         }
     }
 }

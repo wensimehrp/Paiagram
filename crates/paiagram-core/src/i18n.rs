@@ -13,6 +13,7 @@ pub enum Language {
 }
 
 impl Language {
+    const ALL: &[Self] = &[Self::EnCA, Self::JaJP, Self::ZhHans];
     /// The native name of the language.
     pub fn name(self) -> &'static str {
         match self {
@@ -28,6 +29,17 @@ impl Language {
             Self::JaJP => "ja-JP",
             Self::ZhHans => "zh-Hans",
         }
+    }
+    /// Set the localization
+    pub fn set(&mut self, identifier: &str) -> bool {
+        for lang in Self::ALL {
+            if identifier != lang.identifier() {
+                continue;
+            }
+            *self = *lang;
+            return true;
+        }
+        false
     }
 }
 
