@@ -37,5 +37,5 @@ serde = { version = "1.0.228", features = ["derive"] }
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 serde_html_form = "0.4.0"
 # Remember to update this when the nix dependency updates
-wasm-bindgen = "=0.2.108"
+wasm-bindgen = "=0.2.114"
 wasm-bindgen-futures = "0.4"

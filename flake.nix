@@ -72,7 +72,7 @@
               rustToolchain
               pkg-config
               openssl # TODO: remove this
-              wasm-bindgen-cli_0_2_108
+              wasm-bindgen-cli_0_2_114
               just
               wget
               p7zip
