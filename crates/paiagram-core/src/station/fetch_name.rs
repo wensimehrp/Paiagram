@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::graph::{Node, NodePos};
+use crate::graph::{Node, NodeCoor};
 use bevy::{
     prelude::*,
     tasks::{AsyncComputeTaskPool, Task, block_on, poll_once},
@@ -18,7 +18,7 @@ impl Plugin for FetchNamePlugin {
 /// Stations with this marker component is created with a default name, and the name would be
 /// fetched via OSM services
 #[derive(Component)]
-pub(super) struct StationNamePending(Task<Option<(String, NodePos)>>);
+pub(super) struct StationNamePending(Task<Option<(String, NodeCoor)>>);
 
 #[derive(Deserialize)]
 struct OSMResponse {
@@ -41,12 +41,12 @@ struct OSMCenter {
 }
 
 impl StationNamePending {
-    pub fn new(coor: NodePos) -> Self {
+    pub fn new(coor: NodeCoor) -> Self {
         let task = AsyncComputeTaskPool::get().spawn(Self::fetch(coor));
         Self(task)
     }
-    async fn fetch(coor: NodePos) -> Option<(String, NodePos)> {
-        let NodePos { lon, lat } = coor;
+    async fn fetch(coor: NodeCoor) -> Option<(String, NodeCoor)> {
+        let NodeCoor { lon, lat } = coor;
         const RADIUS_METERS: u32 = 1000;
         const MAX_RETRY_COUNT: usize = 3;
         const OVERPASS_ENDPOINTS: [&str; 2] = [
@@ -65,7 +65,7 @@ out center;
 
         'breakpoint: for i in 1..=MAX_RETRY_COUNT {
             for &endpoint in &OVERPASS_ENDPOINTS {
-                info!("Arranging ({coor}) via OSM... ({i}/{MAX_RETRY_COUNT})");
+                info!("Fetching name of ({coor}) via OSM... ({i}/{MAX_RETRY_COUNT})");
                 let request = ehttp::Request::post(
                     endpoint,
                     format!("data={}", urlencoding::encode(&query)).into_bytes(),
@@ -111,19 +111,19 @@ out center;
             .into_iter()
             .filter_map(|mut data| {
                 let name = data.tags.remove("name")?;
-                let pos = match (data.lon, data.lat, data.center) {
-                    (Some(lon), Some(lat), _) => NodePos { lon, lat },
-                    (_, _, Some(center)) => NodePos {
+                let coor = match (data.lon, data.lat, data.center) {
+                    (Some(lon), Some(lat), _) => NodeCoor { lon, lat },
+                    (_, _, Some(center)) => NodeCoor {
                         lon: center.lon,
                         lat: center.lat,
                     },
                     _ => return None,
                 };
-                Some((name, pos))
+                Some((name, coor))
             })
-            .min_by(|(_, pos_a), (_, pos_b)| {
-                let dist_a = (pos_a.lon - lon).powi(2) + (pos_a.lat - lat).powi(2);
-                let dist_b = (pos_b.lon - lon).powi(2) + (pos_b.lat - lat).powi(2);
+            .min_by(|(_, coor_a), (_, coor_b)| {
+                let dist_a = (coor_a.lon - lon).powi(2) + (coor_a.lat - lat).powi(2);
+                let dist_b = (coor_b.lon - lon).powi(2) + (coor_b.lat - lat).powi(2);
                 dist_a.total_cmp(&dist_b)
             })
     }
@@ -137,9 +137,9 @@ fn fetch_station_name(
         let Some(found) = block_on(poll_once(&mut pending_name.0)) else {
             continue;
         };
-        if let Some((found_name, found_pos)) = found {
+        if let Some((found_name, found_coor)) = found {
             name.set(found_name);
-            node.pos = found_pos;
+            node.coor = found_coor;
         } else {
             name.set("Name Not Found")
         };

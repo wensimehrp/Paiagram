@@ -363,7 +363,7 @@ fn start_graph_spatial_index_rebuild(
 
     let snapshot: Vec<(Entity, [f64; 2])> = nodes
         .iter()
-        .map(|(entity, node)| (entity, node.pos.to_xy_arr()))
+        .map(|(entity, node)| (entity, node.coor.to_xy_arr()))
         .collect();
     state.task = Some(AsyncComputeTaskPool::get().spawn(async move {
         let entries: Vec<SpatialIndexedEntity> = snapshot
@@ -394,8 +394,8 @@ fn start_graph_interval_spatial_index_rebuild(
         };
         snapshot.push(IntervalSpatialIndexedEntity {
             interval: *interval,
-            p0: source_node.pos.to_xy_arr(),
-            p1: target_node.pos.to_xy_arr(),
+            p0: source_node.coor.to_xy_arr(),
+            p1: target_node.coor.to_xy_arr(),
         });
     }
 
@@ -434,12 +434,12 @@ fn apply_graph_interval_spatial_index_task(
 ///
 /// This stores longitude and latitude values only.
 #[derive(Reflect, Clone, Copy, Debug)]
-pub struct NodePos {
+pub struct NodeCoor {
     pub lon: f64,
     pub lat: f64,
 }
 
-impl std::fmt::Display for NodePos {
+impl std::fmt::Display for NodeCoor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let lat_dir = if self.lat < 0.0 { 'S' } else { 'N' };
         let lon_dir = if self.lon < 0.0 { 'W' } else { 'E' };
@@ -454,13 +454,13 @@ impl std::fmt::Display for NodePos {
     }
 }
 
-impl Default for NodePos {
+impl Default for NodeCoor {
     fn default() -> Self {
         Self::new(0.0, 0.0)
     }
 }
 
-impl NodePos {
+impl NodeCoor {
     pub fn new(lon: f64, lat: f64) -> Self {
         Self { lon, lat }
     }
@@ -496,7 +496,7 @@ impl NodePos {
 #[derive(Default, Reflect, Component, Debug)]
 #[reflect(Component)]
 pub struct Node {
-    pub pos: NodePos,
+    pub coor: NodeCoor,
 }
 
 fn update_graph_on_station_removal(

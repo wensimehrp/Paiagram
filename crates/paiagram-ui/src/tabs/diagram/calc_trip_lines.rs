@@ -6,10 +6,10 @@ use egui::{Pos2, Rect};
 use rayon::prelude::*;
 
 use paiagram_core::{
-    entry::{EntryMode, EntryQuery},
-    route::Route,
+    entry::EntryQuery,
+    route::{Route, RouteTrips},
     settings::ProjectSettings,
-    station::{Platform, PlatformEntries, Station, StationQuery},
+    station::{Platform, Station},
     trip::class::{Class, DisplayedStroke},
     units::time::Tick,
 };
@@ -43,39 +43,9 @@ impl CalcContext {
     }
 }
 
-pub fn calculate_trips(
-    (InMut(buf), In(route_entity)): (InMut<Vec<Entity>>, In<Entity>),
-    routes: Query<&Route>,
-    stations: Query<StationQuery>,
-    platform_entries: Query<&PlatformEntries>,
-    entries: Query<&ChildOf, With<EntryMode>>,
-) {
-    // TODO: cache trips
-    let mut update = false;
-    update |= buf.is_empty();
-    if !update {
-        return;
-    }
-    buf.clear();
-    let route = routes.get(route_entity).unwrap();
-    let mut trips = EntityHashSet::new();
-    for station_e in route.stops.iter().cloned() {
-        let a = stations.get(station_e).unwrap();
-        trips.extend(
-            a.passing_entries(&platform_entries)
-                .map(|e| entries.get(e).unwrap().0),
-        );
-    }
-    buf.extend(trips.iter().copied());
-}
-
 pub fn calc(
-    (InMut(buf), In(ctx), InRef(trips)): (
-        InMut<Vec<super::DrawnTrip>>,
-        In<CalcContext>,
-        InRef<[Entity]>,
-    ),
-    routes: Query<&Route>,
+    (InMut(buf), In(ctx)): (InMut<Vec<super::DrawnTrip>>, In<CalcContext>),
+    routes: Query<(&Route, &RouteTrips)>,
     trip_q: Query<paiagram_core::trip::TripQuery>,
     entries: Query<EntryQuery>,
     stations: Query<(), With<Station>>,
@@ -85,7 +55,7 @@ pub fn calc(
 ) {
     buf.clear();
 
-    let Ok(route) = routes.get(ctx.route_entity) else {
+    let Ok((route, trips)) = routes.get(ctx.route_entity) else {
         return;
     };
 

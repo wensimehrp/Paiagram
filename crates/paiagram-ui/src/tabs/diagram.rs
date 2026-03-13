@@ -37,8 +37,6 @@ pub struct DiagramTab {
     navi: DiagramTabNavigation,
     #[entities]
     route_entity: Entity,
-    #[entities] // TODO: use the trip cache instead
-    trips: Vec<Entity>,
     use_global_timer: bool,
     #[serde(skip, default)]
     raptor_params: RaptorParams,
@@ -92,7 +90,6 @@ impl DiagramTab {
         Self {
             navi: DiagramTabNavigation::default(),
             route_entity,
-            trips: Vec::new(),
             use_global_timer: false,
             raptor_params: RaptorParams::default(),
             gpu_state: Arc::new(egui::mutex::Mutex::new(
@@ -204,7 +201,6 @@ impl Tab for DiagramTab {
             TypstDiagram {
                 route_entity: self.route_entity,
                 world: world,
-                trips: &self.trips,
             }
             .export_to_file();
         }
@@ -235,7 +231,6 @@ impl Tab for DiagramTab {
                             Vec::new(),
                         ))
                         .id();
-                    self.trips.push(new_trip);
                     *world.resource_mut::<SelectedItems>() =
                         SelectedItems::ExtendingTrip(ExtendingTripSelection {
                             entry: new_trip,
@@ -431,13 +426,6 @@ fn main_display(tab: &mut DiagramTab, world: &mut World, ui: &mut egui::Ui) {
         ui.pixels_per_point(),
     );
 
-    world
-        .run_system_cached_with(
-            calc_trip_lines::calculate_trips,
-            (&mut tab.trips, tab.route_entity),
-        )
-        .unwrap();
-
     let mut trip_line_buf = Vec::new();
     // Calculate the visible trains
     let calc_context = calc_trip_lines::CalcContext::from_tab(
@@ -449,7 +437,7 @@ fn main_display(tab: &mut DiagramTab, world: &mut World, ui: &mut egui::Ui) {
     world
         .run_system_cached_with(
             calc_trip_lines::calc,
-            (&mut trip_line_buf, calc_context, &tab.trips),
+            (&mut trip_line_buf, calc_context),
         )
         .unwrap();
 

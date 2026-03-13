@@ -301,6 +301,7 @@ fn sort_route_by_direction_trips(
     by_direction.upward = sorted_upward;
 }
 
+// TODO: revise this
 fn auto_update_length(
     updated: On<UpdateInterval>,
     routes: Populated<&mut Route, With<AutoUpdateLength>>,

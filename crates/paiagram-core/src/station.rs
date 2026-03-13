@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 use crate::{
-    graph::{Graph, Node, NodePos},
+    graph::{Graph, Node, NodeCoor},
     trip::class::DisplayedStroke,
 };
 use bevy::{ecs::query::QueryData, prelude::*};
@@ -163,19 +163,19 @@ impl<'w, 'q> PlatformQueryItem<'w, 'q> {
 #[derive(Event)]
 pub struct CreateNewStation {
     pub name: Option<String>,
-    pub pos: NodePos,
+    pub coor: NodeCoor,
 }
 
 fn add_new_station(msg: On<CreateNewStation>, mut commands: Commands, mut graph: ResMut<Graph>) {
     let entity = if let Some(s) = msg.name.as_ref() {
         commands
-            .spawn(StationBundle::new(s.clone().into(), Node { pos: msg.pos }))
+            .spawn(StationBundle::new(s.clone().into(), Node { coor: msg.coor }))
             .id()
     } else {
         commands
             .spawn((
-                StationBundle::new("Name Pending".into(), Node { pos: msg.pos }),
-                StationNamePending::new(msg.pos),
+                StationBundle::new("Name Pending".into(), Node { coor: msg.coor }),
+                StationNamePending::new(msg.coor),
             ))
             .id()
     };

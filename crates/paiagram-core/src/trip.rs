@@ -176,7 +176,7 @@ fn start_trip_spatial_index_rebuild(
             (None, Some(parent)) => node_q.get(parent.parent()).ok()?,
             _ => return None,
         };
-        Some(node.pos.to_xy_arr())
+        Some(node.coor.to_xy_arr())
     };
 
     let repeat_time = settings.repeat_frequency.0 as f64;

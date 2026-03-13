@@ -4,7 +4,7 @@ use egui::{
 };
 use egui_i18n::tr;
 use moonshine_core::prelude::MapEntities;
-use paiagram_core::graph::{AddIntervalPair, NodePos};
+use paiagram_core::graph::{AddIntervalPair, NodeCoor};
 use paiagram_core::station::CreateNewStation;
 use paiagram_core::units::distance::Distance;
 use serde::{Deserialize, Serialize};
@@ -300,7 +300,7 @@ fn display(tab: &mut GraphTab, world: &mut World, ui: &mut egui::Ui) {
         && let Some(hover_pos) = ui.input(|r| r.pointer.hover_pos())
     {
         let entity = stations[0].station;
-        let (x, y) = world.get::<Node>(entity).unwrap().pos.to_xy();
+        let (x, y) = world.get::<Node>(entity).unwrap().coor.to_xy();
         let pos = tab.navi.xy_to_screen_pos(x, y);
         ui.painter()
             .line_segment([pos, hover_pos], Stroke::new(1.0, Color32::BLUE));
@@ -308,7 +308,7 @@ fn display(tab: &mut GraphTab, world: &mut World, ui: &mut egui::Ui) {
     let selected_items = world.resource::<SelectedItems>();
     if let SelectedItems::Stations(stations) = selected_items {
         for station in stations.clone().iter() {
-            let coor = world.get::<Node>(station.station).unwrap().pos;
+            let coor = world.get::<Node>(station.station).unwrap().coor;
             let (x, y) = coor.to_xy();
             let pos = tab.navi.xy_to_screen_pos(x, y);
             let rect = Rect::from_pos(pos).expand(8.0);
@@ -323,8 +323,8 @@ fn display(tab: &mut GraphTab, world: &mut World, ui: &mut egui::Ui) {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
                 let new_pos = pos + res.drag_delta();
                 let (x, y) = tab.navi.screen_pos_to_xy(new_pos);
-                let new_coor = NodePos::from_xy(x, y);
-                world.get_mut::<Node>(station.station).unwrap().pos = new_coor;
+                let new_coor = NodeCoor::from_xy(x, y);
+                world.get_mut::<Node>(station.station).unwrap().coor = new_coor;
             }
             let inner = |ui: &mut Ui| {
                 ui.set_width(150.0);
@@ -387,7 +387,7 @@ fn display(tab: &mut GraphTab, world: &mut World, ui: &mut egui::Ui) {
         let inner = |ui: &mut Ui| {
             ui.set_width(200.0);
             ui.text_edit_singleline(&mut tab.new_station_name);
-            let coor = NodePos::from_xy(x, y);
+            let coor = NodeCoor::from_xy(x, y);
             if ui.button("New Station").clicked() {
                 tab.clicked_coor = None;
                 let name = if tab.new_station_name.is_empty() {
@@ -395,7 +395,7 @@ fn display(tab: &mut GraphTab, world: &mut World, ui: &mut egui::Ui) {
                 } else {
                     Some(tab.new_station_name.clone())
                 };
-                world.trigger(CreateNewStation { name, pos: coor });
+                world.trigger(CreateNewStation { name, coor });
                 tab.new_station_name.clear();
             }
             ui.small(coor.to_string());
@@ -583,7 +583,7 @@ fn push_draw_items(
         let Ok((_, node, name)) = nodes.get(entity) else {
             continue;
         };
-        let [x, y] = node.pos.to_xy_arr();
+        let [x, y] = node.coor.to_xy_arr();
         let pos = navi.xy_to_screen_pos(x, y);
 
         if let Some(interact_pos) = maybe_interact_pos

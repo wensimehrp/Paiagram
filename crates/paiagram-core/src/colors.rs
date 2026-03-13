@@ -257,14 +257,3 @@ pub const fn translate_srgba_to_color32(c: Srgba) -> Color32 {
         (c.alpha * 256.0) as u8,
     )
 }
-
-/// Give the text colour that is readable given some background colour.
-fn readable_text_color(color: Color32) -> Color32 {
-    let [r, g, b, _] = color.to_array();
-    let luma = (0.299 * r as f32 + 0.587 * g as f32 + 0.114 * b as f32) / 255.0;
-    if luma > 0.5 {
-        Color32::BLACK
-    } else {
-        Color32::WHITE
-    }
-}

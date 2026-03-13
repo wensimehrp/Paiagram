@@ -9,7 +9,7 @@ use std::sync::{
 };
 use visgraph::layout::force_directed::force_directed_layout;
 
-use super::{Graph, Node, NodePos};
+use super::{Graph, Node, NodeCoor};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GraphLayoutKind {
@@ -19,7 +19,7 @@ pub enum GraphLayoutKind {
 
 #[derive(Resource)]
 pub struct GraphLayoutTask {
-    pub task: Task<Vec<(Entity, NodePos)>>,
+    pub task: Task<Vec<(Entity, NodeCoor)>>,
     finished: Arc<AtomicUsize>,
     queued_for_retry: Arc<AtomicUsize>,
     pub total: usize,
@@ -28,7 +28,7 @@ pub struct GraphLayoutTask {
 
 impl GraphLayoutTask {
     fn new(
-        task: Task<Vec<(Entity, NodePos)>>,
+        task: Task<Vec<(Entity, NodeCoor)>>,
         finished: Arc<AtomicUsize>,
         queued_for_retry: Arc<AtomicUsize>,
         total: usize,
@@ -63,11 +63,11 @@ pub fn apply_graph_layout_task(
     let Some(found) = block_on(poll_once(&mut task.task)) else {
         return;
     };
-    for (entity, pos) in found {
+    for (entity, coor) in found {
         let Ok(mut node) = nodes.get_mut(entity) else {
             continue;
         };
-        node.pos = pos;
+        node.coor = coor;
     }
     let (finished, total, queued_for_retry) = task.progress();
     info!(
@@ -94,11 +94,11 @@ pub fn apply_force_directed_layout(
         let Some(&idx) = entity_map.get(&node_entity) else {
             continue;
         };
-        let Ok(mut pos) = nodes.get_mut(node_entity) else {
+        let Ok(mut node) = nodes.get_mut(node_entity) else {
             continue;
         };
         let (nx, ny) = layout(idx);
-        pos.pos = NodePos::from_xy(nx as f64, ny as f64);
+        node.coor = NodeCoor::from_xy(nx as f64, ny as f64);
     }
 }
 
@@ -121,13 +121,13 @@ pub fn auto_arrange_graph(
     let task = AsyncComputeTaskPool::get().spawn(async move {
         let binding = &graph;
         let layout = force_directed_layout(&binding, iterations, 0.1);
-        let out: Vec<(Entity, NodePos)> = graph
+        let out: Vec<(Entity, NodeCoor)> = graph
             .node_indices()
             .map(|idx| {
                 let (x, y) = layout(idx);
                 (
                     *graph.node_weight(idx).unwrap(),
-                    NodePos::from_xy(x as f64 * 10000.0, y as f64 * 10000.0),
+                    NodeCoor::from_xy(x as f64 * 10000.0, y as f64 * 10000.0),
                 )
             })
             .collect();
@@ -166,10 +166,10 @@ struct OSMCenter {
 }
 
 impl OSMElement {
-    fn pos(&self) -> Option<NodePos> {
+    fn coor(&self) -> Option<NodeCoor> {
         match (self.lon, self.lat, self.center.as_ref()) {
-            (Some(lon), Some(lat), _) => Some(NodePos::new(lon, lat)),
-            (_, _, Some(center)) => Some(NodePos::new(center.lon, center.lat)),
+            (Some(lon), Some(lat), _) => Some(NodeCoor::new(lon, lat)),
+            (_, _, Some(center)) => Some(NodeCoor::new(center.lon, center.lat)),
             _ => None,
         }
     }
@@ -238,7 +238,7 @@ fn station_kind_weight(tags: &HashMap<String, String>) -> f64 {
 fn best_name_match<'a>(elements: &'a [OSMElement], station_name: &str) -> Option<&'a OSMElement> {
     let mut best: Option<(&OSMElement, f64)> = None;
     for element in elements {
-        if element.pos().is_none() {
+        if element.coor().is_none() {
             continue;
         }
         let base_weight = station_kind_weight(&element.tags);
@@ -271,7 +271,7 @@ fn best_name_match<'a>(elements: &'a [OSMElement], station_name: &str) -> Option
 
 fn fill_unmatched_via_neighbors(
     graph: &petgraph::Graph<Entity, Entity, petgraph::Directed, usize>,
-    known_positions: &mut HashMap<Entity, NodePos>,
+    known_positions: &mut HashMap<Entity, NodeCoor>,
     all_stations: &[Entity],
 ) -> usize {
     let entity_to_index: HashMap<Entity, NodeIndex<usize>> = graph
@@ -301,8 +301,8 @@ fn fill_unmatched_via_neighbors(
                     continue;
                 }
                 let neighbor_entity = *graph.node_weight(neighbor).unwrap();
-                if let Some(pos) = known_positions.get(&neighbor_entity) {
-                    found_neighbor_positions.push(*pos);
+                if let Some(coor) = known_positions.get(&neighbor_entity) {
+                    found_neighbor_positions.push(*coor);
                 } else {
                     queue.push_back(neighbor);
                 }
@@ -316,7 +316,7 @@ fn fill_unmatched_via_neighbors(
         let count = found_neighbor_positions.len() as f64;
         let avg_lon = found_neighbor_positions.iter().map(|p| p.lon).sum::<f64>() / count;
         let avg_lat = found_neighbor_positions.iter().map(|p| p.lat).sum::<f64>() / count;
-        known_positions.insert(station, NodePos::new(avg_lon, avg_lat));
+        known_positions.insert(station, NodeCoor::new(avg_lon, avg_lat));
         fallback_count += 1;
     }
 
@@ -380,7 +380,7 @@ pub fn arrange_via_osm(
     };
 
     let task = AsyncComputeTaskPool::get().spawn(async move {
-        let mut known_positions: HashMap<Entity, NodePos> = HashMap::new();
+        let mut known_positions: HashMap<Entity, NodeCoor> = HashMap::new();
 
         while let Some((chunk, retry_count)) = task_queue.pop_front() {
             if retry_count >= MAX_RETRY_COUNT {
@@ -477,8 +477,8 @@ pub fn arrange_via_osm(
             let mut matched_count = 0usize;
             for (entity, name) in chunk {
                 if let Some(element) = best_name_match(&osm_data.elements, &name) {
-                    if let Some(pos) = element.pos() {
-                        known_positions.insert(entity, pos);
+                    if let Some(coor) = element.coor() {
+                        known_positions.insert(entity, coor);
                         matched_count += 1;
                     }
                 }

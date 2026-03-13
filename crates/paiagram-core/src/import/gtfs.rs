@@ -6,7 +6,7 @@ use moonshine_core::kind::Instance;
 use crate::{
     colors::{DisplayColor, PredefinedColor},
     entry::{EntryBundle, TravelMode},
-    graph::{Graph, Node, NodePos},
+    graph::{Graph, Node, NodeCoor},
     route::Route,
     station::{Platform, Station},
     trip::{
@@ -151,11 +151,11 @@ pub fn load_gtfs_static(
 
             if let (Some(lat), Some(lon)) = (stop.latitude, stop.longitude) {
                 commands.entity(platform_entity).insert(Node {
-                    pos: NodePos::new(lon, lat),
+                    coor: NodeCoor::new(lon, lat),
                 });
                 if platform_entity != station_entity {
                     commands.entity(station_entity).insert(Node {
-                        pos: NodePos::new(lon, lat),
+                        coor: NodeCoor::new(lon, lat),
                     });
                 }
             }
@@ -252,7 +252,7 @@ pub fn load_gtfs_static(
 
             if let (Some(lat), Some(lon)) = (stop.latitude, stop.longitude) {
                 commands.entity(stop_entity).insert(Node {
-                    pos: NodePos::new(lon, lat),
+                    coor: NodeCoor::new(lon, lat),
                 });
             }
 
