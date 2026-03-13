@@ -4,8 +4,15 @@ use bevy::prelude::Reflect;
 use derive_more::{Add, AddAssign, Sub, SubAssign};
 use std::ops;
 
+/// The speed represented in m/s
 #[derive(Reflect, Debug, Clone, Copy, Add, AddAssign, Sub, SubAssign)]
 pub struct Velocity(pub f32);
+
+impl std::fmt::Display for Velocity {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:.2}m/s", self.0)
+    }
+}
 
 impl ops::Mul<f32> for Velocity {
     type Output = Velocity;

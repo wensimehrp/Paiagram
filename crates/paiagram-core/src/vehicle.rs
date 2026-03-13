@@ -1,6 +1,7 @@
 use bevy::{ecs::query::QueryData, prelude::*};
 use moonshine_core::prelude::{MapEntities, ReflectMapEntities};
 
+/// A vehicle is the "executor" of a [`crate::trip::Trip`].
 #[derive(Default, Reflect, Component, MapEntities)]
 #[reflect(Component, MapEntities)]
 #[require(Name)]

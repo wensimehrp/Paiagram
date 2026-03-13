@@ -2,6 +2,7 @@ use bevy::prelude::Reflect;
 use serde::{Deserialize, Serialize};
 use std::ops;
 
+/// A tick. Each tick is 1ms
 #[derive(
     Reflect, Debug, Deserialize, Serialize, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord,
 )]
@@ -32,6 +33,7 @@ impl Into<f64> for Tick {
     }
 }
 
+/// The timetable timepoint in seconds from midnight
 #[derive(
     Reflect, Debug, Deserialize, Serialize, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord,
 )]
@@ -57,6 +59,13 @@ impl TimetableTime {
 
         (hours, minutes, seconds, days)
     }
+    /// Parses a string in the following forms to [`TimetableTime`]:
+    /// - HH:MM:SS
+    /// - HH:MM
+    /// - HH:MM:SS+D
+    /// - HH:MM:SS-D
+    /// - HH:MM+D
+    /// - HH:MM-D
     #[inline]
     pub fn from_str(s: &str) -> Option<Self> {
         let (time_part, day_offset_seconds) = if let Some(idx) = s.rfind(['+', '-']) {
@@ -85,6 +94,8 @@ impl TimetableTime {
     }
     /// Parses strings in HMM, HHMM, HMMSS, HHMMSS
     /// and with or without +D or -D
+    /// This format is commonly seen in Japanese timetables.
+    /// The +/-D is an extension.
     #[inline]
     pub fn from_oud2_str(s: &str) -> Option<Self> {
         let (time_part, day_offset_seconds) = if let Some(idx) = s.rfind(['+', '-']) {
@@ -121,6 +132,7 @@ impl TimetableTime {
             _ => None,
         }
     }
+    /// Parses the current time to a oud2 formatted string and drop the date offset.
     #[inline]
     pub fn to_oud2_str(&self, show_seconds: bool) -> String {
         let (h, m, s, _) = self.to_hmsd();
@@ -211,6 +223,7 @@ impl ops::SubAssign<Duration> for TimetableTime {
     }
 }
 
+/// A duration in seconds.
 #[derive(
     Reflect, Debug, Default, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord,
 )]
@@ -259,6 +272,7 @@ impl Duration {
     pub fn from_hms(h: i32, m: i32, s: i32) -> Self {
         Self(h * 3600 + m * 60 + s)
     }
+    /// Parses a [`Duration`] to HH:MM:SS, without the `->` arrow
     pub fn to_string_no_arrow(&self) -> String {
         TimetableTime(self.0).to_string()
     }
