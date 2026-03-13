@@ -371,7 +371,7 @@ fn update_timer(mut timer: ResMut<GlobalTimer>, time: Res<Time<Real>>) {
         timer.animation_speed = 1.0;
         timer.animation_playing = true;
         timer.write_seconds(seconds + rest);
-    } else if !timer.is_locked() {
+    } else if timer.animation_playing && !timer.is_locked() {
         let mut seconds = timer.read_seconds();
         seconds += timer.animation_speed * time.delta_secs_f64();
         timer.write_seconds(seconds);
