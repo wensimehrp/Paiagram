@@ -9,7 +9,8 @@ pub(super) fn watch_entry_mode_changes(
     time: Res<Time>,
     mut action_history: ResMut<super::ActionHistory>,
 ) {
-    const MERGE_THRESHOLD_MS: std::time::Duration = std::time::Duration::from_millis(300);
+    /// permissive threshold for such interactions
+    const MERGE_THRESHOLD_MS: std::time::Duration = std::time::Duration::from_millis(1000);
     let previous_state = entry_q.get(msg.entity).unwrap();
     let new_state = transform_entry_mode(*previous_state, msg.adj);
     let action_inner = ChangeEntryModeInner {
