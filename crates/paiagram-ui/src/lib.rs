@@ -13,6 +13,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 
 use bevy::prelude::*;
+use chrono::{Local, Timelike};
 use egui::{
     Context, Frame, Key, KeyboardShortcut, Modifiers, Response, RichText, ScrollArea, Stroke, Ui,
 };
@@ -971,6 +972,16 @@ pub fn show_ui(ctx: &Context, world: &mut World, cpu_time: Option<f32>) {
                             .text("Speed")
                             .clamping(egui::SliderClamping::Always),
                     );
+                    egui::Popup::menu(&time_response).show(|ui| {
+                        if ui.button("Sync with system clock").clicked() {
+                            let now = Local::now();
+                            let seconds = now.num_seconds_from_midnight() as i32;
+                            let timetable_time = TimetableTime(seconds);
+                            let value = Tick::from_timetable_time(timetable_time);
+                            timer.write_ticks(value);
+                            timer.animation_speed = 1.0;
+                        }
+                    });
                     unsafe {
                         if time_response.dragged() && timer.try_lock_unchecked(1) {
                             timer.write_seconds(seconds);
