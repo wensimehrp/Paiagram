@@ -31,7 +31,7 @@ fn vs_main(input: VertexIn, @builtin(vertex_index) vertex_index: u32) -> VertexO
     let is_curve = input.curve_type != 0u;
     var seg_a = input.a;
     var seg_b = input.b;
-    if (is_curve) {
+    if is_curve {
         let seg_count: u32 = 8u;
         let t0 = f32(seg_index) / f32(seg_count);
         let t1 = f32(seg_index + 1u) / f32(seg_count);
@@ -40,7 +40,7 @@ fn vs_main(input: VertexIn, @builtin(vertex_index) vertex_index: u32) -> VertexO
         var curve_p0 = input.a + (input.b - input.a) * t0;
         var curve_p1 = input.a + (input.b - input.a) * t1;
 
-        if (input.curve_type == 1u || input.curve_type == 2u) {
+        if input.curve_type == 1u || input.curve_type == 2u {
             let mid = (input.a + input.b) * 0.5;
             let min_y = min(input.a.y, input.b.y);
             let max_y = max(input.a.y, input.b.y);
@@ -53,7 +53,7 @@ fn vs_main(input: VertexIn, @builtin(vertex_index) vertex_index: u32) -> VertexO
             let omt1 = 1.0 - t1;
             curve_p0 = omt0 * omt0 * input.a + 2.0 * omt0 * t0 * control + t0 * t0 * input.b;
             curve_p1 = omt1 * omt1 * input.a + 2.0 * omt1 * t1 * control + t1 * t1 * input.b;
-        } else if (input.curve_type == 3u || input.curve_type == 4u) {
+        } else if input.curve_type == 3u || input.curve_type == 4u {
             let tau = 6.28318530718;
             let amp = curve_height * 0.2;
             let dir = select(1.0, -1.0, input.curve_type == 3u);
@@ -81,7 +81,7 @@ fn vs_main(input: VertexIn, @builtin(vertex_index) vertex_index: u32) -> VertexO
     let b2 = seg_b - offset;
 
     var pos: vec2<f32>;
-    switch (local) {
+    switch local {
         case 0u: { pos = a1; }
         case 1u: { pos = a2; }
         case 2u: { pos = b1; }
