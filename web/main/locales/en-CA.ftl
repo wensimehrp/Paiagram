@@ -8,8 +8,6 @@ not_found_report_title = Report an issue
 not_found_report_subtitle = Let us know if this link should exist
 
 intro = timetables are just a click away
-notice-title = Linux & Browser Requirements:
-notice-body = This program requires WebGPU. Please use the latest Chrome, Chromium, or enable WebGPU in your browser settings. Supports latest Firefox and Safari.
 
 nightly-title-text = Nightly Web Build
 nightly-subtitle = Run the program directly in your browser

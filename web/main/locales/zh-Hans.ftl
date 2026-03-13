@@ -8,8 +8,6 @@ not_found_report_title = 报告问题
 not_found_report_subtitle = 哎呀发生什么事情了告诉我呗
 
 intro = 时刻表跃然指上
-notice-title = Linux 与浏览器要求：
-notice-body = 本程序需要 WebGPU。请使用最新版本的 Chrome、Chromium，或在浏览器设置中启用 WebGPU。支持最新 Firefox 与 Safari
 
 nightly-title-text = 网页最新版
 nightly-subtitle = 直接在浏览器中运行程序
