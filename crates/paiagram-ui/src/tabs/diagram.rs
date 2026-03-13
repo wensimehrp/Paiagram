@@ -435,10 +435,7 @@ fn main_display(tab: &mut DiagramTab, world: &mut World, ui: &mut egui::Ui) {
         visible_ticks.clone(),
     );
     world
-        .run_system_cached_with(
-            calc_trip_lines::calc,
-            (&mut trip_line_buf, calc_context),
-        )
+        .run_system_cached_with(calc_trip_lines::calc, (&mut trip_line_buf, calc_context))
         .unwrap();
 
     let selected_snapshot = world.resource::<SelectedItems>().clone();

@@ -110,7 +110,11 @@ struct Arguments {
     locale: Option<String>,
 }
 
-fn handle_args(args: In<Arguments>, mut commands: Commands, mut languages: ResMut<UserPreferences>) {
+fn handle_args(
+    args: In<Arguments>,
+    mut commands: Commands,
+    mut languages: ResMut<UserPreferences>,
+) {
     for path in args.open.iter().flatten() {
         #[cfg(target_arch = "wasm32")]
         {

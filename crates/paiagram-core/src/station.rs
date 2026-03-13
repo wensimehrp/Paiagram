@@ -169,7 +169,10 @@ pub struct CreateNewStation {
 fn add_new_station(msg: On<CreateNewStation>, mut commands: Commands, mut graph: ResMut<Graph>) {
     let entity = if let Some(s) = msg.name.as_ref() {
         commands
-            .spawn(StationBundle::new(s.clone().into(), Node { coor: msg.coor }))
+            .spawn(StationBundle::new(
+                s.clone().into(),
+                Node { coor: msg.coor },
+            ))
             .id()
     } else {
         commands

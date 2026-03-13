@@ -29,7 +29,7 @@ pub enum TravelMode {
 }
 
 /// The entry's [`TravelMode`]s.
-#[derive(Default, Reflect, Component)]
+#[derive(Default, Reflect, Component, Clone, Copy)]
 #[reflect(Component)]
 pub struct EntryMode {
     pub arr: Option<TravelMode>,
@@ -189,13 +189,13 @@ pub struct ChangeEntryStop {
 
 /// Changes the entry's mode
 /// This would trigger a schedule estimate recalculation
-#[derive(Debug, EntityEvent)]
+#[derive(Reflect, Debug, EntityEvent, Clone, Copy)]
 pub struct AdjustEntryMode {
     pub entity: Entity,
     pub adj: EntryModeAdjustment,
 }
 
-#[derive(Debug)]
+#[derive(Reflect, Debug, Clone, Copy)]
 pub enum EntryModeAdjustment {
     SetArrival(Option<TravelMode>),
     SetDeparture(TravelMode),
@@ -211,19 +211,24 @@ fn update_entry_mode(event: On<AdjustEntryMode>, mut entry_modes: Query<&mut Ent
     let mut entry_mode = entry_modes
         .get_mut(event.entity)
         .expect("Entity does not carry an EntryMode component");
+    *entry_mode = transform_entry_mode(*entry_mode, event.adj);
+}
+
+pub fn transform_entry_mode(mut old: EntryMode, adjustment: EntryModeAdjustment) -> EntryMode {
     use EntryModeAdjustment::*;
-    match event.adj {
+    match adjustment {
         SetArrival(m) => {
-            entry_mode.arr = m;
+            old.arr = m;
         }
         SetDeparture(m) => {
-            entry_mode.dep = m;
+            old.dep = m;
         }
         ShiftArrival(d) => {
-            entry_mode.shift_arr(d);
+            old.shift_arr(d);
         }
         ShiftDeparture(d) => {
-            entry_mode.shift_dep(d);
+            old.shift_dep(d);
         }
     }
+    old
 }

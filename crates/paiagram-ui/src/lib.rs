@@ -1,6 +1,7 @@
 //! # UI
 //! Module for the user interface.
 
+mod actions;
 mod command_palette;
 pub mod export_typst_diagram;
 pub mod save;
@@ -52,7 +53,10 @@ impl Plugin for UiPlugin {
             .init_resource::<GlobalTimer>()
             .init_resource::<UiModal>()
             .init_resource::<command_palette::CommandPalette>()
-            .add_plugins(bevy_inspector_egui::DefaultInspectorConfigPlugin)
+            .add_plugins((
+                bevy_inspector_egui::DefaultInspectorConfigPlugin,
+                actions::ActionsPlugin,
+            ))
             .add_message::<OpenOrFocus>()
             .add_systems(
                 Update,
@@ -65,25 +69,19 @@ impl Plugin for UiPlugin {
     }
 }
 
-#[derive(Reflect, Clone, Copy)]
+#[derive(Reflect, Clone, Copy, Debug, PartialEq)]
 pub(crate) struct TimetableEntrySelection {
     pub entry: Entity,
     pub parent: Entity,
 }
 
-impl PartialEq for TimetableEntrySelection {
-    fn eq(&self, other: &Self) -> bool {
-        self.entry == other.entry
-    }
-}
-
-#[derive(Reflect, Clone, Copy, PartialEq, Hash)]
+#[derive(Reflect, Clone, Copy, PartialEq, Hash, Debug)]
 pub(crate) struct IntervalSelection {
     pub source: Entity,
     pub target: Entity,
 }
 
-#[derive(Reflect, Clone, Copy)]
+#[derive(Reflect, Clone, Copy, Debug)]
 pub(crate) struct StationSelection {
     pub station: Entity,
 }
@@ -94,12 +92,12 @@ impl PartialEq for StationSelection {
     }
 }
 
-#[derive(Reflect, Clone, Copy, PartialEq)]
+#[derive(Reflect, Clone, Copy, PartialEq, Debug)]
 pub(crate) struct ExtendingRouteSelection {
     pub prev_station: Entity,
 }
 
-#[derive(Reflect, Clone, Copy, PartialEq)]
+#[derive(Reflect, Clone, Copy, PartialEq, Debug)]
 pub(crate) struct ExtendingTripSelection {
     pub entry: Entity,
     pub previous_pos: Option<(TimetableTime, usize)>,
@@ -181,7 +179,7 @@ pub(crate) fn display_station_info(
     }
 }
 
-#[derive(Reflect, Resource, Clone, PartialEq)]
+#[derive(Reflect, Resource, Clone, PartialEq, Debug)]
 #[reflect(Resource)]
 pub(crate) enum SelectedItems {
     None,
@@ -987,6 +985,20 @@ pub fn show_ui(ctx: &Context, world: &mut World, cpu_time: Option<f32>) {
                         }
                         ui.ctx().request_repaint();
                     }
+                    world.resource_scope(|world, mut history: Mut<actions::ActionHistory>| {
+                        if ui
+                            .add_enabled(history.can_undo(), egui::Button::new("Undo"))
+                            .clicked()
+                        {
+                            history.try_undo(world);
+                        }
+                        if ui
+                            .add_enabled(history.can_redo(), egui::Button::new("Redo"))
+                            .clicked()
+                        {
+                            history.try_redo(world);
+                        }
+                    });
                 });
             })
         });
