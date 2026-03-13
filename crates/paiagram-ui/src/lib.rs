@@ -65,6 +65,7 @@ impl Plugin for UiPlugin {
                     open_or_focus_tab.run_if(on_message::<OpenOrFocus>),
                     save::apply_loaded_scene
                         .run_if(resource_exists::<paiagram_rw::save::LoadedScene>),
+                    update_timer,
                 ),
             );
     }
@@ -359,6 +360,22 @@ pub struct GlobalTimer {
     locker: AtomicU64,
     animation_speed: f64,
     animation_playing: bool,
+    sync_to_real_time: bool,
+}
+
+fn update_timer(mut timer: ResMut<GlobalTimer>, time: Res<Time<Real>>) {
+    if !timer.is_locked() && timer.sync_to_real_time {
+        let now = Local::now();
+        let seconds = now.num_seconds_from_midnight() as f64;
+        let rest = now.nanosecond() as f64 / 1_000_000_000 as f64;
+        timer.animation_speed = 1.0;
+        timer.animation_playing = true;
+        timer.write_seconds(seconds + rest);
+    } else if !timer.is_locked() {
+        let mut seconds = timer.read_seconds();
+        seconds += timer.animation_speed * time.delta_secs_f64();
+        timer.write_seconds(seconds);
+    }
 }
 
 impl Default for GlobalTimer {
@@ -368,6 +385,7 @@ impl Default for GlobalTimer {
             locker: AtomicU64::new(Self::UNLOCKED),
             animation_speed: 10.0,
             animation_playing: false,
+            sync_to_real_time: false,
         }
     }
 }
@@ -958,7 +976,10 @@ pub fn show_ui(ctx: &Context, world: &mut World, cpu_time: Option<f32>) {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let mut timer = world.resource_mut::<GlobalTimer>();
                     let mut seconds = timer.read_seconds();
-                    ui.checkbox(&mut timer.animation_playing, "Play animation");
+                    ui.add_enabled(
+                        !timer.sync_to_real_time,
+                        egui::Checkbox::new(&mut timer.animation_playing, "Play animation"),
+                    );
                     let time_response = ui.add(
                         egui::DragValue::new(&mut seconds)
                             .custom_formatter(|it, _| {
@@ -966,34 +987,27 @@ pub fn show_ui(ctx: &Context, world: &mut World, cpu_time: Option<f32>) {
                             })
                             .custom_parser(|s| TimetableTime::from_str(s).map(|it| it.0 as f64)),
                     );
-                    ui.add(
+                    ui.add_enabled(
+                        !timer.sync_to_real_time,
                         egui::Slider::new(&mut timer.animation_speed, -500.0..=500.0)
                             .fixed_decimals(1)
                             .text("Speed")
                             .clamping(egui::SliderClamping::Always),
                     );
                     egui::Popup::menu(&time_response).show(|ui| {
-                        if ui.button("Sync with system clock").clicked() {
-                            let now = Local::now();
-                            let seconds = now.num_seconds_from_midnight() as i32;
-                            let timetable_time = TimetableTime(seconds);
-                            let value = Tick::from_timetable_time(timetable_time);
-                            timer.write_ticks(value);
-                            timer.animation_speed = 1.0;
-                        }
+                        ui.checkbox(&mut timer.sync_to_real_time, "Sync with system clock");
                     });
                     unsafe {
-                        if time_response.dragged() && timer.try_lock_unchecked(1) {
+                        if !timer.sync_to_real_time
+                            && time_response.dragged()
+                            && timer.try_lock_unchecked(1)
+                        {
                             timer.write_seconds(seconds);
                         } else {
                             timer.try_unlock_unchecked(1);
                         }
                     }
                     if timer.animation_playing {
-                        if !timer.is_locked() {
-                            seconds += timer.animation_speed * ui.input(|r| r.stable_dt) as f64;
-                            timer.write_seconds(seconds);
-                        }
                         ui.ctx().request_repaint();
                     }
                     world.resource_scope(|world, mut history: Mut<actions::ActionHistory>| {
