@@ -16,12 +16,22 @@ impl Plugin for SettingsPlugin {
     }
 }
 
-#[derive(Reflect, Resource, Default)]
+#[derive(Reflect, Resource)]
 #[reflect(Resource)]
 pub struct UserPreferences {
     pub lang: Language,
     pub dark_mode: bool,
     pub developer_mode: bool,
+}
+
+impl Default for UserPreferences {
+    fn default() -> Self {
+        Self {
+            lang: Language::EnCA,
+            dark_mode: false,
+            developer_mode: cfg!(debug_assertions),
+        }
+    }
 }
 
 /// Only run when the preferences change
