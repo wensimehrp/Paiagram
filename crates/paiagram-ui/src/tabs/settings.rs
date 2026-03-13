@@ -38,6 +38,7 @@ fn show_settings(
             ui.selectable_value(&mut preferences.lang, lang, lang.name());
         }
     });
+    ui.checkbox(&mut preferences.developer_mode, "Developer mode");
     ui.heading(tr!("settings-project-settings"));
     ui.text_edit_multiline(&mut settings.remarks);
 }

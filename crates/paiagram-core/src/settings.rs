@@ -21,6 +21,7 @@ impl Plugin for SettingsPlugin {
 pub struct UserPreferences {
     pub lang: Language,
     pub dark_mode: bool,
+    pub developer_mode: bool,
 }
 
 /// Only run when the preferences change

@@ -27,6 +27,8 @@ fn make_scene(world: &World, entities: impl Iterator<Item = Entity>) -> DynamicS
         .deny_all_resources()
         .allow_resource::<crate::MainUiState>()
         .allow_resource::<crate::GlobalTimer>()
+        .allow_resource::<crate::actions::ActionHistory>()
+        .allow_resource::<paiagram_core::settings::ProjectSettings>()
         .allow_resource::<paiagram_core::graph::Graph>()
         .allow_all_components()
         .extract_entities(entities)

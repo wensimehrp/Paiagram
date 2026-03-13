@@ -900,12 +900,12 @@ pub fn show_ui(ctx: &Context, world: &mut World, cpu_time: Option<f32>) {
                             callback: paiagram_rw::save::add_load_candidate_compressed_cbor,
                         });
                     }
-                    #[cfg(debug_assertions)]
+                    let developer_mode = world.resource_mut::<UserPreferences>().developer_mode;
                     {
-                        if ui.button("Save RON...").clicked() {
+                        if developer_mode && ui.button("Save RON...").clicked() {
                             save::save_ron(world, "saved.ron".to_string());
                         }
-                        if ui.button("Read RON...").clicked() {
+                        if developer_mode && ui.button("Read RON...").clicked() {
                             world.commands().trigger(paiagram_rw::read::ReadFile {
                                 title: "Load RON Files".to_string(),
                                 extensions: vec![(
