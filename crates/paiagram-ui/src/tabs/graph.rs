@@ -5,7 +5,7 @@ use egui::{
 use egui_i18n::tr;
 use moonshine_core::prelude::MapEntities;
 use paiagram_core::graph::{AddIntervalPair, NodeCoor};
-use paiagram_core::station::{CreateNewStation, StationNamePending};
+use paiagram_core::station::{CreateNewStation, StationBundle, StationNamePending};
 use paiagram_core::units::distance::Distance;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -347,32 +347,65 @@ fn display(tab: &mut GraphTab, world: &mut World, ui: &mut egui::Ui) {
                 .show(inner);
         }
     }
-    let selected_items = world.resource_mut::<SelectedItems>().into_inner();
     // TODO: fix the lifetime here
-    match (selected_item, selected_items) {
-        (Some(SelectedItem::Stations(station)), SelectedItems::Stations(stations))
-            if shift_pressed && stations.len() == 1 =>
-        {
-            let prev_station = stations[0];
-            stations[0] = station;
-            world.trigger(AddIntervalPair {
-                source: prev_station.station,
-                target: station.station,
-                length: Distance::from_m(1000),
-            });
-        }
-        (Some(item), items) => {
-            let ctrl_pressed = ui.input(|i| i.modifiers.ctrl || i.modifiers.command);
-            if ctrl_pressed {
-                items.add_entry(item);
-            } else {
-                items.set_or_reset(item);
+    world.resource_scope(|world, selected_items: Mut<SelectedItems>| {
+        let selected_items = selected_items.into_inner();
+        match (selected_item, selected_items) {
+            (None, SelectedItems::Stations(stations))
+                if shift_pressed && response.secondary_clicked() && stations.len() == 1 =>
+            {
+                let pos = ui.input(|r| r.pointer.interact_pos()).unwrap();
+                let (x, y) = tab.navi.screen_pos_to_xy(pos);
+                let coor = NodeCoor::from_xy(x, y);
+                let prev_station = stations[0];
+                let new_station = if ui.input(|r| r.modifiers.alt) {
+                    world
+                        .commands()
+                        .spawn((
+                            StationBundle::new("Name Pending".into(), Node { coor }),
+                            StationNamePending::new(coor),
+                        ))
+                        .id()
+                } else {
+                    world
+                        .commands()
+                        .spawn(StationBundle::new("WP".into(), Node { coor }))
+                        .id()
+                };
+                stations[0] = StationSelection {
+                    station: new_station,
+                };
+                world.trigger(AddIntervalPair {
+                    source: prev_station.station,
+                    target: new_station,
+                    length: Distance::from_m(1000),
+                });
             }
+            (Some(SelectedItem::Stations(station)), SelectedItems::Stations(stations))
+                if shift_pressed && stations.len() == 1 =>
+            {
+                let prev_station = stations[0];
+                stations[0] = station;
+                world.trigger(AddIntervalPair {
+                    source: prev_station.station,
+                    target: station.station,
+                    length: Distance::from_m(1000),
+                });
+            }
+            (Some(item), items) => {
+                let ctrl_pressed = ui.input(|i| i.modifiers.ctrl || i.modifiers.command);
+                if ctrl_pressed {
+                    items.add_entry(item);
+                } else {
+                    items.set_or_reset(item);
+                }
+            }
+            (None, _) => {}
         }
-        (None, _) => {}
-    }
+    });
     // create new station
     if response.secondary_clicked()
+        && !shift_pressed
         && let Some(pos) = ui.input(|r| r.pointer.interact_pos())
     {
         tab.clicked_coor = Some(tab.navi.screen_pos_to_xy(pos));
