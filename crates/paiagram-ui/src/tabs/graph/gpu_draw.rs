@@ -5,7 +5,20 @@ use egui_wgpu::CallbackTrait;
 use std::sync::Arc;
 
 impl ShapeInstance {
+    fn offset_perpendicular(a: Pos2, b: Pos2, offset_amount: f32) -> (Pos2, Pos2) {
+        let direction = b - a;
+        let direction_len = direction.length();
+        let unit_perpendicular = if direction_len > f32::EPSILON {
+            let unit_direction = direction / direction_len;
+            Vec2::new(-unit_direction.y, unit_direction.x)
+        } else {
+            Vec2::Y
+        };
+        let offset = unit_perpendicular * offset_amount;
+        (a + offset, b + offset)
+    }
     pub fn segment(a: Pos2, b: Pos2, width: f32, color: Color32) -> Self {
+        let (a, b) = Self::offset_perpendicular(a, b, 1.5);
         let rgba = color.to_array();
         Self {
             a: [a.x, a.y],
@@ -35,7 +48,6 @@ impl ShapeInstance {
             kind: 1,
         }
     }
-
     pub fn stealth_arrow(from: Pos2, to: Pos2, center: Pos2, color: Color32) -> Self {
         let direction = to - from;
         let direction_len = direction.length();
@@ -44,10 +56,11 @@ impl ShapeInstance {
         } else {
             Vec2::X
         };
+        let (a, b) = Self::offset_perpendicular(center, center + unit_direction, 1.5);
         let rgba = color.to_array();
         Self {
-            a: [center.x, center.y],
-            b: [center.x + unit_direction.x, center.y + unit_direction.y],
+            a: [a.x, a.y],
+            b: [b.x, b.y],
             size: 14.0,
             color: [
                 rgba[0] as f32 / 255.0,
