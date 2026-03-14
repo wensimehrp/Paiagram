@@ -5,7 +5,7 @@ use egui::{
 use egui_i18n::tr;
 use moonshine_core::prelude::MapEntities;
 use paiagram_core::graph::{AddIntervalPair, NodeCoor};
-use paiagram_core::station::CreateNewStation;
+use paiagram_core::station::{CreateNewStation, StationNamePending};
 use paiagram_core::units::distance::Distance;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -328,8 +328,16 @@ fn display(tab: &mut GraphTab, world: &mut World, ui: &mut egui::Ui) {
             }
             let inner = |ui: &mut Ui| {
                 ui.set_width(150.0);
-                world.get_mut::<Name>(station.station).unwrap().mutate(|s| {
-                    ui.text_edit_singleline(s);
+                ui.horizontal(|ui| {
+                    world.get_mut::<Name>(station.station).unwrap().mutate(|s| {
+                        ui.text_edit_singleline(s);
+                    });
+                    if ui.button("A").clicked() {
+                        world
+                            .commands()
+                            .entity(station.station)
+                            .insert(StationNamePending::new(coor));
+                    }
                 });
                 ui.small(coor.to_string());
             };

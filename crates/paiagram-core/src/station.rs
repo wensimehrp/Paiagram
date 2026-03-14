@@ -8,7 +8,7 @@ use bevy::{ecs::query::QueryData, prelude::*};
 use moonshine_core::prelude::{MapEntities, ReflectMapEntities};
 
 mod fetch_name;
-use fetch_name::StationNamePending;
+pub use fetch_name::StationNamePending;
 
 pub struct StationPlugin;
 impl Plugin for StationPlugin {

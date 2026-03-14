@@ -18,7 +18,7 @@ impl Plugin for FetchNamePlugin {
 /// Stations with this marker component is created with a default name, and the name would be
 /// fetched via OSM services
 #[derive(Component)]
-pub(super) struct StationNamePending(Task<Option<(String, NodeCoor)>>);
+pub struct StationNamePending(Task<Option<(String, NodeCoor)>>);
 
 #[derive(Deserialize)]
 struct OSMResponse {
