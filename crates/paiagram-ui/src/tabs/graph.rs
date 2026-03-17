@@ -8,11 +8,12 @@ use paiagram_core::graph::{AddIntervalPair, NodeCoor};
 use paiagram_core::station::{CreateNewStation, StationBundle, StationNamePending};
 use paiagram_core::units::distance::Distance;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 use std::sync::Arc;
 use walkers::sources::Attribution;
 
-use crate::{SelectedItem, SelectedItems, StationSelection, TimetableEntrySelection};
+use crate::{
+    IntervalSelection, SelectedItem, SelectedItems, StationSelection, TimetableEntrySelection,
+};
 
 use crate::tabs::graph::gpu_draw::ShapeInstance;
 use crate::{GlobalTimer, tabs::Navigatable};
@@ -28,18 +29,6 @@ use paiagram_core::{
 
 mod gpu_draw;
 mod underlay;
-
-fn segment_visible(viewport: Rect, a: egui::Pos2, b: egui::Pos2) -> bool {
-    if viewport.contains(a) || viewport.contains(b) {
-        return true;
-    }
-    let min_x = a.x.min(b.x);
-    let max_x = a.x.max(b.x);
-    let min_y = a.y.min(b.y);
-    let max_y = a.y.max(b.y);
-    let seg_rect = Rect::from_min_max(egui::pos2(min_x, min_y), egui::pos2(max_x, max_y));
-    viewport.intersects(seg_rect)
-}
 
 #[derive(Serialize, Deserialize, Clone, MapEntities)]
 pub struct GraphTab {
@@ -594,7 +583,10 @@ fn push_draw_items(
     timer: Res<GlobalTimer>,
 ) -> Option<SelectedItem> {
     buffer.clear();
+
     let mut selected = SelectedItem::None;
+
+    // prepare time
     let time = timer.read_seconds();
     let repeat_time = settings.repeat_frequency.0 as f64;
     let query_time = if repeat_time > 0.0 {
@@ -602,9 +594,23 @@ fn push_draw_items(
     } else {
         time
     };
+
+    let draw_name = |name: Option<&str>, pos: Pos2, color: Color32| {
+        if text_strength > 0.05
+            && let Some(name) = name
+        {
+            painter.text(
+                pos + Vec2 { x: 7.0, y: 0.0 },
+                Align2::LEFT_CENTER,
+                name,
+                FontId::proportional(13.0),
+                color.gamma_multiply(text_strength),
+            );
+        }
+    };
+
+    // prepare visuals
     let color = PredefinedColor::Neutral.get(is_dark);
-    let view = navi.visible_rect();
-    let view_expanded = view.expand2(Vec2::splat(12.0));
     let margin_x = 12.0 / navi.zoom_x().max(f32::EPSILON) as f64;
     let margin_y = 12.0 / navi.zoom_y().max(f32::EPSILON) as f64;
     let visible_x = navi.visible_x();
@@ -617,77 +623,70 @@ fn push_draw_items(
     const STATION_SELECTION_RADIUS: f32 = 10.0;
     const SELECTION_RADIUS: f32 = 10.0;
 
+    // intervals
+    // TODO: handle interval selection
+    let selected_interval: Option<IntervalSelection> = None;
+    for segment in interval_spatial_index.query_xy_aabb(min_x, min_y, max_x, max_y) {
+        let spos = navi.xy_to_screen_pos(segment.p0[0], segment.p0[1]);
+        let tpos = navi.xy_to_screen_pos(segment.p1[0], segment.p1[1]);
+        buffer.push(gpu_draw::ShapeInstance::segment(spos, tpos, 1.0, color));
+    }
+    if let Some(i) = selected_interval {
+        selected = SelectedItem::Intervals(i)
+    }
+
+    // prepare candidates
     let candidate_nodes: Vec<Entity> =
         spatial_index.entities_in_xy_aabb(min_x, min_y, max_x, max_y);
+    // nodes
+    let mut selected_node: Option<StationSelection> = None;
 
-    for entity in candidate_nodes {
-        let Ok((_, node, name)) = nodes.get(entity) else {
-            continue;
-        };
+    // draw station selection
+    for (_, node, _) in nodes.iter_many(selected_stations) {
+        let [x, y] = node.coor.to_xy_arr();
+        let pos = navi.xy_to_screen_pos(x, y);
+        painter.circle(
+            pos,
+            SELECTION_RADIUS,
+            Color32::RED.gamma_multiply(0.5),
+            Stroke::new(1.0, Color32::RED),
+        );
+    }
+
+    // draw other stations
+    for (entity, node, name) in nodes.iter_many(candidate_nodes) {
         let [x, y] = node.coor.to_xy_arr();
         let pos = navi.xy_to_screen_pos(x, y);
 
         if let Some(interact_pos) = maybe_interact_pos
-            && selected.is_none()
+            && selected_node.is_none()
         {
             let r = Rect::from_pos(pos).expand(STATION_SELECTION_RADIUS);
             if r.contains(interact_pos) {
-                selected = SelectedItem::Stations(StationSelection { station: entity })
+                selected_node = Some(StationSelection { station: entity })
             };
         }
 
-        if selected_stations.contains(&entity) {
-            painter.circle(
-                pos,
-                SELECTION_RADIUS,
-                Color32::RED.gamma_multiply(0.5),
-                Stroke::new(1.0, Color32::RED),
-            );
-        }
-
-        if !view_expanded.contains(pos) {
-            continue;
-        }
-
         buffer.push(gpu_draw::ShapeInstance::circle(pos, 4.0, color));
-        if text_strength > 0.05
-            && let Some(name) = name
-        {
-            painter.text(
-                pos + Vec2 { x: 7.0, y: 0.0 },
-                Align2::LEFT_CENTER,
-                name.as_ref(),
-                FontId::proportional(13.0),
-                color.gamma_multiply(text_strength),
-            );
-        }
+        draw_name(name.map(Name::as_str), pos, color);
+    }
+    if let Some(n) = selected_node {
+        selected = SelectedItem::Stations(n);
     }
 
-    let mut rendered_intervals: HashSet<Entity> = HashSet::new();
-
-    // TODO: interval selection
-    for segment in interval_spatial_index.query_xy_aabb(min_x, min_y, max_x, max_y) {
-        if !rendered_intervals.insert(segment.interval) {
-            continue;
-        }
-        let spos = navi.xy_to_screen_pos(segment.p0[0], segment.p0[1]);
-        let tpos = navi.xy_to_screen_pos(segment.p1[0], segment.p1[1]);
-        if !segment_visible(view_expanded, spos, tpos) {
-            continue;
-        }
-        buffer.push(gpu_draw::ShapeInstance::segment(spos, tpos, 1.0, color));
-    }
-
+    // entries
+    let mut selected_entry: Option<TimetableEntrySelection> = None;
     for sample in
         trip_spatial_index.query_xy_time(min_x..=max_x, min_y..=max_y, query_time..=query_time)
     {
-        let Ok((name, trip_class)) = trip_meta_q.get(sample.trip) else {
-            continue;
-        };
-        let Ok(stroke) = stroke_q.get(trip_class.entity()) else {
-            continue;
-        };
+        let (name, trip_class) = trip_meta_q
+            .get(sample.trip)
+            .expect("Trips should have a name and a class");
+        let stroke = stroke_q
+            .get(trip_class.entity())
+            .expect("Classes should have a stroke");
         let color = stroke.color.get(is_dark);
+
         let pos0 = navi.xy_to_screen_pos(sample.p0[0], sample.p0[1]);
         let pos1 = navi.xy_to_screen_pos(sample.p1[0], sample.p1[1]);
         let pos = if query_time <= sample.t1 {
@@ -700,11 +699,11 @@ fn push_draw_items(
         };
 
         if let Some(interact_pos) = maybe_interact_pos
-            && selected.is_none()
+            && selected_entry.is_none()
         {
             let r = Rect::from_pos(pos).expand(STATION_SELECTION_RADIUS);
             if r.contains(interact_pos) {
-                selected = SelectedItem::TimetableEntries(TimetableEntrySelection {
+                selected_entry = Some(TimetableEntrySelection {
                     entry: sample.entry1,
                     parent: sample.trip,
                 })
@@ -723,15 +722,10 @@ fn push_draw_items(
         buffer.push(gpu_draw::ShapeInstance::stealth_arrow(
             pos0, pos1, pos, color,
         ));
-        if text_strength > 0.05 {
-            painter.text(
-                pos + Vec2 { x: 7.0, y: 0.0 },
-                Align2::LEFT_CENTER,
-                name.as_ref(),
-                FontId::proportional(13.0),
-                color.gamma_multiply(text_strength),
-            );
-        }
+        draw_name(Some(name.as_str()), pos, color);
+    }
+    if let Some(e) = selected_entry {
+        selected = SelectedItem::TimetableEntries(e);
     }
     maybe_interact_pos.map(|_| selected)
 }
