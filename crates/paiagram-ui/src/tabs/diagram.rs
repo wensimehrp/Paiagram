@@ -371,7 +371,7 @@ fn main_display(tab: &mut DiagramTab, world: &mut World, ui: &mut egui::Ui) {
     if tab.use_global_timer {
         timer.write_ticks(tab.navi.x_offset);
     }
-    if moved {
+    if moved && tab.use_global_timer {
         timer.try_lock(tab.route_entity);
     } else {
         timer.try_unlock(tab.route_entity);
