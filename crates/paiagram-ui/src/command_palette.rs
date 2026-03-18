@@ -148,7 +148,9 @@ impl CommandPalette {
             const PANEL_INFO: &[(&str, fn() -> MainTab)] = &[
                 (StartTab::NAME, || MainTab::Start(StartTab::default())),
                 (SettingsTab::NAME, || MainTab::Settings(SettingsTab)),
-                (InspectorTab::NAME, || MainTab::Inspector(InspectorTab)),
+                (InspectorTab::NAME, || {
+                    MainTab::Inspector(InspectorTab::default())
+                }),
                 (ClassesTab::NAME, || MainTab::Classes(ClassesTab)),
             ];
             for (name, ptr) in PANEL_INFO.iter().copied() {
