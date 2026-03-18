@@ -54,13 +54,13 @@ pub struct RaptorParams {
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct DiagramTabNavigation {
-    x_offset: Tick,
-    y_offset: f64,
-    zoom: Vec2,
+    pub x_offset: Tick,
+    pub y_offset: f64,
+    pub zoom: Vec2,
     #[serde(skip, default = "default_visible_rect")]
-    visible_rect: Rect,
+    pub visible_rect: Rect,
     // cache zone
-    max_height: f32,
+    pub max_height: f32,
 }
 
 impl Default for DiagramTabNavigation {
@@ -383,22 +383,9 @@ fn main_display(tab: &mut DiagramTab, world: &mut World, ui: &mut egui::Ui) {
     tab.navi.max_height = station_heights.last().map_or(0.0, |(_, h)| *h);
     let ticks_per_screen_unit = 1.0 / tab.navi.zoom_x().max(f32::EPSILON) as f64;
     let visible_ticks = tab.navi.visible_x();
-    let to_screen_y = |h: f32| {
-        tab.navi.visible_rect.top()
-            + (h - tab.navi.offset_y() as f32) * tab.navi.zoom_y().max(f32::EPSILON)
-    };
-    let screen_x_to_seconds = |screen_x: f32| -> TimetableTime {
-        let ticks = tab.navi.offset_x()
-            + (screen_x - tab.navi.visible_rect.left()) as f64 * ticks_per_screen_unit;
-        Tick(ticks as i64).to_timetable_time()
-    };
-    let ticks_to_screen_x = |ticks: Tick| -> f32 {
-        tab.navi.visible_rect.left()
-            + ((ticks.0 as f64 - tab.navi.offset_x()) / ticks_per_screen_unit) as f32
-    };
     let station_heights_screen_iter = station_heights.iter().copied().map(|(e, h)| {
-        let height = to_screen_y(h);
-        (e, height)
+        let pos = tab.navi.logical_y_to_screen_y(h as f64);
+        (e, pos)
     });
     // note that order matters here: navigation must be handled before anything else is calculated
     let show_button = tab.navi.zoom.x.min(tab.navi.zoom.y) > 0.001;
@@ -428,14 +415,11 @@ fn main_display(tab: &mut DiagramTab, world: &mut World, ui: &mut egui::Ui) {
 
     let mut trip_line_buf = Vec::new();
     // Calculate the visible trains
-    let calc_context = calc_trip_lines::CalcContext::from_tab(
-        &tab,
-        tab.navi.visible_rect,
-        ticks_per_screen_unit,
-        visible_ticks.clone(),
-    );
     world
-        .run_system_cached_with(calc_trip_lines::calc, (&mut trip_line_buf, calc_context))
+        .run_system_cached_with(
+            calc_trip_lines::calc,
+            (&mut trip_line_buf, &tab.navi, tab.route_entity),
+        )
         .unwrap();
 
     let selected_snapshot = world.resource::<SelectedItems>().clone();
@@ -453,11 +437,12 @@ fn main_display(tab: &mut DiagramTab, world: &mut World, ui: &mut egui::Ui) {
             .rposition(|(_, height)| height < interact_pos.y)
             .unwrap_or(0);
         let (_, prev_height) = station_heights[idx];
-        let prev_height = to_screen_y(prev_height);
+        let prev_height = tab.navi.logical_y_to_screen_y(prev_height as f64);
         if let Some((_, next_height)) = station_heights.get(idx + 1).copied()
-            && interact_pos.y > (to_screen_y(next_height) + prev_height) / 2.0
+            && interact_pos.y
+                > (tab.navi.logical_y_to_screen_y(next_height as f64) + prev_height) / 2.0
         {
-            new_screen_pos.y = to_screen_y(next_height);
+            new_screen_pos.y = tab.navi.logical_y_to_screen_y(next_height as f64);
             new_station_idx = idx + 1
         } else {
             new_screen_pos.y = prev_height;
@@ -501,10 +486,7 @@ fn main_display(tab: &mut DiagramTab, world: &mut World, ui: &mut egui::Ui) {
         );
         if let Some((t, idx)) = extending_trip.previous_pos {
             let (_, h) = station_heights[idx];
-            let prev_pos = Pos2::new(
-                ticks_to_screen_x(Tick::from_timetable_time(t)),
-                to_screen_y(h),
-            );
+            let prev_pos = tab.navi.xy_to_screen_pos(t.into(), h as f64);
             painter.line_segment([prev_pos, smoothed_screen_pos], stroke);
         }
         let add_or_populate_entry = if is_touch_input {
@@ -514,7 +496,8 @@ fn main_display(tab: &mut DiagramTab, world: &mut World, ui: &mut egui::Ui) {
             response.clicked()
         };
         if add_or_populate_entry {
-            let hovered_time = screen_x_to_seconds(interact_pos.x);
+            let hovered_tick = tab.navi.screen_x_to_logical_x(interact_pos.x);
+            let hovered_time: TimetableTime = hovered_tick.into();
             // normalize the time until the time difference is positive and less than 24 hours.
             let normalized_time = if let Some(last_time) = extending_trip.last_time
                 && let Some((last_clicked_time, _)) = extending_trip.previous_pos
@@ -670,6 +653,12 @@ fn main_display(tab: &mut DiagramTab, world: &mut World, ui: &mut egui::Ui) {
             }
         }
     }
+    // draw time line
+    let ticks = world.resource::<GlobalTimer>().read_ticks();
+    let time_stroke = Stroke::new(1.5, Color32::RED);
+    let mut x = tab.navi.logical_x_to_screen_x(ticks);
+    time_stroke.round_center_to_pixel(ui.pixels_per_point(), &mut x);
+    painter.vline(x, response.rect.top()..=response.rect.bottom(), time_stroke);
 }
 
 /// Takes a buffer the calculate trains

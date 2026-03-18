@@ -2,13 +2,14 @@ use bevy::prelude::Reflect;
 use serde::{Deserialize, Serialize};
 use std::ops;
 
-/// A tick. Each tick is 1ms
+/// A tick. Each tick is 10ms
 #[derive(
     Reflect, Debug, Deserialize, Serialize, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord,
 )]
 pub struct Tick(pub i64);
 
 impl Tick {
+    pub const ZERO: Self = Self(0);
     pub fn to_timetable_time(self) -> TimetableTime {
         TimetableTime((self.0 / 100) as i32)
     }
@@ -18,6 +19,18 @@ impl Tick {
     pub fn as_seconds_f64(self) -> f64 {
         let ticks_per_second = Self::from_timetable_time(TimetableTime(1)).0 as f64;
         self.0 as f64 / ticks_per_second
+    }
+}
+
+impl From<TimetableTime> for Tick {
+    fn from(value: TimetableTime) -> Self {
+        Self::from_timetable_time(value)
+    }
+}
+
+impl Into<TimetableTime> for Tick {
+    fn into(self) -> TimetableTime {
+        self.to_timetable_time()
     }
 }
 

@@ -14,37 +14,43 @@ use paiagram_core::{
     units::time::Tick,
 };
 
-pub struct CalcContext {
-    pub route_entity: Entity,
-    pub y_offset: f64,
-    pub zoom_y: f32,
-    pub x_offset: Tick,
-    pub screen_rect: Rect,
-    pub ticks_per_screen_unit: f64,
-    pub visible_ticks: std::ops::Range<Tick>,
-}
+use crate::tabs::Navigatable;
 
-impl CalcContext {
-    pub fn from_tab(
-        tab: &super::DiagramTab,
-        screen_rect: Rect,
-        ticks_per_screen_unit: f64,
-        visible_ticks: std::ops::Range<Tick>,
-    ) -> Self {
-        Self {
-            route_entity: tab.route_entity,
-            y_offset: tab.navi.y_offset,
-            zoom_y: tab.navi.zoom.y,
-            x_offset: tab.navi.x_offset,
-            screen_rect,
-            ticks_per_screen_unit,
-            visible_ticks,
-        }
-    }
-}
+// pub struct CalcContext {
+//     pub route_entity: Entity,
+//     pub y_offset: f64,
+//     pub zoom_y: f32,
+//     pub x_offset: Tick,
+//     pub screen_rect: Rect,
+//     pub ticks_per_screen_unit: f64,
+//     pub visible_ticks: std::ops::Range<Tick>,
+// }
+//
+// impl CalcContext {
+//     pub fn from_tab(
+//         tab: &super::DiagramTab,
+//         screen_rect: Rect,
+//         ticks_per_screen_unit: f64,
+//         visible_ticks: std::ops::Range<Tick>,
+//     ) -> Self {
+//         Self {
+//             route_entity: tab.route_entity,
+//             y_offset: tab.navi.y_offset,
+//             zoom_y: tab.navi.zoom.y,
+//             x_offset: tab.navi.x_offset,
+//             screen_rect,
+//             ticks_per_screen_unit,
+//             visible_ticks,
+//         }
+//     }
+// }
 
 pub fn calc(
-    (InMut(buf), In(ctx)): (InMut<Vec<super::DrawnTrip>>, In<CalcContext>),
+    (InMut(buf), InRef(navi), In(route_entity)): (
+        InMut<Vec<super::DrawnTrip>>,
+        InRef<super::DiagramTabNavigation>,
+        In<Entity>,
+    ),
     routes: Query<(&Route, &RouteTrips)>,
     trip_q: Query<paiagram_core::trip::TripQuery>,
     entries: Query<EntryQuery>,
@@ -55,7 +61,7 @@ pub fn calc(
 ) {
     buf.clear();
 
-    let Ok((route, trips)) = routes.get(ctx.route_entity) else {
+    let Ok((route, trips)) = routes.get(route_entity) else {
         return;
     };
 
@@ -65,19 +71,19 @@ pub fn calc(
         return;
     }
 
-    let vertical_visible = ctx.y_offset as f32
-        ..ctx.y_offset as f32 + ctx.screen_rect.height() / ctx.zoom_y.max(f32::EPSILON);
+    let vertical_visible = navi.visible_y();
+    let visible_ticks = navi.visible_x();
 
     let visible_stations = {
         let first_visible = heights
             .iter()
-            .position(|(_, h)| *h > vertical_visible.start)
+            .position(|(_, h)| *h > vertical_visible.start as f32)
             .or_else(|| {
                 heights
                     .iter()
-                    .rposition(|(_, h)| *h <= vertical_visible.start)
+                    .rposition(|(_, h)| *h <= vertical_visible.start as f32)
             });
-        let last_visible = heights.iter().rposition(|(_, h)| *h < vertical_visible.end);
+        let last_visible = heights.iter().rposition(|(_, h)| *h < vertical_visible.end as f32);
         if let (Some(first_visible), Some(mut last_visible)) = (first_visible, last_visible) {
             let first_visible = first_visible.saturating_sub(2);
             last_visible = (last_visible + 1).min(heights.len() - 1);
@@ -222,8 +228,8 @@ pub fn calc(
 
             let (repeat_start, repeat_end) = if repeat_freq_ticks.0 > 0 {
                 let start =
-                    (ctx.visible_ticks.start.0 - base_max.0).div_euclid(repeat_freq_ticks.0);
-                let end = (ctx.visible_ticks.end.0 - base_min.0).div_euclid(repeat_freq_ticks.0);
+                    (visible_ticks.start.0 - base_max.0).div_euclid(repeat_freq_ticks.0);
+                let end = (visible_ticks.end.0 - base_min.0).div_euclid(repeat_freq_ticks.0);
                 (start, end)
             } else {
                 (0, 0)
@@ -243,8 +249,8 @@ pub fn calc(
                     };
                     let arrival_ticks = arrival_ticks.0 + repeat_offset;
                     let departure_ticks = departure_ticks.0 + repeat_offset;
-                    !(departure_ticks < ctx.visible_ticks.start.0
-                        || arrival_ticks > ctx.visible_ticks.end.0)
+                    !(departure_ticks < visible_ticks.start.0
+                        || arrival_ticks > visible_ticks.end.0)
                 });
                 let last_visible = trip.entries.iter().rposition(|entry| {
                     let (Some(arrival_ticks), Some(departure_ticks)) =
@@ -254,8 +260,8 @@ pub fn calc(
                     };
                     let arrival_ticks = arrival_ticks.0 + repeat_offset;
                     let departure_ticks = departure_ticks.0 + repeat_offset;
-                    !(departure_ticks < ctx.visible_ticks.start.0
-                        || arrival_ticks > ctx.visible_ticks.end.0)
+                    !(departure_ticks < visible_ticks.start.0
+                        || arrival_ticks > visible_ticks.end.0)
                 });
 
                 let Some(first_visible) = first_visible else {
@@ -342,25 +348,8 @@ pub fn calc(
                             Vec::new()
                         };
 
-                        let arrival_pos = Pos2::new(
-                            super::draw_lines::ticks_to_screen_x(
-                                arrival_ticks.0,
-                                ctx.screen_rect,
-                                ctx.ticks_per_screen_unit,
-                                ctx.x_offset.0,
-                            ),
-                            (height - ctx.y_offset as f32) * ctx.zoom_y + ctx.screen_rect.top(),
-                        );
-
-                        let departure_pos = Pos2::new(
-                            super::draw_lines::ticks_to_screen_x(
-                                departure_ticks.0,
-                                ctx.screen_rect,
-                                ctx.ticks_per_screen_unit,
-                                ctx.x_offset.0,
-                            ),
-                            (height - ctx.y_offset as f32) * ctx.zoom_y + ctx.screen_rect.top(),
-                        );
+                        let arrival_pos = navi.xy_to_screen_pos(arrival_ticks, *height as f64);
+                        let departure_pos = navi.xy_to_screen_pos(departure_ticks, *height as f64);
 
                         segment.push(TripPoint {
                             arr: arrival_pos,

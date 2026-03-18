@@ -77,22 +77,35 @@ pub trait Navigatable {
     fn offset_x(&self) -> f64;
     fn offset_y(&self) -> f64;
     fn set_offset(&mut self, offset_x: f64, offset_y: f64);
-    fn screen_pos_to_xy(&self, pos: egui::Pos2) -> (Self::XOffset, Self::YOffset) {
+    fn screen_x_to_logical_x(&self, screen_x: f32) -> Self::XOffset {
         let rect = self.visible_rect();
-        let x_per_screen_unit = self.x_per_screen_unit().into();
-        let y_per_screen_unit = self.y_per_screen_unit().into();
-        let x = self.offset_x() + (pos.x - rect.left()) as f64 * x_per_screen_unit;
-        let y = self.offset_y() + (pos.y - rect.top()) as f64 * y_per_screen_unit;
-        (x.into(), y.into())
+        let x = self.offset_x() + (screen_x - rect.left()) as f64 * self.x_per_screen_unit_f64();
+        x.into()
+    }
+    fn logical_x_to_screen_x(&self, logical_x: Self::XOffset) -> f32 {
+        let rect = self.visible_rect();
+        let logical_x = logical_x.into();
+        rect.left() + ((logical_x - self.offset_x()) / self.x_per_screen_unit_f64()) as f32
+    }
+    fn screen_y_to_logical_y(&self, screen_y: f32) -> Self::YOffset {
+        let rect = self.visible_rect();
+        let y = self.offset_y() + (screen_y - rect.top()) as f64 * self.y_per_screen_unit_f64();
+        y.into()
+    }
+    fn logical_y_to_screen_y(&self, logical_y: Self::YOffset) -> f32 {
+        let rect = self.visible_rect();
+        let logical_y = logical_y.into();
+        rect.top() + ((logical_y - self.offset_y()) / self.y_per_screen_unit_f64()) as f32
+    }
+    fn screen_pos_to_xy(&self, pos: egui::Pos2) -> (Self::XOffset, Self::YOffset) {
+        (
+            self.screen_x_to_logical_x(pos.x),
+            self.screen_y_to_logical_y(pos.y),
+        )
     }
     fn xy_to_screen_pos(&self, x: Self::XOffset, y: Self::YOffset) -> egui::Pos2 {
-        let rect = self.visible_rect();
-        let x_per_screen_unit = self.x_per_screen_unit().into();
-        let y_per_screen_unit = self.y_per_screen_unit().into();
-        let x = x.into();
-        let y = y.into();
-        let screen_x = rect.left() + ((x - self.offset_x()) / x_per_screen_unit) as f32;
-        let screen_y = rect.top() + ((y - self.offset_y()) / y_per_screen_unit) as f32;
+        let screen_x = self.logical_x_to_screen_x(x);
+        let screen_y = self.logical_y_to_screen_y(y);
         egui::Pos2::new(screen_x, screen_y)
     }
     fn visible_rect(&self) -> egui::Rect;
@@ -107,6 +120,12 @@ pub trait Navigatable {
         let start = self.offset_y();
         let end = start + height * self.y_per_screen_unit().into();
         start.into()..end.into()
+    }
+    fn x_per_screen_unit_f64(&self) -> f64 {
+        1.0 / self.zoom_x().max(f32::EPSILON) as f64
+    }
+    fn y_per_screen_unit_f64(&self) -> f64 {
+        1.0 / self.zoom_y().max(f32::EPSILON) as f64
     }
     fn x_per_screen_unit(&self) -> Self::XOffset {
         (1.0 / self.zoom_x().max(f32::EPSILON) as f64).into()

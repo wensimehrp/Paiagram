@@ -1,7 +1,7 @@
-use crate::tabs::diagram::DrawnTrip;
-use crate::tabs::diagram::calc_trip_lines::{CalcContext, calc};
+use crate::tabs::diagram::calc_trip_lines::calc;
+use crate::tabs::diagram::{DiagramTabNavigation, DrawnTrip};
 use bevy::prelude::*;
-use egui::Color32;
+use egui::{Color32, Vec2};
 use egui::{Pos2, Rect};
 use paiagram_core::export::ExportObject;
 use paiagram_core::route::Route;
@@ -40,26 +40,18 @@ struct TripsOutput {
     points: Vec<Vec<[Pos2; 4]>>,
 }
 
-fn default_calc_context(route: &Route, route_entity: Entity) -> CalcContext {
+fn default_calc_context(route: &Route) -> DiagramTabNavigation {
     let max_ticks = Tick::from_timetable_time(TimetableTime(24 * 60 * 60));
     let width: f32 = 1200.0;
     let max_height = route.iter().last().map(|(_, h)| h).unwrap_or(0.0).max(1.0);
-    let height = max_height + 100.0;
-    let ticks_per_screen_unit = max_ticks.0 as f64 / width as f64;
-    CalcContext {
-        route_entity,
+    let zoom_x = width / max_ticks.0 as f32;
+
+    DiagramTabNavigation {
+        x_offset: Tick::ZERO,
         y_offset: 0.0,
-        zoom_y: 1.0,
-        x_offset: Tick(0),
-        screen_rect: Rect {
-            min: Pos2::new(0.0, 0.0),
-            max: Pos2 {
-                x: width,
-                y: height,
-            },
-        },
-        ticks_per_screen_unit,
-        visible_ticks: Tick(0)..max_ticks,
+        zoom: Vec2::new(zoom_x, 1.0),
+        visible_rect: Rect::from_two_pos(Pos2::new(0.0, 0.0), Pos2::new(width, max_height)),
+        max_height,
     }
 }
 
@@ -67,9 +59,9 @@ impl<'a> ExportObject for TypstDiagram<'a> {
     fn export_to_buffer(&mut self, buffer: &mut Vec<u8>) {
         let route = self.world.get::<Route>(self.route_entity).unwrap();
         let mut rendered_vehicle_buf = Vec::new();
-        let ctx = default_calc_context(&route, self.route_entity);
+        let ctx = default_calc_context(&route);
         self.world
-            .run_system_cached_with(calc, (&mut rendered_vehicle_buf, ctx))
+            .run_system_cached_with(calc, (&mut rendered_vehicle_buf, &ctx, self.route_entity))
             .unwrap();
         let mut stations_output = Vec::new();
         let mut trips_output = Vec::new();
