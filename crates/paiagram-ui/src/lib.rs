@@ -162,26 +162,6 @@ pub(crate) fn display_entry_info(
     }
 }
 
-pub(crate) fn display_station_info(
-    (InMut(ui), InRef(selected_stations)): (InMut<Ui>, InRef<[StationSelection]>),
-    station_q: Query<StationQuery>,
-    mut commands: Commands,
-) {
-    for station in station_q.iter_many(selected_stations.iter().map(|it| it.station)) {
-        ui.label(station.name.as_ref());
-    }
-    if selected_stations.len() >= 2 && ui.button("Create new route").clicked() {
-        let stations: Vec<_> = selected_stations.iter().map(|it| it.station).collect();
-        commands.spawn((
-            Name::new("New Route"),
-            Route {
-                lengths: vec![10.0; stations.len()],
-                stops: stations,
-            },
-        ));
-    }
-}
-
 #[derive(Reflect, Resource, Clone, PartialEq, Debug)]
 #[reflect(Resource)]
 pub(crate) enum SelectedItems {
@@ -953,43 +933,46 @@ pub fn show_ui(ctx: &Context, world: &mut World, cpu_time: Option<f32>) {
                         ui.ctx().open_url(OpenUrl::new_tab("./license.html"));
                     }
                 });
-                let mut frame_time_history = world.resource_mut::<FrameTimeHistory>();
-                frame_time_history.push(ui.input(|r| r.stable_dt));
-                let average_dt = frame_time_history.average_dt();
-                ui.monospace(format!("FPS: {:6.2}", 1.0_f32 / average_dt));
-                ui.monospace(format!("FRAME: {:5.2}ms", average_dt * 1000.0_f32));
-                ui.monospace(format!(
-                    "CPU: {:5.2}ms",
-                    cpu_time.unwrap_or(0.0) * 1000.0_f32
-                ));
-                ui.horizontal(|ui| {
-                    const GAP: f32 = 4.0;
-                    const SAMPLE_COUNT: usize = 32;
-                    let stroke = Stroke {
-                        color: PredefinedColor::Blue.get(ui.visuals().dark_mode),
-                        width: 3.0,
-                    };
-                    let max = frame_time_history
-                        .previous_n(SAMPLE_COUNT)
-                        .fold(0.0_f32, f32::max)
-                        .max(f32::EPSILON);
-                    let graph_width = SAMPLE_COUNT as f32 * (stroke.width + GAP) - GAP;
-                    let graph_height = ui.available_height();
-                    let (rect, _) = ui.allocate_exact_size(
-                        egui::vec2(graph_width, graph_height),
-                        egui::Sense::hover(),
-                    );
-                    for (idx, f) in frame_time_history.previous_n(SAMPLE_COUNT).enumerate() {
-                        let height = rect.height() * (f / max).clamp(0.0, 1.0);
-                        let x =
-                            rect.right() - idx as f32 * (stroke.width + GAP) - stroke.width * 0.5;
-                        let points = [
-                            egui::pos2(x, rect.bottom()),
-                            egui::pos2(x, rect.bottom() - height),
-                        ];
-                        ui.painter().line_segment(points, stroke);
-                    }
-                });
+                if world.resource::<UserPreferences>().developer_mode {
+                    let mut frame_time_history = world.resource_mut::<FrameTimeHistory>();
+                    frame_time_history.push(ui.input(|r| r.stable_dt));
+                    let average_dt = frame_time_history.average_dt();
+                    ui.monospace(format!("FPS: {:6.2}", 1.0_f32 / average_dt));
+                    ui.monospace(format!("FRAME: {:5.2}ms", average_dt * 1000.0_f32));
+                    ui.monospace(format!(
+                        "CPU: {:5.2}ms",
+                        cpu_time.unwrap_or(0.0) * 1000.0_f32
+                    ));
+                    ui.horizontal(|ui| {
+                        const GAP: f32 = 4.0;
+                        const SAMPLE_COUNT: usize = 32;
+                        let stroke = Stroke {
+                            color: PredefinedColor::Blue.get(ui.visuals().dark_mode),
+                            width: 3.0,
+                        };
+                        let max = frame_time_history
+                            .previous_n(SAMPLE_COUNT)
+                            .fold(0.0_f32, f32::max)
+                            .max(f32::EPSILON);
+                        let graph_width = SAMPLE_COUNT as f32 * (stroke.width + GAP) - GAP;
+                        let graph_height = ui.available_height();
+                        let (rect, _) = ui.allocate_exact_size(
+                            egui::vec2(graph_width, graph_height),
+                            egui::Sense::hover(),
+                        );
+                        for (idx, f) in frame_time_history.previous_n(SAMPLE_COUNT).enumerate() {
+                            let height = rect.height() * (f / max).clamp(0.0, 1.0);
+                            let x = rect.right()
+                                - idx as f32 * (stroke.width + GAP)
+                                - stroke.width * 0.5;
+                            let points = [
+                                egui::pos2(x, rect.bottom()),
+                                egui::pos2(x, rect.bottom() - height),
+                            ];
+                            ui.painter().line_segment(points, stroke);
+                        }
+                    });
+                }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let mut timer = world.resource_mut::<GlobalTimer>();
                     let mut seconds = timer.read_seconds();

@@ -4,8 +4,10 @@ use egui::{
 };
 use egui_i18n::tr;
 use moonshine_core::prelude::MapEntities;
-use paiagram_core::graph::{AddIntervalPair, NodeCoor};
-use paiagram_core::station::{CreateNewStation, StationBundle, StationNamePending};
+use paiagram_core::graph::{AddIntervalPair, Graph, NodeCoor};
+use paiagram_core::interval::IntervalQuery;
+use paiagram_core::route::Route;
+use paiagram_core::station::{CreateNewStation, StationBundle, StationNamePending, StationQuery};
 use paiagram_core::units::distance::Distance;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -46,6 +48,8 @@ pub struct GraphTab {
     osm_area_name: String,
     #[serde(skip, default)]
     gpu_state: Arc<egui::mutex::Mutex<gpu_draw::GpuGraphRendererState>>,
+    #[serde(skip, default)]
+    highlight_station_intervals: Vec<Entity>,
 }
 
 fn default_arrange_iterations() -> u32 {
@@ -65,6 +69,7 @@ impl Default for GraphTab {
             gpu_state: Arc::new(egui::mutex::Mutex::new(
                 gpu_draw::GpuGraphRendererState::default(),
             )),
+            highlight_station_intervals: Vec::new(),
         }
     }
 }
@@ -200,12 +205,62 @@ impl super::Tab for GraphTab {
             }
             SelectedItems::Stations(stations) => {
                 world
-                    .run_system_cached_with(crate::display_station_info, (ui, stations.as_slice()))
+                    .run_system_cached_with(
+                        display_station_info,
+                        (
+                            ui,
+                            stations.as_slice(),
+                            &mut self.highlight_station_intervals,
+                        ),
+                    )
                     .unwrap();
             }
             SelectedItems::ExtendingRoute(r) => {}
         }
     }
+}
+
+fn display_station_info(
+    (InMut(ui), InRef(selected_stations), InMut(highlight_station_intervals)): (
+        InMut<Ui>,
+        InRef<[StationSelection]>,
+        InMut<Vec<Entity>>,
+    ),
+    station_q: Query<StationQuery>,
+    interval_q: Query<IntervalQuery>,
+    graph: Res<Graph>,
+    mut commands: Commands,
+    mut last_hovered: Local<bool>,
+) {
+    for station in station_q.iter_many(selected_stations.iter().map(|it| it.station)) {
+        ui.label(station.name.as_ref());
+    }
+    let res = ui.button("Create new route");
+    if selected_stations.len() < 2 {
+        *last_hovered = res.hovered();
+        return;
+    }
+    let selected_station_entities_iter = selected_stations.iter().map(|it| it.station);
+    if res.hovered() ^ *last_hovered
+        && let Some((_, points)) =
+            graph.route_between_source_waypoint_target(selected_station_entities_iter, &interval_q)
+    {
+        // refresh
+        highlight_station_intervals.clear();
+        highlight_station_intervals.extend_from_slice(&points);
+    } else if !res.hovered() {
+        highlight_station_intervals.clear()
+    }
+    if res.clicked() {
+        commands.spawn((
+            Name::new("New Route"),
+            Route {
+                lengths: vec![10.0; highlight_station_intervals.len()],
+                stops: highlight_station_intervals.clone(),
+            },
+        ));
+    }
+    *last_hovered = res.hovered();
 }
 
 fn display(tab: &mut GraphTab, world: &mut World, ui: &mut egui::Ui) {
@@ -392,6 +447,18 @@ fn display(tab: &mut GraphTab, world: &mut World, ui: &mut egui::Ui) {
             (None, _) => {}
         }
     });
+    // enhance highlighted station path
+    painter.line(
+        tab.highlight_station_intervals
+            .iter()
+            .copied()
+            .map(|entity| {
+                let (x, y) = world.get::<Node>(entity).unwrap().coor.to_xy();
+                tab.navi.xy_to_screen_pos(x, y)
+            })
+            .collect(),
+        Stroke::new(1.5, Color32::RED),
+    );
     // create new station
     if response.secondary_clicked()
         && !shift_pressed

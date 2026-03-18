@@ -109,6 +109,33 @@ impl Graph {
             |_| 0,
         )
     }
+    pub fn route_between_source_waypoint_target(
+        &self,
+        mut points: impl Iterator<Item = Entity>,
+        interval_q: &Query<IntervalQuery>,
+    ) -> Option<(i32, Vec<Entity>)> {
+        let mut prev = points.next()?;
+        let mut total_length = 0;
+        let mut passes = vec![prev];
+        for curr in points {
+            let (leg_length, leg_points) = astar(
+                &self.map,
+                prev,
+                |f| f == curr,
+                |e| {
+                    let Ok(i) = interval_q.get(*e.weight()) else {
+                        return i32::MAX;
+                    };
+                    i.distance().0
+                },
+                |_| 0,
+            )?;
+            total_length += leg_length;
+            passes.extend_from_slice(&leg_points[1..]);
+            prev = curr;
+        }
+        Some((total_length, passes))
+    }
     pub fn into_graph(self) -> petgraph::Graph<Entity, Entity> {
         self.map.into_graph()
     }
