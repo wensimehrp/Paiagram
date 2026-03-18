@@ -131,6 +131,7 @@ pub fn load_oud(
                         let (_, first_time) = g.next().unwrap();
                         let mut group = [None; 2];
                         group[0] = first_time.arrival;
+                        group[1] = first_time.departure;
                         if let Some((_, last_time)) = g.last() {
                             group[1] = last_time.departure;
                         }
