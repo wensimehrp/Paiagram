@@ -100,25 +100,17 @@ pub fn load_oud(
         // TODO: find a method to support multiple diagrams
         for diagram in line.diagrams.into_iter().take(1) {
             for train in diagram.trains {
-                let mut times: Vec<Option<TimetableEntry>> = train
+                let times: Vec<Option<TimetableEntry>> = train
                     .times
                     .into_iter()
                     .map(|entry| entry.map(convert_timetable_entry))
                     .collect();
-                let time_iter = times.iter_mut().flat_map(|t| {
-                    std::iter::once(t).flatten().flat_map(|t| {
-                        std::iter::once(&mut t.arrival)
-                            .flatten()
-                            .chain(std::iter::once(&mut t.departure).flatten())
-                    })
-                });
-                super::normalize_times(time_iter);
 
                 let trip_class = train
                     .class_index
                     .map_or(class_resource.default_class, |idx| class_instances[idx]);
 
-                let times_iter = times
+                let mut times_chunked: Vec<_> = times
                     .into_iter()
                     .enumerate()
                     .filter_map(|(i, time)| {
@@ -133,27 +125,38 @@ pub fn load_oud(
                         let stop = station_instances[station_index];
                         Some((stop, time))
                     })
-                    .chunk_by(|(s, _t)| *s);
-
-                let nominal_entries: Vec<_> = times_iter
+                    .chunk_by(|(s, _t)| *s)
                     .into_iter()
-                    .map(|(stop, mut times)| {
-                        let (_, first_time) = times.next().unwrap();
-                        let last_time = times.last().map(|(_, t)| t).unwrap_or(first_time);
-                        let arrival = if matches!(first_time.passing_mode, PassingMode::Pass) {
+                    .map(|(s, mut g)| {
+                        let (_, first_time) = g.next().unwrap();
+                        let mut group = [None; 2];
+                        group[0] = first_time.arrival;
+                        if let Some((_, last_time)) = g.last() {
+                            group[1] = last_time.departure;
+                        }
+                        (s, group, first_time.passing_mode)
+                    })
+                    .collect();
+
+                super::normalize_times(times_chunked.iter_mut().flat_map(|(_, g, _)| g).flatten());
+
+                let nominal_entries: Vec<_> = times_chunked
+                    .into_iter()
+                    .map(|(stop, [arrival_time, departure_time], passing_mode)| {
+                        // in this case, this would consume the iterator.
+                        let arrival_mode = if matches!(passing_mode, PassingMode::Pass) {
                             None
                         } else {
-                            Some(
-                                first_time
-                                    .arrival
-                                    .map_or(TravelMode::Flexible, |t| TravelMode::At(t)),
-                            )
+                            Some(arrival_time.map_or(TravelMode::Flexible, |t| TravelMode::At(t)))
                         };
-                        let departure = last_time
-                            .departure
-                            .map_or(TravelMode::Flexible, |t| TravelMode::At(t));
+                        let departure_mode =
+                            departure_time.map_or(TravelMode::Flexible, |t| TravelMode::At(t));
                         commands
-                            .spawn(EntryBundle::new(arrival, departure, stop.entity()))
+                            .spawn(EntryBundle::new(
+                                arrival_mode,
+                                departure_mode,
+                                stop.entity(),
+                            ))
                             .id()
                     })
                     .collect();
