@@ -942,9 +942,9 @@ pub fn show_ui(ctx: &Context, world: &mut World, cpu_time: Option<f32>) {
                     if ui.button("Documentation").clicked() {
                         ui.ctx()
                             .open_url(OpenUrl::new_tab(if cfg!(target_arch = "wasm32") {
-                                "/nightly-docs"
+                                "/docs"
                             } else {
-                                "https://paiagram.com/nightly-docs"
+                                "https://paiagram.com/docs"
                             }));
                     }
                     if cfg!(target_arch = "wasm32") && ui.button("Legal").clicked() {
