@@ -87,7 +87,6 @@ pub fn departure_popup_inner(ui: &mut Ui, entry: &EntryQueryItem, commands: &mut
             .clicked()
         {
             adjustment = Some(EntryModeAdjustment::SetDeparture(TravelMode::At(at_time)));
-            ui.close();
         };
     } else {
         shift_at_value(at_time, entry.entity, ui, commands, BUTTON_SIZE, false);
@@ -121,7 +120,6 @@ pub fn departure_popup_inner(ui: &mut Ui, entry: &EntryQueryItem, commands: &mut
         )
         .clicked()
     {
-        ui.close();
         adjustment = Some(EntryModeAdjustment::SetDeparture(TravelMode::Flexible));
     }
     if let Some(adj) = adjustment {
@@ -164,7 +162,6 @@ pub fn arrival_popup_inner(
             adjustment = Some(EntryModeAdjustment::SetArrival(Some(TravelMode::At(
                 at_time,
             ))));
-            ui.close()
         };
     } else {
         shift_at_value(at_time, entry.entity, ui, commands, BUTTON_SIZE, true);
@@ -185,7 +182,6 @@ pub fn arrival_popup_inner(
             adjustment = Some(EntryModeAdjustment::SetArrival(Some(TravelMode::For(
                 for_dur,
             ))));
-            ui.close();
         };
     } else {
         shift_for_value(for_dur, entry.entity, ui, commands, BUTTON_SIZE, true);
@@ -199,7 +195,6 @@ pub fn arrival_popup_inner(
         .clicked()
     {
         adjustment = Some(EntryModeAdjustment::SetArrival(Some(TravelMode::Flexible)));
-        ui.close();
     }
     // non-stop
     if ui
@@ -210,7 +205,6 @@ pub fn arrival_popup_inner(
         .clicked()
     {
         adjustment = Some(EntryModeAdjustment::SetArrival(None));
-        ui.close();
     }
     if let Some(adj) = adjustment {
         commands.trigger(AdjustEntryMode {
