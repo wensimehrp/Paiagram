@@ -15,7 +15,8 @@ use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use bevy::prelude::*;
 use chrono::{Local, Timelike};
 use egui::{
-    Context, Frame, Key, KeyboardShortcut, Modifiers, Response, RichText, ScrollArea, Stroke, Ui,
+    Context, Frame, Key, KeyboardShortcut, Modifiers, OpenUrl, Response, RichText, ScrollArea,
+    Stroke, Ui,
 };
 use egui_i18n::tr;
 use egui_tiles::{
@@ -934,6 +935,20 @@ pub fn show_ui(ctx: &Context, world: &mut World, cpu_time: Option<f32>) {
                                 callback: paiagram_rw::save::add_load_candidate_ron,
                             });
                         }
+                    }
+                });
+                let res = ui.button("About");
+                egui::Popup::menu(&res).show(|ui| {
+                    if ui.button("Documentation").clicked() {
+                        ui.ctx()
+                            .open_url(OpenUrl::new_tab(if cfg!(target_arch = "wasm32") {
+                                "/nightly-docs"
+                            } else {
+                                "https://paiagram.com/nightly-docs"
+                            }));
+                    }
+                    if cfg!(target_arch = "wasm32") && ui.button("Legal").clicked() {
+                        ui.ctx().open_url(OpenUrl::new_tab("./license.html"));
                     }
                 });
                 let mut frame_time_history = world.resource_mut::<FrameTimeHistory>();

@@ -1,6 +1,6 @@
 accepted = [
     "MIT",
-    "Apache-2.0",
+    "MIT-0",
     "Apache-2.0",
     "BSD-2-Clause",
     "BSD-3-Clause",
@@ -11,6 +11,6 @@ accepted = [
     "OFL-1.1",
     "Unicode-3.0",
     "Ubuntu-font-1.0",
-    "AGPL-3.0-only",
-    "AGPL-3.0-or-later",
+    "MPL-2.0",
+    "CDLA-Permissive-2.0"
 ]
