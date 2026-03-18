@@ -750,6 +750,7 @@ struct AdditionalUiState {
     #[deref]
     tree: Tree<AdditionalTab>,
     focused_id: Option<TileId>,
+    expanded: bool,
 }
 
 impl Default for AdditionalUiState {
@@ -764,6 +765,7 @@ impl Default for AdditionalUiState {
                 ],
             ),
             focused_id: None,
+            expanded: true,
         }
     }
 }
@@ -1057,9 +1059,14 @@ pub fn show_ui(ctx: &Context, world: &mut World, cpu_time: Option<f32>) {
                         }
                     }),
             };
+            egui::SidePanel::right("right toolbar")
+                .exact_width(30.0)
+                .show(ctx, |ui| {
+                    ui.checkbox(&mut aus.expanded, "");
+                });
             egui::SidePanel::right("right panel")
                 .frame(Frame::default())
-                .show(ctx, |ui| {
+                .show_animated(ctx, aus.expanded, |ui| {
                     aus.ui(&mut tab_viewer, ui);
                 });
             egui::CentralPanel::default()
