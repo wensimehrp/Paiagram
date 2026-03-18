@@ -41,7 +41,7 @@ prep-wasm: rust-docs build-wasm
     cp -r wasm-out/* dist/nightly/
     cp crates/paiagram-ui/assets/fonts/SarasaUiSC-Regular.ttf dist/nightly/
     git rev-parse HEAD > dist/nightly/git-revision.txt
-    cargo about about.hbs > dist/nightly/license.html
+    cargo about generate about.hbs > dist/nightly/license.html
     # fix for input tools. See https://github.com/wasm-bindgen/wasm-bindgen/pull/5034 for details
     sed -i '/function passStringToWasm0/a\
         arg = arg ?? "";' dist/nightly/paiagram.js
