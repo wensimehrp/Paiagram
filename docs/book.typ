@@ -43,7 +43,7 @@
     #chapter("panels/diagram.typ")[Diagram]
     #chapter("panels/map.typ")[Map]
     = Miscellaneous
-    #chapter("misc/linux-web.typ")[Linux Web]
+    #chapter("misc/web.typ")[Web Version]
   ],
 )
 

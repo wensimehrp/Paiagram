@@ -19,16 +19,22 @@ and Flexible departure mode (see Travel Mode for details).
 Each trip contains a set of entries. Each entry contains arrival and departure modes. A departure mode could be any of
 the following:
 
-- At: the trip departs at this specific timepoint
-- For: the trip departs after a given amount of time after arrival
-- Flexible: the departure time is flexible
+#table(
+  columns: 2,
+  [At], [the trip departs at this specific timepoint],
+  [For], [the trip departs after a given amount of time after arrival],
+  [Flexible], [the departure time is flexible],
+)
 
 Likewise, an arrival mode could be any of the following:
 
-- At: the trip arrives at this specific timepoint
-- For: the trip arrives after a given amount of time *after the previous stable timepoint*
-- Flexible: the arrival time is flexible
-- Non-stop: the trip does not stop at this station.
+#table(
+  columns: 2,
+  [At], [the trip arrives at this specific timepoint],
+  [For], [the trip arrives after a given amount of time *after the previous stable timepoint*],
+  [Flexible], [the arrival time is flexible],
+  [Non-stop], [the trip does not stop at this station.],
+)
 
 Travel modes are designed to simplify work. For example, in cases where you only have an accumulated travel time for
 specific intervals. You can easily convert between travel modes without losing work.
