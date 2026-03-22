@@ -1,6 +1,5 @@
 use pest_consume::Parser;
 use smallvec::SmallVec;
-use std::borrow::Cow;
 use thiserror::Error;
 
 use crate::{ast::SerializeToOud, time::Time, timetable::TimetableEntry};
@@ -22,30 +21,31 @@ impl BeforeAfter {
 pub trait InsertOperation<'a> {
     fn insert_operations<'b>(
         &mut self,
-        hierarchy: impl Iterator<Item = BeforeAfter>,
-        operations: impl Iterator<Item = RawOperation<'b>>,
+        hierarchy: impl IntoIterator<Item = BeforeAfter>,
+        operations: impl IntoIterator<Item = RawOperation<'b>>,
     ) where
         'b: 'a;
 }
 
 macro_rules! impl_get_before_after {
-    ($a:lifetime, $x:ident, $native:ident, $native_type:ty) => {
+    ($x:ident, $native:ident, $native_type:ty) => {
         #[derive(Debug, Clone, PartialEq, Default, Eq)]
-        pub struct $x<$a> {
+        pub struct $x {
             pub ops: SmallVec<[$native_type; 1]>,
-            pub befores: Vec<BeforeOperationTree<$a>>,
-            pub afters: Vec<AfterOperationTree<$a>>,
+            pub befores: Vec<BeforeOperationTree>,
+            pub afters: Vec<AfterOperationTree>,
         }
 
-        impl<$a> InsertOperation<$a> for $x<$a> {
+        impl<'a> InsertOperation<'a> for $x {
             fn insert_operations<'b>(
                 &mut self,
-                mut hierarchy: impl Iterator<Item = BeforeAfter>,
-                operations: impl Iterator<Item = RawOperation<'b>>,
+                hierarchy: impl IntoIterator<Item = BeforeAfter>,
+                operations: impl IntoIterator<Item = RawOperation<'b>>,
             )
             where
-                'b: $a,
+                'b: 'a,
             {
+                let mut hierarchy = hierarchy.into_iter();
                 let Some(index) = hierarchy.next() else {
                     // we are at the end of the journey!
                     for operation in operations {
@@ -77,25 +77,26 @@ macro_rules! impl_get_before_after {
     };
 }
 
-impl_get_before_after!('a, BeforeOperationTree, befores, BeforeOperation<'a>);
-impl_get_before_after!('a, AfterOperationTree, afters, AfterOperation<'a>);
+impl_get_before_after!(BeforeOperationTree, befores, BeforeOperation);
+impl_get_before_after!(AfterOperationTree, afters, AfterOperation);
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct RootOperationTree<'a> {
-    pub befores: BeforeOperationTree<'a>,
-    pub afters: AfterOperationTree<'a>,
+pub struct RootOperationTree {
+    pub befores: BeforeOperationTree,
+    pub afters: AfterOperationTree,
 }
 
-impl<'e> InsertOperation<'e> for Vec<TimetableEntry<'e>> {
+impl<'e> InsertOperation<'e> for Vec<TimetableEntry> {
     /// Insert the operations for the timetable.
     /// Note that this method would panic if the indexes don't match.
     fn insert_operations<'a>(
         &mut self,
-        mut hierarchy: impl Iterator<Item = BeforeAfter>,
-        operations: impl Iterator<Item = RawOperation<'a>>,
+        hierarchy: impl IntoIterator<Item = BeforeAfter>,
+        operations: impl IntoIterator<Item = RawOperation<'a>>,
     ) where
         'a: 'e,
     {
+        let mut hierarchy = hierarchy.into_iter();
         let root_index = hierarchy.next().unwrap();
         let entry = &mut self[root_index.index()];
         let root_tree = entry.operations_mut();
@@ -238,13 +239,13 @@ impl TryFrom<&[Option<&str>]> for DecoupleOperation {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EnterFromDepotOperation<'a> {
+pub struct EnterFromDepotOperation {
     time: Option<Time>,
-    link_code: Option<Cow<'a, str>>,
-    operation_numbers: SmallVec<[Cow<'a, str>; 2]>,
+    link_code: Option<String>,
+    operation_numbers: SmallVec<[String; 2]>,
 }
 
-impl<'a> TryFrom<&[Option<&'a str>]> for EnterFromDepotOperation<'a> {
+impl<'a> TryFrom<&[Option<&'a str>]> for EnterFromDepotOperation {
     type Error = OperationParseError;
     fn try_from(value: &[Option<&'a str>]) -> Result<Self, Self::Error> {
         Ok(Self {
@@ -256,12 +257,12 @@ impl<'a> TryFrom<&[Option<&'a str>]> for EnterFromDepotOperation<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ExitToDepotOperation<'a> {
+pub struct ExitToDepotOperation {
     time: Option<Time>,
-    link_code: Option<Cow<'a, str>>,
+    link_code: Option<String>,
 }
 
-impl<'a> TryFrom<&[Option<&'a str>]> for ExitToDepotOperation<'a> {
+impl<'a> TryFrom<&[Option<&'a str>]> for ExitToDepotOperation {
     type Error = OperationParseError;
     fn try_from(value: &[Option<&'a str>]) -> Result<Self, Self::Error> {
         Ok(Self {
@@ -272,15 +273,15 @@ impl<'a> TryFrom<&[Option<&'a str>]> for ExitToDepotOperation<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BeforeEnterFromExternalRouteOperation<'a> {
+pub struct BeforeEnterFromExternalRouteOperation {
     station_index: usize,
     time: Option<Time>,
     arrival_time: Option<Time>,
-    link_code: Option<Cow<'a, str>>,
-    operation_numbers: SmallVec<[Cow<'a, str>; 2]>,
+    link_code: Option<String>,
+    operation_numbers: SmallVec<[String; 2]>,
 }
 
-impl<'a> TryFrom<&[Option<&'a str>]> for BeforeEnterFromExternalRouteOperation<'a> {
+impl<'a> TryFrom<&[Option<&'a str>]> for BeforeEnterFromExternalRouteOperation {
     type Error = OperationParseError;
     fn try_from(value: &[Option<&'a str>]) -> Result<Self, Self::Error> {
         Ok(Self {
@@ -294,14 +295,14 @@ impl<'a> TryFrom<&[Option<&'a str>]> for BeforeEnterFromExternalRouteOperation<'
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ExitToExternalRouteOperation<'a> {
+pub struct ExitToExternalRouteOperation {
     station_index: usize,
     time: Option<Time>,
     arrival_time: Option<Time>,
-    link_code: Option<Cow<'a, str>>,
+    link_code: Option<String>,
 }
 
-impl<'a> TryFrom<&[Option<&'a str>]> for ExitToExternalRouteOperation<'a> {
+impl<'a> TryFrom<&[Option<&'a str>]> for ExitToExternalRouteOperation {
     type Error = OperationParseError;
     fn try_from(value: &[Option<&'a str>]) -> Result<Self, Self::Error> {
         Ok(Self {
@@ -314,13 +315,13 @@ impl<'a> TryFrom<&[Option<&'a str>]> for ExitToExternalRouteOperation<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ContinuePreviousTripOperation<'a> {
+pub struct ContinuePreviousTripOperation {
     time: Option<Time>,
-    operation_numbers: SmallVec<[Cow<'a, str>; 2]>,
+    operation_numbers: SmallVec<[String; 2]>,
     next_junction_type: Option<i32>,
 }
 
-impl<'a> TryFrom<&[Option<&'a str>]> for ContinuePreviousTripOperation<'a> {
+impl<'a> TryFrom<&[Option<&'a str>]> for ContinuePreviousTripOperation {
     type Error = OperationParseError;
     fn try_from(value: &[Option<&'a str>]) -> Result<Self, Self::Error> {
         Ok(Self {
@@ -332,12 +333,12 @@ impl<'a> TryFrom<&[Option<&'a str>]> for ContinuePreviousTripOperation<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ChangeOperationNumberOperation<'a> {
-    operation_numbers: SmallVec<[Cow<'a, str>; 2]>,
+pub struct ChangeOperationNumberOperation {
+    operation_numbers: SmallVec<[String; 2]>,
     reverse: bool,
 }
 
-impl<'a> TryFrom<&[Option<&'a str>]> for ChangeOperationNumberOperation<'a> {
+impl<'a> TryFrom<&[Option<&'a str>]> for ChangeOperationNumberOperation {
     type Error = OperationParseError;
     fn try_from(value: &[Option<&'a str>]) -> Result<Self, Self::Error> {
         let operation_numbers = parse_operation_numbers(value.get(0).copied().flatten());
@@ -352,17 +353,17 @@ impl<'a> TryFrom<&[Option<&'a str>]> for ChangeOperationNumberOperation<'a> {
 
 #[repr(u32)]
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum BeforeOperation<'a> {
+pub enum BeforeOperation {
     Shunt(ShuntOperation) = 0,
     Couple(CoupleOperation) = 1,
     Decouple(DecoupleOperation) = 2,
-    EnterFromDepot(EnterFromDepotOperation<'a>) = 3,
-    EnterFromExternalRoute(BeforeEnterFromExternalRouteOperation<'a>) = 4,
-    ContinuePreviousTrip(ContinuePreviousTripOperation<'a>) = 5,
-    ChangeOperationNumber(ChangeOperationNumberOperation<'a>) = 6,
+    EnterFromDepot(EnterFromDepotOperation) = 3,
+    EnterFromExternalRoute(BeforeEnterFromExternalRouteOperation) = 4,
+    ContinuePreviousTrip(ContinuePreviousTripOperation) = 5,
+    ChangeOperationNumber(ChangeOperationNumberOperation) = 6,
 }
 
-impl<'a> TryFrom<RawOperation<'a>> for BeforeOperation<'a> {
+impl<'a> TryFrom<RawOperation<'a>> for BeforeOperation {
     type Error = OperationParseError;
     fn try_from(value: RawOperation<'a>) -> Result<Self, Self::Error> {
         Ok(match value.operation_type {
@@ -383,17 +384,17 @@ impl<'a> TryFrom<RawOperation<'a>> for BeforeOperation<'a> {
 
 #[repr(u32)]
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum AfterOperation<'a> {
+pub enum AfterOperation {
     Shunt(ShuntOperation) = 0,
     Couple(CoupleOperation) = 1,
     Decouple(DecoupleOperation) = 2,
-    ExitToDepot(ExitToDepotOperation<'a>) = 3,
-    ExitToExternalRoute(ExitToExternalRouteOperation<'a>) = 4,
-    ContinuePreviousTrip(ContinuePreviousTripOperation<'a>) = 5,
-    ChangeOperationNumber(ChangeOperationNumberOperation<'a>) = 6,
+    ExitToDepot(ExitToDepotOperation) = 3,
+    ExitToExternalRoute(ExitToExternalRouteOperation) = 4,
+    ContinuePreviousTrip(ContinuePreviousTripOperation) = 5,
+    ChangeOperationNumber(ChangeOperationNumberOperation) = 6,
 }
 
-impl<'a> TryFrom<RawOperation<'a>> for AfterOperation<'a> {
+impl<'a> TryFrom<RawOperation<'a>> for AfterOperation {
     type Error = OperationParseError;
     fn try_from(value: RawOperation<'a>) -> Result<Self, Self::Error> {
         match value.operation_type {
@@ -506,11 +507,11 @@ fn parse_bool_required(
     })
 }
 
-fn parse_link_code<'a>(s: Option<&'a str>) -> Option<Cow<'a, str>> {
-    parse_non_empty(s).map(Cow::Borrowed)
+fn parse_link_code<'a>(s: Option<&'a str>) -> Option<String> {
+    parse_non_empty(s).map(String::from)
 }
 
-fn parse_operation_numbers<'a>(s: Option<&'a str>) -> SmallVec<[Cow<'a, str>; 2]> {
+fn parse_operation_numbers<'a>(s: Option<&'a str>) -> SmallVec<[String; 2]> {
     let mut out = SmallVec::new();
     let Some(raw) = parse_non_empty(s) else {
         return out;
@@ -518,11 +519,11 @@ fn parse_operation_numbers<'a>(s: Option<&'a str>) -> SmallVec<[Cow<'a, str>; 2]
     for item in raw.split([',', ';']) {
         let trimmed = item.trim();
         if !trimmed.is_empty() {
-            out.push(Cow::Borrowed(trimmed));
+            out.push(String::from(trimmed));
         }
     }
     if out.is_empty() {
-        out.push(Cow::Borrowed(raw));
+        out.push(String::from(raw));
     }
     out
 }

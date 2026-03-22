@@ -13,21 +13,21 @@ pub enum ServiceMode {
 
 /// A timetable entry
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub struct TimetableEntry<'a> {
+pub struct TimetableEntry {
     pub service_mode: ServiceMode,
     pub arrival_time: Option<Time>,
     pub departure_time: Option<Time>,
     pub track_index: Option<usize>,
     /// Operations associated with this timetable entry.
     /// This field is relatively rare, thus we put it in an [`Option<Box>`]
-    operations: Option<Box<RootOperationTree<'a>>>,
+    operations: Option<Box<RootOperationTree>>,
 }
 
-impl<'a> TimetableEntry<'a> {
-    pub fn operations(&self) -> Option<&RootOperationTree<'a>> {
+impl TimetableEntry {
+    pub fn operations(&self) -> Option<&RootOperationTree> {
         self.operations.as_deref()
     }
-    pub fn operations_mut(&mut self) -> &mut RootOperationTree<'a> {
+    pub fn operations_mut(&mut self) -> &mut RootOperationTree {
         self.operations.get_or_insert_default()
     }
 }
@@ -62,7 +62,7 @@ pub mod time {
         fn track_index(input: Node<'_>) -> Result<usize> {
             input.as_str().parse::<usize>().map_err(|e| input.error(e))
         }
-        pub fn timetable_entry(input: Node<'_>) -> Result<TimetableEntry<'_>> {
+        pub fn timetable_entry(input: Node<'_>) -> Result<TimetableEntry> {
             let mut service_mode: ServiceMode = ServiceMode::default();
             let mut arrival_time: Option<Time> = None;
             let mut departure_time: Option<Time> = None;
@@ -89,7 +89,7 @@ pub mod time {
 
 pub fn parse_to_timetable_entry(
     input: &'_ str,
-) -> Result<TimetableEntry<'_>, pest::error::Error<time::Rule>> {
+) -> Result<TimetableEntry, pest::error::Error<time::Rule>> {
     let a = time::TimeParser::parse(time::Rule::timetable_entry, input)?.single()?;
     Ok(time::TimeParser::timetable_entry(a)?)
 }
@@ -122,17 +122,17 @@ mod test {
     fn comprehend_operations_and_times() -> E {
         let s = include_str!("../test/sample2.oud2");
         let s = Structure::Struct("root".into(), parse_to_ast(s)?);
-        let diagrams = s.at(["Rosen", "Dia"].iter());
+        let diagrams = s.at(["Rosen", "Dia"]);
         let kudari_trains = diagrams
             .clone()
-            .flat_map(|it| it.at(["Kudari", "Ressya"].iter()));
-        let nobori_trains = diagrams.flat_map(|it| it.at(["Nobori", "Ressya"].iter()));
+            .flat_map(|it| it.at(["Kudari", "Ressya"]));
+        let nobori_trains = diagrams.flat_map(|it| it.at(["Nobori", "Ressya"]));
         for train in kudari_trains.chain(nobori_trains) {
             let Structure::Struct(_, vals) = train else {
                 panic!()
             };
             let mut times: Vec<_> = train
-                .at(["EkiJikoku"].iter())
+                .at(["EkiJikoku"])
                 .flat_map(|it| {
                     let Structure::Pair(_, vals) = it else {
                         panic!()

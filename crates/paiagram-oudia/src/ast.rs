@@ -79,7 +79,10 @@ impl<'a> Structure<'a> {
             Self::Struct(n, _) | Self::Pair(n, _) => n.as_ref(),
         }
     }
-    pub fn at<'s, I, S>(&'s self, hierarchy: I) -> std::vec::IntoIter<&'s Self>
+    pub fn at<'s, I, S>(
+        &'s self,
+        hierarchy: impl IntoIterator<IntoIter = I>,
+    ) -> std::vec::IntoIter<&'s Self>
     where
         I: Iterator<Item = S> + Clone,
         S: AsRef<str>,
@@ -89,11 +92,15 @@ impl<'a> Structure<'a> {
         out.into_iter()
     }
 
-    fn at_impl<'s, I, S>(node: &'s Self, mut hierarchy: I, out: &mut Vec<&'s Self>)
-    where
+    fn at_impl<'s, I, S>(
+        node: &'s Self,
+        hierarchy: impl IntoIterator<IntoIter = I>,
+        out: &mut Vec<&'s Self>,
+    ) where
         I: Iterator<Item = S> + Clone,
         S: AsRef<str>,
     {
+        let mut hierarchy = hierarchy.into_iter();
         let Some(level) = hierarchy.next() else {
             out.push(node);
             return;
@@ -153,7 +160,7 @@ impl<'a> SerializeToOud for Structure<'a> {
     }
 }
 
-impl<'a> SerializeToOud for Vec<Structure<'a>> {
+impl<'a> SerializeToOud for [Structure<'a>] {
     fn serialize_oud_to(&self, buf: &mut impl std::io::Write) -> std::io::Result<()> {
         for val in self.iter() {
             val.serialize_oud_to(buf)?;
@@ -187,14 +194,19 @@ pub trait GetItemWithKey<'a, 'r>: Sized {
     fn every_struct<'i>(
         self,
         index: &'i str,
-    ) -> impl Iterator<Item = &'r Structure<'a>> + 'i + Clone
+    ) -> impl Iterator<Item = (Cow<'a, str>, &'r [Structure<'a>])> + 'i + Clone
     where
         Self: 'i,
         'a: 'r,
-        'a: 'i,
         'r: 'i,
     {
-        self.every(index).struct_inner()
+        self.every(index).filter_map(|it| {
+            if let Structure::Struct(key, fields) = it {
+                Some((key.clone(), fields.as_slice()))
+            } else {
+                None
+            }
+        })
     }
     fn every_pair<'i>(
         self,
