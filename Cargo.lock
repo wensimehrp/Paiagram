@@ -2968,6 +2968,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "from-pest"
+version = "0.3.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8f6608105256838dc3a7586083a8e4485ca6533bf1a39c3ed327e9de16a39e7f"
+dependencies = [
+ "log",
+ "pest",
+ "void",
+]
+
+[[package]]
 name = "funty"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5202,9 +5213,15 @@ name = "paiagram-oudia"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "derive_more",
+ "either",
+ "encoding_rs",
+ "from-pest",
  "pest",
+ "pest_consume",
  "pest_derive",
  "smallvec",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -5323,6 +5340,28 @@ checksum = "e0848c601009d37dfa3430c4666e147e49cdcf1b92ecd3e63657d8a5f19da662"
 dependencies = [
  "memchr",
  "ucd-trie",
+]
+
+[[package]]
+name = "pest_consume"
+version = "1.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "79447402d15d18e7142e14c72f2e63fa3d155be1bc5b70b3ccbb610ac55f536b"
+dependencies = [
+ "pest",
+ "pest_consume_macros",
+ "pest_derive",
+]
+
+[[package]]
+name = "pest_consume_macros"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9d8630a7a899cb344ec1c16ba0a6b24240029af34bdc0a21f84e411d7f793f29"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
 ]
 
 [[package]]
@@ -7572,6 +7611,12 @@ dependencies = [
  "ryu",
  "thiserror 2.0.18",
 ]
+
+[[package]]
+name = "void"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6a02e4885ed3bc0f2de90ea6dd45ebcbb66dacffe03547fadbb0eeae2770887d"
 
 [[package]]
 name = "walkdir"

@@ -2,8 +2,29 @@ use anyhow::{Result, anyhow};
 use pest::Parser;
 use pest_derive::Parser;
 use std::borrow::Cow;
+pub use ast::Structure;
+pub use ast::SerializeToOud;
 
-pub mod write;
+pub mod operation;
+mod ast;
+pub mod time;
+pub mod timetable;
+pub mod root;
+
+#[macro_export]
+macro_rules! structure {
+    ($k:expr => $($x:expr),+ $(,)?) => {
+        $crate::Structure::Struct($k.into(), vec![$($x.into(),)+])
+    };
+}
+
+#[macro_export]
+macro_rules! pair {
+    ($k:expr => $($x:expr),+ $(,)?) => {
+        $crate::Structure::Pair($k.into(), smallvec::smallvec![$($x.into(),)+])
+    };
+}
+
 
 #[derive(Parser)]
 #[grammar = "oudia.pest"]
@@ -72,25 +93,6 @@ pub struct TrainClass {
     pub color: [u8; 3],
 }
 
-#[derive(Debug, Clone)]
-pub enum Structure<'a> {
-    Struct(Cow<'a, str>, Vec<Structure<'a>>),
-    Pair(Cow<'a, str>, SmallVec<[Cow<'a, str>; 1]>),
-}
-
-#[macro_export]
-macro_rules! structure {
-    ($k:expr => $($x:expr),+ $(,)?) => {
-        $crate::Structure::Struct($k.into(), vec![$($x.into(),)+])
-    };
-}
-
-#[macro_export]
-macro_rules! pair {
-    ($k:expr => $($x:expr),+ $(,)?) => {
-        $crate::Structure::Pair($k.into(), smallvec::smallvec![$($x.into(),)+])
-    };
-}
 
 pub fn parse_oud2(file: &str) -> Result<Root> {
     let ast = parse_oud2_to_ast(file)?;
@@ -154,7 +156,7 @@ pub fn parse_oud2_to_ast(file: &str) -> Result<Structure<'_>, pest::error::Error
     Ok(parse_struct(oud2))
 }
 
-use Structure::*;
+use ast::Structure::*;
 use smallvec::SmallVec;
 
 fn only_value<'a, 'b>(values: &'b SmallVec<[Cow<'a, str>; 1]>) -> Option<&'b str> {
@@ -443,7 +445,7 @@ fn parse_class<'a>(fields: Vec<Structure<'a>>) -> Result<TrainClass> {
     })
 }
 
-fn parse_oud2_time(s: &str) -> Option<i32> {
+pub fn parse_oud2_time(s: &str) -> Option<i32> {
     let (time_part, day_offset_seconds) = if let Some(idx) = s.rfind(['+', '-']) {
         let (time, offset_str) = s.split_at(idx);
         let days = offset_str.parse::<i32>().ok()?;

@@ -4,8 +4,7 @@ use bevy::ecs::entity::EntityHashMap;
 use bevy::prelude::*;
 use either::Either;
 use encoding_rs::SHIFT_JIS;
-use paiagram_oudia::write::serialize_to;
-use paiagram_oudia::{Structure, pair, structure};
+use paiagram_oudia::{Structure, pair, structure, SerializeToOud};
 use smallvec::{SmallVec, smallvec};
 
 use crate::class::ClassQuery;
@@ -82,7 +81,7 @@ impl<'a> super::ExportObject for OuDia<'a> {
             ),
         ];
         let mut utf8_buf = Vec::new();
-        serialize_to(&mut utf8_buf, &root).unwrap();
+        root.serialize_oud_to(&mut utf8_buf).unwrap();
         let s = String::from_utf8(utf8_buf).unwrap();
         // extra step: convert the buffer to shift-jis
         let (cow, _, _) = SHIFT_JIS.encode(s.as_str());

@@ -1,0 +1,9 @@
+// timetable entries
+service_mode    = { "0" | "1" | "2" }
+arrival_time    = { ASCII_DIGIT{3, 6} }
+departure_time  = { ASCII_DIGIT{3, 6} }
+track_index     = { ASCII_DIGIT+ }
+timetable_entry = {
+    ((service_mode ~ (";" ~ (arrival_time ~ "/")? ~ departure_time?)?) ~ ("$" ~ track_index)?)
+  | ""
+}

@@ -1,0 +1,12 @@
+// operation key
+before        = { "B" }
+after         = { "A" }
+index         = { ASCII_DIGIT+ }
+group         = { index ~ (before | after) }
+operation_key = { "Operation" ~ group ~ ("." ~ group)* }
+
+// event entries
+operation_param =  { (!("," | "$" | "/" | NEWLINE) ~ ANY)* }
+raw_operation   =  { op0 }
+op0             = _{ operation_param ~ ("/" ~ op1)* }
+op1             = _{ operation_param ~ ("$" ~ op0)* }

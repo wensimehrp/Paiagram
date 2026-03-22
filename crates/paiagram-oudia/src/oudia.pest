@@ -16,9 +16,3 @@ track             = { ASCII_DIGIT+ }
 timetable_entry   = {
     (service_mode ~ (";" ~ (arrival ~ "/")? ~ departure?)?) ~ ("$" ~ track)?
 }
-
-// event entries
-event_param =  { (ASCII_DIGIT | ";")* }
-event       =  { event0 }
-event0      = _{ event_param ~ ("/" ~ event1)* }
-event1      = _{ event_param ~ ("$" ~ event0)* }

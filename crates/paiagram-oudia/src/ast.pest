@@ -1,0 +1,8 @@
+key_ident    =  { (ASCII_ALPHANUMERIC | ".")+ }
+item         =  { (!"," ~ !NEWLINE ~ ANY)* }
+value        =  { (item ~ ",")* ~ item }
+kvpair       =  { key_ident ~ "=" ~ value }
+struct_ident =  { ASCII_ALPHANUMERIC+ }
+struct       =  { struct_ident ~ "." ~ NEWLINE ~ ((kvpair | struct) ~ NEWLINE)* ~ "." }
+wrapper      = _{ ((kvpair | struct) ~ NEWLINE)* ~ (kvpair | struct)? }
+root         =  { SOI ~ "\u{feff}"? ~ wrapper }
