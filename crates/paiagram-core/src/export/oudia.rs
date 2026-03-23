@@ -4,7 +4,7 @@ use bevy::ecs::entity::EntityHashMap;
 use bevy::prelude::*;
 use either::Either;
 use encoding_rs::SHIFT_JIS;
-use paiagram_oudia::{Structure, pair, structure, SerializeToOud};
+use paiagram_oudia::{SerializeToOud, Structure, pair, structure};
 use smallvec::{SmallVec, smallvec};
 
 use crate::class::ClassQuery;
@@ -74,7 +74,7 @@ impl<'a> super::ExportObject for OuDia<'a> {
         ]);
         let root = vec![
             pair!("FileType" => "OuDia.1.02"),
-            Structure::Struct("Rosen".into(), route_buf),
+            structure!("Rosen" => ..route_buf),
             make_disp_prop(),
             pair!("FileTypeAppComment" =>
                 concat!("Exported by Paiagram ", env!("CARGO_PKG_VERSION")),
@@ -107,9 +107,9 @@ fn make_stations(
     let make_station = |e: Entity, departure_display: &'static str| -> Structure<'static> {
         let name = station_name_q.get(e).unwrap().to_string();
         structure!("Eki" =>
-            pair!("Ekimei" => name),                        // 駅名
+            pair!("Ekimei"           => name),              // 駅名
             pair!("Ekijikokukeisiki" => departure_display), // 駅時刻形式
-            pair!("Ekikibo"=> "Ekikibo_Ippan"),             // 駅規模
+            pair!("Ekikibo"          => "Ekikibo_Ippan"),   // 駅規模
         )
     };
 
@@ -169,10 +169,7 @@ fn make_diagram(
     // downward: Nobori, Upward: Kudari
     let (route, RouteByDirectionTrips { downward, upward }) = route_q.get(route_entity).unwrap();
     let mut dia_buf = Vec::new();
-    dia_buf.push(Structure::Pair(
-        "DiaName".into(),
-        smallvec!["Paiagram Exported".into()],
-    ));
+    dia_buf.push(pair!("DiaName" => "Paiagram Exported"));
     dia_buf.push(make_trainset_by_direction(
         true,
         trip_q.iter_many(downward.as_slice()),
@@ -189,7 +186,7 @@ fn make_diagram(
         &entry_q,
         &parent_station_or_station,
     ));
-    buf.push(Structure::Struct("Dia".into(), dia_buf));
+    buf.push(structure!("Dia" => ..dia_buf));
 }
 
 fn make_trainset_by_direction<'a>(
@@ -300,8 +297,8 @@ fn make_trainset_by_direction<'a>(
             pair!("Houkou"       => magic_word),
             pair!("Syubetsu"     => a.unwrap().to_string()),
             pair!("Ressyabangou" => it.name.to_string()),
-            Structure::Pair("EkiJikoku".into(), v)
+            pair!("EkiJikoku"    => ..v)
         ));
     }
-    Structure::Struct(magic_word.into(), trips)
+    structure!(magic_word => ..trips)
 }

@@ -3,7 +3,7 @@ use smallvec::SmallVec;
 use std::borrow::Cow;
 
 // Glue for bridging Pest and Rust.
-mod oudia {
+pub mod oudia {
     use super::Structure;
     use pest_consume::{Error, Parser, match_nodes};
 

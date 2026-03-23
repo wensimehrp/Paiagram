@@ -27,14 +27,17 @@ impl std::str::FromStr for Time {
 }
 
 impl Time {
-    fn hour(self) -> i32 {
+    pub fn hour(self) -> i32 {
         self.0 / 3600
     }
-    fn minute(self) -> i32 {
+    pub fn minute(self) -> i32 {
         (self.0 % 3600) / 60
     }
-    fn second(self) -> i32 {
+    pub fn second(self) -> i32 {
         self.0 % 60
+    }
+    pub fn seconds(self) -> i32 {
+        self.0
     }
 }
 
