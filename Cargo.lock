@@ -2983,17 +2983,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "from-pest"
-version = "0.3.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f6608105256838dc3a7586083a8e4485ca6533bf1a39c3ed327e9de16a39e7f"
-dependencies = [
- "log",
- "pest",
- "void",
-]
-
-[[package]]
 name = "funty"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5292,13 +5281,10 @@ dependencies = [
 [[package]]
 name = "paiagram-oudia"
 version = "0.1.0"
-source = "git+https://github.com/WenSimEHRP/Paiagram-oudia.git#28faeb7851d5e23013d4d1fffb3290b7ef7e4e91"
+source = "git+https://github.com/WenSimEHRP/Paiagram-oudia.git#6bcfeeb35b7795aad1abb11f8e417c0cdba96e93"
 dependencies = [
- "anyhow",
  "derive_more",
- "either",
  "encoding_rs",
- "from-pest",
  "pest",
  "pest_consume",
  "pest_derive",
@@ -7760,12 +7746,6 @@ dependencies = [
  "ryu",
  "thiserror 2.0.18",
 ]
-
-[[package]]
-name = "void"
-version = "1.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a02e4885ed3bc0f2de90ea6dd45ebcbb66dacffe03547fadbb0eeae2770887d"
 
 [[package]]
 name = "walkdir"
