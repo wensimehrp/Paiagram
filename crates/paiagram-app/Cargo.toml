@@ -1,8 +1,17 @@
 [package]
-name = "paiagram"
-version = "0.1.0"
+name = "paiagram-app"
+version.workspace = true
 edition.workspace = true
 license.workspace = true
+license-file.workspace = true
+authors.workspace = true
+description.workspace = true
+documentation.workspace = true
+readme.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
 paiagram-core = { path = "../paiagram-core" }
