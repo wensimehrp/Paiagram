@@ -28,7 +28,7 @@ opt-level = 3
 # Enable more optimization in the release profile at the cost of compile time.
 [profile.release]
 codegen-units = 1
-opt-level = 3
+opt-level = 2
 lto = "fat"
 panic = "abort"
 strip = true

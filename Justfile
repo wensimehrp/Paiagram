@@ -17,15 +17,15 @@ rust-docs:
 
 # Build WASM binary
 build-wasm:
-    cargo build --release --target wasm32-unknown-unknown
+    cargo build --profile wasm-release --target wasm32-unknown-unknown
     wasm-bindgen \
         --out-dir wasm-out \
         --out-name paiagram \
         --target web \
         --no-typescript \
-        target/wasm32-unknown-unknown/release/paiagram.wasm
-    @du -sh target/wasm32-unknown-unknown/release/paiagram.wasm
-    @du -s target/wasm32-unknown-unknown/release/paiagram.wasm
+        target/wasm32-unknown-unknown/wasm-release/paiagram.wasm
+    @du -sh target/wasm32-unknown-unknown/wasm-release/paiagram.wasm
+    @du -s target/wasm32-unknown-unknown/wasm-release/paiagram.wasm
     wasm-opt -O4 --all-features --fast-math -o wasm-out/paiagram_bg.wasm wasm-out/paiagram_bg.wasm
     @du -sh wasm-out/paiagram_bg.wasm
     @du -s wasm-out/paiagram_bg.wasm
