@@ -1,5 +1,5 @@
 [package]
-name = "paiagram-app"
+name = "paiagram"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

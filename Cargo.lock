@@ -5212,7 +5212,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "paiagram-app"
+name = "paiagram"
 version = "0.1.0"
 dependencies = [
  "bevy",
