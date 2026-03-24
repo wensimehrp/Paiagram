@@ -281,7 +281,15 @@ pub enum IrConversionError {
 }
 
 fn infer_name(v: &[Cow<'_, str>]) -> Result<String, IrConversionError> {
-    Ok(v[0].to_string())
+    let Some(s) = v.get(0) else {
+        return Err(IrConversionError::IndexOutOfBounds {
+            field: "UNIMPLEMENTED",
+            processing: "UNIMPLEMENTED",
+            index: 0,
+            len: v.len(),
+        });
+    };
+    Ok(s.to_string())
 }
 
 fn infer_parse<T>(v: &[Cow<'_, str>]) -> Result<T, IrConversionError>
@@ -289,7 +297,15 @@ where
     T: std::str::FromStr,
     IrConversionError: From<T::Err>,
 {
-    v[0].parse::<T>().map_err(IrConversionError::from)
+    let Some(s) = v.get(0) else {
+        return Err(IrConversionError::IndexOutOfBounds {
+            field: "UNIMPLEMENTED",
+            processing: "UNIMPLEMENTED",
+            index: 0,
+            len: v.len(),
+        });
+    };
+    s.parse::<T>().map_err(IrConversionError::from)
 }
 
 fn pass<'r, 'a>(v: &'r [Structure<'a>]) -> Result<&'r [Structure<'a>], IrConversionError> {
