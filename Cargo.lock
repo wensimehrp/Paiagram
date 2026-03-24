@@ -5292,6 +5292,7 @@ dependencies = [
 [[package]]
 name = "paiagram-oudia"
 version = "0.1.0"
+source = "git+https://github.com/WenSimEHRP/Paiagram-oudia.git#28faeb7851d5e23013d4d1fffb3290b7ef7e4e91"
 dependencies = [
  "anyhow",
  "derive_more",
