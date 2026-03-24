@@ -4,22 +4,33 @@ use pest_consume::Parser;
 
 #[repr(u32)]
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[doc(alias = "駅扱")]
 pub enum ServiceMode {
     #[default]
+    #[doc(alias = "運行なし")]
     NoOperation = 0,
+    #[doc(alias = "停車")]
     Stop = 1,
+    #[doc(alias = "通過")]
     Pass = 2,
 }
 
 /// A timetable entry
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[doc(alias = "Ekijikoku")]
+#[doc(alias = "駅時刻")]
 pub struct TimetableEntry {
+    #[doc(alias = "駅扱")]
     pub service_mode: ServiceMode,
+    #[doc(alias = "着時刻")]
     pub arrival_time: Option<Time>,
+    #[doc(alias = "発時刻")]
     pub departure_time: Option<Time>,
+    #[doc(alias = "着発番線")]
     pub track_index: Option<usize>,
     /// Operations associated with this timetable entry.
     /// This field is relatively rare, thus we put it in an [`Option<Box>`]
+    #[doc(alias = "作業")]
     operations: Option<Box<RootOperationTree>>,
 }
 
@@ -123,9 +134,7 @@ mod test {
         let s = include_str!("../test/sample2.oud2");
         let s = Structure::Struct("root".into(), parse_to_ast(s)?);
         let diagrams = s.at(["Rosen", "Dia"]);
-        let kudari_trains = diagrams
-            .clone()
-            .flat_map(|it| it.at(["Kudari", "Ressya"]));
+        let kudari_trains = diagrams.clone().flat_map(|it| it.at(["Kudari", "Ressya"]));
         let nobori_trains = diagrams.flat_map(|it| it.at(["Nobori", "Ressya"]));
         for train in kudari_trains.chain(nobori_trains) {
             let Structure::Struct(_, vals) = train else {

@@ -17,6 +17,7 @@ pub enum UnderlayTileType {
     OpenStreetMap,
     ChiriinChizu(ChiriinChizuVariant),
     AutoNavi,
+    EsriWorldImagery,
 }
 
 #[derive(Default, Clone, Copy, Serialize, Deserialize, PartialEq, Debug)]
@@ -40,6 +41,13 @@ impl Widget for &mut UnderlayTileType {
                 self,
                 UnderlayTileType::OpenStreetMap,
                 tr!("tab-graph-underlay-openstreetmap"),
+            )
+            .changed();
+        changed |= ui
+            .radio_value(
+                self,
+                UnderlayTileType::EsriWorldImagery,
+                "Esri World Imagery (Satellite)",
             )
             .changed();
         let mut res = ui.radio_value(
@@ -150,6 +158,27 @@ impl TileSource for AutoNavi {
     }
 }
 
+pub struct EsriWorldImagery;
+
+impl TileSource for EsriWorldImagery {
+    fn tile_url(&self, tile_id: TileId) -> String {
+        let z = tile_id.zoom;
+        let y = tile_id.y;
+        let x = tile_id.x;
+        format!(
+            "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+        )
+    }
+    fn attribution(&self) -> Attribution {
+        Attribution {
+            text: "Powered by Esri",
+            url: "https://developers.arcgis.com/documentation/esri-and-data-attribution/",
+            logo_light: None,
+            logo_dark: None,
+        }
+    }
+}
+
 pub fn draw_underlay(
     (InMut(painter), InRef(navi), InMut(ui), In(new_type)): (
         InMut<Painter>,
@@ -180,6 +209,9 @@ pub fn draw_underlay(
             *tiles = Some(HttpTiles::new(ChiriinChizu(v), ctx))
         }
         Some(UnderlayTileType::AutoNavi) => *tiles = Some(HttpTiles::new(AutoNavi, ctx)),
+        Some(UnderlayTileType::EsriWorldImagery) => {
+            *tiles = Some(HttpTiles::new(EsriWorldImagery, ctx))
+        }
     }
 
     let Some(tiles) = tiles else {

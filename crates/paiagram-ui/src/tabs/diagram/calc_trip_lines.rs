@@ -83,7 +83,9 @@ pub fn calc(
                     .iter()
                     .rposition(|(_, h)| *h <= vertical_visible.start as f32)
             });
-        let last_visible = heights.iter().rposition(|(_, h)| *h < vertical_visible.end as f32);
+        let last_visible = heights
+            .iter()
+            .rposition(|(_, h)| *h < vertical_visible.end as f32);
         if let (Some(first_visible), Some(mut last_visible)) = (first_visible, last_visible) {
             let first_visible = first_visible.saturating_sub(2);
             last_visible = (last_visible + 1).min(heights.len() - 1);
@@ -227,8 +229,7 @@ pub fn calc(
             };
 
             let (repeat_start, repeat_end) = if repeat_freq_ticks.0 > 0 {
-                let start =
-                    (visible_ticks.start.0 - base_max.0).div_euclid(repeat_freq_ticks.0);
+                let start = (visible_ticks.start.0 - base_max.0).div_euclid(repeat_freq_ticks.0);
                 let end = (visible_ticks.end.0 - base_min.0).div_euclid(repeat_freq_ticks.0);
                 (start, end)
             } else {

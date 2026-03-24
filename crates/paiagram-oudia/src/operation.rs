@@ -41,8 +41,7 @@ macro_rules! impl_get_before_after {
                 &mut self,
                 hierarchy: impl IntoIterator<Item = BeforeAfter>,
                 operations: impl IntoIterator<Item = RawOperation<'b>>,
-            )
-            where
+            ) where
                 'b: 'a,
             {
                 let mut hierarchy = hierarchy.into_iter();
@@ -61,7 +60,8 @@ macro_rules! impl_get_before_after {
                 match index {
                     BeforeAfter::B(i) => {
                         if i >= self.befores.len() {
-                            self.befores.resize_with(i + 1, BeforeOperationTree::default);
+                            self.befores
+                                .resize_with(i + 1, BeforeOperationTree::default);
                         }
                         self.befores[i].insert_operations(hierarchy, operations)
                     }
@@ -182,10 +182,10 @@ impl<'a> SerializeToOud for RawOperation<'a> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ShuntOperation {
-    track_index: usize,
-    departure_time: Option<Time>,
-    arrival_time: Option<Time>,
-    display_time: bool,
+    pub track_index: usize,
+    pub departure_time: Option<Time>,
+    pub arrival_time: Option<Time>,
+    pub display_time: bool,
 }
 
 impl TryFrom<&[Option<&str>]> for ShuntOperation {
@@ -206,8 +206,8 @@ impl TryFrom<&[Option<&str>]> for ShuntOperation {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CoupleOperation {
-    add_to_front: bool,
-    time: Option<Time>,
+    pub add_to_front: bool,
+    pub time: Option<Time>,
 }
 
 impl TryFrom<&[Option<&str>]> for CoupleOperation {
@@ -222,9 +222,9 @@ impl TryFrom<&[Option<&str>]> for CoupleOperation {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DecoupleOperation {
-    position_index: usize,
-    count: usize,
-    time: Option<Time>,
+    pub position_index: usize,
+    pub count: usize,
+    pub time: Option<Time>,
 }
 
 impl TryFrom<&[Option<&str>]> for DecoupleOperation {
@@ -240,9 +240,9 @@ impl TryFrom<&[Option<&str>]> for DecoupleOperation {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EnterFromDepotOperation {
-    time: Option<Time>,
-    link_code: Option<String>,
-    operation_numbers: SmallVec<[String; 2]>,
+    pub time: Option<Time>,
+    pub link_code: Option<String>,
+    pub operation_numbers: SmallVec<[String; 2]>,
 }
 
 impl<'a> TryFrom<&[Option<&'a str>]> for EnterFromDepotOperation {
@@ -258,8 +258,8 @@ impl<'a> TryFrom<&[Option<&'a str>]> for EnterFromDepotOperation {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExitToDepotOperation {
-    time: Option<Time>,
-    link_code: Option<String>,
+    pub time: Option<Time>,
+    pub link_code: Option<String>,
 }
 
 impl<'a> TryFrom<&[Option<&'a str>]> for ExitToDepotOperation {
@@ -274,11 +274,11 @@ impl<'a> TryFrom<&[Option<&'a str>]> for ExitToDepotOperation {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BeforeEnterFromExternalRouteOperation {
-    station_index: usize,
-    time: Option<Time>,
-    arrival_time: Option<Time>,
-    link_code: Option<String>,
-    operation_numbers: SmallVec<[String; 2]>,
+    pub station_index: usize,
+    pub time: Option<Time>,
+    pub arrival_time: Option<Time>,
+    pub link_code: Option<String>,
+    pub operation_numbers: SmallVec<[String; 2]>,
 }
 
 impl<'a> TryFrom<&[Option<&'a str>]> for BeforeEnterFromExternalRouteOperation {
@@ -296,10 +296,10 @@ impl<'a> TryFrom<&[Option<&'a str>]> for BeforeEnterFromExternalRouteOperation {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExitToExternalRouteOperation {
-    station_index: usize,
-    time: Option<Time>,
-    arrival_time: Option<Time>,
-    link_code: Option<String>,
+    pub station_index: usize,
+    pub time: Option<Time>,
+    pub arrival_time: Option<Time>,
+    pub link_code: Option<String>,
 }
 
 impl<'a> TryFrom<&[Option<&'a str>]> for ExitToExternalRouteOperation {
@@ -316,9 +316,9 @@ impl<'a> TryFrom<&[Option<&'a str>]> for ExitToExternalRouteOperation {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContinuePreviousTripOperation {
-    time: Option<Time>,
-    operation_numbers: SmallVec<[String; 2]>,
-    next_junction_type: Option<i32>,
+    pub time: Option<Time>,
+    pub operation_numbers: SmallVec<[String; 2]>,
+    pub next_junction_type: Option<i32>,
 }
 
 impl<'a> TryFrom<&[Option<&'a str>]> for ContinuePreviousTripOperation {
@@ -334,8 +334,8 @@ impl<'a> TryFrom<&[Option<&'a str>]> for ContinuePreviousTripOperation {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChangeOperationNumberOperation {
-    operation_numbers: SmallVec<[String; 2]>,
-    reverse: bool,
+    pub operation_numbers: SmallVec<[String; 2]>,
+    pub reverse: bool,
 }
 
 impl<'a> TryFrom<&[Option<&'a str>]> for ChangeOperationNumberOperation {

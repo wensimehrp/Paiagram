@@ -14,7 +14,9 @@ use crate::{
 use bevy::{platform::collections::HashMap, prelude::*};
 use itertools::Itertools;
 use moonshine_core::kind::*;
-use paiagram_oudia::{Direction, ServiceMode, TimetableEntry as OuDiaTimetableEntry, parse_to_ir, Time as OuDiaTime};
+use paiagram_oudia::{
+    Direction, ServiceMode, Time as OuDiaTime, TimetableEntry as OuDiaTimetableEntry, parse_to_ir,
+};
 
 #[derive(Debug, Clone, Copy)]
 struct TimetableEntry {
@@ -29,11 +31,7 @@ impl From<OuDiaTime> for TimetableTime {
     }
 }
 
-pub fn load_oud(
-    msg: On<super::LoadOuDia>,
-    mut commands: Commands,
-    mut graph: ResMut<Graph>,
-) {
+pub fn load_oud(msg: On<super::LoadOuDia>, mut commands: Commands, mut graph: ResMut<Graph>) {
     let str = match &msg.content {
         OuDiaContentType::OuDiaSecond(s) => std::borrow::Cow::Borrowed(s.as_str()),
         OuDiaContentType::OuDia(d) => {
@@ -176,6 +174,6 @@ fn convert_timetable_entry(entry: OuDiaTimetableEntry) -> TimetableEntry {
     TimetableEntry {
         service_mode: entry.service_mode,
         arrival_time: entry.arrival_time.map(TimetableTime::from),
-        departure_time: entry.arrival_time.map(TimetableTime::from),
+        departure_time: entry.departure_time.map(TimetableTime::from),
     }
 }

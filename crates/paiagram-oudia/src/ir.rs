@@ -1,6 +1,7 @@
 use crate::operation::{InsertOperation, parse_to_operation_hierarchy, parse_to_raw_operation};
 use crate::time::Time;
 use crate::timetable::{TimetableEntry, parse_to_timetable_entry};
+use crate::{pair, structure};
 use smallvec::SmallVec;
 use std::borrow::Cow;
 use thiserror::Error;
@@ -9,46 +10,86 @@ use thiserror::Error;
 #[derive(Debug, Clone, PartialEq)]
 pub struct Root {
     /// File type. Usually the software name + version.
+    #[doc(alias = "FileType")]
     pub file_type: String,
     /// The route in the file.
+    #[doc(alias = "Rosen")]
+    #[doc(alias = "路線")]
     pub route: Route,
 }
 
-/// A route (路線).
 #[derive(Debug, Clone, PartialEq)]
+#[doc(alias = "Rosen")]
+#[doc(alias = "路線")]
 pub struct Route {
     /// The name of the route
+    #[doc(alias = "Rosenmei")]
+    #[doc(alias = "路線名")]
     pub name: String,
     /// What stations are included in the route
+    #[doc(alias = "Eki")]
+    #[doc(alias = "駅")]
     pub stations: Vec<Station>,
     /// The available train classes. E.g., local, express.
+    #[doc(alias = "Ressyasyubetsu")]
+    #[doc(alias = "列車種別")]
     pub classes: Vec<Class>,
     /// The diagrams included in this route. Each diagram is a timetable set.
+    #[doc(alias = "Dia")]
+    #[doc(alias = "ダイヤ")]
+    #[doc(alias = "ダイアグラム")]
     pub diagrams: Vec<Diagram>,
     /// When to start displaying times on the diagram page.
+    #[doc(alias = "KitenJikoku")]
+    #[doc(alias = "起点時刻")]
     pub display_start_time: Time,
+    #[doc(alias = "Comment")]
     pub comment: String,
 }
 
 /// A station on the route.
 #[derive(Debug, Clone, PartialEq)]
+#[doc(alias = "Eki")]
+#[doc(alias = "駅")]
 pub struct Station {
+    #[doc(alias = "Ekimei")]
+    #[doc(alias = "駅名")]
     pub name: String,
     /// The abbreviation used in timetables.
+    #[doc(alias = "EkimeiJikokuRyaku")]
+    #[doc(alias = "駅名時刻略")]
     pub timetable_abbreviation: Option<String>,
     /// The abbreviation used in diagrams.
+    #[doc(alias = "EkimeiDiaRyaku")]
+    #[doc(alias = "駅名ダイヤ略")]
     pub diagram_abbreviation: Option<String>,
+    /// Stations that branch off at certain points may repeat themselves on
+    /// the diagram. This index refers to the other station in the station list
+    /// that should be treated as if it is this station. Please also note that
+    /// the name "BrunchCoreEkiIndex" contains a spelling mistake. It should be
+    /// "branch" instead of "brunch"
+    #[doc(alias = "BrunchCoreEkiIndex")]
     pub branch_index: Option<usize>,
+    /// Diagrams representing loop lines may repeat certain stations on
+    /// the diagram. This index refers to the other station in the station list
+    /// that should be treated as if it is this station.
+    #[doc(alias = "LoopOriginEkiIndex")]
     pub loop_index: Option<usize>,
+    /// The tracks of the station
+    #[doc(alias = "EkiTrack2Cont")]
     pub tracks: SmallVec<[Track; 2]>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Track {
+    #[doc(alias = "TrackName")]
     pub name: String,
+    #[doc(alias = "TrackRyakusyou")]
+    #[doc(alias = "Track略称")]
     pub abbreviation: String,
 }
 
+/// Color. This color is stored in ARGB format.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Color(pub [u8; 4]);
 
@@ -87,26 +128,42 @@ impl std::str::FromStr for Color {
 
 /// A train class. E.g., local, express.
 #[derive(Debug, Clone, PartialEq)]
+#[doc(alias = "Ressyasyubetsu")]
+#[doc(alias = "列車種別")]
 pub struct Class {
+    #[doc(alias = "Syubetsumei")]
+    #[doc(alias = "種別名")]
     pub name: String,
     /// An optional abbreviation.
+    #[doc(alias = "Ryakusyou")]
+    #[doc(alias = "略称")]
     pub abbreviation: Option<String>,
     /// The color displayed in diagrams and in the timetable.
+    #[doc(alias = "DiagramSenColor")]
+    #[doc(alias = "ダイア線Color")]
     pub diagram_line_color: Color,
 }
 
 /// A timetable set.
 #[derive(Debug, Clone, PartialEq)]
+#[doc(alias = "Dia")]
+#[doc(alias = "ダイヤ")]
+#[doc(alias = "ダイアグラム")]
 pub struct Diagram {
+    #[doc(alias = "DiaName")]
     pub name: Option<String>,
     pub trips: Vec<Trip>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[doc(alias = "Houkou")]
+#[doc(alias = "方向")]
 pub enum Direction {
-    /// Nobori
+    #[doc(alias = "Nobori")]
+    #[doc(alias = "上り")]
     Up,
-    /// Kudari
+    #[doc(alias = "Kudari")]
+    #[doc(alias = "下り")]
     Down,
 }
 
@@ -124,28 +181,69 @@ impl std::str::FromStr for Direction {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[doc(alias = "Ressya")]
+#[doc(alias = "列車")]
 pub struct Trip {
+    #[doc(alias = "Ressyabangou")]
+    #[doc(alias = "列車番号")]
     pub name: Option<String>,
-    pub direction: Direction,
-    pub class_index: usize,
-    pub times: Vec<TimetableEntry>,
+    #[doc(alias = "Bikou")]
+    #[doc(alias = "備考")]
     pub comment: Option<String>,
+    #[doc(alias = "Houkou")]
+    #[doc(alias = "方向")]
+    pub direction: Direction,
+    #[doc(alias = "Syubetsu")]
+    #[doc(alias = "種別")]
+    pub class_index: usize,
+    #[doc(alias = "EkiJikoku")]
+    #[doc(alias = "駅時刻")]
+    pub times: Vec<TimetableEntry>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Operation<'a> {
+#[doc(alias = "運用")]
+pub struct Rotation<'a> {
+    #[doc(alias = "運用番号")]
     pub name: String,
+    #[doc(alias = "列車番号")]
     pub trips: Vec<&'a Trip>,
 }
 
 impl Diagram {
-    fn trips_at_station(&self, index: usize) -> impl Iterator<Item = Trip> {
-        unimplemented!();
-        [].into_iter()
-    }
-    fn operations(&self) -> impl Iterator<Item = Operation> {
-        unimplemented!();
-        [].into_iter()
+    pub fn rotations<'a>(&self, _stations: &[Station]) -> Vec<Rotation<'a>> {
+        // struct Train<'a> {
+        //     head: &'a str,
+        //     rest: Vec<&'a str>,
+        //     time: Time,
+        // }
+        // impl<'a> Train<'a> {
+        //     fn rotations(&self) -> impl Iterator<Item = &'a str> {
+        //         std::iter::once(self.head).chain(self.rest.iter().copied())
+        //     }
+        // }
+        // let mut rotations = Vec::new();
+        // let mut active_trains: Vec<Train> = Vec::new();
+        // // Maybe it's better to use a hashmap instead?
+        // let mut train_on_station_tracks: FxHashMap<(usize, Option<usize>), Vec<Train>> =
+        //     HashMap::with_hasher(FxBuildHasher);
+        // for root_tree in self
+        //     .trips
+        //     .iter()
+        //     .filter_map(|it| {
+        //         it.times
+        //             .iter()
+        //             .find(|it| it.service_mode != ServiceMode::NoOperation)
+        //     })
+        //     .filter_map(|it| it.operations())
+        // {
+        //     let before_tree = &root_tree.befores;
+        // }
+        // for val in train_on_station_tracks.values_mut() {
+        //     val.sort_unstable_by_key(|it| it.time);
+        // }
+        // rotations
+        unimplemented!()
     }
 }
 
@@ -261,10 +359,7 @@ impl<'a> TryFrom<&[Structure<'a>]> for Root {
             RequiredOnce(Pair("FileType", file_type)) => infer_name,
             RequiredOnce(Struct("Rosen", route)) => Route::try_from,
         );
-        Ok(Self {
-            file_type,
-            route,
-        })
+        Ok(Self { file_type, route })
     }
 }
 
@@ -326,8 +421,8 @@ impl<'a> TryFrom<&[Structure<'a>]> for Diagram {
     fn try_from(value: &[Structure<'a>]) -> Result<Self, Self::Error> {
         parse_fields!(value;
             OptionalOnce(Pair("DiaName", name)) => infer_name,
+            Many(Struct("Nobori", up_trips)) => pass,
             Many(Struct("Kudari", down_trips)) => pass,
-            Many(Struct("Kudari", up_trips)) => pass,
         );
         let mut trips = Vec::new();
         let down_trips_iter = down_trips.into_iter().flatten();
@@ -398,6 +493,21 @@ impl<'a> TryFrom<&[Structure<'a>]> for Class {
     }
 }
 
+impl<'a> Into<Vec<Structure<'a>>> for Root {
+    fn into(self) -> Vec<Structure<'a>> {
+        vec![
+            pair!("FileType" => self.file_type),
+            structure!("Rosen" => ..<Route as Into<Vec<Structure>>>::into(self.route)),
+        ]
+    }
+}
+
+impl<'a> Into<Vec<Structure<'a>>> for Route {
+    fn into(self) -> Vec<Structure<'a>> {
+        vec![pair!("Rosenmei" => self.name)]
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -410,6 +520,24 @@ mod test {
         let ast = parse_to_ast(s)?;
         let ir = Root::try_from(ast.as_slice())?;
         println!("{ir:#?}");
+        Ok(())
+    }
+
+    #[test]
+    fn test_rotations() -> E {
+        let s = include_str!("../test/sample.oud2");
+        let ast = parse_to_ast(s)?;
+        let ir = Root::try_from(ast.as_slice())?;
+        if let Some(diagram) = ir.route.diagrams.first() {
+            let mut rotations = diagram.rotations(&ir.route.stations);
+            rotations.sort_by_key(|it| it.name.clone());
+            for Rotation { name, trips } in rotations.into_iter() {
+                println!("========== Rotation '{name}' ==========");
+                for trip in trips {
+                    println!("{}", trip.name.as_deref().unwrap_or("<unnamed>"))
+                }
+            }
+        }
         Ok(())
     }
 }

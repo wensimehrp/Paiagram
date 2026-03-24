@@ -1,14 +1,14 @@
 pub use ast::SerializeToOud;
 pub use ast::Structure;
-pub use root::*;
-pub use timetable::{ServiceMode, TimetableEntry};
+pub use ir::*;
 pub use time::Time;
+pub use timetable::{ServiceMode, TimetableEntry};
 
 use crate::ast::parse_to_ast;
 
 pub mod ast;
 pub mod operation;
-pub mod root;
+pub mod ir;
 pub mod time;
 pub mod timetable;
 
