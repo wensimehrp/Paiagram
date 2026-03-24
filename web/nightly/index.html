@@ -47,7 +47,6 @@
         const WASM_PATH = "./paiagram_bg.wasm";
         const FONT_PATHS = ["./SarasaUiSC-Regular.ttf"];
         const SERVER_REVISION_PATH = "./git-revision.txt";
-        const MAX_WASM_CHUNKS = 256;
 
         const textEncoder = new TextEncoder();
         const textDecoder = new TextDecoder();
@@ -87,19 +86,6 @@
             return [...snippetPaths];
         }
 
-        function concatBuffers(buffers) {
-            const total = buffers.reduce((sum, bytes) => sum + bytes.byteLength, 0);
-            const merged = new Uint8Array(total);
-            let offset = 0;
-
-            for (const bytes of buffers) {
-                merged.set(new Uint8Array(bytes), offset);
-                offset += bytes.byteLength;
-            }
-
-            return merged.buffer;
-        }
-
         async function fetchOptionalArrayBuffer(url) {
             const response = await fetch(url, { cache: "no-store" });
             if (!response.ok) {
@@ -119,40 +105,16 @@
             return response.text();
         }
 
-        async function fetchWasmWithChunkFallback() {
-            const chunks = [];
-            // Loops through .00, .01, etc.
-            for (let index = 0; index < MAX_WASM_CHUNKS; index += 1) {
-                const suffix = String(index).padStart(2, "0");
-                const chunkPath = `${WASM_PATH}.${suffix}`;
-                const response = await fetch(chunkPath, { cache: "no-store" });
-
-                if (response.ok) {
-                    const contentType = response.headers.get("Content-Type") || "";
-                    if (contentType.includes("text/html")) {
-                        break;
-                    }
-                    chunks.push(await response.arrayBuffer());
-                    continue;
-                }
-
-                // Stop if we found some chunks and hit a 404 (natural end of file sequence)
-                if (chunks.length > 0) break;
-
-                // Error if we couldn't even find the .00 chunk
-                throw new Error(`Primary wasm chunk not found: ${chunkPath}`);
+        async function fetchWasm() {
+            const response = await fetch(WASM_PATH, { cache: "no-store" });
+            if (!response.ok) {
+                throw new Error(`Failed to fetch ${WASM_PATH}: ${response.status}`);
             }
 
-            const mergedBuffer = concatBuffers(chunks);
-            const view = new Uint8Array(mergedBuffer);
-
-            if (view.length < 4 || view[0] !== 0x00 || view[1] !== 0x61 || view[2] !== 0x73 || view[3] !== 0x6d) {
-                throw new Error("Invalid Wasm header. The server likely returned an HTML fallback page instead of binary data.");
-            }
-
+            const bytes = await response.arrayBuffer();
             return {
-                bytes: mergedBuffer,
-                mime: "application/wasm",
+                bytes,
+                mime: response.headers.get("content-type") || "application/wasm",
             };
         }
 
@@ -268,10 +230,10 @@
         }
 
         async function downloadFreshBundle() {
-            setLoading("Downloading latest Paiagram nightly build chunks…");
+            setLoading("Downloading latest Paiagram nightly build…");
             const glueSource = await fetchText(GLUE_PATH);
             const snippetPaths = parseSnippetImports(glueSource);
-            const wasm = await fetchWasmWithChunkFallback();
+            const wasm = await fetchWasm();
 
             const bundle = new Map();
             bundle.set(toKey(GLUE_PATH), {
