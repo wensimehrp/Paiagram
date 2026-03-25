@@ -3,7 +3,6 @@ name = "paiagram-pdf"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-license-file.workspace = true
 authors.workspace = true
 description.workspace = true
 documentation.workspace = true

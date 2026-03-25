@@ -8,7 +8,6 @@ name = "paiagram"
 version = "0.1.0"
 edition = "2024"
 license = "MPL-2.0"
-license-file = "LICENSE.md"
 authors = ["Jeremy Gao <wensimehrp@gmail.com>"]
 description = "Web/desktop timetabling application"
 documentation = "https://paiagram.com/docs"
