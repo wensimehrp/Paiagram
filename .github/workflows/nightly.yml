@@ -46,6 +46,8 @@ jobs:
         with:
           personal_token: ${{ secrets.PERSONAL_TOKEN }}
           external_repository: WenSimEHRP/Paiagram-Archive
+          user_name: github-actions[bot]
+          user_email: 41898282+github-actions[bot]@users.noreply.github.com
           publish_branch: main
           publish_dir: ./dist/nightly
           destination_dir: nightly
