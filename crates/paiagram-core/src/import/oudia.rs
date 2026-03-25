@@ -15,7 +15,8 @@ use bevy::{platform::collections::HashMap, prelude::*};
 use itertools::Itertools;
 use moonshine_core::kind::*;
 use paiagram_oudia::{
-    Direction, ServiceMode, Time as OuDiaTime, TimetableEntry as OuDiaTimetableEntry, parse_to_ir,
+    Direction, ServiceMode, Time as OuDiaTime, TimetableEntry as OuDiaTimetableEntry,
+    parse_oud_to_ir, parse_oud2_to_ir,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -32,16 +33,12 @@ impl From<OuDiaTime> for TimetableTime {
 }
 
 pub fn load_oud(msg: On<super::LoadOuDia>, mut commands: Commands, mut graph: ResMut<Graph>) {
-    let str = match &msg.content {
-        OuDiaContentType::OuDiaSecond(s) => std::borrow::Cow::Borrowed(s.as_str()),
-        OuDiaContentType::OuDia(d) => {
-            use encoding_rs::SHIFT_JIS;
-            let (s, _, _) = SHIFT_JIS.decode(d);
-            s
-        }
-    };
     info!("Loading OUD/OUD2 data...");
-    let root = parse_to_ir(&str).expect("Failed to parse OUD/OUD2 file");
+    let root = match &msg.content {
+        OuDiaContentType::OuDiaSecond(s) => parse_oud2_to_ir(s),
+        OuDiaContentType::OuDia(d) => parse_oud_to_ir(d),
+    }
+    .expect("Failed to parse OUD/OUD2 data");
     let route = root.route;
     let mut station_map: HashMap<String, Instance<StationComponent>> = HashMap::new();
     let mut stations: Vec<Option<Instance<StationComponent>>> = vec![None; route.stations.len()];

@@ -5280,8 +5280,9 @@ dependencies = [
 
 [[package]]
 name = "paiagram-oudia"
-version = "0.1.0"
-source = "git+https://github.com/WenSimEHRP/Paiagram-oudia.git#6bcfeeb35b7795aad1abb11f8e417c0cdba96e93"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7cb4ab12a3a4bfff89597c55c9833ad3f5031bb61e6526758dfab4bc195f0e4d"
 dependencies = [
  "derive_more",
  "encoding_rs",
