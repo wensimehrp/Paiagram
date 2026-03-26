@@ -153,14 +153,14 @@ impl CommandPalette {
                 }),
                 (ClassesTab::NAME, || MainTab::Classes(ClassesTab)),
             ];
-            for (name, ptr) in PANEL_INFO.iter().copied() {
+            for (name, fn_ptr) in PANEL_INFO.iter().copied() {
                 match_string.clear();
                 match_string.push_str(name);
                 match_string.push_str(" (Tab)");
                 if !matcher.is_match(match_string.as_str()) {
                     continue;
                 }
-                matched.push((name.to_string(), MatchedType::Tab(ptr)));
+                matched.push((name.to_string(), MatchedType::Tab(fn_ptr)));
             }
             for (e, name, matched_type) in names {
                 match_string.clear();
@@ -207,10 +207,7 @@ impl CommandPalette {
                 if enter_pressed {
                     commands.write_message(OpenOrFocus(match matched_type {
                         MatchedType::Route(e) => MainTab::Diagram(DiagramTab::new(*e)),
-                        MatchedType::Station(_e) => {
-                            // TODO: finish stations
-                            MainTab::Settings(SettingsTab)
-                        }
+                        MatchedType::Station(e) => MainTab::Station(StationTab::new(*e)),
                         MatchedType::Trip(e) => MainTab::Trip(TripTab::new(*e)),
                         MatchedType::Tab(f) => f(),
                     }));

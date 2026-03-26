@@ -25,7 +25,6 @@ use egui_tiles::{
 use moonshine_core::prelude::{MapEntities, ReflectMapEntities};
 use paiagram_core::colors::PredefinedColor;
 use paiagram_core::import::LoadLlt;
-use paiagram_core::station::StationQuery;
 use paiagram_rw::read::CallbackFn;
 use serde::{Deserialize, Serialize};
 use tabs::{Tab, all_tabs::*};
@@ -442,6 +441,7 @@ macro_rules! for_all_tabs {
             MainTab::Trip($t) => $body,
             MainTab::AllTrips($t) => $body,
             MainTab::PriorityGraph($t) => $body,
+            MainTab::Station($t) => $body,
         }
     };
 }
@@ -457,6 +457,7 @@ pub enum MainTab {
     Trip(TripTab),
     AllTrips(AllTripsTab),
     PriorityGraph(PriorityGraphTab),
+    Station(StationTab)
 }
 
 impl MapEntities for MainTab {

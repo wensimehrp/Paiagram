@@ -14,6 +14,7 @@ pub mod priority_graph;
 pub mod settings;
 pub mod start;
 pub mod trip;
+pub mod station;
 
 pub mod all_tabs {
     pub use super::all_trips::AllTripsTab;
@@ -25,6 +26,7 @@ pub mod all_tabs {
     pub use super::settings::SettingsTab;
     pub use super::start::StartTab;
     pub use super::trip::TripTab;
+    pub use super::station::StationTab;
 }
 
 fn handle_keyboard_navigation(ui: &Ui) -> Vec2 {

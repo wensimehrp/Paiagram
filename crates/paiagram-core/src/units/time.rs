@@ -62,6 +62,22 @@ impl TimetableTime {
         TimetableTime(h.into() * 3600 + m.into() * 60 + s.into())
     }
     #[inline]
+    pub fn hour(&self) -> i32 {
+        self.to_hmsd().0
+    }
+    #[inline]
+    pub fn minute(&self) -> i32 {
+        self.to_hmsd().1
+    }
+    #[inline]
+    pub fn second(&self) -> i32 {
+        self.to_hmsd().2
+    }
+    #[inline]
+    pub fn day(&self) -> i32 {
+        self.to_hmsd().3
+    }
+    #[inline]
     pub fn to_hmsd(self) -> (i32, i32, i32, i32) {
         let days = self.0.div_euclid(24 * 3600);
         let seconds_of_day = self.0.rem_euclid(24 * 3600);
