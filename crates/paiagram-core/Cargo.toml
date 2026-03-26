@@ -14,7 +14,7 @@ categories.workspace = true
 
 [dependencies]
 paiagram-rw = { path = "../paiagram-rw" }
-paiagram-oudia = "0.1.1"
+paiagram-oudia = "0.1.2"
 serde = "1.0.228"
 rand = "0.9.2"
 bevy = { version = "0.18.0", default-features = false, features = [
