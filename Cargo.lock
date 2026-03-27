@@ -5306,6 +5306,7 @@ dependencies = [
  "derive_more",
  "eframe",
  "egui",
+ "egui-i18n",
  "ehttp",
  "either",
  "encoding_rs",

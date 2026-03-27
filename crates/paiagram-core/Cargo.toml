@@ -46,6 +46,7 @@ eframe = { version = "0.34.0", default-features = false, features = [
     "web_screen_reader",
 ] }
 egui = { version = "0.34.0", default-features = false }
+egui-i18n = { version = "0.1.2", features = ["fluent"] }
 smallvec = { version = "1.15.1", features = ["serde"] }
 either = "1.15.0"
 fluent = "0.17.0"
