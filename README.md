@@ -6,9 +6,19 @@
 [![Website](https://img.shields.io/website?url=https%3A%2F%2Fpaiagram.com&up_message=Try%20it%20online!&down_message=Service%20down&logo=github&label=Web%20build)](https://paiagram.com)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/WenSimEHRP/Paiagram)
 
+---
+
 ![A fictional railway network featuring mixed services](https://github.com/user-attachments/assets/3819f7b5-c33c-4e71-90a4-d61d8a4bb93b)
 
-![A map of the railway network around Tokyo](https://github.com/user-attachments/assets/0f33a9cc-d65b-4f50-a335-c394efeb28a3)
+_A fictional railway network featuring mixed services_
+
+---
+
+[![The Chinese Railway network](https://github.com/user-attachments/assets/1b53f533-ec6e-4183-b7d1-fbf471545318)](https://paiagram.com/0.1.1/?open=example.paia)
+
+[_The Chinese Railway network_](https://paiagram.com/0.1.1/?open=example.paia)
+
+---
 
 > [!WARNING]
 > Paiagram is still in development. Don't expect it to be ready for production use right now.
