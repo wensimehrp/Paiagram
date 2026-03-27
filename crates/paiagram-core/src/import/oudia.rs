@@ -76,7 +76,14 @@ pub fn load_oud(msg: On<super::LoadOuDia>, mut commands: Commands, mut graph: Re
         Name::new(route.name),
         Route {
             stops: station_instances.iter().map(|e| e.entity()).collect(),
-            lengths: vec![10.0; station_instances.len()],
+            lengths: route.diagrams[0]
+                .minimum_interval_durations(&route.stations)
+                .map(|t| match t {
+                    // TODO: write a proper constant
+                    Some(t) => t.seconds() as f32 / 20.0,
+                    None => 10.0,
+                })
+                .collect(),
         },
     ));
 
