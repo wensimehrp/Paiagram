@@ -28,14 +28,14 @@ bevy = { version = "0.18.0", default-features = false, features = [
     "http",
 ] }
 clap = { version = "4.5.51", features = ["derive"] }
-eframe = { version = "0.34.0", default-features = false, features = [
+eframe = { version = "0.34.1", default-features = false, features = [
     "accesskit",
     "wgpu",
     "persistence",
     "wayland",
     "web_screen_reader",
 ] }
-egui = { version = "0.34.0", default-features = false, features = [
+egui = { version = "0.34.1", default-features = false, features = [
     "rayon",
     "persistence",
     "serde",

@@ -1,5 +1,6 @@
 [workspace]
 members = ["crates/*"]
+exclude = ["crates/epaint_default_fonts"]
 default-members = ["crates/paiagram-app"]
 resolver = "3"
 
@@ -15,6 +16,9 @@ repository = "https://github.com/wensimehrp/paiagram"
 homepage = "https://paiagram.com"
 keywords = ["timetabling", "scheduler", "web", "diagram"]
 categories = ["visualization"]
+
+[patch.crates-io]
+epaint_default_fonts = { path = "crates/epaint_default_fonts" }
 
 # Enable a small amount of optimization in the dev profile.
 [profile.dev]

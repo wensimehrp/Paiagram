@@ -16,17 +16,17 @@ categories.workspace = true
 paiagram-core = { path = "../paiagram-core" }
 paiagram-raptor = { path = "../paiagram-raptor" }
 paiagram-rw = { path = "../paiagram-rw" }
-egui_tiles = { git = "https://github.com/rerun-io/egui_tiles.git", rev = "5bb13081915dc1ff48a0e7173fd74953471834e9" }
+egui_tiles = "0.15.0"
 bevy = { version = "0.18.0", default-features = false }
 moonshine-core = "0.5.1"
 serde = "1.0.228"
 serde_json = "1.0.145"
-egui = { version = "0.34.0", default-features = false, features = [
+egui = { version = "0.34.1", default-features = false, features = [
     "rayon",
     "persistence",
     "serde",
 ] }
-eframe = { version = "0.34.0", default-features = false, features = [
+eframe = { version = "0.34.1", default-features = false, features = [
     "accesskit",
     "wgpu",
     "persistence",
