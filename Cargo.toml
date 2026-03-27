@@ -35,4 +35,4 @@ strip = true
 # Optimize for size in the wasm-release profile to reduce load times and bandwidth usage on web.
 [profile.wasm-release]
 inherits = "release"
-opt-level = "z"
+opt-level = "s"

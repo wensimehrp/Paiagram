@@ -26,7 +26,7 @@ build-wasm:
         target/wasm32-unknown-unknown/wasm-release/paiagram.wasm
     @du -sh target/wasm32-unknown-unknown/wasm-release/paiagram.wasm
     @du -s target/wasm32-unknown-unknown/wasm-release/paiagram.wasm
-    wasm-opt -O4 --all-features --fast-math -o wasm-out/paiagram_bg.wasm wasm-out/paiagram_bg.wasm
+    wasm-opt -Oz --all-features --fast-math -o wasm-out/paiagram_bg.wasm wasm-out/paiagram_bg.wasm
     @du -sh wasm-out/paiagram_bg.wasm
     @du -s wasm-out/paiagram_bg.wasm
 
