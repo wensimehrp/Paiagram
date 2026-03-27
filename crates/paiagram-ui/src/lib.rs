@@ -55,7 +55,7 @@ impl Plugin for UiPlugin {
             .init_resource::<UiModal>()
             .init_resource::<command_palette::CommandPalette>()
             .add_plugins((
-                bevy_inspector_egui::DefaultInspectorConfigPlugin,
+                // bevy_inspector_egui::DefaultInspectorConfigPlugin,
                 actions::ActionsPlugin,
             ))
             .add_message::<OpenOrFocus>()
@@ -457,7 +457,7 @@ pub enum MainTab {
     Trip(TripTab),
     AllTrips(AllTripsTab),
     PriorityGraph(PriorityGraphTab),
-    Station(StationTab)
+    Station(StationTab),
 }
 
 impl MapEntities for MainTab {
@@ -648,7 +648,7 @@ impl<'w> Behavior<MainTab> for MainTabViewer<'w> {
     }
     fn on_tab_button(
         &mut self,
-        _tiles: &Tiles<MainTab>,
+        _tiles: &mut Tiles<MainTab>,
         tile_id: TileId,
         button_response: Response,
     ) -> Response {

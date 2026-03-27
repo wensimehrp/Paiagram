@@ -129,7 +129,10 @@ impl<'w, 's> StationQueryItem<'w, 's> {
 #[derive(QueryData)]
 pub struct ParentStationOrStation {
     entity: Entity,
-    station: AnyOf<(&'static Station, (&'static ChildOf, &'static PlatformEntries))>,
+    station: AnyOf<(
+        &'static Station,
+        (&'static ChildOf, &'static PlatformEntries),
+    )>,
 }
 
 impl<'w, 'q> ParentStationOrStationItem<'w, 'q> {

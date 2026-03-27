@@ -1,9 +1,9 @@
-use std::borrow::Cow;
-
 use bevy::ecs::world::World;
+use egui::emath;
 use egui::{Id, Key, NumExt, Response, Ui, Vec2, WidgetText, vec2};
 use egui_i18n::tr;
 use moonshine_core::prelude::MapEntities;
+use std::borrow::Cow;
 
 pub mod all_trips;
 pub mod classes;
@@ -13,8 +13,8 @@ pub mod inspector;
 pub mod priority_graph;
 pub mod settings;
 pub mod start;
-pub mod trip;
 pub mod station;
+pub mod trip;
 
 pub mod all_tabs {
     pub use super::all_trips::AllTripsTab;
@@ -25,8 +25,8 @@ pub mod all_tabs {
     pub use super::priority_graph::PriorityGraphTab;
     pub use super::settings::SettingsTab;
     pub use super::start::StartTab;
-    pub use super::trip::TripTab;
     pub use super::station::StationTab;
+    pub use super::trip::TripTab;
 }
 
 fn handle_keyboard_navigation(ui: &Ui) -> Vec2 {
@@ -54,7 +54,7 @@ fn handle_keyboard_navigation(ui: &Ui) -> Vec2 {
     let smoothed_delta = ui.ctx().data_mut(|data| {
         let smoothed_delta: &mut Vec2 =
             data.get_temp_mut_or(ui.id().with("keyboard pan info"), vec2(0.0, 0.0));
-        let t = egui::emath::exponential_smooth_factor(0.9, 0.3, dt);
+        let t = emath::exponential_smooth_factor(0.9, 0.3, dt);
         *smoothed_delta = emath::lerp(*smoothed_delta..=key_pan_delta, t);
         let diff = (*smoothed_delta - key_pan_delta).length();
         if diff < 0.01 {

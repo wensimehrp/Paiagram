@@ -39,27 +39,19 @@ chrono = "0.4.42"
 clap = { version = "4.5.51", features = ["derive"] }
 instant = { version = "0.1.13", features = ["wasm-bindgen"] }
 rayon = "1.11.0"
-eframe = { version = "0.33.3", default-features = false, features = [
-    "accesskit",
+eframe = { version = "0.34.0", default-features = false, features = [
     "wgpu",
     "persistence",
     "wayland",
     "web_screen_reader",
 ] }
-egui = { version = "0.33.3", default-features = false, features = [
-    "rayon",
-    "persistence",
-    "serde",
-] }
+egui = { version = "0.34.0", default-features = false }
 smallvec = { version = "1.15.1", features = ["serde"] }
 either = "1.15.0"
-egui_table = "0.7.0"
 fluent = "0.17.0"
 strum = "0.27.2"
 strum_macros = "0.27.2"
 bitvec = "1.0.1"
-egui-i18n = { version = "0.1.2", features = ["fluent"] }
-emath = "0.33.3"
 visgraph = "0.1.0"
 ron = "0.12.0"
 moonshine-core = "0.5.1"
@@ -68,12 +60,10 @@ ehttp = { version = "0.6.0", features = ["json", "native-async"] }
 strsim = "0.11.1"
 lz4_flex = "0.12.0"
 thiserror = "2.0.17"
-bevy-inspector-egui = { version = "0.36.0", default-features = false }
 itertools = "0.14.0"
 gtfs-structures = { version = "0.46.1", default-features = false }
 utm = "0.1.6"
-egui-phosphor = "0.11.0"
-wgpu = { version = "27.0.1", features = [
+wgpu = { version = "29.0.1", features = [
     "vulkan",
     "gles",
     "dx12",
@@ -93,7 +83,7 @@ num-format = "0.4.4"
 ureq = { version = "3.1.4", features = ["_tls"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-getrandom = { version = "0.2.17", features = ["js"] }
+getrandom = { version = "0.3", features = ["wasm_js"] }
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 web-sys = { version = "0.3", features = [

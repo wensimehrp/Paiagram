@@ -6,12 +6,12 @@ use crate::{
     display_entry_info,
 };
 use bevy::prelude::*;
+use egui::emath::Numeric;
 use egui::epaint::TextShape;
 use egui::{
     Align2, Color32, FontId, Id, Margin, NumExt, Painter, Pos2, Rect, Sense, Stroke, Ui, Vec2, vec2,
 };
 use egui_i18n::tr;
-use emath::Numeric;
 use moonshine_core::prelude::MapEntities;
 use paiagram_core::entry::{
     AdjustEntryMode, EntryBundle, EntryEstimate, EntryMode, EntryModeAdjustment, EntryQuery,

@@ -1,7 +1,7 @@
 use bevy::prelude::*;
+use egui::emath::Numeric;
 use egui::{FontId, Layout, Rect, RichText, Ui, Vec2, vec2};
 use egui_table::{Column, Table, TableDelegate};
-use emath::Numeric;
 use moonshine_core::prelude::MapEntities;
 use serde::{Deserialize, Serialize};
 

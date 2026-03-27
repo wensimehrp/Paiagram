@@ -87,9 +87,9 @@ impl eframe::App for PaiagramApp {
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
         egui::Rgba::TRANSPARENT.to_array()
     }
-    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         self.bevy_app.update();
-        paiagram_ui::show_ui(ctx, self.bevy_app.world_mut(), frame.info().cpu_usage);
+        paiagram_ui::show_ui(ui.ctx(), self.bevy_app.world_mut(), frame.info().cpu_usage);
     }
 }
 

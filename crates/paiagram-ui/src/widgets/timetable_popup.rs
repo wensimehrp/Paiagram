@@ -1,6 +1,6 @@
 use bevy::prelude::*;
+use egui::emath::Numeric;
 use egui::{Response, Ui, Vec2, vec2};
-use emath::Numeric;
 use paiagram_core::{
     entry::{
         AdjustEntryMode, EntryEstimate, EntryMode, EntryModeAdjustment, EntryQueryItem, TravelMode,

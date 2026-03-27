@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 use egui::{Color32, RichText, Stroke};
+use either::Either;
 use moonshine_core::prelude::MapEntities;
 use paiagram_core::{
     class::ClassQuery,
@@ -16,11 +17,15 @@ use crate::GlobalTimer;
 pub struct StationTab {
     #[entities]
     station_entity: Entity,
+    include_nonstop: bool,
 }
 
 impl StationTab {
     pub fn new(station_entity: Entity) -> Self {
-        Self { station_entity }
+        Self {
+            station_entity,
+            include_nonstop: false,
+        }
     }
 }
 
@@ -29,16 +34,17 @@ impl super::Tab for StationTab {
     fn main_display(&mut self, world: &mut World, ui: &mut egui::Ui) {
         let station_name = world.get::<Name>(self.station_entity).unwrap().as_str();
         ui.heading(station_name);
+        ui.checkbox(&mut self.include_nonstop, "Include non-stop");
         egui::ScrollArea::both().show(ui, |ui| {
             world
-                .run_system_cached_with(display_time_grid, (ui, self.station_entity))
+                .run_system_cached_with(display_time_grid, (ui, self))
                 .unwrap();
         });
     }
 }
 
 fn display_time_grid(
-    (InMut(ui), In(station_entity)): (InMut<egui::Ui>, In<Entity>),
+    (InMut(ui), InRef(tab)): (InMut<egui::Ui>, InRef<StationTab>),
     station_q: Query<StationQuery>,
     platform_entry_q: Query<&PlatformEntries>,
     entry_q: Query<EntryQuery>,
@@ -54,11 +60,15 @@ fn display_time_grid(
         last_station_abbrev: &'a str,
     }
     let mut entry_bucket: [Vec<DisplayedEntry>; 24] = [const { Vec::new() }; 24];
-    let station_info = station_q.get(station_entity).unwrap();
+    let station_info = station_q.get(tab.station_entity).unwrap();
     let station_entry_iter = station_info
         .passing_entries(&platform_entry_q)
-        .map(|e| entry_q.get(e).unwrap())
-        .filter(|it| it.mode.arr.is_some());
+        .map(|e| entry_q.get(e).unwrap());
+    let station_entry_iter = if tab.include_nonstop {
+        Either::Left(station_entry_iter)
+    } else {
+        Either::Right(station_entry_iter.filter(|it| it.mode.arr.is_some()))
+    };
     for e in station_entry_iter {
         let Some(estimate) = e.estimate else {
             continue;
@@ -83,7 +93,6 @@ fn display_time_grid(
         line.sort_by_key(|it| it.time.minute() * 60 + it.time.second());
     }
     let mut heights: [f32; 25] = [0.0; 25];
-    let font_id = egui::FontId::new(16.0, egui::FontFamily::Name("dia_pro".into()));
     let (current_h, current_min, current_secs, _) =
         global_timer.read_ticks().to_timetable_time().to_hmsd();
     let current_h = current_h as usize;
@@ -91,24 +100,28 @@ fn display_time_grid(
     widths_seconds.push((ui.clip_rect().left(), 0));
     egui::Grid::new("station grid")
         .striped(true)
-        .num_columns(entry_bucket.iter().map(|it| it.len()).max().unwrap() + 1)
         .show(ui, |ui| {
             for (line_idx, entries) in entry_bucket.into_iter().enumerate() {
-                ui.heading(line_idx.to_string());
-                let display_entry = |entry: DisplayedEntry, ui: &mut egui::Ui| {
+                ui.horizontal_centered(|ui| {
+                    ui.heading(line_idx.to_string());
+                });
+                fn display_entry(entry: DisplayedEntry, ui: &mut egui::Ui) {
                     ui.vertical_centered(|ui| {
                         ui.small(entry.last_station_abbrev);
                         ui.label(
                             RichText::new(entry.time.minute().to_string())
                                 .color(entry.color)
-                                .font(font_id.clone()),
+                                .font(egui::FontId::new(
+                                    16.0,
+                                    egui::FontFamily::Name("dia_pro".into()),
+                                )),
                         );
                         ui.small(entry.trip_name);
                     });
-                };
+                }
                 if line_idx == current_h {
                     let mut push_widths_seconds = |minutes: i32, ui: &egui::Ui| {
-                        if widths_seconds.last().unwrap().1 / 60 == minutes {
+                        if widths_seconds.last().unwrap().1 == minutes * 60 {
                             return;
                         }
                         widths_seconds.push((ui.cursor().left(), minutes * 60));

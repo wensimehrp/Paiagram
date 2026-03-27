@@ -3,7 +3,7 @@ use bevy::{
     ecs::{name::NameOrEntityItem, query::QueryIter},
     prelude::*,
 };
-use bevy_inspector_egui::bevy_inspector::ui_for_entity_with_children;
+// use bevy_inspector_egui::bevy_inspector::ui_for_entity_with_children;
 use egui_table::{Column, Table, TableDelegate};
 use moonshine_core::prelude::MapEntities;
 use paiagram_core::entry::EntryMode;
@@ -67,6 +67,8 @@ impl MapEntities for InspectorTab {
 impl Tab for InspectorTab {
     const NAME: &'static str = "Inspector";
     fn main_display(&mut self, world: &mut World, ui: &mut egui::Ui) {
+        ui.label("TEMPORARILY SUSPENDED DUE TO EGUI 0.34 UPDATE");
+        /*
         let available_width = ui.available_width();
         egui::SidePanel::new(egui::panel::Side::Right, ui.id().with("right panel"))
             .exact_width(available_width / 2.0)
@@ -100,5 +102,6 @@ impl Tab for InspectorTab {
                     start: 0,
                 },
             );
+        */
     }
 }
