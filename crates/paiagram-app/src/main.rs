@@ -13,7 +13,7 @@ struct PaiagramApp {
 
 impl PaiagramApp {
     fn new(cc: &eframe::CreationContext) -> Self {
-        cc.egui_ctx.style_mut(|style| {
+        cc.egui_ctx.global_style_mut(|style| {
             style.spacing.window_margin = egui::Margin::same(2);
             style.interaction.selectable_labels = false;
         });
@@ -89,7 +89,7 @@ impl eframe::App for PaiagramApp {
     }
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         self.bevy_app.update();
-        paiagram_ui::show_ui(ui.ctx(), self.bevy_app.world_mut(), frame.info().cpu_usage);
+        paiagram_ui::show_ui(ui, self.bevy_app.world_mut(), frame.info().cpu_usage);
     }
 }
 

@@ -8,15 +8,11 @@ pub mod save;
 pub mod tabs;
 mod widgets;
 
-#[cfg(not(target_arch = "wasm32"))]
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
-
 use bevy::prelude::*;
 use chrono::{Local, Timelike};
 use egui::{
-    Context, Frame, Key, KeyboardShortcut, Modifiers, OpenUrl, Response, RichText, ScrollArea,
-    Stroke, Ui,
+    Context, Frame, Key, KeyboardShortcut, Modifiers, OpenUrl, Panel, Response, RichText,
+    ScrollArea, Stroke, Ui,
 };
 use egui_i18n::tr;
 use egui_tiles::{
@@ -25,10 +21,6 @@ use egui_tiles::{
 use moonshine_core::prelude::{MapEntities, ReflectMapEntities};
 use paiagram_core::colors::PredefinedColor;
 use paiagram_core::import::LoadLlt;
-use paiagram_rw::read::CallbackFn;
-use serde::{Deserialize, Serialize};
-use tabs::{Tab, all_tabs::*};
-
 use paiagram_core::units::time::Tick;
 use paiagram_core::{
     entry::{EntryEstimate, IsDerivedEntry},
@@ -39,6 +31,12 @@ use paiagram_core::{
     units::time::TimetableTime,
     vehicle::Vehicle,
 };
+use paiagram_rw::read::CallbackFn;
+use serde::{Deserialize, Serialize};
+#[cfg(not(target_arch = "wasm32"))]
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
+use tabs::{Tab, all_tabs::*};
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsCast;
@@ -246,14 +244,14 @@ pub(crate) enum SelectedItem {
     Stations(StationSelection),
 }
 
-impl SelectedItem {
-    pub fn is_none(&self) -> bool {
-        matches!(self, Self::None)
-    }
-    pub fn is_some(&self) -> bool {
-        !matches!(self, Self::None)
-    }
-}
+// impl SelectedItem {
+//     pub fn is_none(&self) -> bool {
+//         matches!(self, Self::None)
+//     }
+//     pub fn is_some(&self) -> bool {
+//         !matches!(self, Self::None)
+//     }
+// }
 
 impl Default for SelectedItems {
     fn default() -> Self {
@@ -816,11 +814,11 @@ extern "C" {
     fn toggle_fullscreen(id: &str);
 }
 
-pub fn show_ui(ctx: &Context, world: &mut World, cpu_time: Option<f32>) {
-    world.run_system_cached_with(sync_ui, ctx).unwrap();
+pub fn show_ui(ui: &mut Ui, world: &mut World, cpu_time: Option<f32>) {
+    world.run_system_cached_with(sync_ui, ui.ctx()).unwrap();
     world.resource_scope(|world, mut modal: Mut<UiModal>| {
         let Some(m) = &mut modal.0 else { return };
-        let modal_response = egui::Modal::new(m.id()).show(ctx, |ui| m.display(ui, world));
+        let modal_response = egui::Modal::new(m.id()).show(ui.ctx(), |ui| m.display(ui, world));
         if modal_response.should_close() {
             modal.0 = None
         }
@@ -829,25 +827,23 @@ pub fn show_ui(ctx: &Context, world: &mut World, cpu_time: Option<f32>) {
     // check if ctrl+p clicked
     world.resource_scope(
         |world, mut command_palette: Mut<command_palette::CommandPalette>| {
-            if ctx
-                .input_mut(|r| r.consume_shortcut(&KeyboardShortcut::new(Modifiers::CTRL, Key::P)))
+            if ui.input_mut(|r| r.consume_shortcut(&KeyboardShortcut::new(Modifiers::CTRL, Key::P)))
             {
                 command_palette.toggle();
             };
-            command_palette.show(ctx, world);
+            command_palette.show(ui.ctx(), world);
         },
     );
 
-    egui::TopBottomPanel::top("top panel")
-        .exact_height(32.0)
-        .show(ctx, |ui| {
+    Panel::top("top panel")
+        .exact_size(32.0)
+        .show_inside(ui, |ui| {
             ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                 let res = ui.button("More...");
                 #[cfg(not(target_arch = "wasm32"))]
                 if ui.button("Fullscreen").clicked() {
-                    let is_fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
-                    ui.ctx()
-                        .send_viewport_cmd(egui::ViewportCommand::Fullscreen(!is_fullscreen));
+                    let is_fullscreen = ui.input(|i| i.viewport().fullscreen.unwrap_or(false));
+                    ui.send_viewport_cmd(egui::ViewportCommand::Fullscreen(!is_fullscreen));
                 }
                 #[cfg(target_arch = "wasm32")]
                 if ui.button("Fullscreen").clicked() {
@@ -1043,19 +1039,19 @@ pub fn show_ui(ctx: &Context, world: &mut World, cpu_time: Option<f32>) {
                         }
                     }),
             };
-            egui::SidePanel::right("right toolbar")
-                .exact_width(30.0)
-                .show(ctx, |ui| {
+            Panel::right("right toolbar")
+                .exact_size(30.0)
+                .show_inside(ui, |ui| {
                     ui.checkbox(&mut aus.expanded, "");
                 });
-            egui::SidePanel::right("right panel")
+            Panel::right("right panel")
                 .frame(Frame::default())
-                .show_animated(ctx, aus.expanded, |ui| {
+                .show_animated_inside(ui, aus.expanded, |ui| {
                     aus.ui(&mut tab_viewer, ui);
                 });
             egui::CentralPanel::default()
                 .frame(Frame::default())
-                .show(ctx, |ui| {
+                .show_inside(ui, |ui| {
                     let mut maximized = mus.maximized;
                     if let Some(max_id) = mus.maximized
                         && let Some(Tile::Pane(pane)) = mus.tree.tiles.get_mut(max_id)
@@ -1065,8 +1061,8 @@ pub fn show_ui(ctx: &Context, world: &mut World, cpu_time: Option<f32>) {
                             last_focused_id: &mut None,
                             last_maximized_id: &mut None,
                         };
-                        egui::TopBottomPanel::top("maximized_top")
-                            .exact_height(24.0)
+                        Panel::top("maximized_top")
+                            .exact_size(24.0)
                             .show_inside(ui, |ui| {
                                 let res = ui.horizontal(|ui| {
                                     ui.label(tab_viewer.tab_title_for_pane(pane));
