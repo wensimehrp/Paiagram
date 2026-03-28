@@ -1,5 +1,6 @@
 use super::{Navigatable, Tab};
 use crate::widgets::buttons;
+use crate::widgets::indicators::display_time_indicator_indicator_horizontal;
 use crate::widgets::timetable_popup::{arrival_popup, departure_popup};
 use crate::{
     ExtendingTripSelection, GlobalTimer, SelectedItem, SelectedItems, TimetableEntrySelection,
@@ -620,6 +621,7 @@ fn main_display(tab: &mut DiagramTab, world: &mut World, ui: &mut egui::Ui) {
             egui::StrokeKind::Middle,
         );
     }
+    // emphasize selected values
     for idx in indices {
         let trip = &trip_line_buf[idx];
         let stroke = egui::Stroke {
@@ -653,12 +655,23 @@ fn main_display(tab: &mut DiagramTab, world: &mut World, ui: &mut egui::Ui) {
             }
         }
     }
-    // draw time line
+    // draw time indicator
     let ticks = world.resource::<GlobalTimer>().read_ticks();
-    let time_stroke = Stroke::new(1.5, Color32::RED);
-    let mut x = tab.navi.logical_x_to_screen_x(ticks);
-    time_stroke.round_center_to_pixel(ui.pixels_per_point(), &mut x);
-    painter.vline(x, response.rect.top()..=response.rect.bottom(), time_stroke);
+    let time_indicator_stroke = Stroke::new(1.5, Color32::RED);
+    let mut time_indicator_x = tab.navi.logical_x_to_screen_x(ticks);
+    time_indicator_stroke.round_center_to_pixel(ui.pixels_per_point(), &mut time_indicator_x);
+    display_time_indicator_indicator_horizontal(
+        ui.id().with("time indicator"),
+        ui.clip_rect(),
+        time_indicator_x,
+        time_indicator_stroke.color,
+        &painter,
+    );
+    painter.vline(
+        time_indicator_x,
+        response.rect.top()..=response.rect.bottom(),
+        time_indicator_stroke,
+    );
 }
 
 /// Takes a buffer the calculate trains

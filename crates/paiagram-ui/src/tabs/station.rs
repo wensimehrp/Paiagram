@@ -1,5 +1,11 @@
+use crate::{
+    GlobalTimer,
+    widgets::indicators::{
+        display_time_indicator_indicator_horizontal, display_time_indicator_indicator_vertical,
+    },
+};
 use bevy::prelude::*;
-use egui::{Color32, RichText, Stroke};
+use egui::{Color32, Rect, RichText, Stroke};
 use either::Either;
 use moonshine_core::prelude::MapEntities;
 use paiagram_core::{
@@ -10,8 +16,6 @@ use paiagram_core::{
     units::time::TimetableTime,
 };
 use serde::{Deserialize, Serialize};
-
-use crate::GlobalTimer;
 
 #[derive(MapEntities, Serialize, Deserialize, Clone, PartialEq)]
 pub struct StationTab {
@@ -43,6 +47,13 @@ impl super::Tab for StationTab {
     }
 }
 
+struct DisplayedEntry<'a> {
+    time: TimetableTime,
+    color: Color32,
+    trip_name: &'a str,
+    last_station_abbrev: &'a str,
+}
+
 fn display_time_grid(
     (InMut(ui), InRef(tab)): (InMut<egui::Ui>, InRef<StationTab>),
     station_q: Query<StationQuery>,
@@ -53,13 +64,9 @@ fn display_time_grid(
     parent_station_or_station: Query<ParentStationOrStation>,
     global_timer: Res<GlobalTimer>,
 ) {
-    struct DisplayedEntry<'a> {
-        time: TimetableTime,
-        color: Color32,
-        trip_name: &'a str,
-        last_station_abbrev: &'a str,
-    }
     let mut entry_bucket: [Vec<DisplayedEntry>; 24] = [const { Vec::new() }; 24];
+
+    // Prepare the station info
     let station_info = station_q.get(tab.station_entity).unwrap();
     let station_entry_iter = station_info
         .passing_entries(&platform_entry_q)
@@ -92,6 +99,8 @@ fn display_time_grid(
     for line in entry_bucket.iter_mut() {
         line.sort_by_key(|it| it.time.minute() * 60 + it.time.second());
     }
+
+    // Display the info
     let mut heights: [f32; 25] = [0.0; 25];
     let (current_h, current_min, current_secs, _) =
         global_timer.read_ticks().to_timetable_time().to_hmsd();
@@ -141,6 +150,8 @@ fn display_time_grid(
             }
         });
     heights[24] = ui.cursor().top();
+
+    // Calculate the time indicators' position
     let current_seconds = current_min * 60 + current_secs;
     let hour_progress = current_seconds as f32 / 3600.0;
     let base_y = heights[current_h];
@@ -161,10 +172,26 @@ fn display_time_grid(
     let line_stroke = Stroke::new(1.5, Color32::RED);
     line_stroke.round_center_to_pixel(ui.pixels_per_point(), &mut hour_line_y);
     line_stroke.round_center_to_pixel(ui.pixels_per_point(), &mut minute_line_x);
+
+    // Draw the indicators
+    display_time_indicator_indicator_vertical(
+        ui.id().with("hour indicator"),
+        ui.clip_rect(),
+        hour_line_y,
+        line_stroke.color,
+        ui.painter(),
+    );
     ui.painter().hline(
         ui.clip_rect().left()..=ui.clip_rect().right(),
         hour_line_y,
         line_stroke,
+    );
+    display_time_indicator_indicator_horizontal(
+        ui.id().with("minute indicator"),
+        Rect::from_x_y_ranges(ui.clip_rect().x_range(), base_y..=next_y),
+        minute_line_x,
+        line_stroke.color,
+        ui.painter(),
     );
     ui.painter()
         .vline(minute_line_x, base_y..=next_y, line_stroke);
