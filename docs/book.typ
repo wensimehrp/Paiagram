@@ -3,9 +3,9 @@
 #let links = (
   repo: "https://github.com/WenSimEHRP/Paiagram",
   app: "https://paiagram.com/nightly",
+  converter: "https://wensimehrp.github.io/Paiagram-oudia/",
   discussions: "https://github.com/WenSimEHRP/Paiagram/discussions",
   discord: "https://discord.com/channels/142724111502802944/1281691431395790908",
-  oud-to-kdl: "https://wensimehrp.github.io/oudia-to-kdl/",
   oudia: "https://web.archive.org/web/20250831042417/http://take-okm.a.la9.jp/oudia/",
   oudia-second: "http://oudiasecond.seesaa.net/",
   qetrc-docs: "https://qetrc.readthedocs.io/zh-cn/latest/overview.html",

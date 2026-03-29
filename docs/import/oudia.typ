@@ -6,9 +6,8 @@
 and #link(links.oudia-second)[OuDiaSecond] are popular Japanese timetabling applications. Paiagram provides builtin
 support for reading their output formats, `.oud` and `.oud2`.
 
-You can also checkout the #link(links.oud-to-kdl)[oud-to-kdl] converter to convert both file formats to #link(
-  "https://kdl.dev/",
-)[KDL] in case if you want to process the `oud` format using a custom script.
+You can also checkout the #link(links.converter)[OuDia/OuDiaSecond] converter to convert both file formats to JSON,
+YAML, or TOML, in case if you want to process the `oud` format using a custom script.
 
 = Importing in the App
 
