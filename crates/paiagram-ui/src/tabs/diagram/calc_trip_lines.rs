@@ -2,7 +2,7 @@ use bevy::{
     ecs::entity::{EntityHashMap, EntityHashSet},
     prelude::*,
 };
-use egui::{Pos2, Rect};
+use egui::Pos2;
 use rayon::prelude::*;
 
 use paiagram_core::{
@@ -15,35 +15,6 @@ use paiagram_core::{
 };
 
 use crate::tabs::Navigatable;
-
-// pub struct CalcContext {
-//     pub route_entity: Entity,
-//     pub y_offset: f64,
-//     pub zoom_y: f32,
-//     pub x_offset: Tick,
-//     pub screen_rect: Rect,
-//     pub ticks_per_screen_unit: f64,
-//     pub visible_ticks: std::ops::Range<Tick>,
-// }
-//
-// impl CalcContext {
-//     pub fn from_tab(
-//         tab: &super::DiagramTab,
-//         screen_rect: Rect,
-//         ticks_per_screen_unit: f64,
-//         visible_ticks: std::ops::Range<Tick>,
-//     ) -> Self {
-//         Self {
-//             route_entity: tab.route_entity,
-//             y_offset: tab.navi.y_offset,
-//             zoom_y: tab.navi.zoom.y,
-//             x_offset: tab.navi.x_offset,
-//             screen_rect,
-//             ticks_per_screen_unit,
-//             visible_ticks,
-//         }
-//     }
-// }
 
 pub fn calc(
     (InMut(buf), InRef(navi), In(route_entity)): (

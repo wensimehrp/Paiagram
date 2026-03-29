@@ -14,7 +14,7 @@ use std::sync::Arc;
 use walkers::sources::Attribution;
 
 use crate::{
-    IntervalSelection, SelectedItem, SelectedItems, StationSelection, TimetableEntrySelection,
+    IntervalSelection, SelectedItem, SelectedItems, StationSelection, EntrySelection,
 };
 
 use crate::tabs::graph::gpu_draw::ShapeInstance;
@@ -198,7 +198,7 @@ impl super::Tab for GraphTab {
         match selected_sample.clone() {
             SelectedItems::None | SelectedItems::Intervals(_) | SelectedItems::ExtendingTrip(_) => {
             }
-            SelectedItems::TimetableEntries(entries) => {
+            SelectedItems::Entries(entries) => {
                 world
                     .run_system_cached_with(crate::display_entry_info, (ui, entries.as_slice()))
                     .unwrap();
@@ -439,9 +439,9 @@ fn display(tab: &mut GraphTab, world: &mut World, ui: &mut egui::Ui) {
             (Some(item), items) => {
                 let ctrl_pressed = ui.input(|i| i.modifiers.ctrl || i.modifiers.command);
                 if ctrl_pressed {
-                    items.add_entry(item);
+                    items.toggle_selection(item);
                 } else {
-                    items.set_or_reset(item);
+                    items.set_single_selection(item);
                 }
             }
             (None, _) => {}
@@ -742,7 +742,7 @@ fn push_draw_items(
     }
 
     // entries
-    let mut selected_entry: Option<TimetableEntrySelection> = None;
+    let mut selected_entry: Option<EntrySelection> = None;
     for sample in
         trip_spatial_index.query_xy_time(min_x..=max_x, min_y..=max_y, query_time..=query_time)
     {
@@ -770,7 +770,7 @@ fn push_draw_items(
         {
             let r = Rect::from_pos(pos).expand(STATION_SELECTION_RADIUS);
             if r.contains(interact_pos) {
-                selected_entry = Some(TimetableEntrySelection {
+                selected_entry = Some(EntrySelection {
                     entry: sample.entry1,
                     parent: sample.trip,
                 })
@@ -792,7 +792,7 @@ fn push_draw_items(
         draw_name(Some(name.as_str()), pos, color);
     }
     if let Some(e) = selected_entry {
-        selected = SelectedItem::TimetableEntries(e);
+        selected = SelectedItem::Entries(e);
     }
     maybe_interact_pos.map(|_| selected)
 }

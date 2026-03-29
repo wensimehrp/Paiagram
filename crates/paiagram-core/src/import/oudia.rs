@@ -72,16 +72,20 @@ pub fn load_oud(msg: On<super::LoadOuDia>, mut commands: Commands, mut graph: Re
         })
         .collect();
 
+    let travel_durations: Vec<Option<OuDiaTime>> = route.diagrams[0]
+        .minimum_interval_durations(&route.stations)
+        .collect();
+
     commands.spawn((
         Name::new(route.name),
         Route {
             stops: station_instances.iter().map(|e| e.entity()).collect(),
-            lengths: route.diagrams[0]
-                .minimum_interval_durations(&route.stations)
+            lengths: travel_durations
+                .iter()
                 .map(|t| match t {
                     // TODO: write a proper constant
-                    Some(t) => t.seconds() as f32 / 20.0,
-                    None => 10.0,
+                    Some(t) => t.seconds() as f32 / 60.0 * 2.0,
+                    None => 1.0 * 2.0,
                 })
                 .collect(),
         },
@@ -96,7 +100,9 @@ pub fn load_oud(msg: On<super::LoadOuDia>, mut commands: Commands, mut graph: Re
             &mut commands,
             station_instances[i].entity(),
             station_instances[i + 1].entity(),
-            Distance::from_m(1000),
+            travel_durations[i].map_or(Distance::from_m(1000), |it| {
+                Distance::from_m(it.seconds() / 60 * 1000)
+            }),
         );
     }
 

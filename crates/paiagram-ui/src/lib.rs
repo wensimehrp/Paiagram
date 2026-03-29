@@ -37,6 +37,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use tabs::{Tab, all_tabs::*};
+use vec1::{Vec1, vec1};
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsCast;
@@ -57,6 +58,7 @@ impl Plugin for UiPlugin {
                 actions::ActionsPlugin,
             ))
             .add_message::<OpenOrFocus>()
+            .add_message::<ModifySelectedItems>()
             .add_systems(
                 Update,
                 (
@@ -64,13 +66,14 @@ impl Plugin for UiPlugin {
                     save::apply_loaded_scene
                         .run_if(resource_exists::<paiagram_rw::save::LoadedScene>),
                     update_timer,
+                    update_selected_items
                 ),
             );
     }
 }
 
 #[derive(Reflect, Clone, Copy, Debug, PartialEq)]
-pub(crate) struct TimetableEntrySelection {
+pub(crate) struct EntrySelection {
     pub entry: Entity,
     pub parent: Entity,
 }
@@ -106,7 +109,7 @@ pub(crate) struct ExtendingTripSelection {
 }
 
 pub(crate) fn display_entry_info(
-    (InMut(ui), InRef(selected_entries)): (InMut<Ui>, InRef<[TimetableEntrySelection]>),
+    (InMut(ui), InRef(selected_entries)): (InMut<Ui>, InRef<[EntrySelection]>),
     mut commands: Commands,
     mut selected_items: ResMut<SelectedItems>,
     is_derived_q: Query<(), With<IsDerivedEntry>>,
@@ -115,9 +118,7 @@ pub(crate) fn display_entry_info(
     entry_q: Query<&EntryEstimate>,
     mut open_or_focus: MessageWriter<OpenOrFocus>,
 ) {
-    for (idx, TimetableEntrySelection { entry, parent }) in
-        selected_entries.iter().copied().enumerate()
-    {
+    for (idx, EntrySelection { entry, parent }) in selected_entries.iter().copied().enumerate() {
         ui.strong(format!("Entry {}", idx + 1));
 
         let is_derived = is_derived_q.get(entry).is_ok();
@@ -159,37 +160,60 @@ pub(crate) fn display_entry_info(
     }
 }
 
-#[derive(Reflect, Resource, Clone, PartialEq, Debug)]
-#[reflect(Resource)]
+#[derive(Resource, Clone, PartialEq, Debug)]
 pub(crate) enum SelectedItems {
     None,
-    TimetableEntries(Vec<TimetableEntrySelection>),
-    Intervals(Vec<IntervalSelection>),
-    Stations(Vec<StationSelection>),
+    Entries(Vec1<EntrySelection>),
+    Intervals(Vec1<IntervalSelection>),
+    Stations(Vec1<StationSelection>),
     ExtendingRoute(ExtendingRouteSelection),
     ExtendingTrip(ExtendingTripSelection),
 }
 
+#[derive(Message, Clone)]
+pub(crate) enum ModifySelectedItems {
+    Toggle(SelectedItem),
+    SetSingle(SelectedItem),
+    Clear
+}
+
+fn update_selected_items(
+    mut msg: MessageReader<ModifySelectedItems>,
+    mut selected_items: ResMut<SelectedItems>,
+) {
+    for msg in msg.read() {
+        match msg {
+            ModifySelectedItems::Toggle(it) => selected_items.toggle_selection(it.clone()),
+            ModifySelectedItems::SetSingle(it) => selected_items.set_single_selection(it.clone()),
+            ModifySelectedItems::Clear => selected_items.set_single_selection(SelectedItem::None),
+        }
+    }
+}
+
 impl SelectedItems {
-    pub(crate) fn add_entry(&mut self, item: SelectedItem) {
-        fn toggle_vec<T: PartialEq>(v: &mut Vec<T>, item: T) -> bool {
+    pub(crate) fn toggle_selection(&mut self, item: SelectedItem) {
+        fn toggle_vec<T: PartialEq>(v: &mut Vec1<T>, item: T) -> bool {
             if let Some(idx) = v.iter().position(|entry| *entry == item) {
-                v.remove(idx);
+                if v.len() == 1 {
+                    return true;
+                }
+                v.remove(idx).unwrap();
+                false
             } else {
                 v.push(item);
+                false
             }
-            v.is_empty()
         }
 
         match item {
             SelectedItem::None => {}
-            SelectedItem::TimetableEntries(it) => {
-                if let Self::TimetableEntries(v) = self {
+            SelectedItem::Entries(it) => {
+                if let Self::Entries(v) = self {
                     if toggle_vec(v, it) {
                         *self = Self::None;
                     }
                 } else if matches!(self, Self::None) {
-                    *self = Self::TimetableEntries(vec![it]);
+                    *self = Self::Entries(vec1![it]);
                 }
             }
             SelectedItem::Intervals(it) => {
@@ -198,7 +222,7 @@ impl SelectedItems {
                         *self = Self::None;
                     }
                 } else if matches!(self, Self::None) {
-                    *self = Self::Intervals(vec![it]);
+                    *self = Self::Intervals(vec1![it]);
                 }
             }
             SelectedItem::Stations(it) => {
@@ -207,18 +231,18 @@ impl SelectedItems {
                         *self = Self::None;
                     }
                 } else if matches!(self, Self::None) {
-                    *self = Self::Stations(vec![it]);
+                    *self = Self::Stations(vec1![it]);
                 }
             }
         }
     }
 
-    pub(crate) fn set_or_reset(&mut self, item: SelectedItem) {
+    pub(crate) fn set_single_selection(&mut self, item: SelectedItem) {
         match item {
             SelectedItem::None => *self = Self::None,
-            SelectedItem::TimetableEntries(it) => *self = Self::TimetableEntries(vec![it]),
-            SelectedItem::Intervals(it) => *self = Self::Intervals(vec![it]),
-            SelectedItem::Stations(it) => *self = Self::Stations(vec![it]),
+            SelectedItem::Entries(it) => *self = Self::Entries(vec1![it]),
+            SelectedItem::Intervals(it) => *self = Self::Intervals(vec1![it]),
+            SelectedItem::Stations(it) => *self = Self::Stations(vec1![it]),
         }
     }
 
@@ -229,29 +253,21 @@ impl SelectedItems {
         }
     }
 
-    pub(crate) fn entry_selection(&self) -> &[TimetableEntrySelection] {
+    pub(crate) fn entry_selection(&self) -> &[EntrySelection] {
         match self {
-            Self::TimetableEntries(s) => s.as_slice(),
+            Self::Entries(s) => s.as_slice(),
             _ => &[],
         }
     }
 }
 
+#[derive(Clone)]
 pub(crate) enum SelectedItem {
     None,
-    TimetableEntries(TimetableEntrySelection),
+    Entries(EntrySelection),
     Intervals(IntervalSelection),
     Stations(StationSelection),
 }
-
-// impl SelectedItem {
-//     pub fn is_none(&self) -> bool {
-//         matches!(self, Self::None)
-//     }
-//     pub fn is_some(&self) -> bool {
-//         !matches!(self, Self::None)
-//     }
-// }
 
 impl Default for SelectedItems {
     fn default() -> Self {

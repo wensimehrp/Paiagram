@@ -1,29 +1,27 @@
 use bevy::prelude::*;
-use egui::{Color32, FontId, Painter, Pos2, Rect, Stroke, Visuals};
+use egui::{Color32, FontId, Painter, Pos2, Stroke, Visuals};
 use paiagram_core::units::time::{Tick, TimetableTime};
 
+use crate::tabs::{Navigatable, diagram::DiagramTabNavigation};
+
 pub fn draw_station_lines(
-    vertical_offset: f32,
     painter: &mut Painter,
-    screen_rect: Rect,
-    zoom: f32,
+    navi: &DiagramTabNavigation,
     to_draw: impl Iterator<Item = (Entity, f32)>,
-    pixels_per_point: f32,
     visuals: &Visuals,
-    world: &World, // FIXME: make this a system afterwards
+    world: &World,
 ) {
     // TODO: implement per-station stroke
     let stroke = Stroke {
         width: 0.6,
         color: visuals.window_stroke().color,
     };
-    // Guard against invalid zoom
-    for (station_entity, height) in to_draw {
-        let mut draw_height = (height - vertical_offset) * zoom + screen_rect.top();
-        stroke.round_center_to_pixel(pixels_per_point, &mut draw_height);
+    for (station_entity, raw_height) in to_draw {
+        let mut height = navi.logical_y_to_screen_y(raw_height as f64);
+        stroke.round_center_to_pixel(painter.pixels_per_point(), &mut height);
         painter.hline(
-            screen_rect.left()..=screen_rect.right(),
-            draw_height,
+            navi.visible_rect.left()..=navi.visible_rect.right(),
+            height,
             stroke,
         );
         let layout = painter.layout_no_wrap(
@@ -34,32 +32,15 @@ pub fn draw_station_lines(
             visuals.text_color(),
         );
         let layout_pos = Pos2 {
-            x: screen_rect.left(),
-            y: draw_height - layout.size().y,
+            x: navi.visible_rect.left(),
+            y: height - layout.size().y,
         };
         painter.galley(layout_pos, layout, visuals.text_color());
     }
 }
 
-pub(super) fn ticks_to_screen_x(
-    ticks: i64,
-    screen_rect: Rect,
-    ticks_per_screen_unit: f64,
-    offset_ticks: i64,
-) -> f32 {
-    let base = (ticks - offset_ticks) as f64 / ticks_per_screen_unit;
-    screen_rect.left() + base as f32
-}
-
 /// Draw vertical time lines and labels
-pub fn draw_time_lines(
-    tick_offset: i64,
-    painter: &mut Painter,
-    screen_rect: Rect,
-    ticks_per_screen_unit: f64,
-    visible_ticks: &std::ops::Range<i64>,
-    pixels_per_point: f32,
-) {
+pub fn draw_time_lines(painter: &mut Painter, navi: &DiagramTabNavigation) {
     const MAX_SCREEN_WIDTH: f64 = 64.0;
     const MIN_SCREEN_WIDTH: f64 = 32.0;
     let sizes = [
@@ -74,6 +55,10 @@ pub fn draw_time_lines(
         Tick::from_timetable_time(TimetableTime(60 * 60 * 4)).0, // 4 hours
         Tick::from_timetable_time(TimetableTime(60 * 60 * 24)).0, // 1 day
     ];
+    let visible_ticks = navi.visible_x();
+    let ticks_per_screen_unit = navi.x_per_screen_unit_f64();
+    let screen_rect = navi.visible_rect();
+    let pixels_per_point = painter.pixels_per_point();
     let mut drawn: Vec<i64> = Vec::with_capacity(30);
 
     // align the first tick to a spacing boundary that is <= visible start.
@@ -83,7 +68,7 @@ pub fn draw_time_lines(
         .unwrap_or(0);
     let visible = &sizes[first_visible_position..];
     for (i, spacing) in visible.iter().enumerate().rev() {
-        let first = visible_ticks.start - visible_ticks.start.rem_euclid(*spacing) - spacing;
+        let first = visible_ticks.start.0 - visible_ticks.start.0.rem_euclid(*spacing) - spacing;
         let mut tick = first;
         let strength = (((*spacing as f64 / ticks_per_screen_unit * 1.5) - MIN_SCREEN_WIDTH)
             / (MAX_SCREEN_WIDTH - MIN_SCREEN_WIDTH))
@@ -101,12 +86,12 @@ pub fn draw_time_lines(
             current_stroke.color = current_stroke.color.gamma_multiply(strength as f32);
         }
         current_stroke.width = 0.5;
-        while tick <= visible_ticks.end {
+        while tick <= visible_ticks.end.0 {
             tick += *spacing;
             if drawn.contains(&tick) {
                 continue;
             }
-            let mut x = ticks_to_screen_x(tick, screen_rect, ticks_per_screen_unit, tick_offset);
+            let mut x = navi.logical_x_to_screen_x(Tick(tick));
             current_stroke.round_center_to_pixel(pixels_per_point, &mut x);
             painter.vline(x, screen_rect.top()..=screen_rect.bottom(), current_stroke);
             drawn.push(tick);

@@ -152,7 +152,7 @@ pub trait Navigatable {
         };
         let pan_delta = handle_keyboard_navigation(ui)
             + response.drag_delta()
-            + ui.input(|input| input.smooth_scroll_delta);
+            + ui.input(|input| input.smooth_scroll_delta());
         let zooming = (zoom_delta.x - 1.0).abs() > 0.001 || (zoom_delta.y - 1.0).abs() > 0.001;
 
         if zooming

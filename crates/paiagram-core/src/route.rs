@@ -179,8 +179,8 @@ impl Route {
             .copied()
             .zip(self.lengths.iter().copied())
             .scan(0.0_f32, |acc, (stop, len)| {
-                *acc += len;
                 let out = (stop, *acc);
+                *acc += len;
                 Some(out)
             })
     }

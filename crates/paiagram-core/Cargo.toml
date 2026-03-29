@@ -39,13 +39,8 @@ chrono = "0.4.42"
 clap = { version = "4.5.51", features = ["derive"] }
 instant = { version = "0.1.13", features = ["wasm-bindgen"] }
 rayon = "1.11.0"
-eframe = { version = "0.34.0", default-features = false, features = [
-    "wgpu",
-    "persistence",
-    "wayland",
-    "web_screen_reader",
-] }
-egui = { version = "0.34.0", default-features = false }
+eframe = "0.34.1"
+egui = "0.34.1"
 egui-i18n = { version = "0.1.2", features = ["fluent"] }
 smallvec = { version = "1.15.1", features = ["serde"] }
 either = "1.15.0"

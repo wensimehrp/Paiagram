@@ -3,8 +3,8 @@ use crate::widgets::buttons;
 use crate::widgets::indicators::display_time_indicator_indicator_horizontal;
 use crate::widgets::timetable_popup::{arrival_popup, departure_popup};
 use crate::{
-    ExtendingTripSelection, GlobalTimer, SelectedItem, SelectedItems, TimetableEntrySelection,
-    display_entry_info,
+    EntrySelection, ExtendingTripSelection, GlobalTimer, IntervalSelection, ModifySelectedItems,
+    SelectedItem, SelectedItems, StationSelection, display_entry_info,
 };
 use bevy::prelude::*;
 use egui::emath::Numeric;
@@ -28,19 +28,57 @@ use paiagram_core::units::time::{Duration, Tick, TimetableTime};
 use paiagram_raptor::Journey;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use vec1::Vec1;
 pub mod calc_trip_lines;
 mod draw_lines;
 mod gpu_draw;
 
+impl SelectedItems {
+    pub fn to_canvas_state(&mut self) -> CanvasState<'_> {
+        match self {
+            Self::None => CanvasState::Idle,
+            Self::Entries(i) => CanvasState::SelectingEntries(i),
+            Self::Intervals(i) => CanvasState::SelectingIntervals(i),
+            Self::Stations(i) => CanvasState::SelectingStations(i),
+            Self::ExtendingRoute(_i) => CanvasState::Idle,
+            Self::ExtendingTrip(i) => CanvasState::ExtendingTrip(i),
+        }
+    }
+}
+
+/// The state of the canvas
+#[derive(Default)]
+pub(crate) enum CanvasState<'a> {
+    /// User is doing nothing
+    #[default]
+    Idle,
+    /// User is selecting some entries
+    SelectingEntries(&'a [EntrySelection]),
+    /// User is selecting some intervals
+    SelectingIntervals(&'a [IntervalSelection]),
+    /// User is selecting some stations
+    SelectingStations(&'a [StationSelection]),
+    /// User is extending a trip
+    ExtendingTrip(&'a mut ExtendingTripSelection),
+}
+
+/// The diagram tab.
 #[derive(Serialize, Deserialize, Clone, MapEntities)]
 pub struct DiagramTab {
-    /// X offset as ticks
+    /// The navigation info
     navi: DiagramTabNavigation,
+    /// In the case where the user secondary clicked on the page, where?
+    #[serde(skip, default)]
+    last_secondary_click_position: Option<(Tick, f64)>,
+    /// The route's entity
     #[entities]
     route_entity: Entity,
+    /// Whether to use the [`GlobalTimer`]
     use_global_timer: bool,
+    /// RAPTOR's results
     #[serde(skip, default)]
     raptor_params: RaptorParams,
+    /// GPU state for drawing the lines
     #[serde(skip, default)]
     gpu_state: Arc<egui::mutex::Mutex<gpu_draw::GpuTripRendererState>>,
 }
@@ -90,6 +128,7 @@ impl DiagramTab {
     pub fn new(route_entity: Entity) -> Self {
         Self {
             navi: DiagramTabNavigation::default(),
+            last_secondary_click_position: None,
             route_entity,
             use_global_timer: false,
             raptor_params: RaptorParams::default(),
@@ -214,6 +253,8 @@ impl Tab for DiagramTab {
         }
     }
     fn edit_display(&mut self, world: &mut World, ui: &mut Ui) {
+        let d = ui.input(|input| input.smooth_scroll_delta());
+        ui.label(d.to_string());
         ui.checkbox(&mut self.use_global_timer, "Use global timer");
         let selected = world.resource::<SelectedItems>().clone();
         match selected {
@@ -255,10 +296,10 @@ impl Tab for DiagramTab {
                     *world.resource_mut::<SelectedItems>() = SelectedItems::None
                 }
             }
-            SelectedItems::TimetableEntries(selected_entries) => {
-                world
-                    .run_system_cached_with(display_entry_info, (ui, selected_entries.as_slice()))
-                    .unwrap();
+            SelectedItems::Entries(selected_entries) => {
+                // world
+                //     .run_system_cached_with(display_entry_info, (ui, selected_entries.as_slice()))
+                //     .unwrap();
             }
             SelectedItems::Intervals(_) => {}
             SelectedItems::Stations(_) => {}
@@ -349,20 +390,33 @@ impl Tab for DiagramTab {
             .unwrap();
     }
     fn main_display(&mut self, world: &mut World, ui: &mut egui::Ui) {
-        egui::Frame::canvas(ui.style())
-            .inner_margin(Margin::ZERO)
-            .outer_margin(Margin::ZERO)
-            .stroke(Stroke::NONE)
-            .show(ui, |ui| main_display(self, world, ui));
+        world.resource_scope(|world, mut selected: Mut<SelectedItems>| {
+            egui::Frame::canvas(ui.style())
+                .inner_margin(Margin::ZERO)
+                .outer_margin(Margin::ZERO)
+                .stroke(Stroke::NONE)
+                .show(ui, |ui| {
+                    main_display(self, world, ui, selected.to_canvas_state())
+                });
+        });
     }
 }
 
-fn main_display(tab: &mut DiagramTab, world: &mut World, ui: &mut egui::Ui) {
+fn main_display(
+    tab: &mut DiagramTab,
+    world: &mut World,
+    ui: &mut egui::Ui,
+    canvas_state: CanvasState,
+) {
     let route = world
         .get::<Route>(tab.route_entity)
         .expect("Entity should have a route");
+
+    // Setup the response and the painter
     let (response, mut painter) =
         ui.allocate_painter(ui.available_size_before_wrap(), Sense::click_and_drag());
+
+    // Timer shifting logic
     let timer = world.resource::<GlobalTimer>();
     tab.navi.visible_rect = response.rect;
     if tab.use_global_timer {
@@ -377,45 +431,28 @@ fn main_display(tab: &mut DiagramTab, world: &mut World, ui: &mut egui::Ui) {
     } else {
         timer.try_unlock(tab.route_entity);
     }
+
+    // Prepare the station info
     let station_heights: Vec<_> = route.iter().collect();
     if station_heights.is_empty() {
         return;
     }
     tab.navi.max_height = station_heights.last().map_or(0.0, |(_, h)| *h);
-    let ticks_per_screen_unit = 1.0 / tab.navi.zoom_x().max(f32::EPSILON) as f64;
-    let visible_ticks = tab.navi.visible_x();
-    let station_heights_screen_iter = station_heights.iter().copied().map(|(e, h)| {
-        let pos = tab.navi.logical_y_to_screen_y(h as f64);
-        (e, pos)
-    });
-    // note that order matters here: navigation must be handled before anything else is calculated
-    let show_button = tab.navi.zoom.x.min(tab.navi.zoom.y) > 0.001;
-    let button_strength = ui
-        .ctx()
-        .animate_bool(ui.id().with("all buttons animation"), show_button);
 
+    // Draw the horizontal station lines
     draw_lines::draw_station_lines(
-        tab.navi.y_offset as f32,
         &mut painter,
-        tab.navi.visible_rect,
-        tab.navi.zoom.y,
+        &tab.navi,
         station_heights.iter().copied(),
-        ui.pixels_per_point(),
         ui.visuals(),
-        &world, // FIXME: make this a system instead of passing world into it
+        &world,
     );
 
-    draw_lines::draw_time_lines(
-        tab.navi.x_offset.0,
-        &mut painter,
-        tab.navi.visible_rect,
-        ticks_per_screen_unit,
-        &(visible_ticks.start.0..visible_ticks.end.0),
-        ui.pixels_per_point(),
-    );
+    // Draw the vertical time lines
+    draw_lines::draw_time_lines(&mut painter, &tab.navi);
 
-    let mut trip_line_buf = Vec::new();
     // Calculate the visible trains
+    let mut trip_line_buf = Vec::new();
     world
         .run_system_cached_with(
             calc_trip_lines::calc,
@@ -423,163 +460,7 @@ fn main_display(tab: &mut DiagramTab, world: &mut World, ui: &mut egui::Ui) {
         )
         .unwrap();
 
-    let selected_snapshot = world.resource::<SelectedItems>().clone();
-    if let SelectedItems::ExtendingTrip(mut extending_trip) = selected_snapshot
-        && let (Some(interact_pos), is_touch_input) = ui.input(|r| {
-            let pos = r.pointer.latest_pos().or(r.pointer.interact_pos());
-            let is_touch = r.any_touches();
-            (pos, is_touch)
-        })
-    {
-        let mut new_screen_pos: Pos2 = interact_pos;
-        let new_station_idx: usize;
-        let idx = station_heights_screen_iter
-            .clone()
-            .rposition(|(_, height)| height < interact_pos.y)
-            .unwrap_or(0);
-        let (_, prev_height) = station_heights[idx];
-        let prev_height = tab.navi.logical_y_to_screen_y(prev_height as f64);
-        if let Some((_, next_height)) = station_heights.get(idx + 1).copied()
-            && interact_pos.y
-                > (tab.navi.logical_y_to_screen_y(next_height as f64) + prev_height) / 2.0
-        {
-            new_screen_pos.y = tab.navi.logical_y_to_screen_y(next_height as f64);
-            new_station_idx = idx + 1
-        } else {
-            new_screen_pos.y = prev_height;
-            new_station_idx = idx;
-        }
-        let new_station_entity = station_heights[new_station_idx].0;
-        // Smoothing animations
-        // see https://github.com/rerun-io/egui_tiles/blob/f86273ba8ff9f44a9817067abbf977ba5cdcb9fa/src/tree.rs#L438-L493
-        let mut requires_repaint = false;
-        let dt = ui.ctx().input(|input| input.stable_dt).at_most(0.1);
-        let smoothed_screen_y = ui.ctx().data_mut(|data| {
-            let smoothed: &mut f32 =
-                data.get_temp_mut_or(ui.id().with("new line animation"), new_screen_pos.y);
-            let t = egui::emath::exponential_smooth_factor(0.9, 0.05, dt);
-            *smoothed = smoothed.lerp(new_screen_pos.y, t);
-            let diff = (*smoothed - new_screen_pos.y).abs();
-            if diff < 1.0 {
-                *smoothed = new_screen_pos.y
-            } else {
-                requires_repaint = true
-            }
-            *smoothed
-        });
-        let smoothed_screen_pos = Pos2 {
-            x: new_screen_pos.x,
-            y: smoothed_screen_y,
-        };
-        if requires_repaint {
-            ui.ctx().request_repaint();
-        }
-        let stroke = DisplayedStroke::default().egui_stroke(ui.visuals().dark_mode);
-        painter.line_segment([smoothed_screen_pos, interact_pos], stroke);
-        let station_name = world.get::<Name>(new_station_entity).unwrap();
-        painter.circle_filled(smoothed_screen_pos, 4.0, ui.visuals().text_color());
-        painter.text(
-            smoothed_screen_pos,
-            Align2::LEFT_BOTTOM,
-            station_name,
-            FontId::proportional(13.0),
-            ui.visuals().text_color(),
-        );
-        if let Some((t, idx)) = extending_trip.previous_pos {
-            let (_, h) = station_heights[idx];
-            let prev_pos = tab.navi.xy_to_screen_pos(t.into(), h as f64);
-            painter.line_segment([prev_pos, smoothed_screen_pos], stroke);
-        }
-        let add_or_populate_entry = if is_touch_input {
-            // TODO: show a button instead of using secondary_clicked
-            response.secondary_clicked()
-        } else {
-            response.clicked()
-        };
-        if add_or_populate_entry {
-            let hovered_tick = tab.navi.screen_x_to_logical_x(interact_pos.x);
-            let hovered_time: TimetableTime = hovered_tick.into();
-            // normalize the time until the time difference is positive and less than 24 hours.
-            let normalized_time = if let Some(last_time) = extending_trip.last_time
-                && let Some((last_clicked_time, _)) = extending_trip.previous_pos
-            {
-                let diff = last_clicked_time - last_time;
-                hovered_time - diff
-            } else {
-                hovered_time.normalized()
-            };
-            let should_spawn = match extending_trip.current_entry {
-                Some(current_entry_unwrapped) => {
-                    let stop = world
-                        .get::<EntryStop>(current_entry_unwrapped)
-                        .unwrap()
-                        .entity();
-                    if stop == new_station_entity {
-                        let mut mode = world.get_mut::<EntryMode>(current_entry_unwrapped).unwrap();
-                        mode.arr = Some(mode.dep);
-                        mode.dep = TravelMode::At(normalized_time);
-                        extending_trip.current_entry = None;
-                        false
-                    } else {
-                        true
-                    }
-                }
-                None => true,
-            };
-            if should_spawn {
-                let new_child = world
-                    .spawn(EntryBundle::new(
-                        None,
-                        TravelMode::At(normalized_time),
-                        new_station_entity,
-                    ))
-                    .id();
-                world.write_message(AddEntryToTrip {
-                    trip: extending_trip.entry,
-                    entry: new_child,
-                });
-                extending_trip.current_entry = Some(new_child);
-            }
-            extending_trip.previous_pos = Some((hovered_time, new_station_idx));
-            extending_trip.last_time = Some(normalized_time);
-        }
-        *world.resource_mut::<SelectedItems>() = SelectedItems::ExtendingTrip(extending_trip);
-    } else if response.clicked()
-        && let Some(pos) = response.interact_pointer_pos()
-    {
-        let clicked = handle_selection(&trip_line_buf, pos);
-        let ctrl_pressed = ui.input(|i| i.modifiers.ctrl || i.modifiers.command);
-        if ctrl_pressed {
-            world.resource_mut::<SelectedItems>().add_entry(clicked);
-        } else {
-            world.resource_mut::<SelectedItems>().set_or_reset(clicked);
-        }
-    }
-    let selected_snapshot = world.resource::<SelectedItems>().clone();
-    let selected_timetable_entries = match &selected_snapshot {
-        SelectedItems::TimetableEntries(entries) => entries.as_slice(),
-        _ => &[],
-    };
-    let selection_strength = ui.ctx().animate_bool(
-        ui.id().with("selection"),
-        !matches!(selected_snapshot, SelectedItems::None),
-    );
-
-    let mut selected_idx_rect: (Vec<usize>, Vec<Rect>) = (Vec::new(), Vec::new());
-    world
-        .run_system_cached_with(
-            draw_trip_lines,
-            (
-                &trip_line_buf,
-                ui,
-                &mut painter,
-                selected_timetable_entries,
-                &mut selected_idx_rect,
-                button_strength,
-            ),
-        )
-        .unwrap();
-
+    // Prepare GPU drawing
     let mut state = tab.gpu_state.lock();
 
     if let Some(target_format) = ui.ctx().data(|data| {
@@ -594,9 +475,16 @@ fn main_display(tab: &mut DiagramTab, world: &mut World, ui: &mut egui::Ui) {
         state.msaa_samples = msaa_samples;
     }
 
+    // paint the callback
     gpu_draw::write_vertices(&trip_line_buf, ui.visuals().dark_mode, &mut state);
     let callback = gpu_draw::paint_callback(response.rect, tab.gpu_state.clone());
     painter.add(callback);
+
+    // check for selection
+    let selection_strength = ui.ctx().animate_bool(
+        ui.id().with("selection"),
+        !matches!(canvas_state, CanvasState::Idle),
+    );
 
     let s = (selection_strength * 0.5 * u8::MAX as f32) as u8;
     painter.rect_filled(
@@ -608,58 +496,114 @@ fn main_display(tab: &mut DiagramTab, world: &mut World, ui: &mut egui::Ui) {
             Color32::from_white_alpha(s)
         },
     );
-    let (indices, rects) = selected_idx_rect;
-    for rect in rects {
-        painter.rect(
-            rect,
-            8,
-            Color32::GRAY.gamma_multiply(0.5),
-            egui::Stroke {
-                width: 1.0,
-                color: Color32::GRAY,
-            },
-            egui::StrokeKind::Middle,
-        );
-    }
-    // emphasize selected values
-    for idx in indices {
-        let trip = &trip_line_buf[idx];
-        let stroke = egui::Stroke {
-            width: trip.stroke.width + 3.0 * selection_strength * trip.stroke.width,
-            color: trip.stroke.color.get(ui.visuals().dark_mode),
-        };
-        for (i, (p_group, e_group)) in trip.points.iter().zip(trip.entries.iter()).enumerate() {
-            let mut points = Vec::with_capacity(p_group.len() * 4);
-            for segment in p_group.iter() {
-                points.extend(segment.iter().copied());
-            }
-            if points.len() >= 2 {
-                painter.line(points, stroke);
-            }
-            for (j, (points, e)) in p_group.iter().zip(e_group.iter().copied()).enumerate() {
-                world
-                    .run_system_cached_with(
-                        draw_handles,
-                        (
-                            points,
-                            e,
-                            (i, j),
-                            ui,
-                            &mut painter,
-                            trip.entity,
-                            tab.navi.zoom.x,
-                            button_strength.min(selection_strength),
-                        ),
-                    )
-                    .unwrap();
+
+    let interact_pos = response
+        .clicked()
+        .then(|| ui.input(|it| it.pointer.interact_pos()))
+        .flatten();
+
+    match canvas_state {
+        // The current canvas is idle.
+        // When idle, the user should be able to select intervals, entries, and stations
+        // TODO: replace this with if let guard
+        CanvasState::Idle if interact_pos.is_some() => {
+            let pos = interact_pos.unwrap();
+            if let Some(selection) = select_trip(&trip_line_buf, pos) {
+                world.write_message(ModifySelectedItems::SetSingle(SelectedItem::Entries(
+                    selection,
+                )));
+            } else if false {
+                // TODO
+            } else if false {
+                // TODO
             }
         }
+        CanvasState::Idle => {
+            // No interactions, do nothing
+        }
+        // The current canvas is not idle
+        // If the user has already selected some entries, they should only be able to select more
+        // entries, or quit the current state
+        CanvasState::SelectingEntries(selection) => {
+            // highlight all of the entries
+            for drawn in trip_line_buf
+                .iter()
+                .filter(|it| selection.iter().any(|s| it.entity == s.parent))
+            {
+                let mut stroke = drawn.stroke.egui_stroke(ui.visuals().dark_mode);
+                stroke.width = stroke.width + 3.0 * selection_strength;
+                for (i, (line_group, entity_group)) in
+                    drawn.points.iter().zip(drawn.entries.iter()).enumerate()
+                {
+                    let line = line_group.as_flattened().to_vec();
+                    painter.line(line, stroke);
+                    for (j, (pos, entity)) in line_group.iter().zip(entity_group.iter()).enumerate()
+                    {
+                        world
+                            .run_system_cached_with(
+                                draw_handles,
+                                (
+                                    pos,
+                                    *entity,
+                                    (i, j),
+                                    ui,
+                                    &mut painter,
+                                    drawn.entity,
+                                    tab.navi.zoom_x(),
+                                    selection_strength,
+                                ),
+                            )
+                            .unwrap();
+                    }
+                }
+            }
+            if let Some(pos) = interact_pos {
+                match (
+                    select_trip(&trip_line_buf, pos),
+                    ui.input(|r| r.modifiers.command),
+                ) {
+                    (Some(s), true) => {
+                        world.write_message(ModifySelectedItems::Toggle(SelectedItem::Entries(s)));
+                    }
+                    // Specifically, if there's only one selection, clear the stuff
+                    (Some(_s), false) if selection.len() == 1 => {
+                        world.write_message(ModifySelectedItems::Clear);
+                    }
+                    (Some(s), false) => {
+                        world.write_message(ModifySelectedItems::SetSingle(SelectedItem::Entries(
+                            s,
+                        )));
+                    }
+                    (None, true) => {
+                        // do nothing
+                    }
+                    (None, false) => {
+                        world.write_message(ModifySelectedItems::Clear);
+                    }
+                };
+            }
+        }
+        // Select more intervals or quit the current state
+        CanvasState::SelectingIntervals(i) => {
+            // highlight the intervals
+        }
+        // Select more stations or quit the current state
+        CanvasState::SelectingStations(i) => {
+            // highlight the stations
+        }
+        // Extend the trip or quit the current state
+        CanvasState::ExtendingTrip(i) => {
+            // TODO: restore that
+        }
     }
-    // draw time indicator
+
+    // Draw time indicator
     let ticks = world.resource::<GlobalTimer>().read_ticks();
     let time_indicator_stroke = Stroke::new(1.5, Color32::RED);
     let mut time_indicator_x = tab.navi.logical_x_to_screen_x(ticks);
     time_indicator_stroke.round_center_to_pixel(ui.pixels_per_point(), &mut time_indicator_x);
+
+    // Draw the indicator's indicator
     display_time_indicator_indicator_horizontal(
         ui.id().with("time indicator"),
         ui.clip_rect(),
@@ -674,21 +618,19 @@ fn main_display(tab: &mut DiagramTab, world: &mut World, ui: &mut egui::Ui) {
     );
 }
 
-/// Takes a buffer the calculate trains
-
 fn draw_trip_lines<'a>(
     (
         InRef(trips),
         InMut(ui),
         InMut(painter),
-        InRef(selected),
+        // InRef(selected),
         InMut((indices, rects)),
         In(strength),
     ): (
         InRef<[DrawnTrip]>,
         InMut<Ui>,
         InMut<Painter>,
-        InRef<[TimetableEntrySelection]>,
+        // InRef<[EntrySelection]>,
         InMut<(Vec<usize>, Vec<Rect>)>,
         In<f32>,
     ),
@@ -698,11 +640,12 @@ fn draw_trip_lines<'a>(
     rects.clear();
 
     for (idx, trip) in trips.iter().enumerate() {
-        let selected_entries: Vec<Entity> = selected
-            .iter()
-            .filter(|TimetableEntrySelection { parent, .. }| *parent == trip.entity)
-            .map(|TimetableEntrySelection { entry, .. }| *entry)
-            .collect();
+        // let selected_entries: Vec<Entity> = selected
+        //     .iter()
+        //     .filter(|EntrySelection { parent, .. }| *parent == trip.entity)
+        //     .map(|EntrySelection { entry, .. }| *entry)
+        //     .collect();
+        let selected_entries: &[Entity] = &[];
 
         if selected_entries.is_empty() {
             continue;
@@ -757,9 +700,8 @@ fn draw_trip_lines<'a>(
     }
 }
 
-fn handle_selection(drawn_trips: &[DrawnTrip], pos: Pos2) -> SelectedItem {
+fn select_trip(drawn_trips: &[DrawnTrip], pos: Pos2) -> Option<EntrySelection> {
     const VEHICLE_SELECTION_RADIUS: f32 = 7.0;
-    const STATION_SELECTION_RADIUS: f32 = VEHICLE_SELECTION_RADIUS;
     for trip in drawn_trips {
         for (points, entries) in trip.points.iter().zip(trip.entries.iter()) {
             let last = points
@@ -807,7 +749,7 @@ fn handle_selection(drawn_trips: &[DrawnTrip], pos: Pos2) -> SelectedItem {
                 let dy = pos.y - py;
 
                 if dx * dx + dy * dy < VEHICLE_SELECTION_RADIUS.powi(2) {
-                    return SelectedItem::TimetableEntries(TimetableEntrySelection {
+                    return Some(EntrySelection {
                         entry: e,
                         parent: trip.entity,
                     });
@@ -815,6 +757,11 @@ fn handle_selection(drawn_trips: &[DrawnTrip], pos: Pos2) -> SelectedItem {
             }
         }
     }
+    None
+}
+
+fn select_station(drawn_trips: &[DrawnTrip], pos: Pos2) -> SelectedItem {
+    const STATION_SELECTION_RADIUS: f32 = 7.0;
     SelectedItem::None
 }
 
