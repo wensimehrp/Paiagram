@@ -4,15 +4,17 @@ use crate::widgets::indicators::display_time_indicator_indicator_horizontal;
 use crate::widgets::timetable_popup::{arrival_popup, departure_popup};
 use crate::{
     EntrySelection, ExtendingTripSelection, GlobalTimer, IntervalSelection, ModifySelectedItems,
-    SelectedItem, SelectedItems, StationSelection, display_entry_info,
+    SelectedItem, SelectedItems, StationSelection,
 };
 use bevy::prelude::*;
 use egui::emath::Numeric;
 use egui::epaint::TextShape;
 use egui::{
-    Align2, Color32, FontId, Id, Margin, NumExt, Painter, Pos2, Rect, Sense, Stroke, Ui, Vec2, vec2,
+    Align2, Color32, FontId, Id, Margin, NumExt, Painter, Pos2, Rect, RectAlign, Sense, Stroke, Ui,
+    Vec2, vec2,
 };
 use egui_i18n::tr;
+use itertools::Itertools;
 use moonshine_core::prelude::MapEntities;
 use paiagram_core::entry::{
     AdjustEntryMode, EntryBundle, EntryEstimate, EntryMode, EntryModeAdjustment, EntryQuery,
@@ -508,6 +510,7 @@ fn main_display(
         // TODO: replace this with if let guard
         CanvasState::Idle if interact_pos.is_some() => {
             let pos = interact_pos.unwrap();
+            // state transformation
             if let Some(selection) = select_trip(&trip_line_buf, pos) {
                 world.write_message(ModifySelectedItems::SetSingle(SelectedItem::Entries(
                     selection,
@@ -537,18 +540,31 @@ fn main_display(
                 {
                     let line = line_group.as_flattened().to_vec();
                     painter.line(line, stroke);
-                    for (j, (pos, entity)) in line_group.iter().zip(entity_group.iter()).enumerate()
+                    let nan_iter = std::iter::once(None);
+                    let line_group_iter = nan_iter
+                        .clone()
+                        .chain(line_group.iter().map(Some))
+                        .chain(nan_iter);
+                    for (j, ((prev_positions, curr_positions, next_positions), entity)) in
+                        line_group_iter
+                            .tuple_windows()
+                            .zip(entity_group.iter())
+                            .enumerate()
                     {
                         world
                             .run_system_cached_with(
                                 draw_handles,
                                 (
-                                    pos,
-                                    *entity,
+                                    curr_positions.unwrap(),
+                                    (
+                                        *entity,
+                                        drawn.entity,
+                                        prev_positions.map(|it| it[3]),
+                                        next_positions.map(|it| it[0]),
+                                    ),
                                     (i, j),
                                     ui,
                                     &mut painter,
-                                    drawn.entity,
                                     tab.navi.zoom_x(),
                                     selection_strength,
                                 ),
@@ -557,6 +573,8 @@ fn main_display(
                     }
                 }
             }
+
+            // Check selection
             if let Some(pos) = interact_pos {
                 match (
                     select_trip(&trip_line_buf, pos),
@@ -565,19 +583,11 @@ fn main_display(
                     (Some(s), true) => {
                         world.write_message(ModifySelectedItems::Toggle(SelectedItem::Entries(s)));
                     }
-                    // Specifically, if there's only one selection, clear the stuff
-                    (Some(_s), false) if selection.len() == 1 => {
-                        world.write_message(ModifySelectedItems::Clear);
-                    }
-                    (Some(s), false) => {
-                        world.write_message(ModifySelectedItems::SetSingle(SelectedItem::Entries(
-                            s,
-                        )));
-                    }
                     (None, true) => {
                         // do nothing
                     }
-                    (None, false) => {
+                    // Clear the selection
+                    (_, false) => {
                         world.write_message(ModifySelectedItems::Clear);
                     }
                 };
@@ -717,16 +727,12 @@ fn select_trip(drawn_trips: &[DrawnTrip], pos: Pos2) -> Option<EntrySelection> {
                         .into_iter()
                         .flat_map(|it| std::iter::repeat(*it).take(3)),
                 );
-            let entries_iter = entries.windows(2).flat_map(|w| {
-                let [a, b] = w else { unreachable!() };
-                std::iter::repeat(*a).take(4).chain(std::iter::once(*b))
-            });
+            let entries_iter = entries
+                .array_windows()
+                .flat_map(|[a, b]| std::iter::repeat(*a).take(4).chain(std::iter::once(*b)));
             for ([curr, next], e) in points
-                .windows(2)
-                .flat_map(|it| {
-                    let [[a1, a2, a3, a4], [b, ..]] = it else {
-                        unreachable!()
-                    };
+                .array_windows()
+                .flat_map(|[[a1, a2, a3, a4], [b, ..]]| {
                     let mid = a4.lerp(*b, 0.5);
                     [[*a1, *a2], [*a2, *a3], [*a3, *a4], [*a4, mid], [mid, *b]]
                 })
@@ -768,20 +774,18 @@ fn select_station(drawn_trips: &[DrawnTrip], pos: Pos2) -> SelectedItem {
 fn draw_handles(
     (
         InRef(p),
-        In(e),
+        In((e, parent_entity, prev_pos, next_pos)),
         In(salt),
         InMut(ui),
         InMut(mut painter),
-        In(parent_entity),
         In(zoom_x),
         In(strength),
     ): (
         InRef<[Pos2]>,
-        In<Entity>,
+        In<(Entity, Entity, Option<Pos2>, Option<Pos2>)>,
         In<impl std::hash::Hash + Copy>,
         InMut<Ui>,
         InMut<Painter>,
-        In<Entity>,
         In<f32>,
         In<f32>,
     ),
@@ -794,9 +798,12 @@ fn draw_handles(
 ) {
     let entry = entry_q.get(e).unwrap();
     let trip = trip_q.get(parent_entity).unwrap();
+
     if entry.is_derived() || strength <= 0.1 {
         return;
     }
+
+    // Define some sizes
     const HANDLE_SIZE: f32 = 15.0;
     const CIRCLE_HANDLE_SIZE: f32 = 7.0 / 12.0 * HANDLE_SIZE;
     const TRIANGLE_HANDLE_SIZE: f32 = 10.0 / 12.0 * HANDLE_SIZE;
@@ -822,11 +829,44 @@ fn draw_handles(
     let arrival_rect = Rect::from_center_size(arrival_pos, Vec2::splat(HANDLE_SIZE));
     let arrival_id = ui.id().with((e, "arr", salt));
     let arrival_response = ui.interact(arrival_rect, arrival_id, Sense::click_and_drag());
+
+    let popup_alignment = match (prev_pos, next_pos) {
+        (Some(prev), Some(next)) => {
+            if prev.y >= arrival_pos.y && next.y >= arrival_pos.y {
+                // Current is a local top; keep popup above both neighbors.
+                RectAlign::TOP_START
+            } else if prev.y <= arrival_pos.y && next.y <= arrival_pos.y {
+                // Current is a local bottom; keep popup below both neighbors.
+                RectAlign::BOTTOM_START
+            } else if next.y >= prev.y {
+                RectAlign::TOP_START
+            } else {
+                RectAlign::BOTTOM_START
+            }
+        }
+        (Some(prev), None) => {
+            if prev.y >= arrival_pos.y {
+                RectAlign::TOP_START
+            } else {
+                RectAlign::BOTTOM_START
+            }
+        }
+        (None, Some(next)) => {
+            if next.y >= arrival_pos.y {
+                RectAlign::TOP_START
+            } else {
+                RectAlign::BOTTOM_START
+            }
+        }
+        (None, None) => RectAlign::BOTTOM_START,
+    };
+
     arrival_popup(
         &arrival_response,
         &entry,
         &trip,
         &entry_mode_q,
+        popup_alignment,
         &mut commands,
     );
     let arrival_fill = if arrival_response.hovered() {
@@ -906,7 +946,7 @@ fn draw_handles(
     let departure_rect = Rect::from_center_size(departure_pos, Vec2::splat(HANDLE_SIZE));
     let departure_id = ui.id().with((e, "dep", salt));
     let departure_response = ui.interact(departure_rect, departure_id, dep_sense);
-    departure_popup(&departure_response, &entry, &mut commands);
+    departure_popup(&departure_response, &entry, popup_alignment, &mut commands);
     let departure_fill = if departure_response.hovered() {
         Color32::GRAY
     } else {

@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use egui::emath::Numeric;
-use egui::{Response, Ui, Vec2, vec2};
+use egui::{RectAlign, Response, Ui, Vec2, vec2};
 use paiagram_core::{
     entry::{
         AdjustEntryMode, EntryEstimate, EntryMode, EntryModeAdjustment, EntryQueryItem, TravelMode,
@@ -12,8 +12,14 @@ use paiagram_core::{
 const POPUP_WIDTH: f32 = 130.0;
 const BUTTON_SIZE: Vec2 = vec2(70.0, 18.0);
 
-pub fn departure_popup(response: &Response, entry: &EntryQueryItem, commands: &mut Commands) {
+pub fn departure_popup(
+    response: &Response,
+    entry: &EntryQueryItem,
+    alignment: RectAlign,
+    commands: &mut Commands,
+) {
     egui::Popup::menu(&response)
+        .align(alignment)
         .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
         .show(|ui| departure_popup_inner(ui, entry, commands));
 }
@@ -135,9 +141,11 @@ pub fn arrival_popup(
     entry: &EntryQueryItem,
     parent: &TripQueryItem,
     entry_q: &Query<(&EntryMode, Option<&EntryEstimate>)>,
+    alignment: RectAlign,
     commands: &mut Commands,
 ) {
     egui::Popup::menu(&response)
+        .align(alignment)
         .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
         .show(|ui| arrival_popup_inner(ui, entry, parent, entry_q, commands));
 }

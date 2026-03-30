@@ -5451,6 +5451,7 @@ dependencies = [
  "either",
  "ib-matcher",
  "instant",
+ "itertools",
  "js-sys",
  "moonshine-core",
  "paiagram-core",

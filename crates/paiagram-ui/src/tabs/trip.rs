@@ -10,7 +10,7 @@ use crate::widgets::timetable_popup::{
 
 use super::Tab;
 use bevy::prelude::*;
-use egui::{Ui, Vec2, vec2};
+use egui::{RectAlign, Ui, Vec2, vec2};
 use egui_i18n::tr;
 use moonshine_core::prelude::MapEntities;
 use serde::{Deserialize, Serialize};
@@ -89,19 +89,31 @@ fn row_ui(
     const BUTTON_SIZE: Vec2 = vec2(70.0, 18.0);
     let platform = platform_q.get(it.stop()).unwrap();
     let station = platform.station(&station_q);
+
+    // display station label
     ui.label(station.name.as_str());
+
+    // display arrival button
     let arr_res = match it.mode.arr {
         None => ui.add_sized(BUTTON_SIZE, egui::Button::new("↓")),
         Some(TravelMode::Flexible) => ui.add_sized(BUTTON_SIZE, egui::Button::new("〇")),
         Some(TravelMode::At(t)) => shift_at_value(t, it.entity, ui, commands, BUTTON_SIZE, true),
         Some(TravelMode::For(d)) => shift_for_value(d, it.entity, ui, commands, BUTTON_SIZE, true),
     };
-    arrival_popup(&arr_res, &it, &trip, &entry_mode_q, &mut commands);
+    arrival_popup(
+        &arr_res,
+        &it,
+        &trip,
+        &entry_mode_q,
+        RectAlign::LEFT,
+        &mut commands,
+    );
 
+    // display departure button
     let dep_res = match it.mode.dep {
-        TravelMode::Flexible => ui.add_sized(BUTTON_SIZE, egui::Button::new("...")),
+        TravelMode::Flexible => ui.add_sized(BUTTON_SIZE, egui::Button::new("〇")),
         TravelMode::At(t) => shift_at_value(t, it.entity, ui, commands, BUTTON_SIZE, false),
         TravelMode::For(d) => shift_for_value(d, it.entity, ui, commands, BUTTON_SIZE, false),
     };
-    departure_popup(&dep_res, &it, &mut commands);
+    departure_popup(&dep_res, &it, RectAlign::RIGHT, &mut commands);
 }
