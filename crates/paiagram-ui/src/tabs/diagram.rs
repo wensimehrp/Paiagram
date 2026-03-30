@@ -2,7 +2,7 @@ use super::{Navigatable, Tab};
 use crate::tabs::station::StationTab;
 use crate::widgets::indicators::display_time_indicator_indicator_horizontal;
 use crate::widgets::timetable_popup::{POPUP_WIDTH, arrival_popup, departure_popup};
-use crate::widgets::{buttons, time_drag_value};
+use crate::widgets::{buttons, TimeDragValue};
 use crate::{
     EntrySelection, ExtendingTripSelection, GlobalTimer, IntervalSelection, ModifySelectedItems,
     OpenOrFocus, SelectedItem, SelectedItems, StationSelection,
@@ -582,7 +582,7 @@ fn main_display(
 
                 // convenient DragValue for adjusting the time
                 let mut new_time = x.to_timetable_time();
-                if ui.add(time_drag_value(&mut new_time)).changed() {
+                if ui.add(TimeDragValue(&mut new_time)).changed() {
                     tab.last_secondary_click_position =
                         Some((Tick::from_timetable_time(new_time), y))
                 }

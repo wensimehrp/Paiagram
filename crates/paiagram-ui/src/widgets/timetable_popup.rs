@@ -1,4 +1,4 @@
-use super::{duration_drag_value, time_drag_value};
+use super::{DurationDragValue, TimeDragValue};
 use bevy::prelude::*;
 use egui::{RectAlign, Response, Ui, Vec2, vec2};
 use paiagram_core::{
@@ -33,7 +33,7 @@ pub fn shift_at_value(
     is_arrival: bool,
 ) -> Response {
     let mut new_t = t;
-    let res = ui.add_sized(button_size, time_drag_value(&mut new_t));
+    let res = ui.add_sized(button_size, TimeDragValue(&mut new_t));
     if res.changed() {
         commands.trigger(AdjustEntryMode {
             entity: trip_entity,
@@ -56,7 +56,7 @@ pub fn shift_for_value(
     is_arrival: bool,
 ) -> Response {
     let mut new_d = d;
-    let res = ui.add_sized(button_size, duration_drag_value(&mut new_d));
+    let res = ui.add_sized(button_size, DurationDragValue(&mut new_d));
     if res.changed() {
         commands.trigger(AdjustEntryMode {
             entity: trip_entity,

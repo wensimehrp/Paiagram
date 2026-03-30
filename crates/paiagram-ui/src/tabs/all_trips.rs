@@ -14,7 +14,7 @@ use paiagram_core::{
     trip::{TripQuery, TripQueryItem},
 };
 
-use crate::widgets::time_drag_value_oud;
+use crate::widgets::TimeDragValueOud;
 
 #[derive(Serialize, Deserialize, Clone, MapEntities)]
 pub struct AllTripsTab {
@@ -292,7 +292,7 @@ impl<'w> TableDelegate for AllTripsDisplayer<'w> {
                         EntryDisplayMode::Some(e) => match e.mode.arr {
                             Some(TravelMode::At(t)) => {
                                 let mut new_t = t;
-                                ui.add(time_drag_value_oud(&mut new_t))
+                                ui.add(TimeDragValueOud(&mut new_t, false))
                             }
                             Some(TravelMode::Flexible) => ui.button(RichText::new("〇").font(font)),
                             Some(TravelMode::For(d)) => ui.button(RichText::new("For")),
@@ -331,7 +331,7 @@ impl<'w> TableDelegate for AllTripsDisplayer<'w> {
                         EntryDisplayMode::Some(e) => match e.mode.dep {
                             TravelMode::At(t) => {
                                 let mut new_t = t;
-                                ui.add(time_drag_value_oud(&mut new_t))
+                                ui.add(TimeDragValueOud(&mut new_t, false))
                             }
                             TravelMode::Flexible => ui.button(RichText::new("⇂").font(font)),
                             _ => ui.label(RichText::new("⇂").font(font)),

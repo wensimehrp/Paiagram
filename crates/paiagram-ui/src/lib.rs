@@ -44,7 +44,7 @@ use wasm_bindgen::JsCast;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
-use crate::widgets::time_drag_value;
+use crate::widgets::TimeDragValue;
 pub struct UiPlugin;
 impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
@@ -995,7 +995,7 @@ pub fn show_ui(ui: &mut Ui, world: &mut World, cpu_time: Option<f32>) {
                         !timer.sync_to_real_time,
                         egui::Checkbox::new(&mut timer.animation_playing, "Play animation"),
                     );
-                    let time_response = ui.add(time_drag_value(&mut time));
+                    let time_response = ui.add(TimeDragValue(&mut time));
                     ui.add_enabled(
                         !timer.sync_to_real_time,
                         egui::Slider::new(&mut timer.animation_speed, -500.0..=500.0)
