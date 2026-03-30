@@ -1,36 +1,34 @@
 use super::{Navigatable, Tab};
-use crate::widgets::buttons;
+use crate::tabs::station::StationTab;
 use crate::widgets::indicators::display_time_indicator_indicator_horizontal;
-use crate::widgets::timetable_popup::{arrival_popup, departure_popup};
+use crate::widgets::timetable_popup::{POPUP_WIDTH, arrival_popup, departure_popup};
+use crate::widgets::{buttons, time_drag_value};
 use crate::{
     EntrySelection, ExtendingTripSelection, GlobalTimer, IntervalSelection, ModifySelectedItems,
-    SelectedItem, SelectedItems, StationSelection,
+    OpenOrFocus, SelectedItem, SelectedItems, StationSelection,
 };
 use bevy::prelude::*;
 use egui::emath::Numeric;
 use egui::epaint::TextShape;
 use egui::{
-    Align2, Color32, FontId, Id, Margin, NumExt, Painter, Pos2, Rect, RectAlign, Sense, Stroke, Ui,
-    Vec2, vec2,
+    Align2, Button, Color32, Id, Label, Margin, Painter, Pos2, Rect, RectAlign, RichText, Sense,
+    Stroke, Ui, Vec2, vec2,
 };
 use egui_i18n::tr;
 use itertools::Itertools;
 use moonshine_core::prelude::MapEntities;
 use paiagram_core::entry::{
-    AdjustEntryMode, EntryBundle, EntryEstimate, EntryMode, EntryModeAdjustment, EntryQuery,
-    EntryStop, TravelMode,
+    AdjustEntryMode, EntryEstimate, EntryMode, EntryModeAdjustment, EntryQuery, TravelMode,
 };
 use paiagram_core::export::ExportObject;
 use paiagram_core::route::Route;
 use paiagram_core::station::Station;
 use paiagram_core::trip::class::DisplayedStroke;
-use paiagram_core::trip::routing::AddEntryToTrip;
 use paiagram_core::trip::{Trip, TripBundle, TripClass, TripQuery};
 use paiagram_core::units::time::{Duration, Tick, TimetableTime};
 use paiagram_raptor::Journey;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use vec1::Vec1;
 pub mod calc_trip_lines;
 mod draw_lines;
 mod gpu_draw;
@@ -520,9 +518,85 @@ fn main_display(
             } else if false {
                 // TODO
             }
+            // also reset the secondary click memory
+            tab.last_secondary_click_position = None;
+        }
+        CanvasState::Idle if response.secondary_clicked() => {
+            let pos = ui.input(|it| it.pointer.interact_pos()).unwrap();
+            tab.last_secondary_click_position = Some(tab.navi.screen_pos_to_xy(pos));
+        }
+        CanvasState::Idle if tab.last_secondary_click_position.is_some() => {
+            let (x, y) = tab.last_secondary_click_position.unwrap();
+            // Determine the closest station and get its entity and height
+            let (closest_station, station_y) = {
+                let selected_y = y as f32;
+                let idx = station_heights.partition_point(|(_, y)| *y < selected_y);
+                if idx == 0 {
+                    station_heights.first().copied()
+                } else if idx >= station_heights.len() {
+                    station_heights.last().copied()
+                } else {
+                    let (prev_e, prev_y) = station_heights[idx - 1];
+                    let (curr_e, curr_y) = station_heights[idx];
+                    if selected_y > (prev_y + curr_y) / 2.0 {
+                        Some((curr_e, curr_y))
+                    } else {
+                        Some((prev_e, prev_y))
+                    }
+                }
+            }
+            .unwrap();
+            let station_y = tab.navi.logical_y_to_screen_y(station_y as f64);
+            let screen_pos = tab.navi.xy_to_screen_pos(x, y);
+
+            // position indicator
+            painter.line_segment(
+                [screen_pos, Pos2::new(screen_pos.x, station_y)],
+                Stroke::new(1.0, Color32::RED),
+            );
+            painter.circle_filled(screen_pos, 3.0, Color32::RED);
+
+            // allocate a new rect to show the popup
+            let rect = Rect::from_pos(screen_pos).expand(6.0);
+            let res = ui
+                .allocate_rect(rect, Sense::drag())
+                .on_hover_cursor(egui::CursorIcon::Grab);
+            if res.dragged() {
+                ui.set_cursor_icon(egui::CursorIcon::Grabbing);
+                let new_pos = screen_pos + res.drag_delta();
+                tab.last_secondary_click_position = Some(tab.navi.screen_pos_to_xy(new_pos));
+            }
+
+            // the popup secondary menu
+            egui::Popup::menu(&res).open(true).show(|ui| {
+                // Display the station name and open the station tab when clicked.
+                ui.set_min_width(POPUP_WIDTH);
+                let station_name = world.get::<Name>(closest_station).unwrap().as_str();
+                if ui.add(Button::new(station_name).truncate()).clicked() {
+                    // also reset the secondary click memory
+                    tab.last_secondary_click_position = None;
+                    world.write_message(OpenOrFocus(crate::MainTab::Station(StationTab::new(
+                        closest_station,
+                    ))));
+                };
+
+                // convenient DragValue for adjusting the time
+                let mut new_time = x.to_timetable_time();
+                if ui.add(time_drag_value(&mut new_time)).changed() {
+                    tab.last_secondary_click_position =
+                        Some((Tick::from_timetable_time(new_time), y))
+                }
+
+                // Add a new trip
+                if ui.button("New Trip").clicked() {
+                    // also reset the secondary click memory
+                    tab.last_secondary_click_position = None;
+                    // TODO
+                }
+            });
         }
         CanvasState::Idle => {
-            // No interactions, do nothing
+            // Do nothing now. there are nothing to handle
         }
         // The current canvas is not idle
         // If the user has already selected some entries, they should only be able to select more

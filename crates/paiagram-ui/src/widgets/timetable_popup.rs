@@ -1,5 +1,5 @@
+use super::{duration_drag_value, time_drag_value};
 use bevy::prelude::*;
-use egui::emath::Numeric;
 use egui::{RectAlign, Response, Ui, Vec2, vec2};
 use paiagram_core::{
     entry::{
@@ -9,8 +9,8 @@ use paiagram_core::{
     units::time::{Duration, TimetableTime},
 };
 
-const POPUP_WIDTH: f32 = 130.0;
-const BUTTON_SIZE: Vec2 = vec2(70.0, 18.0);
+pub const POPUP_WIDTH: f32 = 130.0;
+pub const BUTTON_SIZE: Vec2 = vec2(70.0, 18.0);
 
 pub fn departure_popup(
     response: &Response,
@@ -33,12 +33,7 @@ pub fn shift_at_value(
     is_arrival: bool,
 ) -> Response {
     let mut new_t = t;
-    let res = ui.add_sized(
-        button_size,
-        egui::DragValue::new(&mut new_t)
-            .custom_formatter(|v, _| TimetableTime::from_f64(v).to_string())
-            .custom_parser(|s| TimetableTime::from_str(s).map(TimetableTime::to_f64)),
-    );
+    let res = ui.add_sized(button_size, time_drag_value(&mut new_t));
     if res.changed() {
         commands.trigger(AdjustEntryMode {
             entity: trip_entity,
@@ -61,13 +56,7 @@ pub fn shift_for_value(
     is_arrival: bool,
 ) -> Response {
     let mut new_d = d;
-    let res = ui.add_sized(
-        button_size,
-        egui::DragValue::new(&mut new_d)
-            .prefix("→ ")
-            .custom_formatter(|v, _| Duration::from_f64(v).to_string_no_arrow())
-            .custom_parser(|s| Duration::from_str(s).map(Duration::to_f64)),
-    );
+    let res = ui.add_sized(button_size, duration_drag_value(&mut new_d));
     if res.changed() {
         commands.trigger(AdjustEntryMode {
             entity: trip_entity,

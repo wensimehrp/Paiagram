@@ -13,9 +13,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use walkers::sources::Attribution;
 
-use crate::{
-    IntervalSelection, SelectedItem, SelectedItems, StationSelection, EntrySelection,
-};
+use crate::{EntrySelection, IntervalSelection, SelectedItem, SelectedItems, StationSelection};
 
 use crate::tabs::graph::gpu_draw::ShapeInstance;
 use crate::{GlobalTimer, tabs::Navigatable};

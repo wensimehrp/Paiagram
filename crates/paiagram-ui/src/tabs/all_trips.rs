@@ -1,5 +1,4 @@
 use bevy::prelude::*;
-use egui::emath::Numeric;
 use egui::{FontId, Layout, Rect, RichText, Ui, Vec2, vec2};
 use egui_table::{Column, Table, TableDelegate};
 use moonshine_core::prelude::MapEntities;
@@ -13,8 +12,9 @@ use paiagram_core::{
     },
     station::{ParentStationOrStation, Station},
     trip::{TripQuery, TripQueryItem},
-    units::time::TimetableTime,
 };
+
+use crate::widgets::time_drag_value_oud;
 
 #[derive(Serialize, Deserialize, Clone, MapEntities)]
 pub struct AllTripsTab {
@@ -292,15 +292,7 @@ impl<'w> TableDelegate for AllTripsDisplayer<'w> {
                         EntryDisplayMode::Some(e) => match e.mode.arr {
                             Some(TravelMode::At(t)) => {
                                 let mut new_t = t;
-                                ui.add(
-                                    egui::DragValue::new(&mut new_t)
-                                        .custom_formatter(|it, _| {
-                                            TimetableTime::from_f64(it).to_oud2_str(false)
-                                        })
-                                        .custom_parser(|s| {
-                                            TimetableTime::from_oud2_str(s).map(|it| it.to_f64())
-                                        }),
-                                )
+                                ui.add(time_drag_value_oud(&mut new_t))
                             }
                             Some(TravelMode::Flexible) => ui.button(RichText::new("〇").font(font)),
                             Some(TravelMode::For(d)) => ui.button(RichText::new("For")),
@@ -339,15 +331,7 @@ impl<'w> TableDelegate for AllTripsDisplayer<'w> {
                         EntryDisplayMode::Some(e) => match e.mode.dep {
                             TravelMode::At(t) => {
                                 let mut new_t = t;
-                                ui.add(
-                                    egui::DragValue::new(&mut new_t)
-                                        .custom_formatter(|it, _| {
-                                            TimetableTime::from_f64(it).to_oud2_str(false)
-                                        })
-                                        .custom_parser(|s| {
-                                            TimetableTime::from_oud2_str(s).map(|it| it.to_f64())
-                                        }),
-                                )
+                                ui.add(time_drag_value_oud(&mut new_t))
                             }
                             TravelMode::Flexible => ui.button(RichText::new("⇂").font(font)),
                             _ => ui.label(RichText::new("⇂").font(font)),

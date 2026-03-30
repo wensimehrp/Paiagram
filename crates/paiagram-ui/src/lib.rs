@@ -43,6 +43,8 @@ use vec1::{Vec1, vec1};
 use wasm_bindgen::JsCast;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
+
+use crate::widgets::time_drag_value;
 pub struct UiPlugin;
 impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
@@ -66,7 +68,7 @@ impl Plugin for UiPlugin {
                     save::apply_loaded_scene
                         .run_if(resource_exists::<paiagram_rw::save::LoadedScene>),
                     update_timer,
-                    update_selected_items
+                    update_selected_items,
                 ),
             );
     }
@@ -174,7 +176,7 @@ pub(crate) enum SelectedItems {
 pub(crate) enum ModifySelectedItems {
     Toggle(SelectedItem),
     SetSingle(SelectedItem),
-    Clear
+    Clear,
 }
 
 fn update_selected_items(
@@ -988,18 +990,12 @@ pub fn show_ui(ui: &mut Ui, world: &mut World, cpu_time: Option<f32>) {
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let mut timer = world.resource_mut::<GlobalTimer>();
-                    let mut seconds = timer.read_seconds();
+                    let mut time = timer.read_ticks().to_timetable_time();
                     ui.add_enabled(
                         !timer.sync_to_real_time,
                         egui::Checkbox::new(&mut timer.animation_playing, "Play animation"),
                     );
-                    let time_response = ui.add(
-                        egui::DragValue::new(&mut seconds)
-                            .custom_formatter(|it, _| {
-                                format!("{}", TimetableTime::from_hms(0, 0, it as i32))
-                            })
-                            .custom_parser(|s| TimetableTime::from_str(s).map(|it| it.0 as f64)),
-                    );
+                    let time_response = ui.add(time_drag_value(&mut time));
                     ui.add_enabled(
                         !timer.sync_to_real_time,
                         egui::Slider::new(&mut timer.animation_speed, -500.0..=500.0)
@@ -1015,7 +1011,7 @@ pub fn show_ui(ui: &mut Ui, world: &mut World, cpu_time: Option<f32>) {
                             && time_response.dragged()
                             && timer.try_lock_unchecked(1)
                         {
-                            timer.write_seconds(seconds);
+                            timer.write_ticks(Tick::from_timetable_time(time));
                         } else {
                             timer.try_unlock_unchecked(1);
                         }
