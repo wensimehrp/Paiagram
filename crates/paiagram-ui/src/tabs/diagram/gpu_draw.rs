@@ -81,7 +81,7 @@ pub fn write_vertices(trips: &[DrawnTrip], is_dark: bool, state: &mut GpuTripRen
         batch.width = trip.stroke.width;
         batch.vertices.clear();
         batch.curve_vertices.clear();
-        for group in &trip.points {
+        for group in &trip.points[0..trip.draw_amount] {
             let flattened = group.as_flattened();
             for (idx, window) in flattened
                 .windows(2)

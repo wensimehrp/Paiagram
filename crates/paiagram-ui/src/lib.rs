@@ -55,6 +55,7 @@ impl Plugin for UiPlugin {
             .init_resource::<GlobalTimer>()
             .init_resource::<UiModal>()
             .init_resource::<command_palette::CommandPalette>()
+            .init_resource::<tabs::diagram::TripLineBuf>()
             .add_plugins((
                 // bevy_inspector_egui::DefaultInspectorConfigPlugin,
                 actions::ActionsPlugin,

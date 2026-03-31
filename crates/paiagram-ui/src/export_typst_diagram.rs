@@ -60,9 +60,10 @@ impl<'a> ExportObject for TypstDiagram<'a> {
         let route = self.world.get::<Route>(self.route_entity).unwrap();
         let mut rendered_vehicle_buf = Vec::new();
         let ctx = default_calc_context(&route);
-        self.world
-            .run_system_cached_with(calc, (&mut rendered_vehicle_buf, &ctx, self.route_entity))
-            .unwrap();
+        unimplemented!();
+        // self.world
+        //     .run_system_cached_with(calc, (&mut rendered_vehicle_buf, &ctx, self.route_entity))
+        //     .unwrap();
         let mut stations_output = Vec::new();
         let mut trips_output = Vec::new();
         self.world

@@ -74,7 +74,7 @@ pub struct EntryStop(
 );
 
 /// The estimated arrival and departure times of the entry. This is not a hard requirement for entries.
-#[derive(Reflect, Component)]
+#[derive(Reflect, Component, Clone, Copy)]
 #[reflect(Component)]
 pub struct EntryEstimate {
     pub arr: TimetableTime,
