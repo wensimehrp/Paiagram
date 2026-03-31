@@ -24,7 +24,7 @@ _A fictional railway network featuring mixed services_
 > Paiagram is still in development. Don't expect it to be ready for production use right now.
 > Come back by late 2026 to see how it is going. I guarantee you that there would be lots of new commits.
 
-Paiagram is a timetable editor and visualizer that easily runs on any modern potatoes. I've verified this on my high school's desktops.
+Paiagram is a marey chart editor and timetable visualizer that runs on any modern potatoes. I've verified this on my high school's desktops.
 
 ## Features
 
