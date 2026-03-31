@@ -5461,6 +5461,7 @@ dependencies = [
  "rfd",
  "serde",
  "serde_json",
+ "smallvec",
  "strum",
  "strum_macros",
  "urlencoding",

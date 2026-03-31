@@ -1,20 +1,19 @@
+use crate::tabs::Navigatable;
 use bevy::{
     ecs::entity::{EntityHashMap, EntityHashSet},
     prelude::*,
 };
 use egui::Pos2;
-use rayon::prelude::*;
-
 use paiagram_core::{
     entry::EntryQuery,
     route::{Route, RouteTrips},
     settings::ProjectSettings,
-    station::{Platform, Station},
+    station::{ParentStationOrStation, Platform, Station},
     trip::class::{Class, DisplayedStroke},
     units::time::Tick,
 };
-
-use crate::tabs::Navigatable;
+use rayon::prelude::*;
+use smallvec::SmallVec;
 
 pub fn calc(
     (InMut(buf), InRef(navi), In(route_entity)): (
@@ -28,13 +27,12 @@ pub fn calc(
     stations: Query<(), With<Station>>,
     platforms: Query<&ChildOf, With<Platform>>,
     class_strokes: Query<&DisplayedStroke, With<Class>>,
+    parent_station_or_station: Query<ParentStationOrStation>,
     settings: Res<ProjectSettings>,
 ) {
     buf.clear();
 
-    let Ok((route, trips)) = routes.get(route_entity) else {
-        return;
-    };
+    let (route, trips) = routes.get(route_entity).unwrap();
 
     let heights: Vec<(Entity, f32)> = route.iter().collect();
     let route_stops: EntityHashSet = route.stops.iter().copied().collect();
@@ -45,6 +43,7 @@ pub fn calc(
     let vertical_visible = navi.visible_y();
     let visible_ticks = navi.visible_x();
 
+    /*
     let visible_stations = {
         let first_visible = heights
             .iter()
@@ -69,20 +68,10 @@ pub fn calc(
     if visible_stations.is_empty() {
         return;
     }
+    */
 
-    let resolve_stop_station = |stop: Entity| -> Option<Entity> {
-        if route_stops.contains(&stop) {
-            return Some(stop);
-        }
-        if stations.get(stop).is_ok() {
-            return Some(stop);
-        }
-        let parent = platforms.get(stop).ok().map(|p| p.parent())?;
-        if route_stops.contains(&parent) {
-            return Some(parent);
-        }
-        None
-    };
+    let resolve_stop_station =
+        |stop: Entity| -> Entity { parent_station_or_station.get(stop).unwrap().parent() };
 
     #[derive(Clone, Copy)]
     struct TripPoint {
@@ -95,9 +84,8 @@ pub fn calc(
     struct TripEntryData {
         entity: Entity,
         station: Entity,
-        arr_ticks: Option<Tick>,
-        dep_ticks: Option<Tick>,
-        has_departure: bool,
+        arr_tick: Option<Tick>,
+        dep_tick: Option<Tick>,
     }
 
     struct TripData {
@@ -106,35 +94,23 @@ pub fn calc(
         entries: Vec<TripEntryData>,
     }
 
-    let use_full_trip = true;
-    let stations_for_layout = if use_full_trip {
-        &heights[..]
-    } else {
-        visible_stations
-    };
-    let visible_station_set: EntityHashSet = visible_stations.iter().map(|(s, _)| *s).collect();
-    let mut station_index_map: EntityHashMap<Vec<usize>> = EntityHashMap::new();
+    let stations_for_layout = &heights[..];
+    // let visible_station_set: EntityHashSet = visible_stations.iter().map(|(s, _)| *s).collect();
+    let mut station_index_map: EntityHashMap<SmallVec<[usize; 2]>> = EntityHashMap::new();
     for (idx, (station, _)) in stations_for_layout.iter().enumerate() {
         station_index_map.entry(*station).or_default().push(idx);
     }
 
     let mut trip_data = Vec::with_capacity(trips.len());
     for trip_entity in trips.iter().copied() {
-        let Ok(trip) = trip_q.get(trip_entity) else {
-            continue;
-        };
-
-        let stroke = class_strokes.get(trip.class.0).copied().unwrap_or_default();
+        let trip = trip_q.get(trip_entity).unwrap();
+        let stroke = class_strokes.get(trip.class.0).copied().unwrap();
 
         let mut trip_entries_vec: Vec<TripEntryData> = Vec::new();
         for entry_entity in trip.schedule.iter().copied() {
-            let Ok(entry) = entries.get(entry_entity) else {
-                continue;
-            };
-            let Some(station_entity) = resolve_stop_station(entry.stop()) else {
-                continue;
-            };
-            let (arr_ticks, dep_ticks) = if let Some(estimate) = entry.estimate {
+            let entry = entries.get(entry_entity).unwrap();
+            let station_entity = resolve_stop_station(entry.stop());
+            let (arr_tick, dep_tick) = if let Some(estimate) = entry.estimate {
                 let arrival_ticks = Tick::from_timetable_time(estimate.arr);
                 let departure_ticks = Tick::from_timetable_time(estimate.dep);
                 (Some(arrival_ticks), Some(departure_ticks))
@@ -145,9 +121,8 @@ pub fn calc(
             trip_entries_vec.push(TripEntryData {
                 entity: entry_entity,
                 station: station_entity,
-                arr_ticks,
-                dep_ticks,
-                has_departure: entry.mode.arr.is_some(),
+                arr_tick,
+                dep_tick,
             });
         }
 
@@ -166,23 +141,13 @@ pub fn calc(
         settings.repeat_frequency.0,
     ));
 
-    let drawn: Vec<super::DrawnTrip> = trip_data
-        .par_iter()
+    let draw_iter = trip_data
+        .into_iter()
         .filter_map(|trip| {
-            if use_full_trip
-                && !trip
-                    .entries
-                    .iter()
-                    .any(|entry| visible_station_set.contains(&entry.station))
-            {
-                return None;
-            }
-
             let mut base_min: Option<Tick> = None;
             let mut base_max: Option<Tick> = None;
             for entry in &trip.entries {
-                let (Some(arrival_ticks), Some(departure_ticks)) =
-                    (entry.arr_ticks, entry.dep_ticks)
+                let (Some(arrival_ticks), Some(departure_ticks)) = (entry.arr_tick, entry.dep_tick)
                 else {
                     continue;
                 };
@@ -213,9 +178,10 @@ pub fn calc(
             for repeat in repeat_start..=repeat_end {
                 let repeat_offset = repeat * repeat_freq_ticks.0;
 
+                /*
                 let first_visible = trip.entries.iter().position(|entry| {
                     let (Some(arrival_ticks), Some(departure_ticks)) =
-                        (entry.arr_ticks, entry.dep_ticks)
+                        (entry.arr_tick, entry.dep_tick)
                     else {
                         return false;
                     };
@@ -226,7 +192,7 @@ pub fn calc(
                 });
                 let last_visible = trip.entries.iter().rposition(|entry| {
                     let (Some(arrival_ticks), Some(departure_ticks)) =
-                        (entry.arr_ticks, entry.dep_ticks)
+                        (entry.arr_tick, entry.dep_tick)
                     else {
                         return false;
                     };
@@ -242,14 +208,15 @@ pub fn calc(
                 let Some(last_visible) = last_visible else {
                     continue;
                 };
+                */
 
-                let trip_entries = if use_full_trip {
-                    &trip.entries[..]
-                } else {
-                    let first_visible = first_visible.saturating_sub(2);
-                    let last_visible = (last_visible + 2).min(trip.entries.len() - 1);
-                    &trip.entries[first_visible..=last_visible]
-                };
+                // let trip_entries = {
+                //     let first_visible = first_visible.saturating_sub(2);
+                //     let last_visible = (last_visible + 2).min(trip.entries.len() - 1);
+                //     &trip.entries[first_visible..=last_visible]
+                // };
+
+                let trip_entries = trip.entries.as_slice();
 
                 if trip_entries.len() < 2 {
                     continue;
@@ -258,11 +225,11 @@ pub fn calc(
                 let mut segments: Vec<Vec<TripPoint>> = Vec::new();
 
                 let mut local_edges: Vec<(Vec<TripPoint>, usize)> = Vec::new();
-                let mut previous_indices: Vec<usize> = Vec::new();
+                let mut previous_indices: &[usize] = &[];
 
                 if let Some(first) = trip_entries.first() {
                     if let Some(indices) = station_index_map.get(&first.station) {
-                        previous_indices = indices.clone();
+                        previous_indices = indices.as_slice();
                     }
                 }
 
@@ -273,7 +240,9 @@ pub fn calc(
                     if previous_indices.is_empty() {
                         if let Some(next_entry) = next {
                             if let Some(indices) = station_index_map.get(&next_entry.station) {
-                                previous_indices = indices.clone();
+                                previous_indices = indices.as_slice();
+                            } else {
+                                previous_indices = &[];
                             }
                         }
                         for (segment, _) in local_edges.drain(..) {
@@ -285,7 +254,7 @@ pub fn calc(
                     }
 
                     let (Some(arrival_ticks), Some(departure_ticks)) =
-                        (entry.arr_ticks, entry.dep_ticks)
+                        (entry.arr_tick, entry.dep_tick)
                     else {
                         for (segment, _) in local_edges.drain(..) {
                             if segment.len() >= 2 {
@@ -294,7 +263,9 @@ pub fn calc(
                         }
                         if let Some(next_entry) = next {
                             if let Some(indices) = station_index_map.get(&next_entry.station) {
-                                previous_indices = indices.clone();
+                                previous_indices = indices.as_slice();
+                            } else {
+                                previous_indices = &[];
                             }
                         }
                         continue;
@@ -305,7 +276,7 @@ pub fn calc(
 
                     let mut next_local_edges = Vec::new();
 
-                    for &current_line_index in &previous_indices {
+                    for &current_line_index in previous_indices {
                         let Some((_, height)) = stations_for_layout.get(current_line_index) else {
                             continue;
                         };
@@ -314,36 +285,39 @@ pub fn calc(
                             .iter()
                             .position(|(_, idx)| current_line_index.abs_diff(*idx) <= 1);
 
-                        let mut segment = if let Some(idx) = matched_idx {
+                        let mut segment = Some(if let Some(idx) = matched_idx {
                             local_edges.swap_remove(idx).0
                         } else {
                             Vec::new()
-                        };
+                        });
 
                         let arrival_pos = navi.xy_to_screen_pos(arrival_ticks, *height as f64);
                         let departure_pos = navi.xy_to_screen_pos(departure_ticks, *height as f64);
 
-                        segment.push(TripPoint {
+                        segment.as_mut().unwrap().push(TripPoint {
                             arr: arrival_pos,
                             dep: departure_pos,
                             entry: entry.entity,
                         });
 
-                        let mut continued = false;
+                        let mut forwarded = None;
                         if let Some(next_entry) = next {
                             for offset in [-1, 0, 1] {
                                 let next_idx = (current_line_index as isize + offset) as usize;
                                 if let Some((s, _)) = stations_for_layout.get(next_idx) {
                                     if *s == next_entry.station {
-                                        next_local_edges.push((segment.clone(), next_idx));
-                                        continued = true;
+                                        forwarded = Some((segment.take().unwrap(), next_idx));
                                         break;
                                     }
                                 }
                             }
                         }
 
-                        if !continued && segment.len() >= 2 {
+                        if let Some(edge) = forwarded {
+                            next_local_edges.push(edge);
+                        } else if let Some(segment) = segment
+                            && segment.len() >= 2
+                        {
                             segments.push(segment);
                         }
                     }
@@ -357,7 +331,9 @@ pub fn calc(
                     local_edges = next_local_edges;
                     if let Some(next_entry) = next {
                         if let Some(indices) = station_index_map.get(&next_entry.station) {
-                            previous_indices = indices.clone();
+                            previous_indices = indices.as_slice();
+                        } else {
+                            previous_indices = &[];
                         }
                     }
                 }
@@ -398,8 +374,7 @@ pub fn calc(
                 points: drawn_segments,
                 entries: drawn_entries,
             })
-        })
-        .collect();
+        });
 
-    buf.extend(drawn);
+    buf.extend(draw_iter);
 }
