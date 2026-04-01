@@ -1,21 +1,22 @@
 use super::TripPoint;
-use crate::tabs::diagram::CachedTrip;
 use bevy::{ecs::entity::EntityHashMap, prelude::*};
 use paiagram_core::{
     entry::{EntryEstimate, EntryQuery},
     route::{Route, RouteTrips},
     station::ParentStationOrStation,
+    trip::TripQuery,
 };
 use smallvec::SmallVec;
+use vec1::{Vec1, vec1};
 
-pub fn calc(
+pub(crate) fn calc(
     (In(route_entity), InRef(heights), InMut(map)): (
         In<Entity>,
         InRef<[(Entity, f32)]>,
-        InMut<Option<EntityHashMap<SmallVec<[CachedTrip; 1]>>>>,
+        InMut<Option<EntityHashMap<SmallVec<[Vec<TripPoint>; 1]>>>>,
     ),
     route_q: Query<(&RouteTrips, Ref<Route>)>,
-    trip_q: Query<paiagram_core::trip::TripQuery>,
+    trip_q: Query<TripQuery>,
     changed_entries: Query<&ChildOf, Changed<EntryEstimate>>,
     entries: Query<EntryQuery>,
     parent_station_or_station: Query<ParentStationOrStation>,
@@ -24,7 +25,6 @@ pub fn calc(
     let (trips, route) = route_q.get(route_entity).unwrap();
 
     let refresh_candidates = if map.is_none() || route.is_changed() {
-        info!("none");
         trips.as_slice()
     } else {
         invalidate_cache.clear();
@@ -34,7 +34,7 @@ pub fn calc(
         invalidate_cache.as_slice()
     };
 
-    let map: &mut EntityHashMap<SmallVec<[CachedTrip; 1]>> = map.get_or_insert_default();
+    let map: &mut EntityHashMap<SmallVec<[Vec<TripPoint>; 1]>> = map.get_or_insert_default();
 
     #[derive(Clone, Copy)]
     struct TripEntryData {
@@ -86,26 +86,20 @@ pub fn calc(
         let trip_bucket = map.entry(trip.entity).or_default();
         trip_bucket.clear();
 
-        let mut push_to_bucket =
-            |(start_index, points, end_index): (usize, Vec<TripPoint>, usize)| {
-                if points.len() < 2 {
-                    return;
-                }
-                let is_going_down = end_index > start_index;
-                trip_bucket.push(CachedTrip {
-                    start_index,
-                    is_going_down,
-                    points,
-                });
-            };
+        let mut push_to_bucket = |points: Vec1<TripPoint>| {
+            if points.len() < 2 {
+                return;
+            }
+            trip_bucket.push(points.into_vec());
+        };
 
         let trip_entries = trip.entries.as_slice();
         if trip_entries.len() < 2 {
             continue;
         }
 
-        // Start index, points, end index
-        let mut local_edges: Vec<(usize, Vec<TripPoint>, usize)> = Vec::new();
+        // points, end index
+        let mut local_edges: Vec<Vec1<TripPoint>> = Vec::new();
         let mut previous_indices: &[usize] = &[];
 
         if let Some(first) = trip_entries.first()
@@ -146,27 +140,30 @@ pub fn calc(
                 continue;
             };
 
-            let mut next_local_edges: Vec<(usize, Vec<TripPoint>, usize)> = Vec::new();
+            let mut next_local_edges: Vec<Vec1<TripPoint>> = Vec::new();
 
-            for &current_line_index in previous_indices {
+            for current_line_index in previous_indices.iter().copied() {
                 let matched_idx = local_edges
                     .iter()
-                    .position(|(_, _, idx)| current_line_index.abs_diff(*idx) <= 1);
+                    .position(|it| current_line_index.abs_diff(it.last().station_index) <= 1);
 
-                let mut segment = if let Some(idx) = matched_idx {
-                    local_edges.swap_remove(idx)
+                let segment = if let Some(idx) = matched_idx {
+                    let mut a = local_edges.swap_remove(idx);
+                    a.push(TripPoint {
+                        arr: estimate.arr,
+                        dep: estimate.dep,
+                        entry: curr.entity,
+                        station_index: current_line_index,
+                    });
+                    a
                 } else {
-                    (current_line_index, Vec::new(), current_line_index)
+                    vec1![TripPoint {
+                        arr: estimate.arr,
+                        dep: estimate.dep,
+                        entry: curr.entity,
+                        station_index: current_line_index,
+                    }]
                 };
-
-                segment.1.push(TripPoint {
-                    arr: estimate.arr,
-                    dep: estimate.dep,
-                    entry: curr.entity,
-                });
-
-                // The current point belongs to the current line index.
-                segment.2 = current_line_index;
 
                 let mut segment = Some(segment);
                 if let Some(next_entry) = next {
@@ -174,8 +171,7 @@ pub fn calc(
                         let next_idx = (current_line_index as isize + offset) as usize;
                         if let Some((s, _)) = stations_for_layout.get(next_idx) {
                             if *s == next_entry.station {
-                                let mut forwarded_segment = segment.take().unwrap();
-                                forwarded_segment.2 = next_idx;
+                                let forwarded_segment = segment.take().unwrap();
                                 next_local_edges.push(forwarded_segment);
                                 break;
                             }
@@ -183,8 +179,8 @@ pub fn calc(
                     }
                 }
 
-                if let Some(segment) = segment {
-                    push_to_bucket(segment);
+                if let Some(it) = segment {
+                    push_to_bucket(it);
                 }
             }
 

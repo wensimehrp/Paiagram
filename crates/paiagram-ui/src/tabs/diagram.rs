@@ -80,7 +80,7 @@ pub struct DiagramTab {
     /// Whether to use the [`GlobalTimer`]
     use_global_timer: bool,
     #[serde(skip, default)]
-    cached_trips: Option<EntityHashMap<SmallVec<[CachedTrip; 1]>>>,
+    cached_trips: Option<EntityHashMap<SmallVec<[Vec<TripPoint>; 1]>>>,
     /// RAPTOR's results
     #[serde(skip, default)]
     raptor_params: RaptorParams,
@@ -221,23 +221,17 @@ impl Navigatable for DiagramTabNavigation {
     }
 }
 
-#[derive(Debug, Clone)]
-struct CachedTrip {
-    start_index: usize,
-    is_going_down: bool,
-    points: Vec<TripPoint>,
-}
-
 #[derive(Clone, Copy, Debug)]
-struct TripPoint {
+pub(crate) struct TripPoint {
     arr: TimetableTime,
     dep: TimetableTime,
     entry: Entity,
+    station_index: usize,
 }
 
 fn render_points(
     (InRef(cache), InMut(buf), InRef(navi), InRef(station_heights)): (
-        InRef<EntityHashMap<SmallVec<[CachedTrip; 1]>>>,
+        InRef<EntityHashMap<SmallVec<[Vec<TripPoint>; 1]>>>,
         InMut<Vec<DrawnTrip>>,
         InRef<DiagramTabNavigation>,
         InRef<[(Entity, f32)]>,
@@ -260,7 +254,7 @@ fn render_points(
         for line in lines.iter() {
             let mut line_min = i64::MAX;
             let mut line_max = i64::MIN;
-            for TripPoint { arr, dep, .. } in line.points.iter() {
+            for TripPoint { arr, dep, .. } in line.iter() {
                 let arr_ticks = Tick::from_timetable_time(*arr).0;
                 let dep_ticks = Tick::from_timetable_time(*dep).0;
                 line_min = line_min.min(arr_ticks.min(dep_ticks));
@@ -291,14 +285,18 @@ fn render_points(
 
                 pt_buf.clear();
                 et_buf.clear();
-                et_buf.reserve(line.points.len());
-                pt_buf.reserve(line.points.len());
+                et_buf.reserve(line.len());
+                pt_buf.reserve(line.len());
 
                 let repeat_offset = repeat * repeat_freq_ticks.0;
-                let mut current_index = line.start_index as isize;
-                let offset: isize = if line.is_going_down { 1 } else { -1 };
-                for TripPoint { arr, dep, entry } in line.points.iter() {
-                    let (_, height) = station_heights[current_index as usize];
+                for TripPoint {
+                    arr,
+                    dep,
+                    entry,
+                    station_index,
+                } in line.iter()
+                {
+                    let (_, height) = station_heights[*station_index];
                     let arr_tick = Tick::from_timetable_time(*arr);
                     let dep_tick = Tick::from_timetable_time(*dep);
                     let arr_pos =
@@ -307,7 +305,6 @@ fn render_points(
                         navi.xy_to_screen_pos(Tick(dep_tick.0 + repeat_offset), height as f64);
                     et_buf.push(*entry);
                     pt_buf.push([arr_pos, arr_pos, dep_pos, dep_pos]);
-                    current_index += offset;
                 }
 
                 if !pt_buf.is_empty() {
@@ -767,8 +764,10 @@ fn main_display(
             {
                 let mut stroke = drawn.stroke.egui_stroke(ui.visuals().dark_mode);
                 stroke.width = stroke.width + 3.0 * selection_strength;
-                for (i, (line_group, entity_group)) in
-                    drawn.points[0..drawn.draw_amount].iter().zip(drawn.entries.iter()).enumerate()
+                for (i, (line_group, entity_group)) in drawn.points[0..drawn.draw_amount]
+                    .iter()
+                    .zip(drawn.entries.iter())
+                    .enumerate()
                 {
                     let line = line_group.as_flattened().to_vec();
                     painter.line(line, stroke);
