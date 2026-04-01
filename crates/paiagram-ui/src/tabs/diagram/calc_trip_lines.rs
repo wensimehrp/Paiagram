@@ -27,8 +27,18 @@ pub(crate) fn calc(
     let refresh_candidates = if map.is_none() || route.is_changed() {
         trips.as_slice()
     } else {
+        if changed_entries.is_empty() {
+            return
+        }
+        let mut trips = trips.to_vec();
+        trips.sort_unstable();
         invalidate_cache.clear();
-        invalidate_cache.extend(changed_entries.iter().map(ChildOf::parent));
+        for entity in changed_entries.iter().map(ChildOf::parent) {
+            let Ok(_) = trips.binary_search(&entity) else {
+                continue;
+            };
+            invalidate_cache.push(entity);
+        }
         invalidate_cache.sort_unstable();
         invalidate_cache.dedup();
         invalidate_cache.as_slice()
