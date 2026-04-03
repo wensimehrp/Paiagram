@@ -39,6 +39,13 @@ struct VisibleSegment {
     color: vec4<f32>,
 };
 
+struct VertexIn {
+    @location(0) p0: vec2<f32>,
+    @location(1) p1: vec2<f32>,
+    @location(2) half_width: f32,
+    @location(3) color: vec4<f32>,
+};
+
 struct InstanceCounter {
     count: atomic<u32>,
 };
@@ -173,14 +180,6 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
 struct VertexOut {
     @location(0) color: vec4<f32>,
     @builtin(position) position: vec4<f32>,
-};
-
-struct VertexIn {
-    @location(0) p0: vec2<f32>,
-    @location(1) p1: vec2<f32>,
-    @location(2) half_width: f32,
-    @location(3) _pad0: f32,
-    @location(4) color: vec4<f32>,
 };
 
 @vertex

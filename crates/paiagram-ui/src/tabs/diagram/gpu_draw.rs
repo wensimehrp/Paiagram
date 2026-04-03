@@ -78,6 +78,7 @@ struct VisibleSegment {
     p1: [f32; 2],
     half_width: f32,
     _pad0: f32,
+    _pad1: [f32; 2],
     color: [f32; 4],
 }
 
@@ -373,14 +374,9 @@ impl TripRenderResources {
                             shader_location: 2,
                         },
                         wgpu::VertexAttribute {
-                            format: wgpu::VertexFormat::Float32,
-                            offset: 20,
-                            shader_location: 3,
-                        },
-                        wgpu::VertexAttribute {
                             format: wgpu::VertexFormat::Float32x4,
-                            offset: 24,
-                            shader_location: 4,
+                            offset: 32,
+                            shader_location: 3,
                         },
                     ],
                 }],
