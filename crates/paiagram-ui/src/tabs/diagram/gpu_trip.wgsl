@@ -47,7 +47,6 @@ struct InstanceCounter {
 @group(0) @binding(1) var<storage, read> entries: array<Entry>;
 @group(0) @binding(2) var<storage, read> trips: array<Trip>;
 @group(0) @binding(3) var<storage, read> stations: array<f32>;
-@group(0) @binding(5) var<storage, read> visible_segments: array<VisibleSegment>;
 @group(0) @binding(6) var<storage, read> source_instance_map: array<InstanceMapEntry>;
 @group(0) @binding(7) var<storage, read_write> instance_counter: InstanceCounter;
 @group(0) @binding(8) var<storage, read_write> visible_segments_rw: array<VisibleSegment>;
@@ -176,18 +175,19 @@ struct VertexOut {
     @builtin(position) position: vec4<f32>,
 };
 
+struct VertexIn {
+    @location(0) p0: vec2<f32>,
+    @location(1) p1: vec2<f32>,
+    @location(2) half_width: f32,
+    @location(3) _pad0: f32,
+    @location(4) color: vec4<f32>,
+};
+
 @vertex
-fn vs_main(@builtin(vertex_index) vertex_index: u32, @builtin(instance_index) instance_index: u32) -> VertexOut {
+fn vs_main(@builtin(vertex_index) vertex_index: u32, seg: VertexIn) -> VertexOut {
     var out: VertexOut;
     let local = vertex_index % 6u;
 
-    if instance_index >= arrayLength(&visible_segments) {
-        out.position = vec4<f32>(0.0, 0.0, 0.0, 0.0);
-        out.color = vec4<f32>(0.0, 0.0, 0.0, 0.0);
-        return out;
-    }
-
-    let seg = visible_segments[instance_index];
     let seg_a = seg.p0;
     let seg_b = seg.p1;
 

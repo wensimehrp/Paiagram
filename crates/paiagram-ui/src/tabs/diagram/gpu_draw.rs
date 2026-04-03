@@ -205,10 +205,6 @@ impl TripRenderResources {
                     resource: self.station_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
-                    binding: 5,
-                    resource: self.visible_segment_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
                     binding: 6,
                     resource: self.source_instance_map_buffer.as_entire_binding(),
                 },
@@ -248,7 +244,7 @@ impl TripRenderResources {
         let trip_buffer = make_storage_buffer_entry("trips", 256, device);
         let station_buffer = make_storage_buffer_entry("stations", 256, device);
         let visible_segment_buffer =
-            make_rw_storage_buffer_entry("visible_segment", 256, BufferUsages::empty(), device);
+            make_rw_storage_buffer_entry("visible_segment", 256, BufferUsages::VERTEX, device);
         let visible_segment_write_buffer = make_rw_storage_buffer_entry(
             "visible_segment_write",
             256,
@@ -296,13 +292,11 @@ impl TripRenderResources {
                     count: None,
                 },
                 // entry_buffer
-                ro_storage_buffer_layout_entry(1, ShaderStages::VERTEX | ShaderStages::COMPUTE),
+                ro_storage_buffer_layout_entry(1, ShaderStages::COMPUTE),
                 // trip_buffer
-                ro_storage_buffer_layout_entry(2, ShaderStages::VERTEX | ShaderStages::COMPUTE),
+                ro_storage_buffer_layout_entry(2, ShaderStages::COMPUTE),
                 // station_buffer
-                ro_storage_buffer_layout_entry(3, ShaderStages::VERTEX | ShaderStages::COMPUTE),
-                // visible_segment_buffer
-                ro_storage_buffer_layout_entry(5, ShaderStages::VERTEX | ShaderStages::COMPUTE),
+                ro_storage_buffer_layout_entry(3, ShaderStages::COMPUTE),
                 // source_instance_map_buffer
                 ro_storage_buffer_layout_entry(6, ShaderStages::COMPUTE),
                 // instance_counter_buffer
@@ -333,10 +327,6 @@ impl TripRenderResources {
                     resource: station_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
-                    binding: 5,
-                    resource: visible_segment_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
                     binding: 6,
                     resource: source_instance_map_buffer.as_entire_binding(),
                 },
@@ -363,7 +353,37 @@ impl TripRenderResources {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: Some("vs_main"),
-                buffers: &[],
+                buffers: &[wgpu::VertexBufferLayout {
+                    array_stride: std::mem::size_of::<VisibleSegment>() as u64,
+                    step_mode: wgpu::VertexStepMode::Instance,
+                    attributes: &[
+                        wgpu::VertexAttribute {
+                            format: wgpu::VertexFormat::Float32x2,
+                            offset: 0,
+                            shader_location: 0,
+                        },
+                        wgpu::VertexAttribute {
+                            format: wgpu::VertexFormat::Float32x2,
+                            offset: 8,
+                            shader_location: 1,
+                        },
+                        wgpu::VertexAttribute {
+                            format: wgpu::VertexFormat::Float32,
+                            offset: 16,
+                            shader_location: 2,
+                        },
+                        wgpu::VertexAttribute {
+                            format: wgpu::VertexFormat::Float32,
+                            offset: 20,
+                            shader_location: 3,
+                        },
+                        wgpu::VertexAttribute {
+                            format: wgpu::VertexFormat::Float32x4,
+                            offset: 24,
+                            shader_location: 4,
+                        },
+                    ],
+                }],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
             fragment: Some(wgpu::FragmentState {
@@ -586,7 +606,7 @@ impl CallbackTrait for TripCallback {
             resources.visible_segment_buffer = make_rw_storage_buffer_entry(
                 "visible_segment",
                 new_size,
-                BufferUsages::empty(),
+                BufferUsages::VERTEX,
                 device,
             );
             resources.visible_segment_write_buffer = make_rw_storage_buffer_entry(
@@ -671,6 +691,7 @@ impl CallbackTrait for TripCallback {
         render_pass.set_scissor_rect(clip_left, clip_top, clip_width, clip_height);
         render_pass.set_pipeline(&resources.pipeline);
         render_pass.set_bind_group(0, &resources.bind_group, &[]);
+        render_pass.set_vertex_buffer(0, resources.visible_segment_buffer.slice(..));
         render_pass.draw(0..6, 0..resources.draw_instance_count);
     }
 }
