@@ -44,7 +44,7 @@ impl SelectedItems {
             Self::Entries(i) => CanvasState::SelectingEntries(i),
             Self::Intervals(i) => CanvasState::SelectingIntervals(i),
             Self::Stations(i) => CanvasState::SelectingStations(i),
-            Self::ExtendingRoute(_i) => CanvasState::Idle,
+            Self::ExtendingRoute(_) => CanvasState::IdleNoInterrupt,
             Self::ExtendingTrip(i) => CanvasState::ExtendingTrip(i),
         }
     }
@@ -52,10 +52,13 @@ impl SelectedItems {
 
 /// The state of the canvas
 #[derive(Default)]
+#[non_exhaustive]
 pub(crate) enum CanvasState<'a> {
     /// User is doing nothing
     #[default]
     Idle,
+    /// User is doing something in another panel.
+    IdleNoInterrupt,
     /// User is selecting some entries
     SelectingEntries(&'a [EntrySelection]),
     /// User is selecting some intervals
@@ -65,6 +68,8 @@ pub(crate) enum CanvasState<'a> {
     /// User is extending a trip
     ExtendingTrip(&'a mut ExtendingTripSelection),
 }
+
+type TripCache = EntityHashMap<SmallVec<[Vec<TripPoint>; 1]>>;
 
 /// The diagram tab.
 #[derive(Serialize, Deserialize, Clone, MapEntities)]
@@ -80,7 +85,7 @@ pub struct DiagramTab {
     /// Whether to use the [`GlobalTimer`]
     use_global_timer: bool,
     #[serde(skip, default)]
-    cached_trips: Option<EntityHashMap<SmallVec<[Vec<TripPoint>; 1]>>>,
+    cached_trips: Option<TripCache>,
     /// RAPTOR's results
     #[serde(skip, default)]
     raptor_params: RaptorParams,
@@ -231,7 +236,7 @@ pub(crate) struct TripPoint {
 
 fn render_points(
     (InRef(cache), InMut(buf), InRef(navi), InRef(station_heights)): (
-        InRef<EntityHashMap<SmallVec<[Vec<TripPoint>; 1]>>>,
+        InRef<TripCache>,
         InMut<Vec<DrawnTrip>>,
         InRef<DiagramTabNavigation>,
         InRef<[(Entity, f32)]>,
@@ -512,21 +517,13 @@ impl Tab for DiagramTab {
     }
     fn main_display(&mut self, world: &mut World, ui: &mut egui::Ui) {
         world.resource_scope(|world, mut selected: Mut<SelectedItems>| {
-            world.resource_scope(|world, mut trip_line_buf: Mut<TripLineBuf>| {
-                egui::Frame::canvas(ui.style())
-                    .inner_margin(Margin::ZERO)
-                    .outer_margin(Margin::ZERO)
-                    .stroke(Stroke::NONE)
-                    .show(ui, |ui| {
-                        main_display(
-                            self,
-                            world,
-                            ui,
-                            trip_line_buf.as_mut(),
-                            selected.to_canvas_state(),
-                        )
-                    });
-            })
+            egui::Frame::canvas(ui.style())
+                .inner_margin(Margin::ZERO)
+                .outer_margin(Margin::ZERO)
+                .stroke(Stroke::NONE)
+                .show(ui, |ui| {
+                    main_display(self, world, ui, selected.to_canvas_state())
+                });
         });
     }
 }
@@ -538,9 +535,10 @@ fn main_display(
     tab: &mut DiagramTab,
     world: &mut World,
     ui: &mut egui::Ui,
-    trip_line_buf: &mut Vec<DrawnTrip>,
     canvas_state: CanvasState,
 ) {
+    let mut trip_line_buf: Vec<DrawnTrip> = Vec::new();
+    let trip_line_buf = &mut trip_line_buf;
     let route = world
         .get::<Route>(tab.route_entity)
         .expect("Entity should have a route");
@@ -586,28 +584,13 @@ fn main_display(
 
     // Calculate the visible trains
     let now = Instant::now();
-    world
+    let cached_trips_are_changed = world
         .run_system_cached_with(
             calc_trip_lines::calc,
             (tab.route_entity, &station_heights, &mut tab.cached_trips),
         )
         .unwrap();
     tab.times.0 = tab.times.0 * 0.9 + now.elapsed().as_secs_f32() * 1000.0 * 0.1;
-
-    // calculate the points' position
-    let now = Instant::now();
-    world
-        .run_system_cached_with(
-            render_points,
-            (
-                tab.cached_trips.as_ref().unwrap(),
-                trip_line_buf,
-                &tab.navi,
-                station_heights.as_slice(),
-            ),
-        )
-        .unwrap();
-    tab.times.1 = tab.times.1 * 0.9 + now.elapsed().as_secs_f32() * 1000.0 * 0.1;
 
     // Prepare GPU drawing
     let now = Instant::now();
@@ -624,13 +607,47 @@ fn main_display(
     {
         state.msaa_samples = msaa_samples;
     }
+    let repeat_frequency = world.resource::<ProjectSettings>().repeat_frequency;
 
-    // paint the callback
-    gpu_draw::write_vertices(
-        &trip_line_buf[0..tab.cached_trips.as_ref().unwrap().len()],
-        ui.visuals().dark_mode,
-        &mut state,
-    );
+    state.uniforms = gpu_draw::Uniforms {
+        ticks_min: tab.navi.x_offset.0,
+        y_min: tab.navi.y_offset,
+        screen_size: [0.0, 0.0],
+        x_per_unit: tab.navi.x_per_screen_unit_f64() as f32,
+        y_per_unit: tab.navi.y_per_screen_unit_f64() as f32,
+        screen_origin: [tab.navi.visible_rect.left(), tab.navi.visible_rect.top()],
+        repeat_interval_ticks: Tick::from_timetable_time(TimetableTime(repeat_frequency.0))
+            .0
+            .clamp(i32::MIN as i64, i32::MAX as i64) as i32,
+    };
+
+    if cached_trips_are_changed {
+        gpu_draw::rewrite_trip_cache(
+            tab.cached_trips.as_ref().unwrap(),
+            station_heights.iter().map(|(_, y)| *y),
+            &mut state,
+        );
+    }
+
+    let mut processed = 0usize;
+    for (trip_entity, repeat_count) in tab
+        .cached_trips
+        .as_ref()
+        .unwrap()
+        .iter()
+        .map(|(k, v)| (*k, v.len()))
+    {
+        let class = world.get::<TripClass>(trip_entity).unwrap();
+        let stroke = world.get::<DisplayedStroke>(class.0).unwrap();
+        let stroke = stroke.egui_stroke(ui.visuals().dark_mode);
+        for idx in 0..repeat_count {
+            let state_trip = &mut state.trips[idx + processed];
+            state_trip.color = stroke.color.to_normalized_gamma_f32();
+            state_trip.width = stroke.width;
+        }
+        processed += repeat_count;
+    }
+
     let callback = gpu_draw::paint_callback(response.rect, tab.gpu_state.clone());
     painter.add(callback);
     tab.times.2 = tab.times.2 * 0.9 + now.elapsed().as_secs_f32() * 1000.0 * 0.1;
@@ -664,23 +681,31 @@ fn main_display(
         CanvasState::Idle if interact_pos.is_some() => {
             let pos = interact_pos.unwrap();
             // state transformation
-            if let Some(selection) = select_trip(&trip_line_buf, pos) {
-                world.write_message(ModifySelectedItems::SetSingle(SelectedItem::Entries(
-                    selection,
-                )));
-            } else if false {
-                // TODO
-            } else if false {
-                // TODO
-            }
+            error!("INTERACTION IS UNIMPLEMENTED");
+            // TODO: read the status from the GPU.
+            // then select stuff
+            // if let Some(selection) = select_trip(&trip_line_buf, pos) {
+            //     world.write_message(ModifySelectedItems::SetSingle(SelectedItem::Entries(
+            //         selection,
+            //     )));
+            // } else if false {
+            //     // TODO
+            // } else if false {
+            //     // TODO
+            // }
             // also reset the secondary click memory
             tab.last_secondary_click_position = None;
         }
-        CanvasState::Idle if response.secondary_clicked() => {
+        CanvasState::IdleNoInterrupt if interact_pos.is_some() => {
+            tab.last_secondary_click_position = None;
+        }
+        CanvasState::Idle | CanvasState::IdleNoInterrupt if response.secondary_clicked() => {
             let pos = ui.input(|it| it.pointer.interact_pos()).unwrap();
             tab.last_secondary_click_position = Some(tab.navi.screen_pos_to_xy(pos));
         }
-        CanvasState::Idle if tab.last_secondary_click_position.is_some() => {
+        CanvasState::Idle | CanvasState::IdleNoInterrupt
+            if tab.last_secondary_click_position.is_some() =>
+        {
             let (x, y) = tab.last_secondary_click_position.unwrap();
             // Determine the closest station and get its entity and height
             let (closest_station, station_y) = {
@@ -742,16 +767,18 @@ fn main_display(
                         Some((Tick::from_timetable_time(new_time), y))
                 }
 
-                // Add a new trip
-                if ui.button("New Trip").clicked() {
+                // Add a new trip.
+                if matches!(canvas_state, CanvasState::IdleNoInterrupt) {
+                    ui.label("Already editing...");
+                } else if ui.button("New Trip").clicked() {
                     // also reset the secondary click memory
                     tab.last_secondary_click_position = None;
                     // TODO
                 }
             });
         }
-        CanvasState::Idle => {
-            // Do nothing now. there are nothing to handle
+        CanvasState::Idle | CanvasState::IdleNoInterrupt => {
+            // Do nothing now. there is nothing to handle
         }
         // The current canvas is not idle
         // If the user has already selected some entries, they should only be able to select more
@@ -782,11 +809,23 @@ fn main_display(
                             .zip(entity_group.iter())
                             .enumerate()
                     {
+                        const OPAQUE_RADIUS: f32 = 20.0;
+                        const TRANSPARENT_RADIUS: f32 = 40.0;
+                        let curr_positions = curr_positions.unwrap();
+                        let midpoint = curr_positions[1].lerp(curr_positions[2], 0.5);
+                        let pos = ui.input(|r| r.pointer.hover_pos());
+                        let strength = if let Some(pos) = pos {
+                            let len = pos.distance(midpoint);
+                            let clamped = len.clamp(OPAQUE_RADIUS, TRANSPARENT_RADIUS);
+                            1.0 - (clamped - OPAQUE_RADIUS) / (TRANSPARENT_RADIUS - OPAQUE_RADIUS)
+                        } else {
+                            0.0
+                        };
                         world
                             .run_system_cached_with(
                                 draw_handles,
                                 (
-                                    curr_positions.unwrap(),
+                                    curr_positions,
                                     (
                                         *entity,
                                         drawn.entity,
@@ -797,7 +836,7 @@ fn main_display(
                                     ui,
                                     &mut painter,
                                     tab.navi.zoom_x(),
-                                    selection_strength,
+                                    strength,
                                 ),
                             )
                             .unwrap();
@@ -806,23 +845,23 @@ fn main_display(
             }
 
             // Check selection
-            if let Some(pos) = interact_pos {
-                match (
-                    select_trip(&trip_line_buf, pos),
-                    ui.input(|r| r.modifiers.command),
-                ) {
-                    (Some(s), true) => {
-                        world.write_message(ModifySelectedItems::Toggle(SelectedItem::Entries(s)));
-                    }
-                    (None, true) => {
-                        // do nothing
-                    }
-                    // Clear the selection
-                    (_, false) => {
-                        world.write_message(ModifySelectedItems::Clear);
-                    }
-                };
-            }
+            // if let Some(pos) = interact_pos {
+            //     match (
+            //         select_trip(&trip_line_buf, pos),
+            //         ui.input(|r| r.modifiers.command),
+            //     ) {
+            //         (Some(s), true) => {
+            //             world.write_message(ModifySelectedItems::Toggle(SelectedItem::Entries(s)));
+            //         }
+            //         (None, true) => {
+            //             // do nothing
+            //         }
+            //         // Clear the selection
+            //         (_, false) => {
+            //             world.write_message(ModifySelectedItems::Clear);
+            //         }
+            //     };
+            // }
         }
         // Select more intervals or quit the current state
         CanvasState::SelectingIntervals(i) => {
@@ -941,61 +980,61 @@ fn draw_trip_lines<'a>(
     }
 }
 
-fn select_trip(drawn_trips: &[DrawnTrip], pos: Pos2) -> Option<EntrySelection> {
-    const VEHICLE_SELECTION_RADIUS: f32 = 7.0;
-    for trip in drawn_trips {
-        for (points, entries) in trip.points.iter().zip(trip.entries.iter()) {
-            let last = points
-                .last()
-                .into_iter()
-                .flat_map(|it| {
-                    let [a, b, c, d] = it;
-                    [[*a, *b], [*b, *c], [*c, *d]]
-                })
-                .zip(
-                    entries
-                        .last()
-                        .into_iter()
-                        .flat_map(|it| std::iter::repeat(*it).take(3)),
-                );
-            let entries_iter = entries
-                .array_windows()
-                .flat_map(|[a, b]| std::iter::repeat(*a).take(4).chain(std::iter::once(*b)));
-            for ([curr, next], e) in points
-                .array_windows()
-                .flat_map(|[[a1, a2, a3, a4], [b, ..]]| {
-                    let mid = a4.lerp(*b, 0.5);
-                    [[*a1, *a2], [*a2, *a3], [*a3, *a4], [*a4, mid], [mid, *b]]
-                })
-                .zip(entries_iter)
-                .chain(last)
-            {
-                let a = pos.x - curr.x;
-                let b = pos.y - curr.y;
-                let c = next.x - curr.x;
-                let d = next.y - curr.y;
-                let dot = a * c + b * d;
-                let len_sq = c * c + d * d;
-                if len_sq == 0.0 {
-                    continue;
-                }
-                let t = (dot / len_sq).clamp(0.0, 1.0);
-                let px = curr.x + t * c;
-                let py = curr.y + t * d;
-                let dx = pos.x - px;
-                let dy = pos.y - py;
+// fn select_trip(drawn_trips: &[DrawnTrip], pos: Pos2) -> Option<EntrySelection> {
+//     const VEHICLE_SELECTION_RADIUS: f32 = 7.0;
+//     for trip in drawn_trips {
+//         for (points, entries) in trip.points.iter().zip(trip.entries.iter()) {
+//             let last = points
+//                 .last()
+//                 .into_iter()
+//                 .flat_map(|it| {
+//                     let [a, b, c, d] = it;
+//                     [[*a, *b], [*b, *c], [*c, *d]]
+//                 })
+//                 .zip(
+//                     entries
+//                         .last()
+//                         .into_iter()
+//                         .flat_map(|it| std::iter::repeat(*it).take(3)),
+//                 );
+//             let entries_iter = entries
+//                 .array_windows()
+//                 .flat_map(|[a, b]| std::iter::repeat(*a).take(4).chain(std::iter::once(*b)));
+//             for ([curr, next], e) in points
+//                 .array_windows()
+//                 .flat_map(|[[a1, a2, a3, a4], [b, ..]]| {
+//                     let mid = a4.lerp(*b, 0.5);
+//                     [[*a1, *a2], [*a2, *a3], [*a3, *a4], [*a4, mid], [mid, *b]]
+//                 })
+//                 .zip(entries_iter)
+//                 .chain(last)
+//             {
+//                 let a = pos.x - curr.x;
+//                 let b = pos.y - curr.y;
+//                 let c = next.x - curr.x;
+//                 let d = next.y - curr.y;
+//                 let dot = a * c + b * d;
+//                 let len_sq = c * c + d * d;
+//                 if len_sq == 0.0 {
+//                     continue;
+//                 }
+//                 let t = (dot / len_sq).clamp(0.0, 1.0);
+//                 let px = curr.x + t * c;
+//                 let py = curr.y + t * d;
+//                 let dx = pos.x - px;
+//                 let dy = pos.y - py;
 
-                if dx * dx + dy * dy < VEHICLE_SELECTION_RADIUS.powi(2) {
-                    return Some(EntrySelection {
-                        entry: e,
-                        parent: trip.entity,
-                    });
-                }
-            }
-        }
-    }
-    None
-}
+//                 if dx * dx + dy * dy < VEHICLE_SELECTION_RADIUS.powi(2) {
+//                     return Some(EntrySelection {
+//                         entry: e,
+//                         parent: trip.entity,
+//                     });
+//                 }
+//             }
+//         }
+//     }
+//     None
+// }
 
 fn select_station(drawn_trips: &[DrawnTrip], pos: Pos2) -> SelectedItem {
     const STATION_SELECTION_RADIUS: f32 = 7.0;

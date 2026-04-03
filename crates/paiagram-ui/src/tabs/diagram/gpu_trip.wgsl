@@ -1,19 +1,175 @@
 struct Uniforms {
+    ticks_min: i32,
+    y_min: f32,
     screen_size: vec2<f32>,
-    // padding for compatibility
-    _padding: vec2<f32>,
+    x_per_unit: f32,
+    y_per_unit: f32,
+    screen_origin: vec2<f32>,
+    repeat_interval_ticks: i32,
+    repeat_from: i32,
+    repeat_to: i32,
+    _pad0: i32,
 };
 
-@group(0) @binding(0)
-var<uniform> uniforms: Uniforms;
-
-struct VertexIn {
-    @location(0) a: vec2<f32>,
-    @location(1) b: vec2<f32>,
-    @location(2) width: f32,
-    @location(3) color: vec4<f32>,
-    @location(4) curve_type: u32,
+struct Entry {
+    arr_secs: i32,
+    dep_secs: i32,
+    station_index: i32,
+    _track_index: i32,
 };
+
+struct Trip {
+    color: vec4<f32>,
+    width: f32,
+    len: u32,
+    start_idx: u32,
+    _pad1: u32,
+};
+
+struct InstanceMapEntry {
+    trip_index: u32,
+    local_segment: u32,
+};
+
+struct VisibleSegment {
+    p0: vec2<f32>,
+    p1: vec2<f32>,
+    half_width: f32,
+    _pad0: f32,
+    color: vec4<f32>,
+};
+
+struct InstanceCounter {
+    count: atomic<u32>,
+};
+
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+@group(0) @binding(1) var<storage, read> entries: array<Entry>;
+@group(0) @binding(2) var<storage, read> trips: array<Trip>;
+@group(0) @binding(3) var<storage, read> stations: array<f32>;
+@group(0) @binding(5) var<storage, read> visible_segments: array<VisibleSegment>;
+@group(0) @binding(6) var<storage, read> source_instance_map: array<InstanceMapEntry>;
+@group(0) @binding(7) var<storage, read_write> instance_counter: InstanceCounter;
+@group(0) @binding(8) var<storage, read_write> visible_segments_rw: array<VisibleSegment>;
+
+const TICKS_PER_SECOND: i32 = 100;
+
+fn segment_visible(entry0: Entry, entry1: Entry, repeat_slot: u32) -> bool {
+    if entry0.station_index < 0 || entry1.station_index < 0 {
+        return false;
+    }
+
+    let s0 = u32(entry0.station_index);
+    let s1 = u32(entry1.station_index);
+    let station_count = arrayLength(&stations);
+    if s0 >= station_count || s1 >= station_count {
+        return false;
+    }
+
+    let repeat_offset = uniforms.repeat_from + i32(repeat_slot);
+    let repeat_ticks = repeat_offset * uniforms.repeat_interval_ticks;
+    let dep_ticks = entry0.dep_secs * TICKS_PER_SECOND + repeat_ticks;
+    let arr_ticks = entry1.arr_secs * TICKS_PER_SECOND + repeat_ticks;
+
+    let x0 = f32(dep_ticks - uniforms.ticks_min) / uniforms.x_per_unit + uniforms.screen_origin.x;
+    let x1 = f32(arr_ticks - uniforms.ticks_min) / uniforms.x_per_unit + uniforms.screen_origin.x;
+    let y0 = (stations[s0] - uniforms.y_min) / uniforms.y_per_unit + uniforms.screen_origin.y;
+    let y1 = (stations[s1] - uniforms.y_min) / uniforms.y_per_unit + uniforms.screen_origin.y;
+
+    let min_x = min(x0, x1);
+    let max_x = max(x0, x1);
+    let min_y = min(y0, y1);
+    let max_y = max(y0, y1);
+
+    if max_x < 0.0 || min_x > uniforms.screen_size.x {
+        return false;
+    }
+    if max_y < 0.0 || min_y > uniforms.screen_size.y {
+        return false;
+    }
+
+    return true;
+}
+
+fn write_visible_segment(trip: Trip, entry0: Entry, entry1: Entry, repeat_slot: u32) {
+    let idx = atomicAdd(&instance_counter.count, 1u);
+    if idx >= arrayLength(&visible_segments_rw) {
+        return;
+    }
+
+    let s0 = u32(entry0.station_index);
+    let s1 = u32(entry1.station_index);
+
+    let repeat_offset = uniforms.repeat_from + i32(repeat_slot);
+    let repeat_ticks = repeat_offset * uniforms.repeat_interval_ticks;
+    let dep_ticks = entry0.dep_secs * TICKS_PER_SECOND + repeat_ticks;
+    let arr_ticks = entry1.arr_secs * TICKS_PER_SECOND + repeat_ticks;
+
+    let x0 = f32(dep_ticks - uniforms.ticks_min) / uniforms.x_per_unit;
+    let x1 = f32(arr_ticks - uniforms.ticks_min) / uniforms.x_per_unit;
+    let y0 = (stations[s0] - uniforms.y_min) / uniforms.y_per_unit;
+    let y1 = (stations[s1] - uniforms.y_min) / uniforms.y_per_unit;
+
+    visible_segments_rw[idx] = VisibleSegment(
+        vec2<f32>(x0, y0),
+        vec2<f32>(x1, y1),
+        trip.width / 2.0,
+        0.0,
+        trip.color,
+    );
+}
+
+@compute @workgroup_size(64)
+fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let source_index = gid.x;
+    let source_count = arrayLength(&source_instance_map);
+    if source_index >= source_count {
+        return;
+    }
+
+    let src = source_instance_map[source_index];
+    if src.trip_index >= arrayLength(&trips) {
+        return;
+    }
+
+    let trip = trips[src.trip_index];
+
+    let start_idx = trip.start_idx + u32(src.local_segment);
+
+    let end_idx = start_idx + 1u;
+    if end_idx >= arrayLength(&entries) {
+        return;
+    }
+
+    let e0 = entries[start_idx];
+    let e1 = entries[end_idx];
+
+    if uniforms.repeat_interval_ticks <= 0 {
+        if segment_visible(e0, e1, 0u) {
+            write_visible_segment(trip, e0, e1, 0u);
+        }
+        return;
+    }
+
+    let repeat_span = uniforms.repeat_to - uniforms.repeat_from + 1;
+    if repeat_span <= 0 {
+        return;
+    }
+
+    let repeat_count = u32(repeat_span);
+    var repeat_slot = 0u;
+
+    loop {
+        if repeat_slot >= repeat_count {
+            break;
+        }
+
+        if segment_visible(e0, e1, repeat_slot) {
+            write_visible_segment(trip, e0, e1, repeat_slot);
+        }
+        repeat_slot = repeat_slot + 1u;
+    }
+}
 
 struct VertexOut {
     @location(0) color: vec4<f32>,
@@ -21,58 +177,27 @@ struct VertexOut {
 };
 
 @vertex
-fn vs_main(input: VertexIn, @builtin(vertex_index) vertex_index: u32) -> VertexOut {
+fn vs_main(@builtin(vertex_index) vertex_index: u32, @builtin(instance_index) instance_index: u32) -> VertexOut {
     var out: VertexOut;
-    let dx = input.b.x - input.a.x;
-    let dy = input.b.y - input.a.y;
-
-    let seg_index = vertex_index / 6u;
     let local = vertex_index % 6u;
-    let is_curve = input.curve_type != 0u;
-    var seg_a = input.a;
-    var seg_b = input.b;
-    if is_curve {
-        let seg_count: u32 = 8u;
-        let t0 = f32(seg_index) / f32(seg_count);
-        let t1 = f32(seg_index + 1u) / f32(seg_count);
 
-        let curve_height = max(8.0, abs(dx) * 0.15 + 6.0);
-        var curve_p0 = input.a + (input.b - input.a) * t0;
-        var curve_p1 = input.a + (input.b - input.a) * t1;
-
-        if input.curve_type == 1u || input.curve_type == 2u {
-            let mid = (input.a + input.b) * 0.5;
-            let min_y = min(input.a.y, input.b.y);
-            let max_y = max(input.a.y, input.b.y);
-            let control = select(
-                vec2<f32>(mid.x, max_y + curve_height),
-                vec2<f32>(mid.x, min_y - curve_height),
-                input.curve_type == 1u,
-            );
-            let omt0 = 1.0 - t0;
-            let omt1 = 1.0 - t1;
-            curve_p0 = omt0 * omt0 * input.a + 2.0 * omt0 * t0 * control + t0 * t0 * input.b;
-            curve_p1 = omt1 * omt1 * input.a + 2.0 * omt1 * t1 * control + t1 * t1 * input.b;
-        } else if input.curve_type == 3u || input.curve_type == 4u {
-            let tau = 6.28318530718;
-            let amp = curve_height * 0.2;
-            let dir = select(1.0, -1.0, input.curve_type == 3u);
-            let y0 = dir * amp * sin(t0 * tau);
-            let y1 = dir * amp * sin(t1 * tau);
-            curve_p0 = curve_p0 + vec2<f32>(0.0, y0);
-            curve_p1 = curve_p1 + vec2<f32>(0.0, y1);
-        }
-
-        seg_a = select(curve_p0, input.a, seg_index >= seg_count);
-        seg_b = select(curve_p1, input.a, seg_index >= seg_count);
+    if instance_index >= arrayLength(&visible_segments) {
+        out.position = vec4<f32>(0.0, 0.0, 0.0, 0.0);
+        out.color = vec4<f32>(0.0, 0.0, 0.0, 0.0);
+        return out;
     }
+
+    let seg = visible_segments[instance_index];
+    let seg_a = seg.p0;
+    let seg_b = seg.p1;
 
     let sdx = seg_b.x - seg_a.x;
     let sdy = seg_b.y - seg_a.y;
     let len = max(sqrt(sdx * sdx + sdy * sdy), 1e-6);
     let nx = -sdy / len;
     let ny = sdx / len;
-    let half = input.width * 0.5;
+
+    let half = max(seg.half_width, 0.5);
     let offset = vec2<f32>(nx * half, ny * half);
 
     let a1 = seg_a + offset;
@@ -90,10 +215,12 @@ fn vs_main(input: VertexIn, @builtin(vertex_index) vertex_index: u32) -> VertexO
         default: { pos = b1; }
     }
 
-    let x = pos.x / uniforms.screen_size.x * 2.0 - 1.0;
-    let y = 1.0 - pos.y / uniforms.screen_size.y * 2.0;
+    let screen_pos = pos + uniforms.screen_origin;
+    let x = screen_pos.x / uniforms.screen_size.x * 2.0 - 1.0;
+    let y = 1.0 - screen_pos.y / uniforms.screen_size.y * 2.0;
     out.position = vec4<f32>(x, y, 0.0, 1.0);
-    out.color = input.color;
+
+    out.color = seg.color;
     return out;
 }
 

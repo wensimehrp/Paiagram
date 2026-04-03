@@ -1,197 +1,127 @@
-use super::DrawnTrip;
-use bytemuck::cast_slice;
+use bytemuck::{Pod, Zeroable};
+use bytemuck::{bytes_of, cast_slice};
 use eframe::egui_wgpu::{self, wgpu};
-use egui::{Pos2, Rect, mutex::Mutex};
+use egui::Color32;
+use egui::{Rect, mutex::Mutex};
 use egui_wgpu::CallbackTrait;
 use std::collections::HashMap;
 use std::sync::Arc;
+use wgpu::BufferDescriptor;
+use wgpu::{BufferBindingType, BufferUsages, ShaderStages};
 
-pub struct GpuTripRendererState {
-    pub(crate) batches: Vec<GpuTripBatch>,
-    pub(crate) combined_vertices: Vec<SegmentInstance>,
-    pub(crate) straight_count: u32,
-    pub(crate) target_format: Option<wgpu::TextureFormat>,
-    pub(crate) msaa_samples: u32,
+pub(crate) struct GpuTripRendererState {
+    entries : Vec<Entry>,
+    pub trips: Vec<Trip>,
+    pub stations: Vec<f32>,
+    pub uniforms: Uniforms,
+    pub target_format: Option<wgpu::TextureFormat>,
+    pub msaa_samples: u32,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Pod, Zeroable)]
+struct Entry {
+    arr_secs: i32,
+    dep_secs: i32,
+    station_index: i32,
+    _track_index: i32,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Pod, Zeroable)]
+pub(crate) struct Trip {
+    pub color: [f32; 4],
+    pub width: f32,
+    len: u32,
+    start_idx: u32,
+    _pad: u32,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Default)]
+pub struct Uniforms {
+    pub ticks_min: i64,
+    pub y_min: f64,
+    pub screen_size: [f32; 2],
+    pub x_per_unit: f32,
+    pub y_per_unit: f32,
+    pub screen_origin: [f32; 2],
+    pub repeat_interval_ticks: i32,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Pod, Zeroable, Default)]
+struct GpuUniforms {
+    ticks_min: i32,
+    y_min: f32,
+    screen_size: [f32; 2],
+    x_per_unit: f32,
+    y_per_unit: f32,
+    screen_origin: [f32; 2],
+    repeat_interval_ticks: i32,
+    repeat_from: i32,
+    repeat_to: i32,
+    source_instance_count: i32,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Pod, Zeroable)]
+struct InstanceMapEntry {
+    trip_index: u32,
+    local_segment: u32,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Pod, Zeroable)]
+struct VisibleSegment {
+    p0: [f32; 2],
+    p1: [f32; 2],
+    half_width: f32,
+    _pad0: f32,
+    color: [f32; 4],
 }
 
 impl Default for GpuTripRendererState {
     fn default() -> Self {
         Self {
-            batches: Vec::new(),
-            combined_vertices: Vec::new(),
-            straight_count: 0,
+            entries: Vec::new(),
+            trips: Vec::new(),
+            stations: Vec::new(),
+            uniforms: Uniforms::default(),
             target_format: None,
             msaa_samples: 1,
         }
     }
 }
 
-pub struct GpuTripBatch {
-    pub width: f32,
-    pub vertices: Vec<SegmentInstance>,
-    pub curve_vertices: Vec<SegmentInstance>,
-}
-
-impl Default for GpuTripBatch {
-    fn default() -> Self {
-        Self {
-            width: 1.0,
-            vertices: Vec::new(),
-            curve_vertices: Vec::new(),
-        }
-    }
-}
-
-#[repr(u32)]
-#[derive(Clone, Copy)]
-enum CurveType {
-    None = 0,
-    Cap = 1,
-    Cup = 2,
-    CapCup = 3,
-    CupCap = 4,
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-pub(crate) struct SegmentInstance {
-    a: [f32; 2],
-    b: [f32; 2],
-    width: f32,
-    color: [f32; 4],
-    curve: u32,
-}
-
-pub fn write_vertices(trips: &[DrawnTrip], is_dark: bool, state: &mut GpuTripRendererState) {
-    if state.batches.len() < trips.len() {
-        state.batches.resize_with(trips.len(), Default::default);
-    }
-    state.combined_vertices.clear();
-    state.straight_count = 0;
-    let mut straight_vertices: Vec<SegmentInstance> = Vec::new();
-    let mut curve_vertices: Vec<SegmentInstance> = Vec::new();
-    for (batch, trip) in state.batches.iter_mut().zip(trips.iter()) {
-        let color = trip.stroke.color.get(is_dark).to_array();
-        let color = [
-            color[0] as f32 / 255.0,
-            color[1] as f32 / 255.0,
-            color[2] as f32 / 255.0,
-            color[3] as f32 / 255.0,
-        ];
-        batch.width = trip.stroke.width;
-        batch.vertices.clear();
-        batch.curve_vertices.clear();
-        for group in &trip.points[0..trip.draw_amount] {
-            let flattened = group.as_flattened();
-            for (idx, window) in flattened
-                .windows(2)
-                .enumerate()
-                .filter(|(_, w)| w[0] != w[1])
-            {
-                let u = idx.checked_sub(2).map(|j| flattened[j]);
-                let a = window[0];
-                let b = window[1];
-                let v = flattened.get(idx + 3).copied();
-                if idx % 4 == 1 {
-                    let curve_type = match (u, v) {
-                        (Some(u), Some(v)) => {
-                            let incoming_up = u.y > a.y;
-                            let incoming_down = u.y < a.y;
-                            let outgoing_up = v.y > b.y;
-                            let outgoing_down = v.y < b.y;
-
-                            if incoming_up && outgoing_down {
-                                CurveType::CapCup
-                            } else if incoming_down && outgoing_up {
-                                CurveType::CupCap
-                            } else if incoming_up || outgoing_up {
-                                CurveType::Cap
-                            } else if incoming_down || outgoing_down {
-                                CurveType::Cup
-                            } else {
-                                CurveType::CapCup
-                            }
-                        }
-                        (None, None) => CurveType::CapCup,
-                        (Some(u), None) => {
-                            let incoming_up = u.y > a.y;
-                            let incoming_down = u.y < a.y;
-                            if incoming_up {
-                                CurveType::Cap
-                            } else if incoming_down {
-                                CurveType::Cup
-                            } else {
-                                CurveType::CapCup
-                            }
-                        }
-                        (None, Some(v)) => {
-                            let outgoing_up = v.y > b.y;
-                            let outgoing_down = v.y < b.y;
-                            if outgoing_up {
-                                CurveType::Cap
-                            } else if outgoing_down {
-                                CurveType::Cup
-                            } else {
-                                CurveType::CupCap
-                            }
-                        }
-                    };
-                    push_segment_instance(
-                        &mut batch.curve_vertices,
-                        a,
-                        b,
-                        batch.width,
-                        color,
-                        curve_type as u32,
-                    );
-                } else {
-                    push_segment_instance(
-                        &mut batch.vertices,
-                        a,
-                        b,
-                        batch.width,
-                        color,
-                        CurveType::None as u32,
-                    );
-                }
+pub fn rewrite_trip_cache(
+    cache: &super::TripCache,
+    stations: impl Iterator<Item = f32>,
+    state: &mut GpuTripRendererState,
+) {
+    state.trips.clear();
+    state.entries.clear();
+    state.stations.clear();
+    state.stations.extend(stations);
+    for (_trip_entity, lines) in cache.iter() {
+        for line in lines {
+            state.trips.push(Trip {
+                color: Color32::DARK_GRAY.to_normalized_gamma_f32(),
+                width: 1.0,
+                len: line.len() as u32,
+                start_idx: state.entries.len() as u32,
+                _pad: 0,
+            });
+            for entry in line {
+                state.entries.push(Entry {
+                    dep_secs: entry.dep.seconds(),
+                    arr_secs: entry.arr.seconds(),
+                    station_index: entry.station_index as i32,
+                    _track_index: 0,
+                });
             }
         }
-        if !batch.vertices.is_empty() {
-            straight_vertices.extend_from_slice(&batch.vertices);
-        }
-        if !batch.curve_vertices.is_empty() {
-            curve_vertices.extend_from_slice(&batch.curve_vertices);
-        }
     }
-    state.straight_count = straight_vertices.len() as u32;
-    state
-        .combined_vertices
-        .extend_from_slice(&straight_vertices);
-    state.combined_vertices.extend_from_slice(&curve_vertices);
-    state.batches.truncate(trips.len());
-}
-
-fn push_segment_instance(
-    out: &mut Vec<SegmentInstance>,
-    a: Pos2,
-    b: Pos2,
-    width: f32,
-    color: [f32; 4],
-    curve: u32,
-) {
-    let dx = b.x - a.x;
-    let dy = b.y - a.y;
-    let len_sq = dx * dx + dy * dy;
-    if len_sq <= f32::EPSILON {
-        return;
-    }
-    out.push(SegmentInstance {
-        a: [a.x, a.y],
-        b: [b.x, b.y],
-        width,
-        color,
-        curve,
-    });
 }
 
 pub fn paint_callback(rect: Rect, state: Arc<Mutex<GpuTripRendererState>>) -> egui::PaintCallback {
@@ -204,10 +134,18 @@ struct TripCallback {
 
 struct TripRenderResources {
     pipeline: wgpu::RenderPipeline,
+    compute_pipeline: wgpu::ComputePipeline,
+    bind_group_layout: wgpu::BindGroupLayout,
     bind_group: wgpu::BindGroup,
+    instance_counter_buffer: wgpu::Buffer,
     uniform_buffer: wgpu::Buffer,
-    vertex_buffer: wgpu::Buffer,
-    vertex_capacity: usize,
+    entry_buffer: wgpu::Buffer,
+    trip_buffer: wgpu::Buffer,
+    station_buffer: wgpu::Buffer,
+    visible_segment_buffer: wgpu::Buffer,
+    visible_segment_write_buffer: wgpu::Buffer,
+    source_instance_map_buffer: wgpu::Buffer,
+    draw_instance_count: u32,
     target_format: wgpu::TextureFormat,
     msaa_samples: u32,
 }
@@ -217,7 +155,75 @@ struct TripRenderResourceMap {
     by_state: HashMap<usize, TripRenderResources>,
 }
 
+fn make_storage_buffer_entry(
+    label: &'static str,
+    size: u64,
+    device: &wgpu::Device,
+) -> wgpu::Buffer {
+    device.create_buffer(&BufferDescriptor {
+        label: Some(label),
+        size,
+        usage: BufferUsages::STORAGE | BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    })
+}
+
+fn make_rw_storage_buffer_entry(
+    label: &'static str,
+    size: u64,
+    extra_usage: BufferUsages,
+    device: &wgpu::Device,
+) -> wgpu::Buffer {
+    device.create_buffer(&BufferDescriptor {
+        label: Some(label),
+        size,
+        usage: BufferUsages::STORAGE | BufferUsages::COPY_DST | extra_usage,
+        mapped_at_creation: false,
+    })
+}
+
 impl TripRenderResources {
+    fn rebuild_bind_group(&mut self, device: &wgpu::Device) {
+        self.bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("gpu_trip_bind_group"),
+            layout: &self.bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: self.uniform_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: self.entry_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: self.trip_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: self.station_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: self.visible_segment_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 6,
+                    resource: self.source_instance_map_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 7,
+                    resource: self.instance_counter_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 8,
+                    resource: self.visible_segment_write_buffer.as_entire_binding(),
+                },
+            ],
+        });
+    }
+
     fn new(device: &wgpu::Device, target_format: wgpu::TextureFormat, msaa_samples: u32) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("gpu_trip_shader"),
@@ -226,32 +232,123 @@ impl TripRenderResources {
 
         let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("gpu_trip_uniform"),
-            size: (std::mem::size_of::<[f32; 4]>() as u64).max(16),
+            size: std::mem::size_of::<GpuUniforms>() as u64,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
 
-        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("gpu_trip_bind_group_layout"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX,
+        let instance_counter_buffer = make_rw_storage_buffer_entry(
+            "instance_counter",
+            4,
+            wgpu::BufferUsages::COPY_SRC,
+            device,
+        );
+
+        let entry_buffer = make_storage_buffer_entry("entries", 256, device);
+        let trip_buffer = make_storage_buffer_entry("trips", 256, device);
+        let station_buffer = make_storage_buffer_entry("stations", 256, device);
+        let visible_segment_buffer =
+            make_rw_storage_buffer_entry("visible_segment", 256, BufferUsages::empty(), device);
+        let visible_segment_write_buffer = make_rw_storage_buffer_entry(
+            "visible_segment_write",
+            256,
+            BufferUsages::COPY_SRC,
+            device,
+        );
+        let source_instance_map_buffer =
+            make_storage_buffer_entry("source_instance_map", 256, device);
+
+        let ro_storage_buffer_layout_entry =
+            |binding: u32, visibility: ShaderStages| wgpu::BindGroupLayoutEntry {
+                binding,
+                visibility,
                 ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
+                    ty: BufferBindingType::Storage { read_only: true },
                     has_dynamic_offset: false,
                     min_binding_size: None,
                 },
                 count: None,
-            }],
+            };
+
+        let rw_storage_buffer_layout_entry =
+            |binding: u32, visibility: ShaderStages| wgpu::BindGroupLayoutEntry {
+                binding,
+                visibility,
+                ty: wgpu::BindingType::Buffer {
+                    ty: BufferBindingType::Storage { read_only: false },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            };
+
+        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("gpu_trip_bind_group_layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                // entry_buffer
+                ro_storage_buffer_layout_entry(1, ShaderStages::VERTEX | ShaderStages::COMPUTE),
+                // trip_buffer
+                ro_storage_buffer_layout_entry(2, ShaderStages::VERTEX | ShaderStages::COMPUTE),
+                // station_buffer
+                ro_storage_buffer_layout_entry(3, ShaderStages::VERTEX | ShaderStages::COMPUTE),
+                // visible_segment_buffer
+                ro_storage_buffer_layout_entry(5, ShaderStages::VERTEX | ShaderStages::COMPUTE),
+                // source_instance_map_buffer
+                ro_storage_buffer_layout_entry(6, ShaderStages::COMPUTE),
+                // instance_counter_buffer
+                rw_storage_buffer_layout_entry(7, ShaderStages::COMPUTE),
+                // visible_segment_buffer (write alias for compute)
+                rw_storage_buffer_layout_entry(8, ShaderStages::COMPUTE),
+            ],
         });
 
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("gpu_trip_bind_group"),
             layout: &bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: uniform_buffer.as_entire_binding(),
-            }],
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: uniform_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: entry_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: trip_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: station_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: visible_segment_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 6,
+                    resource: source_instance_map_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 7,
+                    resource: instance_counter_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 8,
+                    resource: visible_segment_write_buffer.as_entire_binding(),
+                },
+            ],
         });
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -266,37 +363,7 @@ impl TripRenderResources {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: Some("vs_main"),
-                buffers: &[wgpu::VertexBufferLayout {
-                    array_stride: std::mem::size_of::<SegmentInstance>() as u64,
-                    step_mode: wgpu::VertexStepMode::Instance,
-                    attributes: &[
-                        wgpu::VertexAttribute {
-                            format: wgpu::VertexFormat::Float32x2,
-                            offset: 0,
-                            shader_location: 0,
-                        },
-                        wgpu::VertexAttribute {
-                            format: wgpu::VertexFormat::Float32x2,
-                            offset: (2 * std::mem::size_of::<f32>()) as u64,
-                            shader_location: 1,
-                        },
-                        wgpu::VertexAttribute {
-                            format: wgpu::VertexFormat::Float32,
-                            offset: (4 * std::mem::size_of::<f32>()) as u64,
-                            shader_location: 2,
-                        },
-                        wgpu::VertexAttribute {
-                            format: wgpu::VertexFormat::Float32x4,
-                            offset: (5 * std::mem::size_of::<f32>()) as u64,
-                            shader_location: 3,
-                        },
-                        wgpu::VertexAttribute {
-                            format: wgpu::VertexFormat::Uint32,
-                            offset: (9 * std::mem::size_of::<f32>()) as u64,
-                            shader_location: 4,
-                        },
-                    ],
-                }],
+                buffers: &[],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
             fragment: Some(wgpu::FragmentState {
@@ -322,19 +389,36 @@ impl TripRenderResources {
             cache: None,
         });
 
-        let vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("gpu_trip_vertex"),
-            size: 4,
-            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
+        let compute_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("gpu_trip_compute_pipeline_layout"),
+                bind_group_layouts: &[Some(&bind_group_layout)],
+                ..Default::default()
+            });
+
+        let compute_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("gpu_trip_compute_pipeline"),
+            layout: Some(&compute_pipeline_layout),
+            module: &shader,
+            entry_point: Some("cs_main"),
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+            cache: None,
         });
 
         Self {
             pipeline,
+            compute_pipeline,
+            bind_group_layout,
             bind_group,
+            instance_counter_buffer,
             uniform_buffer,
-            vertex_buffer,
-            vertex_capacity: 0,
+            entry_buffer,
+            trip_buffer,
+            station_buffer,
+            visible_segment_buffer,
+            visible_segment_write_buffer,
+            source_instance_map_buffer,
+            draw_instance_count: 0,
             target_format,
             msaa_samples,
         }
@@ -347,16 +431,13 @@ impl CallbackTrait for TripCallback {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         screen_descriptor: &egui_wgpu::ScreenDescriptor,
-        _egui_encoder: &mut wgpu::CommandEncoder,
+        egui_encoder: &mut wgpu::CommandEncoder,
         resources: &mut egui_wgpu::CallbackResources,
     ) -> Vec<wgpu::CommandBuffer> {
         let state = self.state.lock();
         let Some(target_format) = state.target_format else {
             return Vec::new();
         };
-        if state.combined_vertices.is_empty() {
-            return Vec::new();
-        }
 
         let state_key = Arc::as_ptr(&self.state) as usize;
 
@@ -385,28 +466,177 @@ impl CallbackTrait for TripCallback {
         let resources: &mut TripRenderResources =
             resources_map.by_state.get_mut(&state_key).unwrap();
 
-        let vertex_bytes = cast_slice(state.combined_vertices.as_slice());
-        let required_size = vertex_bytes.len();
-        if required_size > resources.vertex_capacity {
-            let new_size = required_size.next_power_of_two().max(256) as u64;
-            resources.vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("gpu_trip_vertex"),
-                size: new_size,
-                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            });
-            resources.vertex_capacity = new_size as usize;
-        }
-        queue.write_buffer(&resources.vertex_buffer, 0, vertex_bytes);
+        let mut needs_rebind = false;
 
-        let screen_size = [
-            screen_descriptor.size_in_pixels[0] as f32 / screen_descriptor.pixels_per_point,
-            screen_descriptor.size_in_pixels[1] as f32 / screen_descriptor.pixels_per_point,
-            0.0,
-            0.0,
-        ];
-        let viewport_bytes = cast_slice(&screen_size);
-        queue.write_buffer(&resources.uniform_buffer, 0, viewport_bytes);
+        let mut data_tick_min = i32::MAX;
+        let mut data_tick_max = i32::MIN;
+        for entry in &state.entries {
+            let arr_ticks = entry.arr_secs.saturating_mul(100);
+            let dep_ticks = entry.dep_secs.saturating_mul(100);
+            data_tick_min = data_tick_min.min(arr_ticks.min(dep_ticks));
+            data_tick_max = data_tick_max.max(arr_ticks.max(dep_ticks));
+        }
+        if data_tick_min > data_tick_max {
+            data_tick_min = 0;
+            data_tick_max = 0;
+        }
+
+        // Entries
+        {
+            let entry_bytes = cast_slice(state.entries.as_slice());
+            let required_size = entry_bytes.len();
+            if required_size as u64 > resources.entry_buffer.size() {
+                let new_size = required_size.next_power_of_two().max(256) as u64;
+                resources.entry_buffer = make_storage_buffer_entry("entries", new_size, device);
+                needs_rebind = true;
+            }
+            queue.write_buffer(&resources.entry_buffer, 0, entry_bytes);
+        }
+
+        // Trips
+        {
+            let trip_bytes = cast_slice(state.trips.as_slice());
+            let required_size = trip_bytes.len();
+            if required_size as u64 > resources.trip_buffer.size() {
+                let new_size = required_size.next_power_of_two().max(256) as u64;
+                resources.trip_buffer = make_storage_buffer_entry("trips", new_size, device);
+                needs_rebind = true;
+            }
+            queue.write_buffer(&resources.trip_buffer, 0, trip_bytes);
+        }
+
+        // Stations
+        {
+            let station_bytes = cast_slice(state.stations.as_slice());
+            let required_size = station_bytes.len();
+            if required_size as u64 > resources.station_buffer.size() {
+                let new_size = required_size.next_power_of_two().max(256) as u64;
+                resources.station_buffer = make_storage_buffer_entry("stations", new_size, device);
+                needs_rebind = true;
+            }
+            queue.write_buffer(&resources.station_buffer, 0, station_bytes);
+        }
+
+        // Direct index map source: instance_index -> (trip_index, local_segment)
+        let mut instance_map: Vec<InstanceMapEntry> = Vec::new();
+        for (trip_index, trip) in state.trips.iter().enumerate() {
+            let seg_count = trip.len.saturating_sub(1);
+            for local_segment in 0..seg_count {
+                instance_map.push(InstanceMapEntry {
+                    trip_index: trip_index as u32,
+                    local_segment,
+                });
+            }
+        }
+        let map_bytes = cast_slice(instance_map.as_slice());
+        let required_size = map_bytes.len();
+        if required_size as u64 > resources.source_instance_map_buffer.size() {
+            let new_size = required_size.next_power_of_two().max(256) as u64;
+            resources.source_instance_map_buffer =
+                make_storage_buffer_entry("source_instance_map", new_size, device);
+            needs_rebind = true;
+        }
+        queue.write_buffer(&resources.source_instance_map_buffer, 0, map_bytes);
+
+        if needs_rebind {
+            resources.rebuild_bind_group(device);
+        }
+
+        // uniforms
+        let uniforms = GpuUniforms {
+            ticks_min: state
+                .uniforms
+                .ticks_min
+                .clamp(i32::MIN as i64, i32::MAX as i64) as i32,
+            y_min: state.uniforms.y_min as f32,
+            screen_size: [
+                screen_descriptor.size_in_pixels[0] as f32 / screen_descriptor.pixels_per_point,
+                screen_descriptor.size_in_pixels[1] as f32 / screen_descriptor.pixels_per_point,
+            ],
+            x_per_unit: state.uniforms.x_per_unit,
+            y_per_unit: state.uniforms.y_per_unit,
+            screen_origin: state.uniforms.screen_origin,
+            ..Default::default()
+        };
+        let visible_ticks_min = uniforms.ticks_min;
+        let visible_ticks_max = uniforms
+            .ticks_min
+            .saturating_add((uniforms.screen_size[0] * uniforms.x_per_unit) as i32);
+        let repeat_interval = state.uniforms.repeat_interval_ticks.max(0);
+        let (repeat_from, repeat_to) = if repeat_interval > 0 {
+            (
+                (visible_ticks_min - data_tick_max).div_euclid(repeat_interval),
+                (visible_ticks_max - data_tick_min).div_euclid(repeat_interval),
+            )
+        } else {
+            (0, 0)
+        };
+        let repeat_count = if repeat_interval > 0 {
+            (repeat_to - repeat_from + 1).max(1) as usize
+        } else {
+            1usize
+        };
+        let visible_capacity = instance_map.len().saturating_mul(repeat_count);
+        resources.draw_instance_count = visible_capacity.min(u32::MAX as usize) as u32;
+        let visible_required_size = visible_capacity
+            .saturating_mul(std::mem::size_of::<VisibleSegment>())
+            .max(256) as u64;
+        if visible_required_size > resources.visible_segment_buffer.size() {
+            let new_size = visible_required_size.next_power_of_two().max(256);
+            resources.visible_segment_buffer = make_rw_storage_buffer_entry(
+                "visible_segment",
+                new_size,
+                BufferUsages::empty(),
+                device,
+            );
+            resources.visible_segment_write_buffer = make_rw_storage_buffer_entry(
+                "visible_segment_write",
+                new_size,
+                BufferUsages::COPY_SRC,
+                device,
+            );
+            needs_rebind = true;
+        }
+        if needs_rebind {
+            resources.rebuild_bind_group(device);
+        }
+
+        let uniforms = GpuUniforms {
+            repeat_interval_ticks: repeat_interval,
+            repeat_from,
+            repeat_to,
+            source_instance_count: instance_map.len().min(i32::MAX as usize) as i32,
+            ..uniforms
+        };
+        let uniform_bytes = bytes_of(&uniforms);
+        queue.write_buffer(&resources.uniform_buffer, 0, uniform_bytes);
+
+        // Reset counter then let compute repopulate visible instances.
+        queue.write_buffer(&resources.instance_counter_buffer, 0, bytes_of(&0u32));
+        // With direct draw we render a fixed slot count, so clear unused slots each frame.
+        egui_encoder.clear_buffer(&resources.visible_segment_write_buffer, 0, None);
+
+        {
+            let mut pass = egui_encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("gpu_trip_cull_compute_pass"),
+                timestamp_writes: None,
+            });
+            pass.set_pipeline(&resources.compute_pipeline);
+            pass.set_bind_group(0, &resources.bind_group, &[]);
+            let workgroup_size = 64u32;
+            let workgroup_count =
+                ((instance_map.len() as u32).saturating_add(workgroup_size - 1)) / workgroup_size;
+            if workgroup_count > 0 {
+                pass.dispatch_workgroups(workgroup_count, 1, 1);
+            }
+        }
+        egui_encoder.copy_buffer_to_buffer(
+            &resources.visible_segment_write_buffer,
+            0,
+            &resources.visible_segment_buffer,
+            0,
+            visible_required_size,
+        );
 
         Vec::new()
     }
@@ -425,11 +655,6 @@ impl CallbackTrait for TripCallback {
             return;
         };
 
-        let state = self.state.lock();
-        if state.combined_vertices.is_empty() {
-            return;
-        }
-
         let clip = info.clip_rect_in_pixels();
         let clip_left = clip.left_px.max(0) as u32;
         let clip_top = clip.top_px.max(0) as u32;
@@ -446,15 +671,6 @@ impl CallbackTrait for TripCallback {
         render_pass.set_scissor_rect(clip_left, clip_top, clip_width, clip_height);
         render_pass.set_pipeline(&resources.pipeline);
         render_pass.set_bind_group(0, &resources.bind_group, &[]);
-        render_pass.set_vertex_buffer(0, resources.vertex_buffer.slice(..));
-        let instance_count = state.combined_vertices.len() as u32;
-        let straight_count = state.straight_count.min(instance_count);
-        let curve_count = instance_count.saturating_sub(straight_count);
-        if straight_count > 0 {
-            render_pass.draw(0..6, 0..straight_count);
-        }
-        if curve_count > 0 {
-            render_pass.draw(0..48, straight_count..instance_count);
-        }
+        render_pass.draw(0..6, 0..resources.draw_instance_count);
     }
 }

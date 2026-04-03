@@ -1,4 +1,4 @@
-use super::TripPoint;
+use super::{TripCache, TripPoint};
 use bevy::{ecs::entity::EntityHashMap, prelude::*};
 use paiagram_core::{
     entry::{EntryEstimate, EntryQuery},
@@ -13,7 +13,7 @@ pub(crate) fn calc(
     (In(route_entity), InRef(heights), InMut(map)): (
         In<Entity>,
         InRef<[(Entity, f32)]>,
-        InMut<Option<EntityHashMap<SmallVec<[Vec<TripPoint>; 1]>>>>,
+        InMut<Option<TripCache>>,
     ),
     route_q: Query<(&RouteTrips, Ref<Route>)>,
     trip_q: Query<TripQuery>,
@@ -21,14 +21,14 @@ pub(crate) fn calc(
     entries: Query<EntryQuery>,
     parent_station_or_station: Query<ParentStationOrStation>,
     mut invalidate_cache: Local<Vec<Entity>>,
-) {
+) -> bool {
     let (trips, route) = route_q.get(route_entity).unwrap();
 
     let refresh_candidates = if map.is_none() || route.is_changed() {
         trips.as_slice()
     } else {
         if changed_entries.is_empty() {
-            return
+            return false;
         }
         let mut trips = trips.to_vec();
         trips.sort_unstable();
@@ -212,4 +212,5 @@ pub(crate) fn calc(
             push_to_bucket(it)
         }
     }
+    return true;
 }

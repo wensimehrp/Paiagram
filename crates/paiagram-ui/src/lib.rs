@@ -164,6 +164,7 @@ pub(crate) fn display_entry_info(
 }
 
 #[derive(Resource, Clone, PartialEq, Debug)]
+#[non_exhaustive]
 pub(crate) enum SelectedItems {
     None,
     Entries(Vec1<EntrySelection>),
