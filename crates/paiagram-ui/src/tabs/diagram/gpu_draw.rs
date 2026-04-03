@@ -688,6 +688,8 @@ impl CallbackTrait for TripCallback {
         render_pass.set_pipeline(&resources.pipeline);
         render_pass.set_bind_group(0, &resources.bind_group, &[]);
         render_pass.set_vertex_buffer(0, resources.visible_segment_buffer.slice(..));
-        render_pass.draw(0..6, 0..resources.draw_instance_count);
+        // 3 * amount of triangles to draw
+        // 6 triangles per segment: 2 core + 2 feather (positive side) + 2 feather (negative side)
+        render_pass.draw(0..(3 * 6), 0..resources.draw_instance_count);
     }
 }

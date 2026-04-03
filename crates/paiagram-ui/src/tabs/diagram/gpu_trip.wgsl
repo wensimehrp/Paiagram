@@ -179,39 +179,86 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
 struct VertexOut {
     @location(0) color: vec4<f32>,
+    @location(1) feather_alpha: f32,
     @builtin(position) position: vec4<f32>,
 };
 
 @vertex
 fn vs_main(@builtin(vertex_index) vertex_index: u32, seg: VertexIn) -> VertexOut {
     var out: VertexOut;
-    let local = vertex_index % 6u;
+    let local = vertex_index % 18u;
 
     let seg_a = seg.p0;
     let seg_b = seg.p1;
 
+    // Cursed linear algebra magic which I don't understand
+    // I only know trigs!
     let sdx = seg_b.x - seg_a.x;
     let sdy = seg_b.y - seg_a.y;
     let len = max(sqrt(sdx * sdx + sdy * sdy), 1e-6);
     let nx = -sdy / len;
     let ny = sdx / len;
 
-    let half = max(seg.half_width, 0.5);
+    let half = max(seg.half_width, 0.5) - 0.2;
     let offset = vec2<f32>(nx * half, ny * half);
+    // Expand the segment on both sides so alpha can smoothly fade at the edges.
+    const FEATHERING_PIXELS = 0.5;
+    let offset_feathering = vec2<f32>(nx * FEATHERING_PIXELS, ny * FEATHERING_PIXELS);
+    let offset_outer = offset + offset_feathering;
 
-    let a1 = seg_a + offset;
-    let a2 = seg_a - offset;
-    let b1 = seg_b + offset;
-    let b2 = seg_b - offset;
+    let a_pos_inner = seg_a + offset;
+    let a_neg_inner = seg_a - offset;
+    let b_pos_inner = seg_b + offset;
+    let b_neg_inner = seg_b - offset;
+    let a_pos_outer = seg_a + offset_outer;
+    let a_neg_outer = seg_a - offset_outer;
+    let b_pos_outer = seg_b + offset_outer;
+    let b_neg_outer = seg_b - offset_outer;
 
     var pos: vec2<f32>;
+    var feather_alpha = 1.0;
     switch local {
-        case 0u: { pos = a1; }
-        case 1u: { pos = a2; }
-        case 2u: { pos = b1; }
-        case 3u: { pos = a2; }
-        case 4u: { pos = b2; }
-        default: { pos = b1; }
+        // Core strip.
+        case 0u: { pos = a_pos_inner; }
+        case 1u: { pos = a_neg_inner; }
+        case 2u: { pos = b_pos_inner; }
+        case 3u: { pos = a_neg_inner; }
+        case 4u: { pos = b_neg_inner; }
+        case 5u: { pos = b_pos_inner; }
+
+        // Positive-side feather strip.
+        case 6u: {
+            pos = a_pos_outer;
+            feather_alpha = 0.0;
+        }
+        case 7u: { pos = a_pos_inner; }
+        case 8u: {
+            pos = b_pos_outer;
+            feather_alpha = 0.0;
+        }
+        case 9u: { pos = a_pos_inner; }
+        case 10u: { pos = b_pos_inner; }
+        case 11u: {
+            pos = b_pos_outer;
+            feather_alpha = 0.0;
+        }
+
+        // Negative-side feather strip.
+        case 12u: { pos = a_neg_inner; }
+        case 13u: {
+            pos = a_neg_outer;
+            feather_alpha = 0.0;
+        }
+        case 14u: { pos = b_neg_inner; }
+        case 15u: {
+            pos = a_neg_outer;
+            feather_alpha = 0.0;
+        }
+        case 16u: {
+            pos = b_neg_outer;
+            feather_alpha = 0.0;
+        }
+        default: { pos = b_neg_inner; }
     }
 
     let screen_pos = pos + uniforms.screen_origin;
@@ -220,10 +267,12 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32, seg: VertexIn) -> VertexOut
     out.position = vec4<f32>(x, y, 0.0, 1.0);
 
     out.color = seg.color;
+    out.feather_alpha = feather_alpha;
     return out;
 }
 
 @fragment
 fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
-    return input.color;
+    let feather = smoothstep(0.0, 1.0, input.feather_alpha);
+    return vec4<f32>(input.color.rgb, input.color.a * feather);
 }
