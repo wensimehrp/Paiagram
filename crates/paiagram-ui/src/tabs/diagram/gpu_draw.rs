@@ -61,7 +61,7 @@ struct GpuUniforms {
     repeat_interval_ticks: i32,
     repeat_from: i32,
     repeat_to: i32,
-    source_instance_count: i32,
+    _pad: u32,
 }
 
 #[repr(C)]
@@ -592,7 +592,7 @@ impl CallbackTrait for TripCallback {
         } else {
             1usize
         };
-        let visible_capacity = instance_map.len().saturating_mul(repeat_count);
+        let visible_capacity = instance_map.len().saturating_mul(repeat_count + 1);
         resources.draw_instance_count = visible_capacity.min(u32::MAX as usize) as u32;
         let visible_required_size = visible_capacity
             .saturating_mul(std::mem::size_of::<VisibleSegment>())
@@ -621,7 +621,7 @@ impl CallbackTrait for TripCallback {
             repeat_interval_ticks: repeat_interval,
             repeat_from,
             repeat_to,
-            source_instance_count: instance_map.len().min(i32::MAX as usize) as i32,
+            _pad: 0,
             ..uniforms
         };
         let uniform_bytes = bytes_of(&uniforms);

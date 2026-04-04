@@ -8,7 +8,7 @@ struct Uniforms {
     repeat_interval_ticks: i32,
     repeat_from: i32,
     repeat_to: i32,
-    _pad0: i32,
+    _pad: u32,
 };
 
 struct Entry {
@@ -97,8 +97,9 @@ fn segment_visible(entry0: Entry, entry1: Entry, repeat_slot: u32) -> bool {
     return true;
 }
 
-fn write_visible_segment(trip: Trip, entry0: Entry, entry1: Entry, repeat_slot: u32) {
-    let idx = atomicAdd(&instance_counter.count, 1u);
+fn write_visible_segment(local_offset: u32, trip: Trip, entry0: Entry, entry1: Entry, repeat_slot: u32) {
+    let base = arrayLength(&source_instance_map) * repeat_slot;
+    let idx = base + trip.start_idx + local_offset;
     if idx >= arrayLength(&visible_segments_rw) {
         return;
     }
@@ -152,7 +153,7 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
     if uniforms.repeat_interval_ticks <= 0 {
         if segment_visible(e0, e1, 0u) {
-            write_visible_segment(trip, e0, e1, 0u);
+            write_visible_segment(src.local_segment, trip, e0, e1, 0u);
         }
         return;
     }
@@ -171,7 +172,7 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
         }
 
         if segment_visible(e0, e1, repeat_slot) {
-            write_visible_segment(trip, e0, e1, repeat_slot);
+            write_visible_segment(src.local_segment, trip, e0, e1, repeat_slot);
         }
         repeat_slot = repeat_slot + 1u;
     }
@@ -199,10 +200,10 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32, seg: VertexIn) -> VertexOut
     let nx = -sdy / len;
     let ny = sdx / len;
 
-    let half = max(seg.half_width, 0.5) - 0.2;
+    let half = max(seg.half_width, 0.5) - 0.5;
     let offset = vec2<f32>(nx * half, ny * half);
     // Expand the segment on both sides so alpha can smoothly fade at the edges.
-    const FEATHERING_PIXELS = 0.5;
+    const FEATHERING_PIXELS = 1.0;
     let offset_feathering = vec2<f32>(nx * FEATHERING_PIXELS, ny * FEATHERING_PIXELS);
     let offset_outer = offset + offset_feathering;
 

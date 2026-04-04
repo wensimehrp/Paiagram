@@ -785,64 +785,64 @@ fn main_display(
         // entries, or quit the current state
         CanvasState::SelectingEntries(selection) => {
             // highlight all of the entries
-            for drawn in trip_line_buf[0..tab.cached_trips.as_ref().unwrap().len()]
-                .iter()
-                .filter(|it| selection.iter().any(|s| it.entity == s.parent))
-            {
-                let mut stroke = drawn.stroke.egui_stroke(ui.visuals().dark_mode);
-                stroke.width = stroke.width + 3.0 * selection_strength;
-                for (i, (line_group, entity_group)) in drawn.points[0..drawn.draw_amount]
-                    .iter()
-                    .zip(drawn.entries.iter())
-                    .enumerate()
-                {
-                    let line = line_group.as_flattened().to_vec();
-                    painter.line(line, stroke);
-                    let nan_iter = std::iter::once(None);
-                    let line_group_iter = nan_iter
-                        .clone()
-                        .chain(line_group.iter().map(Some))
-                        .chain(nan_iter);
-                    for (j, ((prev_positions, curr_positions, next_positions), entity)) in
-                        line_group_iter
-                            .tuple_windows()
-                            .zip(entity_group.iter())
-                            .enumerate()
-                    {
-                        const OPAQUE_RADIUS: f32 = 20.0;
-                        const TRANSPARENT_RADIUS: f32 = 40.0;
-                        let curr_positions = curr_positions.unwrap();
-                        let midpoint = curr_positions[1].lerp(curr_positions[2], 0.5);
-                        let pos = ui.input(|r| r.pointer.hover_pos());
-                        let strength = if let Some(pos) = pos {
-                            let len = pos.distance(midpoint);
-                            let clamped = len.clamp(OPAQUE_RADIUS, TRANSPARENT_RADIUS);
-                            1.0 - (clamped - OPAQUE_RADIUS) / (TRANSPARENT_RADIUS - OPAQUE_RADIUS)
-                        } else {
-                            0.0
-                        };
-                        world
-                            .run_system_cached_with(
-                                draw_handles,
-                                (
-                                    curr_positions,
-                                    (
-                                        *entity,
-                                        drawn.entity,
-                                        prev_positions.map(|it| it[3]),
-                                        next_positions.map(|it| it[0]),
-                                    ),
-                                    (i, j),
-                                    ui,
-                                    &mut painter,
-                                    tab.navi.zoom_x(),
-                                    strength,
-                                ),
-                            )
-                            .unwrap();
-                    }
-                }
-            }
+            // for drawn in trip_line_buf[0..tab.cached_trips.as_ref().unwrap().len()]
+            //     .iter()
+            //     .filter(|it| selection.iter().any(|s| it.entity == s.parent))
+            // {
+            //     let mut stroke = drawn.stroke.egui_stroke(ui.visuals().dark_mode);
+            //     stroke.width = stroke.width + 3.0 * selection_strength;
+            //     for (i, (line_group, entity_group)) in drawn.points[0..drawn.draw_amount]
+            //         .iter()
+            //         .zip(drawn.entries.iter())
+            //         .enumerate()
+            //     {
+            //         let line = line_group.as_flattened().to_vec();
+            //         painter.line(line, stroke);
+            //         let nan_iter = std::iter::once(None);
+            //         let line_group_iter = nan_iter
+            //             .clone()
+            //             .chain(line_group.iter().map(Some))
+            //             .chain(nan_iter);
+            //         for (j, ((prev_positions, curr_positions, next_positions), entity)) in
+            //             line_group_iter
+            //                 .tuple_windows()
+            //                 .zip(entity_group.iter())
+            //                 .enumerate()
+            //         {
+            //             const OPAQUE_RADIUS: f32 = 20.0;
+            //             const TRANSPARENT_RADIUS: f32 = 40.0;
+            //             let curr_positions = curr_positions.unwrap();
+            //             let midpoint = curr_positions[1].lerp(curr_positions[2], 0.5);
+            //             let pos = ui.input(|r| r.pointer.hover_pos());
+            //             let strength = if let Some(pos) = pos {
+            //                 let len = pos.distance(midpoint);
+            //                 let clamped = len.clamp(OPAQUE_RADIUS, TRANSPARENT_RADIUS);
+            //                 1.0 - (clamped - OPAQUE_RADIUS) / (TRANSPARENT_RADIUS - OPAQUE_RADIUS)
+            //             } else {
+            //                 0.0
+            //             };
+            //             world
+            //                 .run_system_cached_with(
+            //                     draw_handles,
+            //                     (
+            //                         curr_positions,
+            //                         (
+            //                             *entity,
+            //                             drawn.entity,
+            //                             prev_positions.map(|it| it[3]),
+            //                             next_positions.map(|it| it[0]),
+            //                         ),
+            //                         (i, j),
+            //                         ui,
+            //                         &mut painter,
+            //                         tab.navi.zoom_x(),
+            //                         strength,
+            //                     ),
+            //                 )
+            //                 .unwrap();
+            //         }
+            //     }
+            // }
 
             // Check selection
             // if let Some(pos) = interact_pos {
