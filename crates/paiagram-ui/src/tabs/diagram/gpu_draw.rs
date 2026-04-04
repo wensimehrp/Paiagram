@@ -61,7 +61,7 @@ struct GpuUniforms {
     repeat_interval_ticks: i32,
     repeat_from: i32,
     repeat_to: i32,
-    _pad: u32,
+    feathering_radius: f32,
 }
 
 #[repr(C)]
@@ -602,7 +602,7 @@ impl CallbackTrait for TripCallback {
             repeat_interval_ticks: repeat_interval,
             repeat_from,
             repeat_to,
-            _pad: 0,
+            feathering_radius: 1.5 / screen_descriptor.pixels_per_point,
             ..uniforms
         };
         let uniform_bytes = bytes_of(&uniforms);

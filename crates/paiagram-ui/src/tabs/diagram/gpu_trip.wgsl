@@ -8,7 +8,7 @@ struct Uniforms {
     repeat_interval_ticks: i32,
     repeat_from: i32,
     repeat_to: i32,
-    _pad: u32,
+    feathering_radius: f32,
 };
 
 struct Entry {
@@ -195,11 +195,10 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32, seg: VertexIn) -> VertexOut
     let nx = -sdy / len;
     let ny = sdx / len;
 
-    let half = max(seg.half_width, 0.5) - 0.5;
+    let half = max(seg.half_width - uniforms.feathering_radius * 0.5, 0.01);
     let offset = vec2<f32>(nx * half, ny * half);
     // Expand the segment on both sides so alpha can smoothly fade at the edges.
-    const FEATHERING_PIXELS = 1.0;
-    let offset_feathering = vec2<f32>(nx * FEATHERING_PIXELS, ny * FEATHERING_PIXELS);
+    let offset_feathering = vec2<f32>(nx * uniforms.feathering_radius, ny * uniforms.feathering_radius);
     let offset_outer = offset + offset_feathering;
 
     let a_pos_inner = seg_a + offset;
