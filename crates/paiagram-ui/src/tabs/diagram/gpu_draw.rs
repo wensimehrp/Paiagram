@@ -138,7 +138,6 @@ struct TripRenderResources {
     compute_pipeline: wgpu::ComputePipeline,
     bind_group_layout: wgpu::BindGroupLayout,
     bind_group: wgpu::BindGroup,
-    instance_counter_buffer: wgpu::Buffer,
     uniform_buffer: wgpu::Buffer,
     entry_buffer: wgpu::Buffer,
     trip_buffer: wgpu::Buffer,
@@ -206,15 +205,11 @@ impl TripRenderResources {
                     resource: self.station_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
-                    binding: 6,
+                    binding: 4,
                     resource: self.source_instance_map_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
-                    binding: 7,
-                    resource: self.instance_counter_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 8,
+                    binding: 5,
                     resource: self.visible_segment_write_buffer.as_entire_binding(),
                 },
             ],
@@ -233,13 +228,6 @@ impl TripRenderResources {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-
-        let instance_counter_buffer = make_rw_storage_buffer_entry(
-            "instance_counter",
-            4,
-            wgpu::BufferUsages::COPY_SRC,
-            device,
-        );
 
         let entry_buffer = make_storage_buffer_entry("entries", 256, device);
         let trip_buffer = make_storage_buffer_entry("trips", 256, device);
@@ -299,11 +287,9 @@ impl TripRenderResources {
                 // station_buffer
                 ro_storage_buffer_layout_entry(3, ShaderStages::COMPUTE),
                 // source_instance_map_buffer
-                ro_storage_buffer_layout_entry(6, ShaderStages::COMPUTE),
-                // instance_counter_buffer
-                rw_storage_buffer_layout_entry(7, ShaderStages::COMPUTE),
+                ro_storage_buffer_layout_entry(4, ShaderStages::COMPUTE),
                 // visible_segment_buffer (write alias for compute)
-                rw_storage_buffer_layout_entry(8, ShaderStages::COMPUTE),
+                rw_storage_buffer_layout_entry(5, ShaderStages::COMPUTE),
             ],
         });
 
@@ -328,15 +314,11 @@ impl TripRenderResources {
                     resource: station_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
-                    binding: 6,
+                    binding: 4,
                     resource: source_instance_map_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
-                    binding: 7,
-                    resource: instance_counter_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 8,
+                    binding: 5,
                     resource: visible_segment_write_buffer.as_entire_binding(),
                 },
             ],
@@ -426,7 +408,6 @@ impl TripRenderResources {
             compute_pipeline,
             bind_group_layout,
             bind_group,
-            instance_counter_buffer,
             uniform_buffer,
             entry_buffer,
             trip_buffer,
@@ -627,8 +608,6 @@ impl CallbackTrait for TripCallback {
         let uniform_bytes = bytes_of(&uniforms);
         queue.write_buffer(&resources.uniform_buffer, 0, uniform_bytes);
 
-        // Reset counter then let compute repopulate visible instances.
-        queue.write_buffer(&resources.instance_counter_buffer, 0, bytes_of(&0u32));
         // With direct draw we render a fixed slot count, so clear unused slots each frame.
         egui_encoder.clear_buffer(&resources.visible_segment_write_buffer, 0, None);
 
