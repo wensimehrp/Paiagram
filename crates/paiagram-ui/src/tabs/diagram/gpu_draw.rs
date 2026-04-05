@@ -6,6 +6,7 @@ use egui::{Rect, mutex::Mutex};
 use egui_wgpu::CallbackTrait;
 use std::collections::HashMap;
 use std::sync::Arc;
+use wgpu::util::DeviceExt;
 use wgpu::BufferDescriptor;
 use wgpu::{BufferBindingType, BufferUsages, ShaderStages};
 
@@ -60,7 +61,9 @@ struct GpuUniforms {
     repeat_interval_ticks: i32,
     repeat_from: i32,
     repeat_to: i32,
+    source_instance_count: u32,
     feathering_radius: f32,
+    _uniform_pad0: u32,
 }
 
 #[repr(C)]
@@ -80,6 +83,69 @@ struct VisibleSegment {
     _pad1: u32,
     color: [u8; 4],
 }
+
+#[repr(C)]
+#[derive(Copy, Clone, Pod, Zeroable)]
+struct SegmentMeshVertex {
+    along: f32,
+    side: f32,
+    outer: f32,
+}
+
+const SEGMENT_MESH_VERTICES: [SegmentMeshVertex; 8] = [
+    // inner strip
+    SegmentMeshVertex {
+        along: 0.0,
+        side: 1.0,
+        outer: 0.0,
+    },
+    SegmentMeshVertex {
+        along: 0.0,
+        side: -1.0,
+        outer: 0.0,
+    },
+    SegmentMeshVertex {
+        along: 1.0,
+        side: 1.0,
+        outer: 0.0,
+    },
+    SegmentMeshVertex {
+        along: 1.0,
+        side: -1.0,
+        outer: 0.0,
+    },
+    // positive feather strip
+    SegmentMeshVertex {
+        along: 0.0,
+        side: 1.0,
+        outer: 1.0,
+    },
+    SegmentMeshVertex {
+        along: 1.0,
+        side: 1.0,
+        outer: 1.0,
+    },
+    // negative feather strip
+    SegmentMeshVertex {
+        along: 0.0,
+        side: -1.0,
+        outer: 1.0,
+    },
+    SegmentMeshVertex {
+        along: 1.0,
+        side: -1.0,
+        outer: 1.0,
+    },
+];
+
+const SEGMENT_MESH_INDICES: [u16; 18] = [
+    // Core strip.
+    0, 1, 2, 1, 3, 2,
+    // Positive-side feather strip.
+    4, 0, 5, 0, 2, 5,
+    // Negative-side feather strip.
+    1, 6, 3, 6, 7, 3,
+];
 
 impl Default for GpuTripRendererState {
     fn default() -> Self {
@@ -143,6 +209,8 @@ struct TripRenderResources {
     visible_segment_buffer: wgpu::Buffer,
     visible_segment_write_buffer: wgpu::Buffer,
     source_instance_map_buffer: wgpu::Buffer,
+    segment_mesh_vertex_buffer: wgpu::Buffer,
+    segment_mesh_index_buffer: wgpu::Buffer,
     draw_instance_count: u32,
     target_format: wgpu::TextureFormat,
     msaa_samples: u32,
@@ -240,6 +308,16 @@ impl TripRenderResources {
         );
         let source_instance_map_buffer =
             make_storage_buffer_entry("source_instance_map", 256, device);
+        let segment_mesh_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("segment_mesh_vertex"),
+            contents: cast_slice(&SEGMENT_MESH_VERTICES),
+            usage: BufferUsages::VERTEX,
+        });
+        let segment_mesh_index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("segment_mesh_index"),
+            contents: cast_slice(&SEGMENT_MESH_INDICES),
+            usage: BufferUsages::INDEX,
+        });
 
         let ro_storage_buffer_layout_entry =
             |binding: u32, visibility: ShaderStages| wgpu::BindGroupLayoutEntry {
@@ -334,32 +412,55 @@ impl TripRenderResources {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: Some("vs_main"),
-                buffers: &[wgpu::VertexBufferLayout {
-                    array_stride: std::mem::size_of::<VisibleSegment>() as u64,
-                    step_mode: wgpu::VertexStepMode::Instance,
-                    attributes: &[
-                        wgpu::VertexAttribute {
-                            format: wgpu::VertexFormat::Float32x2,
-                            offset: 0,
-                            shader_location: 0,
-                        },
-                        wgpu::VertexAttribute {
-                            format: wgpu::VertexFormat::Float32x2,
-                            offset: 8,
-                            shader_location: 1,
-                        },
-                        wgpu::VertexAttribute {
-                            format: wgpu::VertexFormat::Float32,
-                            offset: 16,
-                            shader_location: 2,
-                        },
-                        wgpu::VertexAttribute {
-                            format: wgpu::VertexFormat::Uint32,
-                            offset: 28,
-                            shader_location: 3,
-                        },
-                    ],
-                }],
+                buffers: &[
+                    wgpu::VertexBufferLayout {
+                        array_stride: std::mem::size_of::<VisibleSegment>() as u64,
+                        step_mode: wgpu::VertexStepMode::Instance,
+                        attributes: &[
+                            wgpu::VertexAttribute {
+                                format: wgpu::VertexFormat::Float32x2,
+                                offset: 0,
+                                shader_location: 0,
+                            },
+                            wgpu::VertexAttribute {
+                                format: wgpu::VertexFormat::Float32x2,
+                                offset: 8,
+                                shader_location: 1,
+                            },
+                            wgpu::VertexAttribute {
+                                format: wgpu::VertexFormat::Float32,
+                                offset: 16,
+                                shader_location: 2,
+                            },
+                            wgpu::VertexAttribute {
+                                format: wgpu::VertexFormat::Uint32,
+                                offset: 28,
+                                shader_location: 3,
+                            },
+                        ],
+                    },
+                    wgpu::VertexBufferLayout {
+                        array_stride: std::mem::size_of::<SegmentMeshVertex>() as u64,
+                        step_mode: wgpu::VertexStepMode::Vertex,
+                        attributes: &[
+                            wgpu::VertexAttribute {
+                                format: wgpu::VertexFormat::Float32,
+                                offset: 0,
+                                shader_location: 4,
+                            },
+                            wgpu::VertexAttribute {
+                                format: wgpu::VertexFormat::Float32,
+                                offset: 4,
+                                shader_location: 5,
+                            },
+                            wgpu::VertexAttribute {
+                                format: wgpu::VertexFormat::Float32,
+                                offset: 8,
+                                shader_location: 6,
+                            },
+                        ],
+                    },
+                ],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
             fragment: Some(wgpu::FragmentState {
@@ -413,6 +514,8 @@ impl TripRenderResources {
             visible_segment_buffer,
             visible_segment_write_buffer,
             source_instance_map_buffer,
+            segment_mesh_vertex_buffer,
+            segment_mesh_index_buffer,
             draw_instance_count: 0,
             target_format,
             msaa_samples,
@@ -571,7 +674,7 @@ impl CallbackTrait for TripCallback {
         } else {
             1usize
         };
-        let visible_capacity = instance_map.len().saturating_mul(repeat_count + 1);
+        let visible_capacity = instance_map.len().saturating_mul(repeat_count);
         resources.draw_instance_count = visible_capacity.min(u32::MAX as usize) as u32;
         let visible_required_size = visible_capacity
             .saturating_mul(std::mem::size_of::<VisibleSegment>())
@@ -600,7 +703,8 @@ impl CallbackTrait for TripCallback {
             repeat_interval_ticks: repeat_interval,
             repeat_from,
             repeat_to,
-            feathering_radius: 1.5 / screen_descriptor.pixels_per_point,
+            source_instance_count: (instance_map.len() as u32).min(u32::MAX),
+            feathering_radius: 1.2 / screen_descriptor.pixels_per_point,
             ..uniforms
         };
         let uniform_bytes = bytes_of(&uniforms);
@@ -665,8 +769,15 @@ impl CallbackTrait for TripCallback {
         render_pass.set_pipeline(&resources.pipeline);
         render_pass.set_bind_group(0, &resources.bind_group, &[]);
         render_pass.set_vertex_buffer(0, resources.visible_segment_buffer.slice(..));
-        // 3 * amount of triangles to draw
-        // 6 triangles per segment: 2 core + 2 feather (positive side) + 2 feather (negative side)
-        render_pass.draw(0..(3 * 6), 0..resources.draw_instance_count);
+        render_pass.set_vertex_buffer(1, resources.segment_mesh_vertex_buffer.slice(..));
+        render_pass.set_index_buffer(
+            resources.segment_mesh_index_buffer.slice(..),
+            wgpu::IndexFormat::Uint16,
+        );
+        render_pass.draw_indexed(
+            0..SEGMENT_MESH_INDICES.len() as u32,
+            0,
+            0..resources.draw_instance_count,
+        );
     }
 }

@@ -8,6 +8,7 @@ struct Uniforms {
     repeat_interval_ticks: i32,
     repeat_from: i32,
     repeat_to: i32,
+    source_instance_count: u32,
     feathering_radius: f32,
 };
 
@@ -44,6 +45,12 @@ struct VertexIn {
     @location(1) p1: vec2<f32>,
     @location(2) half_width: f32,
     @location(3) color: u32,
+};
+
+struct SegmentMeshVertex {
+    @location(4) along: f32,
+    @location(5) side: f32,
+    @location(6) outer: f32,
 };
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
@@ -92,9 +99,9 @@ fn segment_visible(entry0: Entry, entry1: Entry, repeat_slot: u32) -> bool {
     return true;
 }
 
-fn write_visible_segment(local_offset: u32, trip: Trip, entry0: Entry, entry1: Entry, repeat_slot: u32) {
-    let base = arrayLength(&source_instance_map) * repeat_slot;
-    let idx = base + trip.start_idx + local_offset;
+fn write_visible_segment(source_index: u32, trip: Trip, entry0: Entry, entry1: Entry, repeat_slot: u32) {
+    let base = uniforms.source_instance_count * repeat_slot;
+    let idx = base + source_index;
     if idx >= arrayLength(&visible_segments_rw) {
         return;
     }
@@ -125,7 +132,7 @@ fn write_visible_segment(local_offset: u32, trip: Trip, entry0: Entry, entry1: E
 @compute @workgroup_size(64)
 fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let source_index = gid.x;
-    let source_count = arrayLength(&source_instance_map);
+    let source_count = uniforms.source_instance_count;
     if source_index >= source_count {
         return;
     }
@@ -149,7 +156,7 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
     if uniforms.repeat_interval_ticks <= 0 {
         if segment_visible(e0, e1, 0u) {
-            write_visible_segment(src.local_segment, trip, e0, e1, 0u);
+            write_visible_segment(source_index, trip, e0, e1, 0u);
         }
         return;
     }
@@ -168,7 +175,7 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
         }
 
         if segment_visible(e0, e1, repeat_slot) {
-            write_visible_segment(src.local_segment, trip, e0, e1, repeat_slot);
+            write_visible_segment(source_index, trip, e0, e1, repeat_slot);
         }
         repeat_slot = repeat_slot + 1u;
     }
@@ -181,9 +188,8 @@ struct VertexOut {
 };
 
 @vertex
-fn vs_main(@builtin(vertex_index) vertex_index: u32, seg: VertexIn) -> VertexOut {
+fn vs_main(seg: VertexIn, mesh: SegmentMeshVertex) -> VertexOut {
     var out: VertexOut;
-    let local = vertex_index % 18u;
 
     let seg_a = seg.p0;
     let seg_b = seg.p1;
@@ -197,65 +203,12 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32, seg: VertexIn) -> VertexOut
     let ny = sdx / len;
 
     let half = max(seg.half_width - uniforms.feathering_radius * 0.5, 0.01);
-    let offset = vec2<f32>(nx * half, ny * half);
     // Expand the segment on both sides so alpha can smoothly fade at the edges.
-    let offset_feathering = vec2<f32>(nx * uniforms.feathering_radius, ny * uniforms.feathering_radius);
-    let offset_outer = offset + offset_feathering;
-
-    let a_pos_inner = seg_a + offset;
-    let a_neg_inner = seg_a - offset;
-    let b_pos_inner = seg_b + offset;
-    let b_neg_inner = seg_b - offset;
-    let a_pos_outer = seg_a + offset_outer;
-    let a_neg_outer = seg_a - offset_outer;
-    let b_pos_outer = seg_b + offset_outer;
-    let b_neg_outer = seg_b - offset_outer;
-
-    var pos: vec2<f32>;
-    var feather_alpha = 1.0;
-    switch local {
-        // Core strip.
-        case 0u: { pos = a_pos_inner; }
-        case 1u: { pos = a_neg_inner; }
-        case 2u: { pos = b_pos_inner; }
-        case 3u: { pos = a_neg_inner; }
-        case 4u: { pos = b_neg_inner; }
-        case 5u: { pos = b_pos_inner; }
-
-        // Positive-side feather strip.
-        case 6u: {
-            pos = a_pos_outer;
-            feather_alpha = 0.0;
-        }
-        case 7u: { pos = a_pos_inner; }
-        case 8u: {
-            pos = b_pos_outer;
-            feather_alpha = 0.0;
-        }
-        case 9u: { pos = a_pos_inner; }
-        case 10u: { pos = b_pos_inner; }
-        case 11u: {
-            pos = b_pos_outer;
-            feather_alpha = 0.0;
-        }
-
-        // Negative-side feather strip.
-        case 12u: { pos = a_neg_inner; }
-        case 13u: {
-            pos = a_neg_outer;
-            feather_alpha = 0.0;
-        }
-        case 14u: { pos = b_neg_inner; }
-        case 15u: {
-            pos = a_neg_outer;
-            feather_alpha = 0.0;
-        }
-        case 16u: {
-            pos = b_neg_outer;
-            feather_alpha = 0.0;
-        }
-        default: { pos = b_neg_inner; }
-    }
+    let dist = half + mesh.outer * uniforms.feathering_radius;
+    let normal_offset = vec2<f32>(nx, ny) * (mesh.side * dist);
+    let base_pos = seg_a + (seg_b - seg_a) * mesh.along;
+    let pos = base_pos + normal_offset;
+    let feather_alpha = 1.0 - mesh.outer;
 
     let screen_pos = pos + uniforms.screen_origin;
     let x = screen_pos.x / uniforms.screen_size.x * 2.0 - 1.0;
