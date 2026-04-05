@@ -14,16 +14,15 @@ struct Uniforms {
 struct Entry {
     arr_secs: i32,
     dep_secs: i32,
-    station_index: i32,
-    _track_index: i32,
+    station_index: u32,
+    _track_index: u32,
 };
 
 struct Trip {
-    color: vec4<f32>,
+    color: u32,
     width: f32,
     len: u32,
     start_idx: u32,
-    _pad1: u32,
 };
 
 struct InstanceMapEntry {
@@ -35,15 +34,16 @@ struct VisibleSegment {
     p0: vec2<f32>,
     p1: vec2<f32>,
     half_width: f32,
-    _pad0: f32,
-    color: vec4<f32>,
+    _pad0: u32,
+    _pad1: u32,
+    color: u32,
 };
 
 struct VertexIn {
     @location(0) p0: vec2<f32>,
     @location(1) p1: vec2<f32>,
     @location(2) half_width: f32,
-    @location(3) color: vec4<f32>,
+    @location(3) color: u32,
 };
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
@@ -116,7 +116,8 @@ fn write_visible_segment(local_offset: u32, trip: Trip, entry0: Entry, entry1: E
         vec2<f32>(x0, y0),
         vec2<f32>(x1, y1),
         trip.width / 2.0,
-        0.0,
+        0,
+        0,
         trip.color,
     );
 }
@@ -261,7 +262,12 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32, seg: VertexIn) -> VertexOut
     let y = 1.0 - screen_pos.y / uniforms.screen_size.y * 2.0;
     out.position = vec4<f32>(x, y, 0.0, 1.0);
 
-    out.color = seg.color;
+    let color = seg.color;
+    let r = f32((color >> 0u) & 0xFFu) / 255.0;
+    let g = f32((color >> 8u) & 0xFFu) / 255.0;
+    let b = f32((color >> 16u) & 0xFFu) / 255.0;
+    let a = f32((color >> 24u) & 0xFFu) / 255.0;
+    out.color = vec4<f32>(r, g, b, a);
     out.feather_alpha = feather_alpha;
     return out;
 }

@@ -23,18 +23,17 @@ pub(crate) struct GpuTripRendererState {
 struct Entry {
     arr_secs: i32,
     dep_secs: i32,
-    station_index: i32,
-    _track_index: i32,
+    station_index: u32,
+    _track_index: u32,
 }
 
 #[repr(C)]
 #[derive(Copy, Clone, Pod, Zeroable)]
 pub(crate) struct Trip {
-    pub color: [f32; 4],
+    pub color: [u8; 4],
     pub width: f32,
     len: u32,
     start_idx: u32,
-    _pad: u32,
 }
 
 #[repr(C)]
@@ -77,9 +76,9 @@ struct VisibleSegment {
     p0: [f32; 2],
     p1: [f32; 2],
     half_width: f32,
-    _pad0: f32,
-    _pad1: [f32; 2],
-    color: [f32; 4],
+    _pad0: u32,
+    _pad1: u32,
+    color: [u8; 4],
 }
 
 impl Default for GpuTripRendererState {
@@ -107,17 +106,16 @@ pub fn rewrite_trip_cache(
     for (_trip_entity, lines) in cache.iter() {
         for line in lines {
             state.trips.push(Trip {
-                color: Color32::DARK_GRAY.to_normalized_gamma_f32(),
+                color: Color32::MAGENTA.to_array(),
                 width: 1.0,
                 len: line.len() as u32,
                 start_idx: state.entries.len() as u32,
-                _pad: 0,
             });
             for entry in line {
                 state.entries.push(Entry {
                     dep_secs: entry.dep.seconds(),
                     arr_secs: entry.arr.seconds(),
-                    station_index: entry.station_index as i32,
+                    station_index: entry.station_index as u32,
                     _track_index: 0,
                 });
             }
@@ -356,8 +354,8 @@ impl TripRenderResources {
                             shader_location: 2,
                         },
                         wgpu::VertexAttribute {
-                            format: wgpu::VertexFormat::Float32x4,
-                            offset: 32,
+                            format: wgpu::VertexFormat::Uint32,
+                            offset: 28,
                             shader_location: 3,
                         },
                     ],

@@ -642,7 +642,7 @@ fn main_display(
         let stroke = stroke.egui_stroke(ui.visuals().dark_mode);
         for idx in 0..repeat_count {
             let state_trip = &mut state.trips[idx + processed];
-            state_trip.color = stroke.color.to_normalized_gamma_f32();
+            state_trip.color = stroke.color.to_array();
             state_trip.width = stroke.width;
         }
         processed += repeat_count;
