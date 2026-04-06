@@ -143,6 +143,7 @@ fn write_visible_segment(source_index: u32, trip: Trip, entry0: Entry, entry1: E
 @compute @workgroup_size(64)
 fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let source_index = gid.x;
+    let repeat_slot = gid.y;
     let source_count = uniforms.source_instance_count;
     if source_index >= source_count {
         return;
@@ -165,30 +166,21 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let e0 = entries[start_idx];
     let e1 = entries[end_idx];
 
-    if uniforms.repeat_interval_ticks <= 0 {
-        if segment_visible(e0, e1, 0u) {
-            write_visible_segment(source_index, trip, e0, e1, 0u);
+    var repeat_count = 1u;
+    if uniforms.repeat_interval_ticks > 0 {
+        let repeat_span = uniforms.repeat_to - uniforms.repeat_from + 1;
+        if repeat_span <= 0 {
+            return;
         }
+        repeat_count = u32(repeat_span);
+    }
+
+    if repeat_slot >= repeat_count {
         return;
     }
 
-    let repeat_span = uniforms.repeat_to - uniforms.repeat_from + 1;
-    if repeat_span <= 0 {
-        return;
-    }
-
-    let repeat_count = u32(repeat_span);
-    var repeat_slot = 0u;
-
-    loop {
-        if repeat_slot >= repeat_count {
-            break;
-        }
-
-        if segment_visible(e0, e1, repeat_slot) {
-            write_visible_segment(source_index, trip, e0, e1, repeat_slot);
-        }
-        repeat_slot = repeat_slot + 1u;
+    if segment_visible(e0, e1, repeat_slot) {
+        write_visible_segment(source_index, trip, e0, e1, repeat_slot);
     }
 }
 

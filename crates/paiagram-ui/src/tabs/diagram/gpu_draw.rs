@@ -634,10 +634,11 @@ impl CallbackTrait for TripCallback {
             pass.set_pipeline(&resources.compute_pipeline);
             pass.set_bind_group(0, &resources.compute_bind_group, &[]);
             let workgroup_size = 64u32;
-            let workgroup_count =
+            let workgroup_count_x =
                 ((instance_map.len() as u32).saturating_add(workgroup_size - 1)) / workgroup_size;
-            if workgroup_count > 0 {
-                pass.dispatch_workgroups(workgroup_count, 1, 1);
+            let workgroup_count_y = repeat_count.min(u32::MAX as usize) as u32;
+            if workgroup_count_x > 0 && workgroup_count_y > 0 {
+                pass.dispatch_workgroups(workgroup_count_x, workgroup_count_y, 1);
             }
         }
 
