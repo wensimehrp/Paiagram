@@ -40,17 +40,10 @@ struct VisibleSegment {
     color: u32,
 };
 
-struct VertexIn {
-    @location(0) p0: vec2<f32>,
-    @location(1) p1: vec2<f32>,
-    @location(2) half_width: f32,
-    @location(3) color: u32,
-};
-
 struct SegmentMeshVertex {
-    @location(4) along: f32,
-    @location(5) side: f32,
-    @location(6) outer: f32,
+    along: f32,
+    side: f32,
+    outer: f32,
 };
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
@@ -59,6 +52,24 @@ struct SegmentMeshVertex {
 @group(0) @binding(3) var<storage, read> stations: array<f32>;
 @group(0) @binding(4) var<storage, read> source_instance_map: array<InstanceMapEntry>;
 @group(0) @binding(5) var<storage, read_write> visible_segments_rw: array<VisibleSegment>;
+@group(0) @binding(6) var<storage, read> visible_segments: array<VisibleSegment>;
+
+const SEGMENT_MESH_VERTICES: array<SegmentMeshVertex, 8> = array<SegmentMeshVertex, 8>(
+    SegmentMeshVertex(0.0, 1.0, 0.0),
+    SegmentMeshVertex(0.0, -1.0, 0.0),
+    SegmentMeshVertex(1.0, 1.0, 0.0),
+    SegmentMeshVertex(1.0, -1.0, 0.0),
+    SegmentMeshVertex(0.0, 1.0, 1.0),
+    SegmentMeshVertex(1.0, 1.0, 1.0),
+    SegmentMeshVertex(0.0, -1.0, 1.0),
+    SegmentMeshVertex(1.0, -1.0, 1.0),
+);
+
+const SEGMENT_MESH_INDICES: array<u32, 18> = array<u32, 18>(
+    0u, 1u, 2u, 1u, 3u, 2u,
+    4u, 0u, 5u, 0u, 2u, 5u,
+    1u, 6u, 3u, 6u, 7u, 3u,
+);
 
 const TICKS_PER_SECOND: i32 = 100;
 
@@ -188,8 +199,19 @@ struct VertexOut {
 };
 
 @vertex
-fn vs_main(seg: VertexIn, mesh: SegmentMeshVertex) -> VertexOut {
+fn vs_main(@builtin(vertex_index) vertex_index: u32, @builtin(instance_index) instance_index: u32) -> VertexOut {
     var out: VertexOut;
+
+    if instance_index >= arrayLength(&visible_segments) {
+        out.color = vec4<f32>(0.0, 0.0, 0.0, 0.0);
+        out.feather_alpha = 0.0;
+        out.position = vec4<f32>(2.0, 2.0, 0.0, 1.0);
+        return out;
+    }
+
+    let mesh_index = SEGMENT_MESH_INDICES[vertex_index];
+    let mesh = SEGMENT_MESH_VERTICES[mesh_index];
+    let seg = visible_segments[instance_index];
 
     let seg_a = seg.p0;
     let seg_b = seg.p1;

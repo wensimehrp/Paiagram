@@ -5381,7 +5381,6 @@ dependencies = [
  "wasm-bindgen-futures",
  "wasmi",
  "web-sys",
- "wgpu 29.0.1",
 ]
 
 [[package]]
@@ -5469,7 +5468,6 @@ dependencies = [
  "walkers",
  "wasm-bindgen",
  "wasm-bindgen-futures",
- "wgpu 29.0.1",
 ]
 
 [[package]]

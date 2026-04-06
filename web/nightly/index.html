@@ -323,6 +323,22 @@
             }
         }
 
+        async function ensureWebGpuSupport() {
+            if (!window.isSecureContext) {
+                throw new Error("WebGPU requires a secure context (HTTPS or localhost).");
+            }
+
+            const gpu = navigator.gpu;
+            if (!gpu) {
+                throw new Error("This browser does not support WebGPU. Paiagram Nightly requires WebGPU and will not fall back to WebGL.");
+            }
+
+            const adapter = await gpu.requestAdapter();
+            if (!adapter) {
+                throw new Error("No compatible WebGPU adapter was found.");
+            }
+        }
+
         async function loadFromAssetMap(assetMap) {
             const glueRecord = assetMap.get(toKey(GLUE_PATH));
             const wasmRecord = assetMap.get(toKey(WASM_PATH));
@@ -362,6 +378,9 @@
         }
 
         async function start() {
+            setLoading("Checking WebGPU support…");
+            await ensureWebGpuSupport();
+
             let db = ("indexedDB" in window) ? await openDb() : null;
             const serverRevision = await fetchServerRevision();
             let cache = db ? await readCache(db) : { meta: null, assetMap: new Map() };

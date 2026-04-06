@@ -59,14 +59,6 @@ thiserror = "2.0.17"
 itertools = "0.14.0"
 gtfs-structures = { version = "0.46.1", default-features = false }
 utm = "0.1.6"
-wgpu = { version = "29.0.1", features = [
-    "vulkan",
-    "gles",
-    "dx12",
-    "metal",
-    "webgpu",
-    "webgl",
-] }
 bytemuck = { version = "1.23.2", features = ["extern_crate_alloc"] }
 wasmi = "1.0.9"
 anyhow = "1.0.101"

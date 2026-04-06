@@ -38,7 +38,6 @@ strum = "0.27.2"
 strum_macros = "0.27.1"
 either = "1.13.0"
 rayon = "1.10.0"
-wgpu = { version = "*", features = ["webgl"] }
 bytemuck = { version = "1.23.2" }
 walkers = { version = "0.53.0", features = ["mvt"] }
 ib-matcher = { version = "0.4.3", features = ["pinyin", "romaji"] }
