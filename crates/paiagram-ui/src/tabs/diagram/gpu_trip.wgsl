@@ -389,10 +389,6 @@ fn stop_curve_dy_raw(dx: f32, a: f32, f0: f32, f1: f32) -> f32 {
     return a + 2.0 * f0 * dx + 3.0 * f1 * dx * dx;
 }
 
-fn stop_curve_d2y_raw(dx: f32, f0: f32, f1: f32) -> f32 {
-    return 2.0 * f0 + 6.0 * f1 * dx;
-}
-
 fn distance_to_stop_curve(
     p: vec2<f32>,
     x0: f32,
@@ -403,6 +399,7 @@ fn distance_to_stop_curve(
     r: f32,
 ) -> f32 {
     let h = x1 - x0;
+
     if abs(h) < 3.0 {
         return distance(p, vec2<f32>(x0, y_base));
     }
@@ -414,39 +411,28 @@ fn distance_to_stop_curve(
     let f1 = (a + b) / h / h;
     let r_safe = max(r, 1e-3);
 
-    var x = clamp(p.x, min_x, max_x);
-    // Newton solve for argmin of ||(x, y(x)) - p||^2.
-    for (var i = 0; i < 4; i = i + 1) {
-        let dx = x - x0;
-        let y_raw = stop_curve_y_raw(dx, a, f0, f1);
-        let dy_raw = stop_curve_dy_raw(dx, a, f0, f1);
-        let d2y_raw = stop_curve_d2y_raw(dx, f0, f1);
-        let t = tanh(y_raw / r_safe);
-        let sech2 = 1.0 - t * t;
-        let y = y_base + r_safe * t;
-        let dy = sech2 * dy_raw;
-        let d2y = sech2 * (d2y_raw - 2.0 * t * dy_raw * dy_raw / r_safe);
+    let clamped_x = clamp(p.x, min_x, max_x);
+    let dx = clamped_x - x0;
 
-        let f = x - p.x + (y - p.y) * dy;
-        let df = 1.0 + dy * dy + (y - p.y) * d2y;
-        if abs(df) < 1e-6 {
-            break;
-        }
-        x = clamp(x - f / df, min_x, max_x);
+    let y_raw = stop_curve_y_raw(dx, a, f0, f1);
+    let dy_raw = stop_curve_dy_raw(dx, a, f0, f1);
+
+    let arg = y_raw / r_safe;
+    let t = arg / sqrt(1.0 + arg * arg);
+    let sech2 = 1.0 / (1.0 + arg * arg);
+
+    let curve_y = y_base + r_safe * t;
+
+    // If the pixel is horizontally outside the curve segment, just use standard point distance to the cap
+    if p.x < min_x || p.x > max_x {
+        return distance(p, vec2<f32>(clamped_x, curve_y));
     }
 
-    let dx_m = x - x0;
-    let y_m = y_base + r_safe * tanh(stop_curve_y_raw(dx_m, a, f0, f1) / r_safe);
-    let d_mid = distance(p, vec2<f32>(x, y_m));
+    let curve_dy = sech2 * dy_raw;
+    let vertical_dist = abs(p.y - curve_y);
 
-    let dx_l = min_x - x0;
-    let y_l = y_base + r_safe * tanh(stop_curve_y_raw(dx_l, a, f0, f1) / r_safe);
-    let dx_r = max_x - x0;
-    let y_r = y_base + r_safe * tanh(stop_curve_y_raw(dx_r, a, f0, f1) / r_safe);
-    let d_cap_l = distance(p, vec2<f32>(min_x, y_l));
-    let d_cap_r = distance(p, vec2<f32>(max_x, y_r));
-
-    return min(d_mid, min(d_cap_l, d_cap_r));
+    // Divide vertical distance by the magnitude of the normal vector
+    return vertical_dist / sqrt(1.0 + curve_dy * curve_dy);
 }
 
 @fragment
