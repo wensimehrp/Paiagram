@@ -9,8 +9,6 @@ use std::sync::Arc;
 use wgpu::BufferDescriptor;
 use wgpu::{BufferBindingType, BufferUsages, ShaderStages};
 
-const LANE_COUNT: u32 = 2;
-
 pub(crate) struct GpuTripRendererState {
     entries : Vec<Entry>,
     pub trips: Vec<Trip>,
@@ -64,7 +62,7 @@ struct GpuUniforms {
     repeat_to: i32,
     source_instance_count: u32,
     feathering_radius: f32,
-    pixels_per_point: f32,
+    _uniform_pad0: u32,
 }
 
 #[repr(C)]
@@ -80,12 +78,12 @@ struct VisibleSegment {
     p0: [f32; 2],
     p1: [f32; 2],
     half_width: f32,
-    curve_a_or_nan: f32,
-    curve_b: f32,
+    _pad0: u32,
+    _pad1: u32,
     color: [u8; 4],
 }
 
-const SEGMENT_MESH_INDEX_COUNT: u32 = 6;
+const SEGMENT_MESH_INDEX_COUNT: u32 = 18;
 
 impl Default for GpuTripRendererState {
     fn default() -> Self {
@@ -115,7 +113,7 @@ pub fn rewrite_trip_cache(
                 color: Color32::MAGENTA.to_array(),
                 width: 1.0,
                 len: line.len() as u32,
-                start_idx: state.entries.len() as u32 + 1,
+                start_idx: state.entries.len() as u32,
             });
             for entry in line {
                 state.entries.push(Entry {
@@ -124,10 +122,6 @@ pub fn rewrite_trip_cache(
                     station_index: entry.station_index as u32,
                     _track_index: 0,
                 });
-            }
-            if let Some(mut last) = state.entries.last().copied() {
-                last.arr_secs = last.dep_secs;
-                state.entries.push(last);
             }
         }
     }
@@ -316,7 +310,7 @@ impl TripRenderResources {
             entries: &[
                 wgpu::BindGroupLayoutEntry {
                     binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                    visibility: wgpu::ShaderStages::VERTEX,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
@@ -599,15 +593,7 @@ impl CallbackTrait for TripCallback {
         } else {
             1usize
         };
-        let lane_count = LANE_COUNT as usize;
-        // in case if we exceed the 128MB VRAM limitation
-        let source_slot_count = instance_map.len().saturating_mul(lane_count);
-        let max_storage_binding_bytes = device.limits().max_storage_buffer_binding_size as usize;
-        let max_visible_segments =
-            (max_storage_binding_bytes / std::mem::size_of::<VisibleSegment>()).max(1);
-        let max_source_slots_per_repeat = (max_visible_segments / repeat_count / lane_count) * lane_count;
-        let source_slots_per_repeat = source_slot_count.min(max_source_slots_per_repeat);
-        let visible_capacity = source_slots_per_repeat.saturating_mul(repeat_count);
+        let visible_capacity = instance_map.len().saturating_mul(repeat_count);
         resources.draw_instance_count = visible_capacity.min(u32::MAX as usize) as u32;
         let visible_required_size = visible_capacity
             .saturating_mul(std::mem::size_of::<VisibleSegment>())
@@ -630,9 +616,8 @@ impl CallbackTrait for TripCallback {
             repeat_interval_ticks: repeat_interval,
             repeat_from,
             repeat_to,
-            source_instance_count: source_slots_per_repeat.min(u32::MAX as usize) as u32,
+            source_instance_count: (instance_map.len() as u32).min(u32::MAX),
             feathering_radius: 1.2 / screen_descriptor.pixels_per_point,
-            pixels_per_point: screen_descriptor.pixels_per_point,
             ..uniforms
         };
         let uniform_bytes = bytes_of(&uniforms);
@@ -650,7 +635,7 @@ impl CallbackTrait for TripCallback {
             pass.set_bind_group(0, &resources.compute_bind_group, &[]);
             let workgroup_size = 64u32;
             let workgroup_count_x =
-                (uniforms.source_instance_count.saturating_add(workgroup_size - 1)) / workgroup_size;
+                ((instance_map.len() as u32).saturating_add(workgroup_size - 1)) / workgroup_size;
             let workgroup_count_y = repeat_count.min(u32::MAX as usize) as u32;
             if workgroup_count_x > 0 && workgroup_count_y > 0 {
                 pass.dispatch_workgroups(workgroup_count_x, workgroup_count_y, 1);
