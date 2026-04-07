@@ -10,6 +10,7 @@ struct Uniforms {
     repeat_to: i32,
     source_instance_count: u32,
     feathering_radius: f32,
+    pixels_per_point: f32,
 };
 
 struct Entry {
@@ -35,15 +36,14 @@ struct VisibleSegment {
     p0: vec2<f32>,
     p1: vec2<f32>,
     half_width: f32,
-    _pad0: u32,
-    _pad1: u32,
+    curve_a_or_nan: f32,
+    curve_b: f32,
     color: u32,
 };
 
 struct SegmentMeshVertex {
     along: f32,
     side: f32,
-    outer: f32,
 };
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
@@ -54,24 +54,33 @@ struct SegmentMeshVertex {
 @group(0) @binding(5) var<storage, read_write> visible_segments_rw: array<VisibleSegment>;
 @group(0) @binding(6) var<storage, read> visible_segments: array<VisibleSegment>;
 
-const SEGMENT_MESH_VERTICES: array<SegmentMeshVertex, 8> = array<SegmentMeshVertex, 8>(
-    SegmentMeshVertex(0.0, 1.0, 0.0),
-    SegmentMeshVertex(0.0, -1.0, 0.0),
-    SegmentMeshVertex(1.0, 1.0, 0.0),
-    SegmentMeshVertex(1.0, -1.0, 0.0),
-    SegmentMeshVertex(0.0, 1.0, 1.0),
-    SegmentMeshVertex(1.0, 1.0, 1.0),
-    SegmentMeshVertex(0.0, -1.0, 1.0),
-    SegmentMeshVertex(1.0, -1.0, 1.0),
+const SEGMENT_MESH_VERTICES: array<SegmentMeshVertex, 4> = array<SegmentMeshVertex, 4>(
+    SegmentMeshVertex(0.0, 1.0),
+    SegmentMeshVertex(0.0, -1.0),
+    SegmentMeshVertex(1.0, 1.0),
+    SegmentMeshVertex(1.0, -1.0),
 );
 
-const SEGMENT_MESH_INDICES: array<u32, 18> = array<u32, 18>(
+const SEGMENT_MESH_INDICES: array<u32, 6> = array<u32, 6>(
     0u, 1u, 2u, 1u, 3u, 2u,
-    4u, 0u, 5u, 0u, 2u, 5u,
-    1u, 6u, 3u, 6u, 7u, 3u,
 );
 
 const TICKS_PER_SECOND: i32 = 100;
+const LANE_COUNT: u32 = 2u;
+const LINE_MARKER_BITS: u32 = 0xDEADBEEFu;
+
+fn ticks_to_screen_x(ticks: i32) -> f32 {
+    return f32(ticks - uniforms.ticks_min) / uniforms.x_per_unit;
+}
+
+fn station_to_screen_y(station_index: u32) -> f32 {
+    return (stations[station_index] - uniforms.y_min) / uniforms.y_per_unit;
+}
+
+fn repeat_ticks_for_slot(repeat_slot: u32) -> i32 {
+    let repeat_offset = uniforms.repeat_from + i32(repeat_slot);
+    return repeat_offset * uniforms.repeat_interval_ticks;
+}
 
 fn segment_visible(entry0: Entry, entry1: Entry, repeat_slot: u32) -> bool {
     if entry0.station_index < 0 || entry1.station_index < 0 {
@@ -85,15 +94,14 @@ fn segment_visible(entry0: Entry, entry1: Entry, repeat_slot: u32) -> bool {
         return false;
     }
 
-    let repeat_offset = uniforms.repeat_from + i32(repeat_slot);
-    let repeat_ticks = repeat_offset * uniforms.repeat_interval_ticks;
+    let repeat_ticks = repeat_ticks_for_slot(repeat_slot);
     let dep_ticks = entry0.dep_secs * TICKS_PER_SECOND + repeat_ticks;
     let arr_ticks = entry1.arr_secs * TICKS_PER_SECOND + repeat_ticks;
 
-    let x0 = f32(dep_ticks - uniforms.ticks_min) / uniforms.x_per_unit + uniforms.screen_origin.x;
-    let x1 = f32(arr_ticks - uniforms.ticks_min) / uniforms.x_per_unit + uniforms.screen_origin.x;
-    let y0 = (stations[s0] - uniforms.y_min) / uniforms.y_per_unit + uniforms.screen_origin.y;
-    let y1 = (stations[s1] - uniforms.y_min) / uniforms.y_per_unit + uniforms.screen_origin.y;
+    let x0 = ticks_to_screen_x(dep_ticks) + uniforms.screen_origin.x;
+    let x1 = ticks_to_screen_x(arr_ticks) + uniforms.screen_origin.x;
+    let y0 = station_to_screen_y(s0) + uniforms.screen_origin.y;
+    let y1 = station_to_screen_y(s1) + uniforms.screen_origin.y;
 
     let min_x = min(x0, x1);
     let max_x = max(x0, x1);
@@ -112,7 +120,7 @@ fn segment_visible(entry0: Entry, entry1: Entry, repeat_slot: u32) -> bool {
 
 fn write_visible_segment(source_index: u32, trip: Trip, entry0: Entry, entry1: Entry, repeat_slot: u32) {
     let base = uniforms.source_instance_count * repeat_slot;
-    let idx = base + source_index;
+    let idx = base + source_index * LANE_COUNT;
     if idx >= arrayLength(&visible_segments_rw) {
         return;
     }
@@ -120,31 +128,104 @@ fn write_visible_segment(source_index: u32, trip: Trip, entry0: Entry, entry1: E
     let s0 = u32(entry0.station_index);
     let s1 = u32(entry1.station_index);
 
-    let repeat_offset = uniforms.repeat_from + i32(repeat_slot);
-    let repeat_ticks = repeat_offset * uniforms.repeat_interval_ticks;
+    let repeat_ticks = repeat_ticks_for_slot(repeat_slot);
     let dep_ticks = entry0.dep_secs * TICKS_PER_SECOND + repeat_ticks;
     let arr_ticks = entry1.arr_secs * TICKS_PER_SECOND + repeat_ticks;
 
-    let x0 = f32(dep_ticks - uniforms.ticks_min) / uniforms.x_per_unit;
-    let x1 = f32(arr_ticks - uniforms.ticks_min) / uniforms.x_per_unit;
-    let y0 = (stations[s0] - uniforms.y_min) / uniforms.y_per_unit;
-    let y1 = (stations[s1] - uniforms.y_min) / uniforms.y_per_unit;
+    let x0 = ticks_to_screen_x(dep_ticks);
+    let x1 = ticks_to_screen_x(arr_ticks);
+    let y0 = station_to_screen_y(s0);
+    let y1 = station_to_screen_y(s1);
 
     visible_segments_rw[idx] = VisibleSegment(
         vec2<f32>(x0, y0),
         vec2<f32>(x1, y1),
         trip.width / 2.0,
-        0,
-        0,
+        bitcast<f32>(LINE_MARKER_BITS),
+        0.0,
+        trip.color,
+    );
+}
+
+fn segment_slope(entry0: Entry, entry1: Entry, repeat_slot: u32) -> f32 {
+    let station_count = arrayLength(&stations);
+    if entry0.station_index >= station_count || entry1.station_index >= station_count {
+        return 0.0;
+    }
+
+    let repeat_ticks = repeat_ticks_for_slot(repeat_slot);
+    let dep_ticks = entry0.dep_secs * TICKS_PER_SECOND + repeat_ticks;
+    let arr_ticks = entry1.arr_secs * TICKS_PER_SECOND + repeat_ticks;
+    let x0 = ticks_to_screen_x(dep_ticks);
+    let x1 = ticks_to_screen_x(arr_ticks);
+
+    let dx = x1 - x0;
+    if abs(dx) < 1e-6 {
+        return 0.0;
+    }
+
+    let y0 = station_to_screen_y(entry0.station_index);
+    let y1 = station_to_screen_y(entry1.station_index);
+    return (y1 - y0) / dx;
+}
+
+fn write_stop_segment(
+    source_index: u32,
+    trip: Trip,
+    is_first: bool,
+    is_last: bool,
+    prev_entry: Entry,
+    curr_entry: Entry,
+    next_entry: Entry,
+    repeat_slot: u32,
+) {
+    if curr_entry.arr_secs == curr_entry.dep_secs {
+        return;
+    }
+
+    let base = uniforms.source_instance_count * repeat_slot;
+    let idx = base + source_index * LANE_COUNT + 1u;
+    if idx >= arrayLength(&visible_segments_rw) {
+        return;
+    }
+
+    let station_count = arrayLength(&stations);
+    if curr_entry.station_index >= station_count {
+        return;
+    }
+
+    var a = segment_slope(prev_entry, curr_entry, repeat_slot);
+    var b = segment_slope(curr_entry, next_entry, repeat_slot);
+    if is_first {
+        a = -b;
+    }
+    if is_last {
+        b = -a;
+    }
+
+    let repeat_ticks = repeat_ticks_for_slot(repeat_slot);
+    let arr_ticks = curr_entry.arr_secs * TICKS_PER_SECOND + repeat_ticks;
+    let dep_ticks = curr_entry.dep_secs * TICKS_PER_SECOND + repeat_ticks;
+    let x0 = ticks_to_screen_x(arr_ticks);
+    let x1 = ticks_to_screen_x(dep_ticks);
+    let y = station_to_screen_y(curr_entry.station_index);
+
+    visible_segments_rw[idx] = VisibleSegment(
+        vec2<f32>(x0, y),
+        vec2<f32>(x1, y),
+        trip.width / 2.0,
+        a,
+        b,
         trip.color,
     );
 }
 
 @compute @workgroup_size(64)
 fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let source_index = gid.x;
+    let source_index = gid.x / LANE_COUNT;
+    let lane = gid.x % LANE_COUNT;
     let repeat_slot = gid.y;
-    let source_count = uniforms.source_instance_count;
+    let source_count = uniforms.source_instance_count / LANE_COUNT;
     if source_index >= source_count {
         return;
     }
@@ -163,8 +244,18 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
         return;
     }
 
-    let e0 = entries[start_idx];
-    let e1 = entries[end_idx];
+    let curr = entries[start_idx];
+    let next = entries[end_idx];
+    let is_first = src.local_segment == 0u;
+    var last_real_segment = 0u;
+    if trip.len > 1u {
+        last_real_segment = trip.len - 2u;
+    }
+    let is_last = src.local_segment == last_real_segment;
+    var prev = curr;
+    if !is_first {
+        prev = entries[start_idx - 1u];
+    }
 
     var repeat_count = 1u;
     if uniforms.repeat_interval_ticks > 0 {
@@ -179,68 +270,210 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
         return;
     }
 
-    if segment_visible(e0, e1, repeat_slot) {
-        write_visible_segment(source_index, trip, e0, e1, repeat_slot);
+    if lane == 0u {
+        if segment_visible(curr, next, repeat_slot) {
+            write_visible_segment(source_index, trip, curr, next, repeat_slot);
+        }
+    } else {
+        write_stop_segment(
+            source_index,
+            trip,
+            is_first,
+            is_last,
+            prev,
+            curr,
+            next,
+            repeat_slot,
+        );
     }
 }
 
 struct VertexOut {
     @location(0) color: vec4<f32>,
-    @location(1) feather_alpha: f32,
+    @location(1) world_pos: vec2<f32>,
+    @location(2) seg_p0: vec2<f32>,
+    @location(3) seg_p1: vec2<f32>,
+    @location(4) half_width: f32,
+    @location(5) curve_a: f32,
+    @location(6) curve_b: f32,
     @builtin(position) position: vec4<f32>,
 };
 
 @vertex
 fn vs_main(@builtin(vertex_index) vertex_index: u32, @builtin(instance_index) instance_index: u32) -> VertexOut {
-    var out: VertexOut;
-
     if instance_index >= arrayLength(&visible_segments) {
-        out.color = vec4<f32>(0.0, 0.0, 0.0, 0.0);
-        out.feather_alpha = 0.0;
-        out.position = vec4<f32>(2.0, 2.0, 0.0, 1.0);
-        return out;
+        return VertexOut(
+            vec4<f32>(0.0, 0.0, 0.0, 0.0),
+            vec2<f32>(0.0, 0.0),
+            vec2<f32>(0.0, 0.0),
+            vec2<f32>(0.0, 0.0),
+            0.0,
+            0.0,
+            0.0,
+            vec4<f32>(2.0, 2.0, 0.0, 1.0),
+        );
     }
 
     let mesh_index = SEGMENT_MESH_INDICES[vertex_index];
     let mesh = SEGMENT_MESH_VERTICES[mesh_index];
     let seg = visible_segments[instance_index];
 
-    let seg_a = seg.p0;
-    let seg_b = seg.p1;
+    let marker_bits = bitcast<u32>(seg.curve_a_or_nan);
+    let is_stop = marker_bits != LINE_MARKER_BITS;
+    var seg_a = seg.p0;
+    var seg_b = seg.p1;
+    var tangent = vec2<f32>(1.0, 0.0);
+    var normal = vec2<f32>(0.0, 1.0);
+    let stop_r = max(0.5, 60.0 * max(uniforms.pixels_per_point, 1e-3));
+    var dist = max(seg.half_width + uniforms.feathering_radius, 0.01);
 
-    // Cursed linear algebra magic which I don't understand
-    // I only know trigs!
-    let sdx = seg_b.x - seg_a.x;
-    let sdy = seg_b.y - seg_a.y;
-    let len = max(sqrt(sdx * sdx + sdy * sdy), 1e-6);
-    let nx = -sdy / len;
-    let ny = sdx / len;
+    if !is_stop {
+        let sdx = seg_b.x - seg_a.x;
+        let sdy = seg_b.y - seg_a.y;
+        let len = max(sqrt(sdx * sdx + sdy * sdy), 1e-6);
+        tangent = vec2<f32>(sdx / len, sdy / len);
+        normal = vec2<f32>(-tangent.y, tangent.x);
+    } else {
+        let x_min = min(seg.p0.x, seg.p1.x);
+        let x_max = max(seg.p0.x, seg.p1.x);
+        let cap_pad = seg.half_width + uniforms.feathering_radius;
+        seg_a = vec2<f32>(x_min - cap_pad, seg.p0.y);
+        seg_b = vec2<f32>(x_max + cap_pad, seg.p0.y);
+        // Stop quads must cover curve amplitude + full line half-width + AA feather band.
+        let stop_extent = stop_r + seg.half_width + uniforms.feathering_radius;
+        dist = max(stop_extent, 0.01);
+    }
 
-    let half = max(seg.half_width - uniforms.feathering_radius * 0.5, 0.01);
-    // Expand the segment on both sides so alpha can smoothly fade at the edges.
-    let dist = half + mesh.outer * uniforms.feathering_radius;
-    let normal_offset = vec2<f32>(nx, ny) * (mesh.side * dist);
+    let normal_offset = normal * (mesh.side * dist);
     let base_pos = seg_a + (seg_b - seg_a) * mesh.along;
     let pos = base_pos + normal_offset;
-    let feather_alpha = 1.0 - mesh.outer;
 
     let screen_pos = pos + uniforms.screen_origin;
     let x = screen_pos.x / uniforms.screen_size.x * 2.0 - 1.0;
     let y = 1.0 - screen_pos.y / uniforms.screen_size.y * 2.0;
-    out.position = vec4<f32>(x, y, 0.0, 1.0);
 
     let color = seg.color;
     let r = f32((color >> 0u) & 0xFFu) / 255.0;
     let g = f32((color >> 8u) & 0xFFu) / 255.0;
     let b = f32((color >> 16u) & 0xFFu) / 255.0;
     let a = f32((color >> 24u) & 0xFFu) / 255.0;
-    out.color = vec4<f32>(r, g, b, a);
-    out.feather_alpha = feather_alpha;
-    return out;
+
+    return VertexOut(
+        vec4<f32>(r, g, b, a),
+        pos,
+        seg.p0,
+        seg.p1,
+        seg.half_width,
+        seg.curve_a_or_nan,
+        seg.curve_b,
+        vec4<f32>(x, y, 0.0, 1.0),
+    );
+}
+
+fn distance_to_line_segment(p: vec2<f32>, a: vec2<f32>, b: vec2<f32>) -> f32 {
+    let ab = b - a;
+    let ab_len2 = dot(ab, ab);
+    if ab_len2 < 1e-10 {
+        return distance(p, a);
+    }
+    let t = clamp(dot(p - a, ab) / ab_len2, 0.0, 1.0);
+    let q = a + ab * t;
+    return distance(p, q);
+}
+
+fn stop_curve_y_raw(dx: f32, a: f32, f0: f32, f1: f32) -> f32 {
+    return a * dx + f0 * dx * dx + f1 * dx * dx * dx;
+}
+
+fn stop_curve_dy_raw(dx: f32, a: f32, f0: f32, f1: f32) -> f32 {
+    return a + 2.0 * f0 * dx + 3.0 * f1 * dx * dx;
+}
+
+fn stop_curve_d2y_raw(dx: f32, f0: f32, f1: f32) -> f32 {
+    return 2.0 * f0 + 6.0 * f1 * dx;
+}
+
+fn distance_to_stop_curve(
+    p: vec2<f32>,
+    x0: f32,
+    x1: f32,
+    y_base: f32,
+    a: f32,
+    b: f32,
+    r: f32,
+) -> f32 {
+    let h = x1 - x0;
+    if abs(h) < 3.0 {
+        return distance(p, vec2<f32>(x0, y_base));
+    }
+
+    let min_x = min(x0, x1);
+    let max_x = max(x0, x1);
+
+    let f0 = -(a * 2.0 + b) / h;
+    let f1 = (a + b) / h / h;
+    let r_safe = max(r, 1e-3);
+
+    var x = clamp(p.x, min_x, max_x);
+    // Newton solve for argmin of ||(x, y(x)) - p||^2.
+    for (var i = 0; i < 4; i = i + 1) {
+        let dx = x - x0;
+        let y_raw = stop_curve_y_raw(dx, a, f0, f1);
+        let dy_raw = stop_curve_dy_raw(dx, a, f0, f1);
+        let d2y_raw = stop_curve_d2y_raw(dx, f0, f1);
+        let t = tanh(y_raw / r_safe);
+        let sech2 = 1.0 - t * t;
+        let y = y_base + r_safe * t;
+        let dy = sech2 * dy_raw;
+        let d2y = sech2 * (d2y_raw - 2.0 * t * dy_raw * dy_raw / r_safe);
+
+        let f = x - p.x + (y - p.y) * dy;
+        let df = 1.0 + dy * dy + (y - p.y) * d2y;
+        if abs(df) < 1e-6 {
+            break;
+        }
+        x = clamp(x - f / df, min_x, max_x);
+    }
+
+    let dx_m = x - x0;
+    let y_m = y_base + r_safe * tanh(stop_curve_y_raw(dx_m, a, f0, f1) / r_safe);
+    let d_mid = distance(p, vec2<f32>(x, y_m));
+
+    let dx_l = min_x - x0;
+    let y_l = y_base + r_safe * tanh(stop_curve_y_raw(dx_l, a, f0, f1) / r_safe);
+    let dx_r = max_x - x0;
+    let y_r = y_base + r_safe * tanh(stop_curve_y_raw(dx_r, a, f0, f1) / r_safe);
+    let d_cap_l = distance(p, vec2<f32>(min_x, y_l));
+    let d_cap_r = distance(p, vec2<f32>(max_x, y_r));
+
+    return min(d_mid, min(d_cap_l, d_cap_r));
 }
 
 @fragment
 fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
-    let feather = smoothstep(0.0, 1.0, input.feather_alpha);
-    return vec4<f32>(input.color.rgb, input.color.a * feather);
+    var dist = 0.0;
+    let marker_bits = bitcast<u32>(input.curve_a);
+    let is_stop = marker_bits != LINE_MARKER_BITS;
+    if is_stop {
+        let stop_r = max(0.5, 60.0 * max(uniforms.pixels_per_point, 1e-3));
+        dist = distance_to_stop_curve(
+            input.world_pos,
+            input.seg_p0.x,
+            input.seg_p1.x,
+            input.seg_p0.y,
+            input.curve_a,
+            input.curve_b,
+            stop_r,
+        );
+    } else {
+        dist = distance_to_line_segment(input.world_pos, input.seg_p0, input.seg_p1);
+    }
+
+    let sdf = dist - input.half_width;
+    let ppp = max(uniforms.pixels_per_point, 1e-3);
+    let aa_min = 0.30 / ppp;
+    let aa_max = max(input.half_width, aa_min);
+    let aa = clamp(fwidth(sdf) * 1.1, aa_min, aa_max);
+    let alpha = smoothstep(aa, -aa, sdf);
+    return vec4<f32>(input.color.rgb, input.color.a * alpha);
 }
