@@ -609,6 +609,30 @@ fn main_display(
     }
     let repeat_frequency = world.resource::<ProjectSettings>().repeat_frequency;
 
+    if let Some(cache) = tab.cached_trips.as_ref() {
+        let dark_mode = ui.visuals().dark_mode;
+        gpu_draw::upload_trip_strokes(
+            cache.iter().filter_map(|(trip_entity, _)| {
+                let class = world.get::<TripClass>(*trip_entity)?;
+                let class_entity = class.entity();
+                let displayed = world.get::<DisplayedStroke>(class_entity)?;
+                let stroke = displayed.egui_stroke(dark_mode);
+                let [r, g, b, _] = stroke.color.to_array();
+                Some((class_entity, stroke.width, [r, g, b]))
+            }),
+            &mut state,
+        );
+    }
+
+    if cached_trips_are_changed {
+        gpu_draw::rewrite_trip_cache(
+            tab.cached_trips.as_ref().unwrap(),
+            station_heights.iter().map(|(_, y)| *y),
+            &world.query::<&TripClass>().query(world),
+            &mut state,
+        );
+    }
+
     state.uniforms = gpu_draw::Uniforms {
         ticks_min: tab.navi.x_offset.0,
         y_min: tab.navi.y_offset,
@@ -620,33 +644,6 @@ fn main_display(
             .0
             .clamp(i32::MIN as i64, i32::MAX as i64) as i32,
     };
-
-    if cached_trips_are_changed {
-        gpu_draw::rewrite_trip_cache(
-            tab.cached_trips.as_ref().unwrap(),
-            station_heights.iter().map(|(_, y)| *y),
-            &mut state,
-        );
-    }
-
-    let mut processed = 0usize;
-    for (trip_entity, repeat_count) in tab
-        .cached_trips
-        .as_ref()
-        .unwrap()
-        .iter()
-        .map(|(k, v)| (*k, v.len()))
-    {
-        let class = world.get::<TripClass>(trip_entity).unwrap();
-        let stroke = world.get::<DisplayedStroke>(class.0).unwrap();
-        let stroke = stroke.egui_stroke(ui.visuals().dark_mode);
-        for idx in 0..repeat_count {
-            let state_trip = &mut state.trips[idx + processed];
-            state_trip.color = stroke.color.to_array();
-            state_trip.width = stroke.width;
-        }
-        processed += repeat_count;
-    }
 
     let callback = gpu_draw::paint_callback(response.rect, tab.gpu_state.clone());
     painter.add(callback);
