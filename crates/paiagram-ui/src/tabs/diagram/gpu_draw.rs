@@ -5,6 +5,7 @@ use bytemuck::{bytes_of, cast_slice};
 use eframe::egui_wgpu::{self, wgpu};
 use egui::{Rect, mutex::Mutex};
 use egui_wgpu::CallbackTrait;
+use paiagram_core::settings::TripSegmentBuildMode;
 use paiagram_core::trip::TripClass;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -23,6 +24,7 @@ pub(crate) struct GpuTripRendererState {
     pub uniforms: Uniforms,
     pub target_format: Option<wgpu::TextureFormat>,
     pub msaa_samples: u32,
+    pub segment_build_mode: TripSegmentBuildMode,
 }
 
 /// field0: .......A AAAAAAAA AAAAAAAA AAAAAAAA
@@ -147,10 +149,12 @@ const COMPUTE_WORKGROUP_SIZE: u32 = 64;
 #[repr(C)]
 #[derive(Copy, Clone, Pod, Zeroable)]
 struct GpuSegment {
-    a: [f32; 2],
-    b: [f32; 2],
+    p0: [f32; 2],
+    p1: [f32; 2],
     half_width: f32,
-    _pad0: [f32; 3],
+    pad0: u32,
+    pad1: u32,
+    pad2: u32,
     color: [f32; 4],
 }
 
@@ -184,8 +188,101 @@ impl Default for GpuTripRendererState {
             uniforms: Uniforms::default(),
             target_format: None,
             msaa_samples: 1,
+            segment_build_mode: TripSegmentBuildMode::default(),
         }
     }
+}
+
+fn invalid_segment() -> GpuSegment {
+    GpuSegment {
+        p0: [1.0e9, 1.0e9],
+        p1: [1.0e9, 1.0e9],
+        half_width: 1.0,
+        pad0: 0,
+        pad1: 0,
+        pad2: 0,
+        color: [0.0, 0.0, 0.0, 0.0],
+    }
+}
+
+fn make_segment(entry: Entry, seg_a: [f32; 2], seg_b: [f32; 2], styles: &[u32]) -> GpuSegment {
+    let style_index = (entry.field3 & 0xFF) as usize;
+    let style = styles.get(style_index).copied().unwrap_or(0);
+    let width_steps = (style >> 24) & 0xFF;
+    let width_px = (width_steps as f32 * 0.25).max(1.0);
+
+    let packed_color = style & 0x00ff_ffff;
+    let color = [
+        ((packed_color >> 0) & 0xFF) as f32 / 255.0,
+        ((packed_color >> 8) & 0xFF) as f32 / 255.0,
+        ((packed_color >> 16) & 0xFF) as f32 / 255.0,
+        1.0,
+    ];
+
+    GpuSegment {
+        p0: seg_a,
+        p1: seg_b,
+        half_width: width_px * 0.5,
+        pad0: 0,
+        pad1: 0,
+        pad2: 0,
+        color,
+    }
+}
+
+fn build_segments_cpu(state: &GpuTripRendererState, ticks_min: i32, y_min: f32) -> Vec<GpuSegment> {
+    let source_count = state.entries.len();
+    let mut segments = vec![invalid_segment(); source_count.saturating_mul(2)];
+
+    if source_count == 0 || state.uniforms.x_per_unit == 0.0 || state.uniforms.y_per_unit == 0.0 {
+        return segments;
+    }
+
+    let seconds_to_screen_x = |secs: i32| -> f32 {
+        let ticks = secs.saturating_mul(100);
+        (ticks - ticks_min) as f32 / state.uniforms.x_per_unit
+    };
+    let height_to_screen_y = |height: f32| -> f32 { (height - y_min) / state.uniforms.y_per_unit };
+
+    for (entry_index, entry) in state.entries.iter().copied().enumerate() {
+        let connects_to_next = ((entry.field1 >> 25) & 1) != 0;
+        if connects_to_next && entry_index + 1 < source_count {
+            let station_index = ((entry.field2 >> 16) & 0xFFFF) as usize;
+            let next_entry = state.entries[entry_index + 1];
+            let next_station_index = ((next_entry.field2 >> 16) & 0xFFFF) as usize;
+            if let (Some(&station_h), Some(&next_station_h)) = (
+                state.stations.get(station_index),
+                state.stations.get(next_station_index),
+            ) {
+                let dep_secs = entry.dep_secs();
+                let next_arr_secs = next_entry.arr_secs();
+                let track_index = (entry.field2 & 0xFFFF) as f32;
+                let next_track_index = (next_entry.field2 & 0xFFFF) as f32;
+                let seg_a = [
+                    seconds_to_screen_x(dep_secs),
+                    height_to_screen_y(station_h + track_index),
+                ];
+                let seg_b = [
+                    seconds_to_screen_x(next_arr_secs),
+                    height_to_screen_y(next_station_h + next_track_index),
+                ];
+                segments[entry_index * 2] = make_segment(entry, seg_a, seg_b, &state.styles);
+            }
+        }
+
+        let station_index = ((entry.field2 >> 16) & 0xFFFF) as usize;
+        if let Some(&station_h) = state.stations.get(station_index) {
+            let arr_secs = entry.arr_secs();
+            let dep_secs = entry.dep_secs();
+            let track_index = (entry.field2 & 0xFFFF) as f32;
+            let y = height_to_screen_y(station_h + track_index);
+            let seg_a = [seconds_to_screen_x(arr_secs), y];
+            let seg_b = [seconds_to_screen_x(dep_secs), y];
+            segments[entry_index * 2 + 1] = make_segment(entry, seg_a, seg_b, &state.styles);
+        }
+    }
+
+    segments
 }
 
 pub fn upload_trip_strokes(
@@ -764,6 +861,14 @@ impl CallbackTrait for TripCallback {
         let uniform_bytes = bytes_of(&uniforms);
         queue.write_buffer(&resources.uniform_buffer, 0, uniform_bytes);
 
+        if state.segment_build_mode == TripSegmentBuildMode::Cpu {
+            let cpu_segments = build_segments_cpu(&state, uniforms.ticks_min, uniforms.y_min);
+            if !cpu_segments.is_empty() {
+                let bytes = cast_slice(cpu_segments.as_slice());
+                queue.write_buffer(&resources.segment_buffer, 0, bytes);
+            }
+        }
+
         let indirect_init = DrawIndirectArgs {
             vertex_count: SEGMENT_MESH_INDEX_COUNT,
             instance_count: total_instances.min(u32::MAX as usize) as u32,
@@ -772,7 +877,7 @@ impl CallbackTrait for TripCallback {
         };
         queue.write_buffer(&resources.indirect_buffer, 0, bytes_of(&indirect_init));
 
-        if pair_count > 0 {
+        if pair_count > 0 && state.segment_build_mode == TripSegmentBuildMode::GpuCompute {
             let source_count_u32 = state.entries.len().min(u32::MAX as usize) as u32;
             let dispatch_x = source_count_u32
                 .saturating_add(COMPUTE_WORKGROUP_SIZE - 1)

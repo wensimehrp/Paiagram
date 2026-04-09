@@ -42,10 +42,12 @@ struct SegmentMeshVertex {
 };
 
 struct SegmentOut {
-    a: vec2<f32>,
-    b: vec2<f32>,
+    p0: vec2<f32>,
+    p1: vec2<f32>,
     half_width: f32,
-    _pad0: vec3<f32>,
+    _pad0: u32,
+    _pad1: u32,
+    _pad2: u32,
     color: vec4<f32>,
 };
 
@@ -108,7 +110,9 @@ fn make_segment(entry: Entry, seg_a: vec2<f32>, seg_b: vec2<f32>) -> SegmentOut 
         seg_a,
         seg_b,
         width_px * 0.5,
-        vec3<f32>(0.0, 0.0, 0.0),
+        0,
+        0,
+        0,
         color,
     );
 }
@@ -118,7 +122,9 @@ fn invalid_segment() -> SegmentOut {
         vec2<f32>(1.0e9, 1.0e9),
         vec2<f32>(1.0e9, 1.0e9),
         1.0,
-        vec3<f32>(0.0, 0.0, 0.0),
+        0,
+        0,
+        0,
         vec4<f32>(0.0, 0.0, 0.0, 0.0),
     );
 }
@@ -188,8 +194,8 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32, @builtin(instance_index) in
     let repeat_offset_x = f32(repeat * uniforms.repeat_interval_ticks) / uniforms.x_per_unit;
 
     let segment = render_segments[segment_index];
-    let seg_a = segment.a + vec2<f32>(repeat_offset_x, 0.0);
-    let seg_b = segment.b + vec2<f32>(repeat_offset_x, 0.0);
+    let seg_a = segment.p0 + vec2<f32>(repeat_offset_x, 0.0);
+    let seg_b = segment.p1 + vec2<f32>(repeat_offset_x, 0.0);
 
     let mesh_index = SEGMENT_MESH_INDICES[vertex_index];
     let mesh = SEGMENT_MESH_VERTICES[mesh_index];
@@ -218,6 +224,7 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32, @builtin(instance_index) in
 
 @fragment
 fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
+    // maybe use smoothstep in this case?
     // let feather = smoothstep(0.0, 1.0, input.feather_alpha);
     return vec4<f32>(input.color.rgb, input.feather_alpha);
 }

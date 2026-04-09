@@ -1,6 +1,6 @@
 use paiagram_core::{
     i18n::Language,
-    settings::{ProjectSettings, UserPreferences},
+    settings::{ProjectSettings, TripSegmentBuildMode, UserPreferences},
 };
 
 use super::Tab;
@@ -39,6 +39,19 @@ fn show_settings(
         }
     });
     ui.checkbox(&mut preferences.developer_mode, "Developer mode");
+    egui::ComboBox::new(ui.id().with("trip segment build mode"), "Trip segment build mode")
+        .show_ui(ui, |ui| {
+            ui.selectable_value(
+                &mut preferences.trip_segment_build_mode,
+                TripSegmentBuildMode::GpuCompute,
+                "GPU compute",
+            );
+            ui.selectable_value(
+                &mut preferences.trip_segment_build_mode,
+                TripSegmentBuildMode::Cpu,
+                "CPU",
+            );
+        });
     ui.heading(tr!("settings-project-settings"));
     ui.text_edit_multiline(&mut settings.remarks);
 }

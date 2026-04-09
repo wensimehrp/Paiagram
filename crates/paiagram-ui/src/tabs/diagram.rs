@@ -24,7 +24,7 @@ use paiagram_core::entry::{
 };
 use paiagram_core::export::ExportObject;
 use paiagram_core::route::Route;
-use paiagram_core::settings::ProjectSettings;
+use paiagram_core::settings::{ProjectSettings, UserPreferences};
 use paiagram_core::station::Station;
 use paiagram_core::trip::class::DisplayedStroke;
 use paiagram_core::trip::{Trip, TripBundle, TripClass, TripQuery};
@@ -607,6 +607,7 @@ fn main_display(
     {
         state.msaa_samples = msaa_samples;
     }
+    state.segment_build_mode = world.resource::<UserPreferences>().trip_segment_build_mode;
     let repeat_frequency = world.resource::<ProjectSettings>().repeat_frequency;
 
     if let Some(cache) = tab.cached_trips.as_ref() {

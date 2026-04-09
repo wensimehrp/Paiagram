@@ -4,6 +4,13 @@
 use crate::{i18n::Language, units::time::Duration};
 use bevy::prelude::*;
 
+#[derive(Default, Reflect, Copy, Clone, Debug, PartialEq, Eq)]
+pub enum TripSegmentBuildMode {
+    #[default]
+    GpuCompute,
+    Cpu,
+}
+
 pub struct SettingsPlugin;
 impl Plugin for SettingsPlugin {
     fn build(&self, app: &mut App) {
@@ -22,6 +29,7 @@ pub struct UserPreferences {
     pub lang: Language,
     pub dark_mode: bool,
     pub developer_mode: bool,
+    pub trip_segment_build_mode: TripSegmentBuildMode,
 }
 
 impl Default for UserPreferences {
@@ -30,6 +38,7 @@ impl Default for UserPreferences {
             lang: Language::EnCA,
             dark_mode: false,
             developer_mode: cfg!(debug_assertions),
+            trip_segment_build_mode: TripSegmentBuildMode::default(),
         }
     }
 }
