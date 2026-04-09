@@ -6,7 +6,6 @@ use eframe::egui_wgpu::{self, wgpu};
 use egui::{Rect, mutex::Mutex};
 use egui_wgpu::CallbackTrait;
 use paiagram_core::trip::TripClass;
-use std::cmp;
 use std::collections::HashMap;
 use std::sync::Arc;
 use wgpu::BufferDescriptor;
@@ -26,16 +25,16 @@ pub(crate) struct GpuTripRendererState {
     pub msaa_samples: u32,
 }
 
-/// field0: 0000000A AAAAAAAA AAAAAAAA AAAAAAAA
-/// field1: 000000ND DDDDDDDD DDDDDDDD DDDDDDDD
+/// field0: .......A AAAAAAAA AAAAAAAA AAAAAAAA
+/// field1: ......ND DDDDDDDD DDDDDDDD DDDDDDDD
 /// field2: SSSSSSSS SSSSSSSS RRRRRRRR RRRRRRRR
-/// field3: 00000000 00000000 IIIIIIII IIIIIIII
+/// field3: ........ ........ ........ IIIIIIII
 ///
 /// A: arrival seconds (signed). 2^25 ~= 388 days (194 days on each side)
 /// D: departure seconds (signed). Same as arrival seconds.
 /// S: station index
 /// R: track index
-/// I: style table index.
+/// I: style table index (8-bit, 0..=255).
 ///    style data (width + colour) is stored in uniform buffer.
 /// N: whether the current entry connects to the next entry
 ///    when this bit is set it connects to the next entry.
@@ -78,7 +77,7 @@ impl Entry {
         let field0 = Self::pack_signed_25(arr_secs);
         let field1 = Self::pack_signed_25(dep_secs) | ((connects_to_next as u32) << 25);
         let field2 = ((station_index as u32) << 16) | (track_index as u32);
-        let field3 = style_index as u32;
+        let field3 = (style_index as u32) & 0xFF;
 
         Self {
             field0,
@@ -112,7 +111,7 @@ struct GpuUniforms {
     screen_origin: [f32; 2],
     repeat_interval_ticks: i32,
     repeat_from: i32,
-    repeat_to: i32,
+    repeat_count: u32,
     source_instance_count: u32,
     style_count: u32,
     feathering_radius: f32,
@@ -131,7 +130,7 @@ impl Default for GpuUniforms {
             screen_origin: [0.0, 0.0],
             repeat_interval_ticks: 0,
             repeat_from: 0,
-            repeat_to: 0,
+            repeat_count: 1,
             source_instance_count: 0,
             style_count: 0,
             feathering_radius: 0.0,
@@ -143,6 +142,26 @@ impl Default for GpuUniforms {
 
 const SEGMENT_MESH_INDEX_COUNT: u32 = 18;
 const STYLE_TABLE_CAPACITY: usize = 256;
+const COMPUTE_WORKGROUP_SIZE: u32 = 64;
+
+#[repr(C)]
+#[derive(Copy, Clone, Pod, Zeroable)]
+struct GpuSegment {
+    a: [f32; 2],
+    b: [f32; 2],
+    half_width: f32,
+    _pad0: [f32; 3],
+    color: [f32; 4],
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Default, Pod, Zeroable)]
+struct DrawIndirectArgs {
+    vertex_count: u32,
+    instance_count: u32,
+    first_vertex: u32,
+    first_instance: u32,
+}
 
 const fn pack_style(width_steps: u8, color_rgb: [u8; 3]) -> u32 {
     ((width_steps as u32) << 24)
@@ -275,12 +294,17 @@ struct TripCallback {
 
 struct TripRenderResources {
     pipeline: wgpu::RenderPipeline,
+    compute_pipeline_slanted: wgpu::ComputePipeline,
+    compute_pipeline_horizontal: wgpu::ComputePipeline,
     uniform_buffer: wgpu::Buffer,
     entry_buffer: wgpu::Buffer,
     station_buffer: wgpu::Buffer,
+    segment_buffer: wgpu::Buffer,
+    indirect_buffer: wgpu::Buffer,
     render_bind_group_layout: wgpu::BindGroupLayout,
+    compute_bind_group_layout: wgpu::BindGroupLayout,
     render_bind_group: wgpu::BindGroup,
-    draw_instance_count: u32,
+    compute_bind_group: wgpu::BindGroup,
     target_format: wgpu::TextureFormat,
     msaa_samples: u32,
 }
@@ -293,12 +317,13 @@ struct TripRenderResourceMap {
 fn make_storage_buffer_entry(
     label: &'static str,
     size: u64,
+    usages: BufferUsages,
     device: &wgpu::Device,
 ) -> wgpu::Buffer {
     device.create_buffer(&BufferDescriptor {
         label: Some(label),
         size,
-        usage: BufferUsages::STORAGE | BufferUsages::COPY_DST,
+        usage: usages,
         mapped_at_creation: false,
     })
 }
@@ -314,12 +339,31 @@ impl TripRenderResources {
                     resource: self.uniform_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: self.segment_buffer.as_entire_binding(),
+                },
+            ],
+        });
+
+        self.compute_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("gpu_trip_compute_bind_group"),
+            layout: &self.compute_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: self.uniform_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
                     binding: 1,
                     resource: self.entry_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
                     resource: self.station_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: self.segment_buffer.as_entire_binding(),
                 },
             ],
         });
@@ -338,8 +382,30 @@ impl TripRenderResources {
             mapped_at_creation: false,
         });
 
-        let entry_buffer = make_storage_buffer_entry("entries", 256, device);
-        let station_buffer = make_storage_buffer_entry("stations", 256, device);
+        let entry_buffer = make_storage_buffer_entry(
+            "entries",
+            256,
+            BufferUsages::STORAGE | BufferUsages::COPY_DST,
+            device,
+        );
+        let station_buffer = make_storage_buffer_entry(
+            "stations",
+            256,
+            BufferUsages::STORAGE | BufferUsages::COPY_DST,
+            device,
+        );
+        let segment_buffer = make_storage_buffer_entry(
+            "segments",
+            256,
+            BufferUsages::STORAGE | BufferUsages::VERTEX | BufferUsages::COPY_DST,
+            device,
+        );
+        let indirect_buffer = make_storage_buffer_entry(
+            "gpu_trip_indirect",
+            std::mem::size_of::<DrawIndirectArgs>() as u64,
+            BufferUsages::INDIRECT | BufferUsages::COPY_DST,
+            device,
+        );
 
         let ro_storage_buffer_layout_entry =
             |binding: u32, visibility: ShaderStages| wgpu::BindGroupLayoutEntry {
@@ -347,6 +413,18 @@ impl TripRenderResources {
                 visibility,
                 ty: wgpu::BindingType::Buffer {
                     ty: BufferBindingType::Storage { read_only: true },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            };
+
+        let rw_storage_buffer_layout_entry =
+            |binding: u32, visibility: ShaderStages| wgpu::BindGroupLayoutEntry {
+                binding,
+                visibility,
+                ty: wgpu::BindingType::Buffer {
+                    ty: BufferBindingType::Storage { read_only: false },
                     has_dynamic_offset: false,
                     min_binding_size: None,
                 },
@@ -367,14 +445,48 @@ impl TripRenderResources {
                         },
                         count: None,
                     },
-                    ro_storage_buffer_layout_entry(1, ShaderStages::VERTEX),
-                    ro_storage_buffer_layout_entry(2, ShaderStages::VERTEX),
+                    ro_storage_buffer_layout_entry(4, ShaderStages::VERTEX),
+                ],
+            });
+
+        let compute_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("gpu_trip_compute_bind_group_layout"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    ro_storage_buffer_layout_entry(1, ShaderStages::COMPUTE),
+                    ro_storage_buffer_layout_entry(2, ShaderStages::COMPUTE),
+                    rw_storage_buffer_layout_entry(3, ShaderStages::COMPUTE),
                 ],
             });
 
         let render_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("gpu_trip_render_bind_group"),
             layout: &render_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: uniform_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: segment_buffer.as_entire_binding(),
+                },
+            ],
+        });
+
+        let compute_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("gpu_trip_compute_bind_group"),
+            layout: &compute_bind_group_layout,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
@@ -388,12 +500,22 @@ impl TripRenderResources {
                     binding: 2,
                     resource: station_buffer.as_entire_binding(),
                 },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: segment_buffer.as_entire_binding(),
+                },
             ],
         });
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("gpu_trip_pipeline_layout"),
             bind_group_layouts: &[Some(&render_bind_group_layout)],
+            ..Default::default()
+        });
+
+        let compute_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("gpu_trip_compute_pipeline_layout"),
+            bind_group_layouts: &[Some(&compute_bind_group_layout)],
             ..Default::default()
         });
 
@@ -429,14 +551,37 @@ impl TripRenderResources {
             cache: None,
         });
 
+        let compute_pipeline_slanted = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("gpu_trip_compute_slanted"),
+            layout: Some(&compute_pipeline_layout),
+            module: &shader,
+            entry_point: Some("cs_slanted"),
+            cache: None,
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+        });
+
+        let compute_pipeline_horizontal = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("gpu_trip_compute_horizontal"),
+            layout: Some(&compute_pipeline_layout),
+            module: &shader,
+            entry_point: Some("cs_horizontal"),
+            cache: None,
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+        });
+
         Self {
             pipeline,
+            compute_pipeline_slanted,
+            compute_pipeline_horizontal,
             uniform_buffer,
             entry_buffer,
             station_buffer,
+            segment_buffer,
+            indirect_buffer,
             render_bind_group_layout,
+            compute_bind_group_layout,
             render_bind_group,
-            draw_instance_count: 0,
+            compute_bind_group,
             target_format,
             msaa_samples,
         }
@@ -449,7 +594,7 @@ impl CallbackTrait for TripCallback {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         screen_descriptor: &egui_wgpu::ScreenDescriptor,
-        _egui_encoder: &mut wgpu::CommandEncoder,
+        egui_encoder: &mut wgpu::CommandEncoder,
         resources: &mut egui_wgpu::CallbackResources,
     ) -> Vec<wgpu::CommandBuffer> {
         let mut state = self.state.lock();
@@ -512,7 +657,12 @@ impl CallbackTrait for TripCallback {
             let mut should_upload = state.entries_dirty;
             if required_size as u64 > resources.entry_buffer.size() {
                 let new_size = required_size.next_power_of_two().max(256) as u64;
-                resources.entry_buffer = make_storage_buffer_entry("entries", new_size, device);
+                resources.entry_buffer = make_storage_buffer_entry(
+                    "entries",
+                    new_size,
+                    BufferUsages::STORAGE | BufferUsages::COPY_DST,
+                    device,
+                );
                 needs_rebind = true;
                 should_upload = true;
             }
@@ -529,7 +679,12 @@ impl CallbackTrait for TripCallback {
             let mut should_upload = state.stations_dirty;
             if required_size as u64 > resources.station_buffer.size() {
                 let new_size = required_size.next_power_of_two().max(256) as u64;
-                resources.station_buffer = make_storage_buffer_entry("stations", new_size, device);
+                resources.station_buffer = make_storage_buffer_entry(
+                    "stations",
+                    new_size,
+                    BufferUsages::STORAGE | BufferUsages::COPY_DST,
+                    device,
+                );
                 needs_rebind = true;
                 should_upload = true;
             }
@@ -537,10 +692,6 @@ impl CallbackTrait for TripCallback {
                 queue.write_buffer(&resources.station_buffer, 0, station_bytes);
                 state.stations_dirty = false;
             }
-        }
-
-        if needs_rebind {
-            resources.rebuild_bind_groups(device);
         }
 
         // uniforms
@@ -564,24 +715,43 @@ impl CallbackTrait for TripCallback {
             .ticks_min
             .saturating_add((uniforms.screen_size[0] * uniforms.x_per_unit) as i32);
         let repeat_interval = state.uniforms.repeat_interval_ticks.max(0);
-        let (repeat_from, repeat_to) = if repeat_interval > 0 {
-            (
-                (visible_ticks_min - data_tick_max).div_euclid(repeat_interval),
-                (visible_ticks_max - data_tick_min).div_euclid(repeat_interval),
-            )
+        let repeat_from = if repeat_interval > 0 {
+            (visible_ticks_min - data_tick_max).div_euclid(repeat_interval)
         } else {
-            (0, 0)
+            0
         };
         let repeat_count = if repeat_interval > 0 {
+            let repeat_to = (visible_ticks_max - data_tick_min).div_euclid(repeat_interval);
             (repeat_to - repeat_from + 1).max(1) as usize
         } else {
             1usize
         };
 
+        let pair_count = state.entries.len();
+        let base_segment_count = pair_count.saturating_mul(2);
+        let total_instances = base_segment_count.saturating_mul(repeat_count);
+
+        let required_segment_count = base_segment_count.max(1);
+        let required_segment_size = (required_segment_count * std::mem::size_of::<GpuSegment>()) as u64;
+        if required_segment_size > resources.segment_buffer.size() {
+            let new_size = required_segment_size.next_power_of_two().max(256);
+            resources.segment_buffer = make_storage_buffer_entry(
+                "segments",
+                new_size,
+                BufferUsages::STORAGE | BufferUsages::VERTEX | BufferUsages::COPY_DST,
+                device,
+            );
+            needs_rebind = true;
+        }
+
+        if needs_rebind {
+            resources.rebuild_bind_groups(device);
+        }
+
         let uniforms = GpuUniforms {
             repeat_interval_ticks: repeat_interval,
             repeat_from,
-            repeat_to,
+            repeat_count: repeat_count.min(u32::MAX as usize) as u32,
             source_instance_count: state.entries.len() as u32,
             style_count: state.styles.len().min(STYLE_TABLE_CAPACITY) as u32,
             feathering_radius: 1.2 / screen_descriptor.pixels_per_point,
@@ -594,9 +764,29 @@ impl CallbackTrait for TripCallback {
         let uniform_bytes = bytes_of(&uniforms);
         queue.write_buffer(&resources.uniform_buffer, 0, uniform_bytes);
 
-        let source_count = state.entries.len();
-        let total_instances = source_count.saturating_mul(2).saturating_mul(repeat_count);
-        resources.draw_instance_count = cmp::min(total_instances, u32::MAX as usize) as u32;
+        let indirect_init = DrawIndirectArgs {
+            vertex_count: SEGMENT_MESH_INDEX_COUNT,
+            instance_count: total_instances.min(u32::MAX as usize) as u32,
+            first_vertex: 0,
+            first_instance: 0,
+        };
+        queue.write_buffer(&resources.indirect_buffer, 0, bytes_of(&indirect_init));
+
+        if pair_count > 0 {
+            let source_count_u32 = state.entries.len().min(u32::MAX as usize) as u32;
+            let dispatch_x = source_count_u32
+                .saturating_add(COMPUTE_WORKGROUP_SIZE - 1)
+                / COMPUTE_WORKGROUP_SIZE;
+            let mut compute_pass = egui_encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("gpu_trip_prepare_segments"),
+                timestamp_writes: None,
+            });
+            compute_pass.set_bind_group(0, &resources.compute_bind_group, &[]);
+            compute_pass.set_pipeline(&resources.compute_pipeline_slanted);
+            compute_pass.dispatch_workgroups(dispatch_x, 1, 1);
+            compute_pass.set_pipeline(&resources.compute_pipeline_horizontal);
+            compute_pass.dispatch_workgroups(dispatch_x, 1, 1);
+        }
 
         Vec::new()
     }
@@ -631,9 +821,6 @@ impl CallbackTrait for TripCallback {
         render_pass.set_scissor_rect(clip_left, clip_top, clip_width, clip_height);
         render_pass.set_pipeline(&resources.pipeline);
         render_pass.set_bind_group(0, &resources.render_bind_group, &[]);
-        render_pass.draw(
-            0..SEGMENT_MESH_INDEX_COUNT,
-            0..resources.draw_instance_count,
-        );
+        render_pass.draw_indirect(&resources.indirect_buffer, 0);
     }
 }
