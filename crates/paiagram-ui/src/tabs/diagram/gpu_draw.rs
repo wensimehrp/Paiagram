@@ -3,6 +3,7 @@ use bevy::prelude::Entity;
 use bytemuck::{Pod, Zeroable};
 use bytemuck::{bytes_of, cast_slice};
 use eframe::egui_wgpu::{self, wgpu};
+use eframe::wgpu::include_wgsl;
 use egui::{Rect, mutex::Mutex};
 use egui_wgpu::CallbackTrait;
 use paiagram_core::settings::TripSegmentBuildMode;
@@ -152,9 +153,9 @@ struct GpuSegment {
     p0: [f32; 2],
     p1: [f32; 2],
     half_width: f32,
-    pad0: u32,
-    pad1: u32,
-    pad2: u32,
+    nx: f32,
+    ny: f32,
+    pad0: f32,
     color: [f32; 4],
 }
 
@@ -198,9 +199,9 @@ fn invalid_segment() -> GpuSegment {
         p0: [1.0e9, 1.0e9],
         p1: [1.0e9, 1.0e9],
         half_width: 1.0,
-        pad0: 0,
-        pad1: 0,
-        pad2: 0,
+        nx: 0.0,
+        ny: 0.0,
+        pad0: 0.0,
         color: [0.0, 0.0, 0.0, 0.0],
     }
 }
@@ -219,13 +220,19 @@ fn make_segment(entry: Entry, seg_a: [f32; 2], seg_b: [f32; 2], styles: &[u32]) 
         1.0,
     ];
 
+    let dx = seg_b[0] - seg_a[0];
+    let dy = seg_b[1] - seg_a[1];
+    let inv_len = 1.0 / (dx * dx + dy * dy).max(1e-12).sqrt();
+    let nx = -dy * inv_len;
+    let ny = dx * inv_len;
+
     GpuSegment {
         p0: seg_a,
         p1: seg_b,
         half_width: width_px * 0.5,
-        pad0: 0,
-        pad1: 0,
-        pad2: 0,
+        nx,
+        ny,
+        pad0: 0.0,
         color,
     }
 }
@@ -266,7 +273,7 @@ fn build_segments_cpu(state: &GpuTripRendererState, ticks_min: i32, y_min: f32) 
                     seconds_to_screen_x(next_arr_secs),
                     height_to_screen_y(next_station_h + next_track_index),
                 ];
-                segments[entry_index * 2] = make_segment(entry, seg_a, seg_b, &state.styles);
+                segments[entry_index * 2 + 1] = make_segment(entry, seg_a, seg_b, &state.styles);
             }
         }
 
@@ -278,7 +285,7 @@ fn build_segments_cpu(state: &GpuTripRendererState, ticks_min: i32, y_min: f32) 
             let y = height_to_screen_y(station_h + track_index);
             let seg_a = [seconds_to_screen_x(arr_secs), y];
             let seg_b = [seconds_to_screen_x(dep_secs), y];
-            segments[entry_index * 2 + 1] = make_segment(entry, seg_a, seg_b, &state.styles);
+            segments[entry_index * 2] = make_segment(entry, seg_a, seg_b, &state.styles);
         }
     }
 
@@ -391,8 +398,7 @@ struct TripCallback {
 
 struct TripRenderResources {
     pipeline: wgpu::RenderPipeline,
-    compute_pipeline_slanted: wgpu::ComputePipeline,
-    compute_pipeline_horizontal: wgpu::ComputePipeline,
+    compute_pipeline: wgpu::ComputePipeline,
     uniform_buffer: wgpu::Buffer,
     entry_buffer: wgpu::Buffer,
     station_buffer: wgpu::Buffer,
@@ -469,7 +475,7 @@ impl TripRenderResources {
     fn new(device: &wgpu::Device, target_format: wgpu::TextureFormat, msaa_samples: u32) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("gpu_trip_shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("gpu_trip.wgsl").into()),
+            source: include_wgsl!("gpu_trip.wgsl").source,
         });
 
         let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -648,28 +654,18 @@ impl TripRenderResources {
             cache: None,
         });
 
-        let compute_pipeline_slanted = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("gpu_trip_compute_slanted"),
+        let compute_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("gpu_trip_compute"),
             layout: Some(&compute_pipeline_layout),
             module: &shader,
-            entry_point: Some("cs_slanted"),
-            cache: None,
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
-        });
-
-        let compute_pipeline_horizontal = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("gpu_trip_compute_horizontal"),
-            layout: Some(&compute_pipeline_layout),
-            module: &shader,
-            entry_point: Some("cs_horizontal"),
+            entry_point: Some("cs_main"),
             cache: None,
             compilation_options: wgpu::PipelineCompilationOptions::default(),
         });
 
         Self {
             pipeline,
-            compute_pipeline_slanted,
-            compute_pipeline_horizontal,
+            compute_pipeline,
             uniform_buffer,
             entry_buffer,
             station_buffer,
@@ -887,9 +883,7 @@ impl CallbackTrait for TripCallback {
                 timestamp_writes: None,
             });
             compute_pass.set_bind_group(0, &resources.compute_bind_group, &[]);
-            compute_pass.set_pipeline(&resources.compute_pipeline_slanted);
-            compute_pass.dispatch_workgroups(dispatch_x, 1, 1);
-            compute_pass.set_pipeline(&resources.compute_pipeline_horizontal);
+            compute_pass.set_pipeline(&resources.compute_pipeline);
             compute_pass.dispatch_workgroups(dispatch_x, 1, 1);
         }
 

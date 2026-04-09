@@ -45,9 +45,9 @@ struct SegmentOut {
     p0: vec2<f32>,
     p1: vec2<f32>,
     half_width: f32,
-    _pad0: u32,
-    _pad1: u32,
-    _pad2: u32,
+    nx: f32,
+    ny: f32,
+    _pad0: f32,
     color: vec4<f32>,
 };
 
@@ -106,13 +106,21 @@ fn make_segment(entry: Entry, seg_a: vec2<f32>, seg_b: vec2<f32>) -> SegmentOut 
         1.0,
     );
 
+    // Cursed linear algebra which I don't understand
+    // I only know trigs!
+    let dx = seg_b.x - seg_a.x;
+    let dy = seg_b.y - seg_a.y;
+    let inv_len = inverseSqrt(max(dx * dx + dy * dy, 1e-12));
+    let nx = -dy * inv_len;
+    let ny = dx * inv_len;
+
     return SegmentOut(
         seg_a,
         seg_b,
         width_px * 0.5,
-        0,
-        0,
-        0,
+        nx,
+        ny,
+        0.0,
         color,
     );
 }
@@ -122,60 +130,48 @@ fn invalid_segment() -> SegmentOut {
         vec2<f32>(1.0e9, 1.0e9),
         vec2<f32>(1.0e9, 1.0e9),
         1.0,
-        0,
-        0,
-        0,
+        0.0,
+        0.0,
+        0.0,
         vec4<f32>(0.0, 0.0, 0.0, 0.0),
     );
 }
 
 @compute @workgroup_size(COMPUTE_WORKGROUP_SIZE)
-fn cs_slanted(@builtin(global_invocation_id) global_id: vec3<u32>) {
+fn cs_main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let entry_index = global_id.x;
     let source_count = uniforms.source_instance_count;
     let pair_index = entry_index * 2;
-    segments[pair_index] = invalid_segment();
+    if entry_index >= source_count {
+        return;
+    }
 
     let entry = entries[entry_index];
     let connects_to_next = ((entry.field1 >> 25u) & 1u) != 0u;
     let can_connect = connects_to_next && (entry_index + 1u < source_count);
 
+    let arr_secs = signed_25_to_i32(entry.field0 & 0x01ffffffu);
+    let dep_secs = signed_25_to_i32(entry.field1 & 0x01ffffffu);
+    let station_index = (entry.field2 >> 16u) & 0xFFFFu;
+    // currently no track index
+    let y = height_to_screen_y(stations[station_index]);
+
+    let seg_0 = vec2<f32>(seconds_to_screen_x(arr_secs, 0), y);
+    let seg_1 = vec2<f32>(seconds_to_screen_x(dep_secs, 0), y);
+    segments[pair_index] = make_segment(entry, seg_0, seg_1);
+
     if !can_connect {
+        segments[pair_index + 1] = invalid_segment();
         return;
     }
 
-    let station_index = (entry.field2 >> 16u) & 0xFFFFu;
     let next_entry = entries[entry_index + 1u];
     let next_station_index = (next_entry.field2 >> 16u) & 0xFFFFu;
-
-    let dep_secs = signed_25_to_i32(entry.field1 & 0x01ffffffu);
     let next_arr_secs = signed_25_to_i32(next_entry.field0 & 0x01ffffffu);
-    let track_index = entry.field2 & 0xFFFFu;
-    let next_track_index = next_entry.field2 & 0xFFFFu;
+    let next_y = height_to_screen_y(stations[next_station_index]);
 
-    let y = height_to_screen_y(stations[station_index] + f32(track_index));
-    let next_y = height_to_screen_y(stations[next_station_index] + f32(next_track_index));
-    let seg_a = vec2<f32>(seconds_to_screen_x(dep_secs, 0), y);
-    let seg_b = vec2<f32>(seconds_to_screen_x(next_arr_secs, 0), next_y);
-    segments[pair_index] = make_segment(entry, seg_a, seg_b);
-}
-
-@compute @workgroup_size(COMPUTE_WORKGROUP_SIZE)
-fn cs_horizontal(@builtin(global_invocation_id) global_id: vec3<u32>) {
-    let entry_index = global_id.x;
-    let out_index = entry_index * 2 + 1;
-    segments[out_index] = invalid_segment();
-
-    let entry = entries[entry_index];
-    let station_index = (entry.field2 >> 16u) & 0xFFFFu;
-    let arr_secs = signed_25_to_i32(entry.field0 & 0x01ffffffu);
-    let dep_secs = signed_25_to_i32(entry.field1 & 0x01ffffffu);
-    let track_index = entry.field2 & 0xFFFFu;
-
-    let y = height_to_screen_y(stations[station_index] + f32(track_index));
-    let seg_a = vec2<f32>(seconds_to_screen_x(arr_secs, 0), y);
-    let seg_b = vec2<f32>(seconds_to_screen_x(dep_secs, 0), y);
-    segments[out_index] = make_segment(entry, seg_a, seg_b);
+    let seg_2 = vec2<f32>(seconds_to_screen_x(next_arr_secs, 0), next_y);
+    segments[pair_index + 1] = make_segment(entry, seg_1, seg_2);
 }
 
 struct VertexOut {
@@ -200,18 +196,10 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32, @builtin(instance_index) in
     let mesh_index = SEGMENT_MESH_INDICES[vertex_index];
     let mesh = SEGMENT_MESH_VERTICES[mesh_index];
 
-    // Cursed linear algebra magic which I don't understand
-    // I only know trigs!
-    let sdx = seg_b.x - seg_a.x;
-    let sdy = seg_b.y - seg_a.y;
-    let len = max(sqrt(sdx * sdx + sdy * sdy), 1e-6);
-    let nx = -sdy / len;
-    let ny = sdx / len;
-
     let half = max(segment.half_width - uniforms.feathering_radius * 0.5, 0.01);
     // Expand the segment on both sides so alpha can smoothly fade at the edges.
     let dist = half + mesh.outer * uniforms.feathering_radius;
-    let normal_offset = vec2<f32>(nx, ny) * (mesh.side * dist);
+    let normal_offset = vec2<f32>(segment.nx, segment.ny) * (mesh.side * dist);
     let base_pos = seg_a + (seg_b - seg_a) * mesh.along;
     let pos = base_pos + normal_offset;
     let feather_alpha = 1.0 - mesh.outer;
