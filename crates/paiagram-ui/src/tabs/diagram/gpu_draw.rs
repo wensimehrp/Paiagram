@@ -616,11 +616,12 @@ impl TripRenderResources {
             ..Default::default()
         });
 
-        let compute_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("gpu_trip_compute_pipeline_layout"),
-            bind_group_layouts: &[Some(&compute_bind_group_layout)],
-            ..Default::default()
-        });
+        let compute_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("gpu_trip_compute_pipeline_layout"),
+                bind_group_layouts: &[Some(&compute_bind_group_layout)],
+                ..Default::default()
+            });
 
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("gpu_trip_pipeline"),
@@ -825,7 +826,8 @@ impl CallbackTrait for TripCallback {
         let total_instances = base_segment_count.saturating_mul(repeat_count);
 
         let required_segment_count = base_segment_count.max(1);
-        let required_segment_size = (required_segment_count * std::mem::size_of::<GpuSegment>()) as u64;
+        let required_segment_size =
+            (required_segment_count * std::mem::size_of::<GpuSegment>()) as u64;
         if required_segment_size > resources.segment_buffer.size() {
             let new_size = required_segment_size.next_power_of_two().max(256);
             resources.segment_buffer = make_storage_buffer_entry(
@@ -875,8 +877,7 @@ impl CallbackTrait for TripCallback {
 
         if pair_count > 0 && state.segment_build_mode == TripSegmentBuildMode::GpuCompute {
             let source_count_u32 = state.entries.len().min(u32::MAX as usize) as u32;
-            let dispatch_x = source_count_u32
-                .saturating_add(COMPUTE_WORKGROUP_SIZE - 1)
+            let dispatch_x = source_count_u32.saturating_add(COMPUTE_WORKGROUP_SIZE - 1)
                 / COMPUTE_WORKGROUP_SIZE;
             let mut compute_pass = egui_encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("gpu_trip_prepare_segments"),

@@ -4,8 +4,8 @@ use crate::widgets::indicators::display_time_indicator_indicator_horizontal;
 use crate::widgets::timetable_popup::{POPUP_WIDTH, arrival_popup, departure_popup};
 use crate::widgets::{TimeDragValue, buttons};
 use crate::{
-    EntrySelection, ExtendingTripSelection, GlobalTimer, IntervalSelection, ModifySelectedItems,
-    OpenOrFocus, SelectedItem, SelectedItems, StationSelection,
+    ExtendingTripSelection, GlobalTimer, IntervalSelection, ModifySelectedItems, OpenOrFocus,
+    SelectedItem, SelectedItems, StationSelection, TripSelection,
 };
 use bevy::ecs::entity::EntityHashMap;
 use bevy::prelude::*;
@@ -41,7 +41,7 @@ impl SelectedItems {
     pub fn to_canvas_state(&mut self) -> CanvasState<'_> {
         match self {
             Self::None => CanvasState::Idle,
-            Self::Entries(i) => CanvasState::SelectingEntries(i),
+            Self::Trips(i) => CanvasState::SelectingTrips(i),
             Self::Intervals(i) => CanvasState::SelectingIntervals(i),
             Self::Stations(i) => CanvasState::SelectingStations(i),
             Self::ExtendingRoute(_) => CanvasState::IdleNoInterrupt,
@@ -59,8 +59,8 @@ pub(crate) enum CanvasState<'a> {
     Idle,
     /// User is doing something in another panel.
     IdleNoInterrupt,
-    /// User is selecting some entries
-    SelectingEntries(&'a [EntrySelection]),
+    /// User is selecting some trips
+    SelectingTrips(&'a [TripSelection]),
     /// User is selecting some intervals
     SelectingIntervals(&'a [IntervalSelection]),
     /// User is selecting some stations
@@ -234,115 +234,94 @@ pub(crate) struct TripPoint {
     station_index: usize,
 }
 
-fn render_points(
-    (InRef(cache), InMut(buf), InRef(navi), InRef(station_heights)): (
-        InRef<TripCache>,
-        InMut<Vec<DrawnTrip>>,
-        InRef<DiagramTabNavigation>,
-        InRef<[(Entity, f32)]>,
-    ),
-    trip_class_q: Query<&TripClass>,
-    stroke_q: Query<&DisplayedStroke>,
-    settings: Res<ProjectSettings>,
-) {
-    if buf.len() < cache.len() {
-        buf.resize_with(cache.len(), DrawnTrip::empty);
-    }
-    let visible_ticks = navi.visible_x();
-    let repeat_freq_ticks = Tick::from_timetable_time(TimetableTime(settings.repeat_frequency.0));
-    for ((trip_entry, lines), buf) in cache.iter().zip(buf.iter_mut()) {
-        let class = trip_class_q.get(*trip_entry).unwrap();
-        let stroke = stroke_q.get(class.entity()).unwrap();
-        buf.entity = *trip_entry;
-        buf.stroke = *stroke;
-        let mut drawn_count = 0;
-        for line in lines.iter() {
-            let mut line_min = i64::MAX;
-            let mut line_max = i64::MIN;
-            for TripPoint { arr, dep, .. } in line.iter() {
-                let arr_ticks = Tick::from_timetable_time(*arr).0;
-                let dep_ticks = Tick::from_timetable_time(*dep).0;
-                line_min = line_min.min(arr_ticks.min(dep_ticks));
-                line_max = line_max.max(arr_ticks.max(dep_ticks));
-            }
-            if line_min > line_max {
-                continue;
-            }
-
-            let (repeat_start, repeat_end) = if repeat_freq_ticks.0 > 0 {
-                (
-                    (visible_ticks.start.0 - line_max).div_euclid(repeat_freq_ticks.0),
-                    (visible_ticks.end.0 - line_min).div_euclid(repeat_freq_ticks.0),
-                )
-            } else {
-                (0, 0)
-            };
-
-            for repeat in repeat_start..=repeat_end {
-                if drawn_count >= buf.points.len() {
-                    buf.points.resize_with(drawn_count + 1, Vec::new);
-                }
-                if drawn_count >= buf.entries.len() {
-                    buf.entries.resize_with(drawn_count + 1, Vec::new);
-                }
-                let pt_buf = &mut buf.points[drawn_count];
-                let et_buf = &mut buf.entries[drawn_count];
-
-                pt_buf.clear();
-                et_buf.clear();
-                et_buf.reserve(line.len());
-                pt_buf.reserve(line.len());
-
-                let repeat_offset = repeat * repeat_freq_ticks.0;
-                for TripPoint {
-                    arr,
-                    dep,
-                    entry,
-                    station_index,
-                } in line.iter()
-                {
-                    let (_, height) = station_heights[*station_index];
-                    let arr_tick = Tick::from_timetable_time(*arr);
-                    let dep_tick = Tick::from_timetable_time(*dep);
-                    let arr_pos =
-                        navi.xy_to_screen_pos(Tick(arr_tick.0 + repeat_offset), height as f64);
-                    let dep_pos =
-                        navi.xy_to_screen_pos(Tick(dep_tick.0 + repeat_offset), height as f64);
-                    et_buf.push(*entry);
-                    pt_buf.push([arr_pos, arr_pos, dep_pos, dep_pos]);
-                }
-
-                if !pt_buf.is_empty() {
-                    drawn_count += 1;
-                }
-            }
-        }
-        buf.draw_amount = drawn_count;
-        buf.points.truncate(drawn_count);
-        buf.entries.truncate(drawn_count);
-    }
-}
-
-#[derive(Debug)]
-pub struct DrawnTrip {
-    pub entity: Entity,
-    pub stroke: DisplayedStroke,
-    pub draw_amount: usize,
-    pub points: Vec<Vec<[Pos2; 4]>>,
-    pub entries: Vec<Vec<Entity>>, // TODO: remove this field
-}
-
-impl DrawnTrip {
-    fn empty() -> Self {
-        Self {
-            entity: Entity::PLACEHOLDER,
-            stroke: DisplayedStroke::from_seed([0]),
-            draw_amount: 0,
-            points: Vec::new(),
-            entries: Vec::new(),
-        }
-    }
-}
+// fn render_points(
+//     (InRef(cache), InMut(buf), InRef(navi), InRef(station_heights)): (
+//         InRef<TripCache>,
+//         InMut<Vec<DrawnTrip>>,
+//         InRef<DiagramTabNavigation>,
+//         InRef<[(Entity, f32)]>,
+//     ),
+//     trip_class_q: Query<&TripClass>,
+//     stroke_q: Query<&DisplayedStroke>,
+//     settings: Res<ProjectSettings>,
+// ) {
+//     if buf.len() < cache.len() {
+//         buf.resize_with(cache.len(), DrawnTrip::empty);
+//     }
+//     let visible_ticks = navi.visible_x();
+//     let repeat_freq_ticks = Tick::from_timetable_time(TimetableTime(settings.repeat_frequency.0));
+//     for ((trip_entry, lines), buf) in cache.iter().zip(buf.iter_mut()) {
+//         let class = trip_class_q.get(*trip_entry).unwrap();
+//         let stroke = stroke_q.get(class.entity()).unwrap();
+//         buf.entity = *trip_entry;
+//         buf.stroke = *stroke;
+//         let mut drawn_count = 0;
+//         for line in lines.iter() {
+//             let mut line_min = i64::MAX;
+//             let mut line_max = i64::MIN;
+//             for TripPoint { arr, dep, .. } in line.iter() {
+//                 let arr_ticks = Tick::from_timetable_time(*arr).0;
+//                 let dep_ticks = Tick::from_timetable_time(*dep).0;
+//                 line_min = line_min.min(arr_ticks.min(dep_ticks));
+//                 line_max = line_max.max(arr_ticks.max(dep_ticks));
+//             }
+//             if line_min > line_max {
+//                 continue;
+//             }
+//
+//             let (repeat_start, repeat_end) = if repeat_freq_ticks.0 > 0 {
+//                 (
+//                     (visible_ticks.start.0 - line_max).div_euclid(repeat_freq_ticks.0),
+//                     (visible_ticks.end.0 - line_min).div_euclid(repeat_freq_ticks.0),
+//                 )
+//             } else {
+//                 (0, 0)
+//             };
+//
+//             for repeat in repeat_start..=repeat_end {
+//                 if drawn_count >= buf.points.len() {
+//                     buf.points.resize_with(drawn_count + 1, Vec::new);
+//                 }
+//                 if drawn_count >= buf.entries.len() {
+//                     buf.entries.resize_with(drawn_count + 1, Vec::new);
+//                 }
+//                 let pt_buf = &mut buf.points[drawn_count];
+//                 let et_buf = &mut buf.entries[drawn_count];
+//
+//                 pt_buf.clear();
+//                 et_buf.clear();
+//                 et_buf.reserve(line.len());
+//                 pt_buf.reserve(line.len());
+//
+//                 let repeat_offset = repeat * repeat_freq_ticks.0;
+//                 for TripPoint {
+//                     arr,
+//                     dep,
+//                     entry,
+//                     station_index,
+//                 } in line.iter()
+//                 {
+//                     let (_, height) = station_heights[*station_index];
+//                     let arr_tick = Tick::from_timetable_time(*arr);
+//                     let dep_tick = Tick::from_timetable_time(*dep);
+//                     let arr_pos =
+//                         navi.xy_to_screen_pos(Tick(arr_tick.0 + repeat_offset), height as f64);
+//                     let dep_pos =
+//                         navi.xy_to_screen_pos(Tick(dep_tick.0 + repeat_offset), height as f64);
+//                     et_buf.push(*entry);
+//                     pt_buf.push([arr_pos, arr_pos, dep_pos, dep_pos]);
+//                 }
+//
+//                 if !pt_buf.is_empty() {
+//                     drawn_count += 1;
+//                 }
+//             }
+//         }
+//         buf.draw_amount = drawn_count;
+//         buf.points.truncate(drawn_count);
+//         buf.entries.truncate(drawn_count);
+//     }
+// }
 
 impl Tab for DiagramTab {
     const NAME: &'static str = "Diagram";
@@ -422,7 +401,7 @@ impl Tab for DiagramTab {
                     *world.resource_mut::<SelectedItems>() = SelectedItems::None
                 }
             }
-            SelectedItems::Entries(selected_entries) => {
+            SelectedItems::Trips(selected_trips) => {
                 // world
                 //     .run_system_cached_with(display_entry_info, (ui, selected_entries.as_slice()))
                 //     .unwrap();
@@ -528,17 +507,12 @@ impl Tab for DiagramTab {
     }
 }
 
-#[derive(Resource, Default, Deref, DerefMut)]
-pub(crate) struct TripLineBuf(Vec<DrawnTrip>);
-
 fn main_display(
     tab: &mut DiagramTab,
     world: &mut World,
     ui: &mut egui::Ui,
     canvas_state: CanvasState,
 ) {
-    let mut trip_line_buf: Vec<DrawnTrip> = Vec::new();
-    let trip_line_buf = &mut trip_line_buf;
     let route = world
         .get::<Route>(tab.route_entity)
         .expect("Entity should have a route");
@@ -596,6 +570,7 @@ fn main_display(
     let now = Instant::now();
     let mut state = tab.gpu_state.lock();
 
+    // some locking...
     if let Some(target_format) = ui.ctx().data(|data| {
         data.get_temp::<eframe::egui_wgpu::wgpu::TextureFormat>(Id::new("wgpu_target_format"))
     }) {
@@ -607,6 +582,7 @@ fn main_display(
     {
         state.msaa_samples = msaa_samples;
     }
+
     state.segment_build_mode = world.resource::<UserPreferences>().trip_segment_build_mode;
     let repeat_frequency = world.resource::<ProjectSettings>().repeat_frequency;
 
@@ -648,6 +624,7 @@ fn main_display(
 
     let callback = gpu_draw::paint_callback(response.rect, tab.gpu_state.clone());
     painter.add(callback);
+
     tab.times.2 = tab.times.2 * 0.9 + now.elapsed().as_secs_f32() * 1000.0 * 0.1;
 
     // check for selection
@@ -671,6 +648,7 @@ fn main_display(
         .clicked()
         .then(|| ui.input(|it| it.pointer.interact_pos()))
         .flatten();
+    let repeat_interval_ticks = Tick::from_timetable_time(TimetableTime(repeat_frequency.0));
 
     match canvas_state {
         // The current canvas is idle.
@@ -679,18 +657,22 @@ fn main_display(
         CanvasState::Idle if interact_pos.is_some() => {
             let pos = interact_pos.unwrap();
             // state transformation
-            error!("INTERACTION IS UNIMPLEMENTED");
-            // TODO: read the status from the GPU.
-            // then select stuff
-            // if let Some(selection) = select_trip(&trip_line_buf, pos) {
-            //     world.write_message(ModifySelectedItems::SetSingle(SelectedItem::Entries(
-            //         selection,
-            //     )));
-            // } else if false {
-            //     // TODO
-            // } else if false {
-            //     // TODO
-            // }
+            let cache = tab.cached_trips.as_ref().unwrap();
+            if let Some(selection) = select_trip(
+                cache,
+                pos,
+                &station_heights,
+                &tab.navi,
+                repeat_interval_ticks,
+            ) {
+                world.write_message(ModifySelectedItems::SetSingle(SelectedItem::Trip(
+                    selection,
+                )));
+            } else if false {
+                // TODO
+            } else if false {
+                // TODO
+            }
             // also reset the secondary click memory
             tab.last_secondary_click_position = None;
         }
@@ -781,85 +763,90 @@ fn main_display(
         // The current canvas is not idle
         // If the user has already selected some entries, they should only be able to select more
         // entries, or quit the current state
-        CanvasState::SelectingEntries(selection) => {
+        CanvasState::SelectingTrips(selection) => {
             // highlight all of the entries
-            // for drawn in trip_line_buf[0..tab.cached_trips.as_ref().unwrap().len()]
-            //     .iter()
-            //     .filter(|it| selection.iter().any(|s| it.entity == s.parent))
-            // {
-            //     let mut stroke = drawn.stroke.egui_stroke(ui.visuals().dark_mode);
-            //     stroke.width = stroke.width + 3.0 * selection_strength;
-            //     for (i, (line_group, entity_group)) in drawn.points[0..drawn.draw_amount]
-            //         .iter()
-            //         .zip(drawn.entries.iter())
-            //         .enumerate()
-            //     {
-            //         let line = line_group.as_flattened().to_vec();
-            //         painter.line(line, stroke);
-            //         let nan_iter = std::iter::once(None);
-            //         let line_group_iter = nan_iter
-            //             .clone()
-            //             .chain(line_group.iter().map(Some))
-            //             .chain(nan_iter);
-            //         for (j, ((prev_positions, curr_positions, next_positions), entity)) in
-            //             line_group_iter
-            //                 .tuple_windows()
-            //                 .zip(entity_group.iter())
-            //                 .enumerate()
-            //         {
-            //             const OPAQUE_RADIUS: f32 = 20.0;
-            //             const TRANSPARENT_RADIUS: f32 = 40.0;
-            //             let curr_positions = curr_positions.unwrap();
-            //             let midpoint = curr_positions[1].lerp(curr_positions[2], 0.5);
-            //             let pos = ui.input(|r| r.pointer.hover_pos());
-            //             let strength = if let Some(pos) = pos {
-            //                 let len = pos.distance(midpoint);
-            //                 let clamped = len.clamp(OPAQUE_RADIUS, TRANSPARENT_RADIUS);
-            //                 1.0 - (clamped - OPAQUE_RADIUS) / (TRANSPARENT_RADIUS - OPAQUE_RADIUS)
-            //             } else {
-            //                 0.0
-            //             };
-            //             world
-            //                 .run_system_cached_with(
-            //                     draw_handles,
-            //                     (
-            //                         curr_positions,
-            //                         (
-            //                             *entity,
-            //                             drawn.entity,
-            //                             prev_positions.map(|it| it[3]),
-            //                             next_positions.map(|it| it[0]),
-            //                         ),
-            //                         (i, j),
-            //                         ui,
-            //                         &mut painter,
-            //                         tab.navi.zoom_x(),
-            //                         strength,
-            //                     ),
-            //                 )
-            //                 .unwrap();
-            //         }
-            //     }
-            // }
+            let cache = tab.cached_trips.as_ref().unwrap();
+            let visible_ticks = tab.navi.visible_x();
+            for (trip_entity, segments, _entries) in selection
+                .iter()
+                .filter_map(|it| Some((it.trip, cache.get(&it.trip)?, it.entries.as_slice())))
+            {
+                for segment in segments {
+                    let mut seg_min = i64::MAX;
+                    let mut seg_max = i64::MIN;
+                    for it in segment {
+                        let arr_tick = it.arr.to_ticks().0;
+                        let dep_tick = it.dep.to_ticks().0;
+                        seg_min = seg_min.min(arr_tick.min(dep_tick));
+                        seg_max = seg_max.max(arr_tick.max(dep_tick));
+                    }
+
+                    if seg_min > seg_max {
+                        continue;
+                    }
+
+                    let (repeat_start, repeat_end) = if repeat_interval_ticks.0 > 0 {
+                        (
+                            (visible_ticks.start.0 - seg_max).div_euclid(repeat_interval_ticks.0),
+                            (visible_ticks.end.0 - seg_min).div_euclid(repeat_interval_ticks.0),
+                        )
+                    } else {
+                        (0, 0)
+                    };
+
+                    // get class
+                    let class = world.get::<TripClass>(trip_entity).unwrap();
+                    let stroke = world.get::<DisplayedStroke>(class.entity()).unwrap();
+                    let mut stroke = stroke.egui_stroke(ui.visuals().dark_mode);
+                    stroke.width = stroke.width + stroke.width * 3.0 * selection_strength;
+
+                    let mut base_points = Vec::with_capacity(segment.len() * 2);
+                    base_points.extend(segment.iter().flat_map(|it| {
+                        let y = tab
+                            .navi
+                            .logical_y_to_screen_y(station_heights[it.station_index].1 as f64);
+                        let arr_x = tab.navi.logical_x_to_screen_x(it.arr.to_ticks());
+                        let dep_x = tab.navi.logical_x_to_screen_x(it.dep.to_ticks());
+                        [Pos2::new(arr_x, y), Pos2::new(dep_x, y)]
+                    }));
+
+                    // simply add an offset vector
+                    for repeat in repeat_start..=repeat_end {
+                        let repeat_offset = repeat * repeat_interval_ticks.0;
+                        let offset_x = tab.navi.logical_x_to_screen_x(Tick(repeat_offset))
+                            - tab.navi.logical_x_to_screen_x(Tick::ZERO);
+                        let offset = Vec2::new(offset_x, 0.0);
+                        let mut points = Vec::with_capacity(base_points.len());
+                        points.extend(base_points.iter().map(|p| *p + offset));
+                        painter.line(points, stroke);
+                    }
+                }
+            }
 
             // Check selection
-            // if let Some(pos) = interact_pos {
-            //     match (
-            //         select_trip(&trip_line_buf, pos),
-            //         ui.input(|r| r.modifiers.command),
-            //     ) {
-            //         (Some(s), true) => {
-            //             world.write_message(ModifySelectedItems::Toggle(SelectedItem::Entries(s)));
-            //         }
-            //         (None, true) => {
-            //             // do nothing
-            //         }
-            //         // Clear the selection
-            //         (_, false) => {
-            //             world.write_message(ModifySelectedItems::Clear);
-            //         }
-            //     };
-            // }
+            if let Some(pos) = interact_pos {
+                match (
+                    select_trip(
+                        cache,
+                        pos,
+                        &station_heights,
+                        &tab.navi,
+                        repeat_interval_ticks,
+                    ),
+                    ui.input(|r| r.modifiers.command),
+                ) {
+                    (Some(s), true) => {
+                        world.write_message(ModifySelectedItems::Toggle(SelectedItem::Trip(s)));
+                    }
+                    (None, true) => {
+                        // do nothing
+                    }
+                    // Clear the selection
+                    (_, false) => {
+                        world.write_message(ModifySelectedItems::Clear);
+                    }
+                };
+            }
         }
         // Select more intervals or quit the current state
         CanvasState::SelectingIntervals(i) => {
@@ -896,147 +883,181 @@ fn main_display(
     );
 }
 
-fn draw_trip_lines<'a>(
-    (
-        InRef(trips),
-        InMut(ui),
-        InMut(painter),
-        // InRef(selected),
-        InMut((indices, rects)),
-        In(strength),
-    ): (
-        InRef<[DrawnTrip]>,
-        InMut<Ui>,
-        InMut<Painter>,
-        // InRef<[EntrySelection]>,
-        InMut<(Vec<usize>, Vec<Rect>)>,
-        In<f32>,
-    ),
-    name_q: Query<&Name, With<Trip>>,
-) {
-    indices.clear();
-    rects.clear();
-
-    for (idx, trip) in trips.iter().enumerate() {
-        // let selected_entries: Vec<Entity> = selected
-        //     .iter()
-        //     .filter(|EntrySelection { parent, .. }| *parent == trip.entity)
-        //     .map(|EntrySelection { entry, .. }| *entry)
-        //     .collect();
-        let selected_entries: &[Entity] = &[];
-
-        if selected_entries.is_empty() {
-            continue;
-        }
-
-        indices.push(idx);
-        rects.extend(
-            trip.points
-                .iter()
-                .flatten()
-                .zip(trip.entries.iter().flatten())
-                .filter_map(|(p, e)| {
-                    if selected_entries.iter().any(|it| it == e) {
-                        Some(Rect::from_two_pos(p[1], p[2]).expand(8.0))
-                    } else {
-                        None
-                    }
-                }),
-        );
-    }
-    if strength < 0.1 {
-        return;
-    }
-    for trip in trips.iter() {
-        let draw_color = trip
-            .stroke
-            .color
-            .get(ui.visuals().dark_mode)
-            .gamma_multiply(strength);
-        let name = name_q.get(trip.entity).unwrap().to_string();
-        let galley = painter.layout_no_wrap(name, egui::FontId::proportional(13.0), draw_color);
-        for ([.., curr], [next, ..]) in trip.points.iter().filter_map(|it| {
-            if let (Some(a), Some(b)) = (it.get(0), it.get(1)) {
-                return Some((a, b));
-            } else {
-                return None;
-            }
-        }) {
-            let angle = (*next - *curr).angle();
-            let text_shape = TextShape::new(
-                *curr
-                    - Vec2 {
-                        y: galley.rect.height(),
-                        x: 0.0,
-                    },
-                galley.clone(),
-                draw_color,
-            )
-            .with_angle_and_anchor(angle, Align2::LEFT_BOTTOM);
-            painter.add(text_shape);
-        }
-    }
-}
-
-// fn select_trip(drawn_trips: &[DrawnTrip], pos: Pos2) -> Option<EntrySelection> {
-//     const VEHICLE_SELECTION_RADIUS: f32 = 7.0;
-//     for trip in drawn_trips {
-//         for (points, entries) in trip.points.iter().zip(trip.entries.iter()) {
-//             let last = points
-//                 .last()
-//                 .into_iter()
-//                 .flat_map(|it| {
-//                     let [a, b, c, d] = it;
-//                     [[*a, *b], [*b, *c], [*c, *d]]
-//                 })
-//                 .zip(
-//                     entries
-//                         .last()
-//                         .into_iter()
-//                         .flat_map(|it| std::iter::repeat(*it).take(3)),
-//                 );
-//             let entries_iter = entries
-//                 .array_windows()
-//                 .flat_map(|[a, b]| std::iter::repeat(*a).take(4).chain(std::iter::once(*b)));
-//             for ([curr, next], e) in points
-//                 .array_windows()
-//                 .flat_map(|[[a1, a2, a3, a4], [b, ..]]| {
-//                     let mid = a4.lerp(*b, 0.5);
-//                     [[*a1, *a2], [*a2, *a3], [*a3, *a4], [*a4, mid], [mid, *b]]
-//                 })
-//                 .zip(entries_iter)
-//                 .chain(last)
-//             {
-//                 let a = pos.x - curr.x;
-//                 let b = pos.y - curr.y;
-//                 let c = next.x - curr.x;
-//                 let d = next.y - curr.y;
-//                 let dot = a * c + b * d;
-//                 let len_sq = c * c + d * d;
-//                 if len_sq == 0.0 {
-//                     continue;
-//                 }
-//                 let t = (dot / len_sq).clamp(0.0, 1.0);
-//                 let px = curr.x + t * c;
-//                 let py = curr.y + t * d;
-//                 let dx = pos.x - px;
-//                 let dy = pos.y - py;
-
-//                 if dx * dx + dy * dy < VEHICLE_SELECTION_RADIUS.powi(2) {
-//                     return Some(EntrySelection {
-//                         entry: e,
-//                         parent: trip.entity,
-//                     });
-//                 }
+// fn draw_trip_lines<'a>(
+//     (
+//         InRef(trips),
+//         InMut(ui),
+//         InMut(painter),
+//         // InRef(selected),
+//         InMut((indices, rects)),
+//         In(strength),
+//     ): (
+//         InRef<[DrawnTrip]>,
+//         InMut<Ui>,
+//         InMut<Painter>,
+//         // InRef<[EntrySelection]>,
+//         InMut<(Vec<usize>, Vec<Rect>)>,
+//         In<f32>,
+//     ),
+//     name_q: Query<&Name, With<Trip>>,
+// ) {
+//     indices.clear();
+//     rects.clear();
+//
+//     for (idx, trip) in trips.iter().enumerate() {
+//         // let selected_entries: Vec<Entity> = selected
+//         //     .iter()
+//         //     .filter(|EntrySelection { parent, .. }| *parent == trip.entity)
+//         //     .map(|EntrySelection { entry, .. }| *entry)
+//         //     .collect();
+//         let selected_entries: &[Entity] = &[];
+//
+//         if selected_entries.is_empty() {
+//             continue;
+//         }
+//
+//         indices.push(idx);
+//         rects.extend(
+//             trip.points
+//                 .iter()
+//                 .flatten()
+//                 .zip(trip.entries.iter().flatten())
+//                 .filter_map(|(p, e)| {
+//                     if selected_entries.iter().any(|it| it == e) {
+//                         Some(Rect::from_two_pos(p[1], p[2]).expand(8.0))
+//                     } else {
+//                         None
+//                     }
+//                 }),
+//         );
+//     }
+//     if strength < 0.1 {
+//         return;
+//     }
+//     for trip in trips.iter() {
+//         let draw_color = trip
+//             .stroke
+//             .color
+//             .get(ui.visuals().dark_mode)
+//             .gamma_multiply(strength);
+//         let name = name_q.get(trip.entity).unwrap().to_string();
+//         let galley = painter.layout_no_wrap(name, egui::FontId::proportional(13.0), draw_color);
+//         for ([.., curr], [next, ..]) in trip.points.iter().filter_map(|it| {
+//             if let (Some(a), Some(b)) = (it.get(0), it.get(1)) {
+//                 return Some((a, b));
+//             } else {
+//                 return None;
 //             }
+//         }) {
+//             let angle = (*next - *curr).angle();
+//             let text_shape = TextShape::new(
+//                 *curr
+//                     - Vec2 {
+//                         y: galley.rect.height(),
+//                         x: 0.0,
+//                     },
+//                 galley.clone(),
+//                 draw_color,
+//             )
+//             .with_angle_and_anchor(angle, Align2::LEFT_BOTTOM);
+//             painter.add(text_shape);
 //         }
 //     }
-//     None
 // }
 
-fn select_station(drawn_trips: &[DrawnTrip], pos: Pos2) -> SelectedItem {
-    const STATION_SELECTION_RADIUS: f32 = 7.0;
-    SelectedItem::None
+fn select_trip(
+    cache: &TripCache,
+    pos: Pos2,
+    station_heights: &[(Entity, f32)],
+    navi: &DiagramTabNavigation,
+    normalize_cycle: Tick,
+) -> Option<TripSelection> {
+    cache.iter().find_map(|(trip_entity, segments)| {
+        let entry = select_trip_inner(segments, pos, station_heights, navi, normalize_cycle)?;
+        Some(TripSelection {
+            trip: *trip_entity,
+            entries: vec1::vec1![entry],
+        })
+    })
+}
+
+fn select_trip_inner(
+    segments: &[Vec<TripPoint>],
+    mut pos: Pos2,
+    station_heights: &[(Entity, f32)],
+    navi: &DiagramTabNavigation,
+    normalize_cycle: Tick,
+) -> Option<Entity> {
+    // Treat click/segment x positions as first-day times for hit-testing.
+    pos.x = navi.logical_x_to_screen_x(
+        navi.screen_x_to_logical_x(pos.x)
+            .normalized_with(normalize_cycle),
+    );
+
+    const TRIP_SELECTION_RADIUS: f32 = 7.0;
+    for segment in segments {
+        let points_iter = segment.iter().map(|it| {
+            let station_y = navi.logical_y_to_screen_y(station_heights[it.station_index].1 as f64);
+            let arr_x =
+                navi.logical_x_to_screen_x(it.arr.to_ticks().normalized_with(normalize_cycle));
+            let dep_x =
+                navi.logical_x_to_screen_x(it.dep.to_ticks().normalized_with(normalize_cycle));
+            [
+                Pos2::new(arr_x, station_y),
+                Pos2::new(arr_x, station_y),
+                Pos2::new(dep_x, station_y),
+                Pos2::new(dep_x, station_y),
+            ]
+        });
+        let last = points_iter
+            .clone()
+            .last()
+            .into_iter()
+            .flat_map(|it| {
+                let [a, b, c, d] = it;
+                [[a, b], [b, c], [c, d]]
+            })
+            .zip(
+                segment
+                    .last()
+                    .into_iter()
+                    .flat_map(|it| std::iter::repeat(it.entry).take(3)),
+            );
+        let entries_iter = segment.array_windows().flat_map(|[a, b]| {
+            std::iter::repeat(a.entry)
+                .take(4)
+                .chain(std::iter::once(b.entry))
+        });
+        for ([curr, next], e) in points_iter
+            .tuple_windows()
+            .flat_map(|([a1, a2, a3, a4], [b, ..])| {
+                let mid = a4.lerp(b, 0.5);
+                [[a1, a2], [a2, a3], [a3, a4], [a4, mid], [mid, b]]
+            })
+            .zip(entries_iter)
+            .chain(last)
+        {
+            let a = pos.x - curr.x;
+            let b = pos.y - curr.y;
+            let c = next.x - curr.x;
+            let d = next.y - curr.y;
+            let dot = a * c + b * d;
+            let len_sq = c * c + d * d;
+            if len_sq == 0.0 {
+                continue;
+            }
+            let t = (dot / len_sq).clamp(0.0, 1.0);
+            let px = curr.x + t * c;
+            let py = curr.y + t * d;
+            let dx = pos.x - px;
+            let dy = pos.y - py;
+
+            if dx * dx + dy * dy < TRIP_SELECTION_RADIUS.powi(2) {
+                return Some(e);
+            }
+        }
+    }
+    None
 }
 
 fn draw_handles(

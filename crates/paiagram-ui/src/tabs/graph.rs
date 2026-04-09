@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use walkers::sources::Attribution;
 
-use crate::{EntrySelection, IntervalSelection, SelectedItem, SelectedItems, StationSelection};
+use crate::{IntervalSelection, SelectedItem, SelectedItems, StationSelection, TripSelection};
 
 use crate::tabs::graph::gpu_draw::ShapeInstance;
 use crate::{GlobalTimer, tabs::Navigatable};
@@ -196,10 +196,10 @@ impl super::Tab for GraphTab {
         match selected_sample.clone() {
             SelectedItems::None | SelectedItems::Intervals(_) | SelectedItems::ExtendingTrip(_) => {
             }
-            SelectedItems::Entries(entries) => {
-                world
-                    .run_system_cached_with(crate::display_entry_info, (ui, entries.as_slice()))
-                    .unwrap();
+            SelectedItems::Trips(trips) => {
+                // world
+                //     .run_system_cached_with(crate::display_entry_info, (ui, entries.as_slice()))
+                //     .unwrap();
             }
             SelectedItems::Stations(stations) => {
                 world
@@ -289,20 +289,21 @@ fn display(tab: &mut GraphTab, world: &mut World, ui: &mut egui::Ui) {
         .then_some(ui.input(|r| r.pointer.interact_pos()))
         .flatten();
     let (selected_stations, selected_trips) = {
-        let selected_items = world.resource::<SelectedItems>();
-        let station_set: Vec<_> = selected_items
-            .station_selection()
-            .iter()
-            .map(|it| it.station)
-            .collect();
-        let mut trip_set: Vec<_> = selected_items
-            .entry_selection()
-            .iter()
-            .map(|it| it.parent)
-            .collect();
-        trip_set.sort_unstable();
-        trip_set.dedup();
-        (station_set, trip_set)
+        // let selected_items = world.resource::<SelectedItems>();
+        // let station_set: Vec<_> = selected_items
+        //     .station_selection()
+        //     .iter()
+        //     .map(|it| it.station)
+        //     .collect();
+        // let mut trip_set: Vec<_> = selected_items
+        //     .entry_selection()
+        //     .iter()
+        //     .map(|it| it.parent)
+        //     .collect();
+        // trip_set.sort_unstable();
+        // trip_set.dedup();
+        // (station_set, trip_set)
+        (Vec::new(), Vec::new())
     };
     let selected_item = world
         .run_system_cached_with(
@@ -423,7 +424,7 @@ fn display(tab: &mut GraphTab, world: &mut World, ui: &mut egui::Ui) {
                     length: Distance::from_m(1000),
                 });
             }
-            (Some(SelectedItem::Stations(station)), SelectedItems::Stations(stations))
+            (Some(SelectedItem::Station(station)), SelectedItems::Stations(stations))
                 if shift_pressed && stations.len() == 1 =>
             {
                 let prev_station = stations[0];
@@ -697,7 +698,7 @@ fn push_draw_items(
         buffer.push(gpu_draw::ShapeInstance::segment(spos, tpos, 1.0, color));
     }
     if let Some(i) = selected_interval {
-        selected = SelectedItem::Intervals(i)
+        selected = SelectedItem::Interval(i)
     }
 
     // prepare candidates
@@ -736,11 +737,11 @@ fn push_draw_items(
         draw_name(name.map(Name::as_str), pos, color);
     }
     if let Some(n) = selected_node {
-        selected = SelectedItem::Stations(n);
+        selected = SelectedItem::Station(n);
     }
 
     // entries
-    let mut selected_entry: Option<EntrySelection> = None;
+    let mut selected_entry: Option<TripSelection> = None;
     for sample in
         trip_spatial_index.query_xy_time(min_x..=max_x, min_y..=max_y, query_time..=query_time)
     {
@@ -768,9 +769,9 @@ fn push_draw_items(
         {
             let r = Rect::from_pos(pos).expand(STATION_SELECTION_RADIUS);
             if r.contains(interact_pos) {
-                selected_entry = Some(EntrySelection {
-                    entry: sample.entry1,
-                    parent: sample.trip,
+                selected_entry = Some(TripSelection {
+                    entries: vec1::vec1![sample.entry1],
+                    trip: sample.trip,
                 })
             };
         }
@@ -790,7 +791,7 @@ fn push_draw_items(
         draw_name(Some(name.as_str()), pos, color);
     }
     if let Some(e) = selected_entry {
-        selected = SelectedItem::Entries(e);
+        selected = SelectedItem::Trip(e);
     }
     maybe_interact_pos.map(|_| selected)
 }

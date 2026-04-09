@@ -23,11 +23,10 @@ use paiagram_core::colors::PredefinedColor;
 use paiagram_core::import::LoadLlt;
 use paiagram_core::units::time::Tick;
 use paiagram_core::{
-    entry::{EntryEstimate, IsDerivedEntry},
     import::{DownloadFile, LoadGTFS, LoadOuDia, LoadQETRC},
     route::Route,
     settings::UserPreferences,
-    trip::{ConvertDerivedEntryToExplicit, Trip, TripSchedule},
+    trip::Trip,
     units::time::TimetableTime,
     vehicle::Vehicle,
 };
@@ -55,7 +54,6 @@ impl Plugin for UiPlugin {
             .init_resource::<GlobalTimer>()
             .init_resource::<UiModal>()
             .init_resource::<command_palette::CommandPalette>()
-            .init_resource::<tabs::diagram::TripLineBuf>()
             .add_plugins((
                 // bevy_inspector_egui::DefaultInspectorConfigPlugin,
                 actions::ActionsPlugin,
@@ -75,35 +73,35 @@ impl Plugin for UiPlugin {
     }
 }
 
-#[derive(Reflect, Clone, Copy, Debug, PartialEq)]
-pub(crate) struct EntrySelection {
-    pub entry: Entity,
-    pub parent: Entity,
+#[derive(Clone, Debug)]
+pub(crate) struct TripSelection {
+    pub trip: Entity,
+    pub entries: Vec1<Entity>,
 }
 
-#[derive(Reflect, Clone, Copy, PartialEq, Hash, Debug)]
+impl PartialEq for TripSelection {
+    fn eq(&self, other: &Self) -> bool {
+        self.trip == other.trip
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Hash, Debug, Eq, PartialOrd, Ord)]
 pub(crate) struct IntervalSelection {
     pub source: Entity,
     pub target: Entity,
 }
 
-#[derive(Reflect, Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct StationSelection {
     pub station: Entity,
 }
 
-impl PartialEq for StationSelection {
-    fn eq(&self, other: &Self) -> bool {
-        self.station == other.station
-    }
-}
-
-#[derive(Reflect, Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub(crate) struct ExtendingRouteSelection {
     pub prev_station: Entity,
 }
 
-#[derive(Reflect, Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub(crate) struct ExtendingTripSelection {
     pub entry: Entity,
     pub previous_pos: Option<(TimetableTime, usize)>,
@@ -111,63 +109,11 @@ pub(crate) struct ExtendingTripSelection {
     pub current_entry: Option<Entity>,
 }
 
-pub(crate) fn display_entry_info(
-    (InMut(ui), InRef(selected_entries)): (InMut<Ui>, InRef<[EntrySelection]>),
-    mut commands: Commands,
-    mut selected_items: ResMut<SelectedItems>,
-    is_derived_q: Query<(), With<IsDerivedEntry>>,
-    mut names_q: Query<&mut Name>,
-    schedule_q: Query<&TripSchedule, With<Trip>>,
-    entry_q: Query<&EntryEstimate>,
-    mut open_or_focus: MessageWriter<OpenOrFocus>,
-) {
-    for (idx, EntrySelection { entry, parent }) in selected_entries.iter().copied().enumerate() {
-        ui.strong(format!("Entry {}", idx + 1));
-
-        let is_derived = is_derived_q.get(entry).is_ok();
-        if is_derived && ui.button("Convert to explicit").clicked() {
-            commands.trigger(ConvertDerivedEntryToExplicit { entity: entry });
-        } else if !is_derived && ui.button("Delete").clicked() {
-            commands.entity(entry).despawn();
-        }
-
-        if let Ok(mut name) = names_q.get_mut(parent) {
-            name.mutate(|n| {
-                ui.text_edit_singleline(n);
-            });
-        }
-
-        if ui.button("Open trip view").clicked() {
-            open_or_focus.write(OpenOrFocus(crate::MainTab::Trip(TripTab::new(parent))));
-        }
-
-        ui.separator();
-    }
-
-    if selected_entries.len() == 1 {
-        let parent = selected_entries[0].parent;
-        if ui.button("Extend").clicked() {
-            let mut last_time = None;
-            if let Ok(schedule) = schedule_q.get(parent)
-                && let Some(time) = schedule.iter().rev().find_map(|e| entry_q.get(*e).ok())
-            {
-                last_time = Some(time.dep);
-            }
-            *selected_items = SelectedItems::ExtendingTrip(ExtendingTripSelection {
-                entry: parent,
-                previous_pos: None,
-                current_entry: None,
-                last_time,
-            });
-        }
-    }
-}
-
 #[derive(Resource, Clone, PartialEq, Debug)]
 #[non_exhaustive]
 pub(crate) enum SelectedItems {
     None,
-    Entries(Vec1<EntrySelection>),
+    Trips(Vec1<TripSelection>),
     Intervals(Vec1<IntervalSelection>),
     Stations(Vec1<StationSelection>),
     ExtendingRoute(ExtendingRouteSelection),
@@ -195,82 +141,97 @@ fn update_selected_items(
 }
 
 impl SelectedItems {
-    pub(crate) fn toggle_selection(&mut self, item: SelectedItem) {
-        fn toggle_vec<T: PartialEq>(v: &mut Vec1<T>, item: T) -> bool {
-            if let Some(idx) = v.iter().position(|entry| *entry == item) {
-                if v.len() == 1 {
-                    return true;
-                }
-                v.remove(idx).unwrap();
-                false
-            } else {
-                v.push(item);
-                false
+    fn toggle_entries<T: Ord + Clone>(
+        entries: &mut Vec1<T>,
+        incoming: impl Iterator<Item = T>,
+    ) -> bool {
+        // 1. Combine and Sort
+        entries.extend(incoming);
+        entries.sort_unstable();
+
+        let mut result = Vec::new();
+        let mut i = 0;
+        let data = entries.as_vec(); // Access inner vec
+
+        // We look for contiguous groups. If a group has an odd length, we keep 1.
+        // If it's even, we keep 0.
+        while i < data.len() {
+            let mut j = i + 1;
+            while j < data.len() && data[j] == data[i] {
+                j += 1;
             }
+
+            if (j - i) % 2 != 0 {
+                result.push(data[i].clone());
+            }
+            i = j;
         }
 
-        match item {
-            SelectedItem::None => {}
-            SelectedItem::Entries(it) => {
-                if let Self::Entries(v) = self {
-                    if toggle_vec(v, it) {
-                        *self = Self::None;
+        if result.is_empty() {
+            true
+        } else {
+            *entries = Vec1::try_from_vec(result).unwrap();
+            false
+        }
+    }
+
+    pub(crate) fn toggle_selection(&mut self, item: SelectedItem) {
+        let mut should_reset = false;
+
+        match (item, &mut *self) {
+            (SelectedItem::None, _) => return,
+            (SelectedItem::Trip(sel), Self::Trips(it)) => {
+                it.sort_unstable_by_key(|t| t.trip);
+
+                match it.binary_search_by_key(&sel.trip, |t| t.trip) {
+                    // Trip exists, toggle the internal entries
+                    Ok(idx) => {
+                        if Self::toggle_entries(&mut it[idx].entries, sel.entries.into_iter()) {
+                            if it.len() == 1 {
+                                should_reset = true;
+                            } else {
+                                it.remove(idx);
+                            }
+                        }
                     }
-                } else if matches!(self, Self::None) {
-                    *self = Self::Entries(vec1![it]);
+                    Err(idx) => {
+                        it.insert(idx, sel);
+                    }
                 }
             }
-            SelectedItem::Intervals(it) => {
-                if let Self::Intervals(v) = self {
-                    if toggle_vec(v, it) {
-                        *self = Self::None;
-                    }
-                } else if matches!(self, Self::None) {
-                    *self = Self::Intervals(vec1![it]);
-                }
+
+            (SelectedItem::Interval(sel), Self::Intervals(it)) => {
+                should_reset = Self::toggle_entries(it, std::iter::once(sel));
             }
-            SelectedItem::Stations(it) => {
-                if let Self::Stations(v) = self {
-                    if toggle_vec(v, it) {
-                        *self = Self::None;
-                    }
-                } else if matches!(self, Self::None) {
-                    *self = Self::Stations(vec1![it]);
-                }
+
+            (SelectedItem::Station(sel), Self::Stations(it)) => {
+                should_reset = Self::toggle_entries(it, std::iter::once(sel));
             }
+            _ => {}
+        }
+
+        if should_reset {
+            *self = SelectedItems::None;
         }
     }
 
     pub(crate) fn set_single_selection(&mut self, item: SelectedItem) {
         match item {
             SelectedItem::None => *self = Self::None,
-            SelectedItem::Entries(it) => *self = Self::Entries(vec1![it]),
-            SelectedItem::Intervals(it) => *self = Self::Intervals(vec1![it]),
-            SelectedItem::Stations(it) => *self = Self::Stations(vec1![it]),
-        }
-    }
-
-    pub(crate) fn station_selection(&self) -> &[StationSelection] {
-        match self {
-            Self::Stations(s) => s.as_slice(),
-            _ => &[],
-        }
-    }
-
-    pub(crate) fn entry_selection(&self) -> &[EntrySelection] {
-        match self {
-            Self::Entries(s) => s.as_slice(),
-            _ => &[],
+            SelectedItem::Trip(it) => *self = Self::Trips(vec1![it]),
+            SelectedItem::Interval(it) => *self = Self::Intervals(vec1![it]),
+            SelectedItem::Station(it) => *self = Self::Stations(vec1![it]),
         }
     }
 }
 
 #[derive(Clone)]
+#[non_exhaustive]
 pub(crate) enum SelectedItem {
     None,
-    Entries(EntrySelection),
-    Intervals(IntervalSelection),
-    Stations(StationSelection),
+    Trip(TripSelection),
+    Interval(IntervalSelection),
+    Station(StationSelection),
 }
 
 impl Default for SelectedItems {
@@ -647,7 +608,7 @@ impl<'w> MainTabViewer<'w> {
             if ui.button("New Vehicle").clicked() {}
             ui.separator();
             ScrollArea::vertical().show(ui, |ui| {
-                if let Some(e) = self
+                if let Some(_e) = self
                     .world
                     .run_system_cached_with(show_name_button::<Vehicle>, ui)
                     .unwrap()

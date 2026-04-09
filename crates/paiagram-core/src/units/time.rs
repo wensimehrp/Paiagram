@@ -11,6 +11,9 @@ pub struct Tick(pub i64);
 
 impl Tick {
     pub const ZERO: Self = Self(0);
+    pub const TICKS_PER_SECOND: i64 = 100;
+    pub const TICKS_PER_DAY: i64 = 24 * 3600 * Self::TICKS_PER_SECOND;
+
     pub fn to_timetable_time(self) -> TimetableTime {
         TimetableTime((self.0 / 100) as i32)
     }
@@ -20,6 +23,19 @@ impl Tick {
     pub fn as_seconds_f64(self) -> f64 {
         let ticks_per_second = Self::from_timetable_time(TimetableTime(1)).0 as f64;
         self.0 as f64 / ticks_per_second
+    }
+
+    #[inline]
+    pub fn normalized_with(self, cycle: Tick) -> Self {
+        if cycle.0 <= 0 {
+            return self;
+        }
+        Self(self.0.rem_euclid(cycle.0))
+    }
+
+    #[inline]
+    pub fn normalized(self) -> Self {
+        self.normalized_with(Tick(Self::TICKS_PER_DAY))
     }
 }
 
@@ -57,6 +73,10 @@ impl TimetableTime {
     #[inline]
     pub fn as_duration(self) -> Duration {
         Duration(self.0)
+    }
+    #[inline]
+    pub fn to_ticks(self) -> Tick {
+        Tick::from_timetable_time(self)
     }
     #[inline]
     pub fn from_hms<T: Into<i32>>(h: T, m: T, s: T) -> Self {
