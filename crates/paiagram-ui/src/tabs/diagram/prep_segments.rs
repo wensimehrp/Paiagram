@@ -44,7 +44,7 @@ pub(crate) fn calc(
         invalidate_cache.as_slice()
     };
 
-    let map: &mut EntityHashMap<SmallVec<[Vec<TripPoint>; 1]>> = map.get_or_insert_default();
+    let map: &mut EntityHashMap<SmallVec<[Vec1<TripPoint>; 1]>> = map.get_or_insert_default();
 
     #[derive(Clone, Copy)]
     struct TripEntryData {
@@ -100,7 +100,7 @@ pub(crate) fn calc(
             if points.len() < 2 {
                 return;
             }
-            trip_bucket.push(points.into_vec());
+            trip_bucket.push(points);
         };
 
         let trip_entries = trip.entries.as_slice();

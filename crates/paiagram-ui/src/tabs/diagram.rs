@@ -10,10 +10,8 @@ use crate::{
 use bevy::ecs::entity::EntityHashMap;
 use bevy::prelude::*;
 use egui::emath::Numeric;
-use egui::epaint::TextShape;
 use egui::{
-    Align2, Button, Color32, Id, Margin, Painter, Pos2, Rect, RectAlign, Sense, Stroke, Ui, Vec2,
-    vec2,
+    Button, Color32, Id, Margin, Painter, Pos2, Rect, RectAlign, Sense, Stroke, Ui, Vec2, vec2,
 };
 use egui_i18n::tr;
 use instant::Instant;
@@ -27,12 +25,13 @@ use paiagram_core::route::Route;
 use paiagram_core::settings::{ProjectSettings, UserPreferences};
 use paiagram_core::station::Station;
 use paiagram_core::trip::class::DisplayedStroke;
-use paiagram_core::trip::{Trip, TripBundle, TripClass, TripQuery};
+use paiagram_core::trip::{TripBundle, TripClass, TripQuery};
 use paiagram_core::units::time::{Duration, Tick, TimetableTime};
 use paiagram_raptor::Journey;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use std::sync::Arc;
+use vec1::Vec1;
 mod draw_lines;
 mod gpu_draw;
 pub mod prep_segments;
@@ -69,7 +68,7 @@ pub(crate) enum CanvasState<'a> {
     ExtendingTrip(&'a mut ExtendingTripSelection),
 }
 
-type TripCache = EntityHashMap<SmallVec<[Vec<TripPoint>; 1]>>;
+type TripCache = EntityHashMap<SmallVec<[Vec1<TripPoint>; 1]>>;
 
 /// The diagram tab.
 #[derive(Serialize, Deserialize, Clone, MapEntities)]
@@ -401,7 +400,7 @@ impl Tab for DiagramTab {
                     *world.resource_mut::<SelectedItems>() = SelectedItems::None
                 }
             }
-            SelectedItems::Trips(selected_trips) => {
+            SelectedItems::Trips(_selected_trips) => {
                 // world
                 //     .run_system_cached_with(display_entry_info, (ui, selected_entries.as_slice()))
                 //     .unwrap();
@@ -768,11 +767,11 @@ fn main_display(
             // highlight all of the entries
             let cache = tab.cached_trips.as_ref().unwrap();
             let visible_ticks = tab.navi.visible_x();
-            for (trip_entity, segments, _entries) in selection
+            for (trip_entity, segments, entries) in selection
                 .iter()
                 .filter_map(|it| Some((it.trip, cache.get(&it.trip)?, it.entries.as_slice())))
             {
-                for segment in segments {
+                for (seg_idx, segment) in segments.iter().enumerate() {
                     let mut seg_min = i64::MAX;
                     let mut seg_max = i64::MIN;
                     for it in segment {
@@ -801,14 +800,22 @@ fn main_display(
                     let mut stroke = stroke.egui_stroke(ui.visuals().dark_mode);
                     stroke.width = stroke.width + stroke.width * 3.0 * selection_strength;
 
-                    let mut base_points = Vec::with_capacity(segment.len() * 2);
-                    base_points.extend(segment.iter().flat_map(|it| {
+                    let mut base_points = Vec::with_capacity(segment.len() * 4);
+                    base_points.extend(segment.iter().map(|it| {
                         let y = tab
                             .navi
                             .logical_y_to_screen_y(station_heights[it.station_index].1 as f64);
                         let arr_x = tab.navi.logical_x_to_screen_x(it.arr.to_ticks());
                         let dep_x = tab.navi.logical_x_to_screen_x(it.dep.to_ticks());
-                        [Pos2::new(arr_x, y), Pos2::new(dep_x, y)]
+                        (
+                            [
+                                Pos2::new(arr_x, y),
+                                Pos2::new(arr_x, y),
+                                Pos2::new(dep_x, y),
+                                Pos2::new(dep_x, y),
+                            ],
+                            entries.contains(&it.entry),
+                        )
                     }));
 
                     // simply add an offset vector
@@ -818,8 +825,69 @@ fn main_display(
                             - tab.navi.logical_x_to_screen_x(Tick::ZERO);
                         let offset = Vec2::new(offset_x, 0.0);
                         let mut points = Vec::with_capacity(base_points.len());
-                        points.extend(base_points.iter().map(|p| *p + offset));
-                        painter.line(points, stroke);
+                        points.extend(base_points.iter().map(|([p0, p1, p2, p3], b)| {
+                            ([*p0 + offset, *p1 + offset, *p2 + offset, *p3 + offset], *b)
+                        }));
+                        painter.line(points.iter().flat_map(|it| it.0).collect(), stroke);
+                        for points in
+                            points.iter().filter_map(
+                                |(p, highlighted)| if *highlighted { Some(p) } else { None },
+                            )
+                        {
+                            painter.rect(
+                                Rect::from_two_pos(points[0], points[3]).expand(12.0),
+                                4,
+                                Color32::RED.gamma_multiply(0.5),
+                                Stroke::new(1.0, Color32::RED),
+                                egui::StrokeKind::Middle,
+                            );
+                        }
+                        let mut draw_entry_handles =
+                            |(curr, _): &([Pos2; 4], bool),
+                             entry_entity: Entity,
+                             prev: Option<Pos2>,
+                             next: Option<Pos2>| {
+                                world
+                                    .run_system_cached_with(
+                                        draw_handles,
+                                        (
+                                            curr,
+                                            (entry_entity, trip_entity, prev, next),
+                                            (seg_idx, entry_entity, repeat),
+                                            ui,
+                                            &mut painter,
+                                            tab.navi.zoom_x(),
+                                            1.0,
+                                        ),
+                                    )
+                                    .unwrap();
+                            };
+                        if segment.len() < 2 {
+                            draw_entry_handles(&points[0], segment[0].entry, None, None);
+                            continue;
+                        }
+                        draw_entry_handles(
+                            &points[0],
+                            segment[0].entry,
+                            None,
+                            Some(points[1].0[0]),
+                        );
+                        for (idx, [(prev, _), curr, (next, _)]) in
+                            points.array_windows().enumerate()
+                        {
+                            draw_entry_handles(
+                                curr,
+                                segment[idx + 1].entry,
+                                Some(prev[3]),
+                                Some(next[0]),
+                            )
+                        }
+                        draw_entry_handles(
+                            &points[points.len() - 1],
+                            segment.last().entry,
+                            Some(points[points.len() - 2].0[3]),
+                            None,
+                        );
                     }
                 }
             }
@@ -850,15 +918,15 @@ fn main_display(
             }
         }
         // Select more intervals or quit the current state
-        CanvasState::SelectingIntervals(i) => {
+        CanvasState::SelectingIntervals(_i) => {
             // highlight the intervals
         }
         // Select more stations or quit the current state
-        CanvasState::SelectingStations(i) => {
+        CanvasState::SelectingStations(_i) => {
             // highlight the stations
         }
         // Extend the trip or quit the current state
-        CanvasState::ExtendingTrip(i) => {
+        CanvasState::ExtendingTrip(_i) => {
             // TODO: restore that
         }
     }
@@ -983,13 +1051,13 @@ fn select_trip(
 }
 
 fn select_trip_inner(
-    segments: &[Vec<TripPoint>],
+    segments: &[Vec1<TripPoint>],
     mut pos: Pos2,
     station_heights: &[(Entity, f32)],
     navi: &DiagramTabNavigation,
     normalize_cycle: Tick,
 ) -> Option<Entity> {
-    // Treat click/segment x positions as first-day times for hit-testing.
+    // Treat click/segment x positions as first-cycle times for hit-testing.
     pos.x = navi.logical_x_to_screen_x(
         navi.screen_x_to_logical_x(pos.x)
             .normalized_with(normalize_cycle),
@@ -1018,12 +1086,7 @@ fn select_trip_inner(
                 let [a, b, c, d] = it;
                 [[a, b], [b, c], [c, d]]
             })
-            .zip(
-                segment
-                    .last()
-                    .into_iter()
-                    .flat_map(|it| std::iter::repeat(it.entry).take(3)),
-            );
+            .zip(std::iter::repeat(segment.last().entry).take(3));
         let entries_iter = segment.array_windows().flat_map(|[a, b]| {
             std::iter::repeat(a.entry)
                 .take(4)
