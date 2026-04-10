@@ -1,6 +1,6 @@
 use paiagram_core::{
     i18n::Language,
-    settings::{ProjectSettings, TripSegmentBuildMode, UserPreferences},
+    settings::{AntialiasingMode, ProjectSettings, TripRenderMode, UserPreferences},
 };
 
 use super::Tab;
@@ -32,28 +32,64 @@ fn show_settings(
     mut settings: ResMut<ProjectSettings>,
 ) {
     ui.heading(tr!("settings-preferences"));
-    ui.checkbox(&mut preferences.dark_mode, tr!("settings-dark-mode"));
-    egui::ComboBox::new(ui.id().with("settings box"), tr!("settings-language")).show_ui(ui, |ui| {
-        for lang in Language::iter() {
-            ui.selectable_value(&mut preferences.lang, lang, lang.name());
-        }
-    });
-    ui.checkbox(&mut preferences.developer_mode, "Developer mode");
-    egui::ComboBox::new(
-        ui.id().with("trip segment build mode"),
-        "Trip segment build mode",
-    )
-    .show_ui(ui, |ui| {
-        ui.selectable_value(
-            &mut preferences.trip_segment_build_mode,
-            TripSegmentBuildMode::GpuCompute,
-            "GPU compute",
-        );
-        ui.selectable_value(
-            &mut preferences.trip_segment_build_mode,
-            TripSegmentBuildMode::Cpu,
-            "CPU",
-        );
+    egui::Grid::new("settings grid 1").show(ui, |ui| {
+        ui.label(tr!("settings-dark-mode"));
+        ui.checkbox(&mut preferences.dark_mode, "");
+        ui.end_row();
+
+        ui.label(tr!("settings-language"));
+        egui::ComboBox::new("language", "")
+            .selected_text(preferences.lang.name())
+            .show_ui(ui, |ui| {
+                for lang in Language::iter() {
+                    ui.selectable_value(&mut preferences.lang, lang, lang.name());
+                }
+            });
+        ui.end_row();
+
+        ui.label("Developer Mode");
+        ui.checkbox(&mut preferences.developer_mode, "");
+        ui.end_row();
+
+        ui.label("Trip segment render mode");
+        egui::ComboBox::new("trip segment mode", "")
+            .selected_text(match preferences.trip_render_mode {
+                TripRenderMode::Gpu => "Graphics Card",
+                TripRenderMode::Cpu => "CPU",
+            })
+            .show_ui(ui, |ui| {
+                ui.selectable_value(
+                    &mut preferences.trip_render_mode,
+                    TripRenderMode::Gpu,
+                    "Graphics Card",
+                );
+                ui.selectable_value(
+                    &mut preferences.trip_render_mode,
+                    TripRenderMode::Cpu,
+                    "CPU",
+                );
+            });
+        ui.end_row();
+
+        ui.label("Antialising Options");
+        egui::ComboBox::new("antialiasing", "")
+            .selected_text(match preferences.antialiasing_mode {
+                AntialiasingMode::Off => "Off",
+                AntialiasingMode::On => "On",
+            })
+            .show_ui(ui, |ui| {
+                ui.selectable_value(
+                    &mut preferences.antialiasing_mode,
+                    AntialiasingMode::Off,
+                    "Off",
+                );
+                ui.selectable_value(
+                    &mut preferences.antialiasing_mode,
+                    AntialiasingMode::On,
+                    "On",
+                );
+            });
+        ui.end_row();
     });
     ui.heading(tr!("settings-project-settings"));
     ui.text_edit_multiline(&mut settings.remarks);

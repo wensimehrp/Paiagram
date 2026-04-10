@@ -33,9 +33,9 @@ use paiagram_raptor::Journey;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use std::sync::Arc;
-pub mod calc_trip_lines;
 mod draw_lines;
 mod gpu_draw;
+pub mod prep_segments;
 
 impl SelectedItems {
     pub fn to_canvas_state(&mut self) -> CanvasState<'_> {
@@ -560,7 +560,7 @@ fn main_display(
     let now = Instant::now();
     let cached_trips_are_changed = world
         .run_system_cached_with(
-            calc_trip_lines::calc,
+            prep_segments::calc,
             (tab.route_entity, &station_heights, &mut tab.cached_trips),
         )
         .unwrap();
@@ -583,7 +583,8 @@ fn main_display(
         state.msaa_samples = msaa_samples;
     }
 
-    state.segment_build_mode = world.resource::<UserPreferences>().trip_segment_build_mode;
+    state.segment_build_mode = world.resource::<UserPreferences>().trip_render_mode;
+    state.antialiasing_mode = world.resource::<UserPreferences>().antialiasing_mode;
     let repeat_frequency = world.resource::<ProjectSettings>().repeat_frequency;
 
     if let Some(cache) = tab.cached_trips.as_ref() {

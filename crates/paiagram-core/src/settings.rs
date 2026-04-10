@@ -5,10 +5,26 @@ use crate::{i18n::Language, units::time::Duration};
 use bevy::prelude::*;
 
 #[derive(Default, Reflect, Copy, Clone, Debug, PartialEq, Eq)]
-pub enum TripSegmentBuildMode {
+pub enum TripRenderMode {
     #[default]
-    GpuCompute,
+    Gpu,
     Cpu,
+}
+
+#[derive(Reflect, Copy, Clone, Debug, PartialEq, Eq)]
+pub enum AntialiasingMode {
+    On,
+    Off,
+}
+
+impl Default for AntialiasingMode {
+    fn default() -> Self {
+        if cfg!(target_arch = "wasm32") {
+            Self::Off
+        } else {
+            Self::On
+        }
+    }
 }
 
 pub struct SettingsPlugin;
@@ -29,7 +45,8 @@ pub struct UserPreferences {
     pub lang: Language,
     pub dark_mode: bool,
     pub developer_mode: bool,
-    pub trip_segment_build_mode: TripSegmentBuildMode,
+    pub trip_render_mode: TripRenderMode,
+    pub antialiasing_mode: AntialiasingMode,
 }
 
 impl Default for UserPreferences {
@@ -38,7 +55,8 @@ impl Default for UserPreferences {
             lang: Language::EnCA,
             dark_mode: false,
             developer_mode: cfg!(debug_assertions),
-            trip_segment_build_mode: TripSegmentBuildMode::default(),
+            trip_render_mode: TripRenderMode::default(),
+            antialiasing_mode: AntialiasingMode::default(),
         }
     }
 }

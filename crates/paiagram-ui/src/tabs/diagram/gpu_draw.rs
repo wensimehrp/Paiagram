@@ -6,7 +6,7 @@ use eframe::egui_wgpu::{self, wgpu};
 use eframe::wgpu::include_wgsl;
 use egui::{Rect, mutex::Mutex};
 use egui_wgpu::CallbackTrait;
-use paiagram_core::settings::TripSegmentBuildMode;
+use paiagram_core::settings::{AntialiasingMode, TripRenderMode};
 use paiagram_core::trip::TripClass;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -25,7 +25,8 @@ pub(crate) struct GpuTripRendererState {
     pub uniforms: Uniforms,
     pub target_format: Option<wgpu::TextureFormat>,
     pub msaa_samples: u32,
-    pub segment_build_mode: TripSegmentBuildMode,
+    pub antialiasing_mode: AntialiasingMode,
+    pub segment_build_mode: TripRenderMode,
 }
 
 /// field0: .......A AAAAAAAA AAAAAAAA AAAAAAAA
@@ -143,7 +144,6 @@ impl Default for GpuUniforms {
     }
 }
 
-const SEGMENT_MESH_INDEX_COUNT: u32 = 18;
 const STYLE_TABLE_CAPACITY: usize = 256;
 const COMPUTE_WORKGROUP_SIZE: u32 = 64;
 
@@ -189,7 +189,8 @@ impl Default for GpuTripRendererState {
             uniforms: Uniforms::default(),
             target_format: None,
             msaa_samples: 1,
-            segment_build_mode: TripSegmentBuildMode::default(),
+            antialiasing_mode: AntialiasingMode::default(),
+            segment_build_mode: TripRenderMode::default(),
         }
     }
 }
@@ -849,7 +850,10 @@ impl CallbackTrait for TripCallback {
             repeat_count: repeat_count.min(u32::MAX as usize) as u32,
             source_instance_count: state.entries.len() as u32,
             style_count: state.styles.len().min(STYLE_TABLE_CAPACITY) as u32,
-            feathering_radius: 1.2 / screen_descriptor.pixels_per_point,
+            feathering_radius: match state.antialiasing_mode {
+                AntialiasingMode::On => 1.2 / screen_descriptor.pixels_per_point,
+                AntialiasingMode::Off => 0.0,
+            },
             ..uniforms
         };
         let mut uniforms = uniforms;
@@ -859,7 +863,7 @@ impl CallbackTrait for TripCallback {
         let uniform_bytes = bytes_of(&uniforms);
         queue.write_buffer(&resources.uniform_buffer, 0, uniform_bytes);
 
-        if state.segment_build_mode == TripSegmentBuildMode::Cpu {
+        if state.segment_build_mode == TripRenderMode::Cpu {
             let cpu_segments = build_segments_cpu(&state, uniforms.ticks_min, uniforms.y_min);
             if !cpu_segments.is_empty() {
                 let bytes = cast_slice(cpu_segments.as_slice());
@@ -868,14 +872,17 @@ impl CallbackTrait for TripCallback {
         }
 
         let indirect_init = DrawIndirectArgs {
-            vertex_count: SEGMENT_MESH_INDEX_COUNT,
+            vertex_count: match state.antialiasing_mode {
+                AntialiasingMode::On => 18,
+                AntialiasingMode::Off => 6,
+            },
             instance_count: total_instances.min(u32::MAX as usize) as u32,
             first_vertex: 0,
             first_instance: 0,
         };
         queue.write_buffer(&resources.indirect_buffer, 0, bytes_of(&indirect_init));
 
-        if pair_count > 0 && state.segment_build_mode == TripSegmentBuildMode::GpuCompute {
+        if pair_count > 0 && state.segment_build_mode == TripRenderMode::Gpu {
             let source_count_u32 = state.entries.len().min(u32::MAX as usize) as u32;
             let dispatch_x = source_count_u32.saturating_add(COMPUTE_WORKGROUP_SIZE - 1)
                 / COMPUTE_WORKGROUP_SIZE;
