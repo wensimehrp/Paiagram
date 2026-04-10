@@ -19,7 +19,7 @@
 #show: book
 
 #book-meta(
-  title: "Paiagram Docs",
+  title: "Paiagram's Documentation",
   description: "Paiagram user documentation",
   repository: links.repo,
   discord: links.discord,

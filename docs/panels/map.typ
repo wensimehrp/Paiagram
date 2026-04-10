@@ -19,12 +19,13 @@ You can optionally enable a map underlay and display your network with the under
 planning the network. Currently supported underlays are:
 
 - #link("https://openstreetmap.com/")[OpenStreetMap]
+- #link("https://https://www.arcgis.com/home/item.html?id=10df2279f9684e4a9f6a7f08febac2a9")[ESRI World Imagery]
 - #link("https://cyberjapandata.gsi.go.jp/")[Chiri-in Chizu (地理院地図)]
 - #link("https://amap.com/")[Amap (AutoNavi)]
 
 Please note that Amap uses #link("https://en.wikipedia.org/wiki/Restrictions_on_geographic_data_in_China")[GCJ-02]
-coordinates. Both OpenStreetMap and Chiri-in Chizu use #link(
+coordinates. OpenStreetMap, ESRI World Imagery, and Chiri-in Chizu use #link(
   "https://en.wikipedia.org/wiki/World_Geodetic_System",
 )[WGS84] coordinates
 
-The usage of map underlay services are subject to the corresponding service providers' terms and conditions.
+*The usage of map underlay services are subject to the corresponding service providers' terms and conditions.*

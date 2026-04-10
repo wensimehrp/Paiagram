@@ -37,7 +37,8 @@ Likewise, an arrival mode could be any of the following:
 )
 
 Travel modes are designed to simplify work. For example, in cases where you only have an accumulated travel time for
-specific intervals. You can easily convert between travel modes without losing work.
+specific intervals. You can easily convert between travel modes without losing work. You can also make it calculate the
+intermediate time for you by setting travel modes to "flexible" or "non-stop".
 
 = Vehicles
 
