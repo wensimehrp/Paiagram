@@ -9,10 +9,10 @@ struct Uniforms {
     repeat_from: i32,
     repeat_count: u32,
     source_instance_count: u32,
-    style_count: u32,
+    visible_ticks_min: i32,
     feathering_radius: f32,
     lod_stride: u32,
-    _pad0: u32,
+    visible_ticks_max: i32,
     styles: array<vec4<u32>, 256>,
 };
 
@@ -137,6 +137,39 @@ fn invalid_segment() -> SegmentOut {
         vec4<f32>(0.0, 0.0, 0.0, 0.0),
     );
 }
+fn is_in_time_range(
+    arr_secs: i32,
+    dep_secs: i32
+) -> bool {
+    let arr_ticks = arr_secs * TICKS_PER_SECOND;
+    let dep_ticks = dep_secs * TICKS_PER_SECOND;
+    let a = min(arr_ticks, dep_ticks);
+    let b = max(arr_ticks, dep_ticks);
+    let m = uniforms.visible_ticks_min;
+    let n = uniforms.visible_ticks_max;
+    let d = uniforms.repeat_interval_ticks;
+
+    if (max(m, a) <= min(n, b)) {
+        return true;
+    }
+
+    let left = a - n;
+    let right = b - m;
+
+    if (d == 0) { return false; }
+    if (right - left >= d) { return true; }
+
+    let rem = left % d;
+    var distance_to_next: i32;
+
+    if (rem <= 0) {
+        distance_to_next = -rem;
+    } else {
+        distance_to_next = d - rem;
+    }
+
+    return (left + distance_to_next) <= right;
+}
 
 @compute @workgroup_size(COMPUTE_WORKGROUP_SIZE)
 fn cs_main(@builtin(global_invocation_id) global_id: vec3<u32>) {
@@ -157,9 +190,13 @@ fn cs_main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     // currently no track index
     let y = height_to_screen_y(stations[station_index]);
 
-    let seg_0 = vec2<f32>(seconds_to_screen_x(arr_secs, 0), y);
     let seg_1 = vec2<f32>(seconds_to_screen_x(dep_secs, 0), y);
-    segments[pair_index] = make_segment(entry, seg_0, seg_1);
+    if is_in_time_range(arr_secs, dep_secs) {
+        let seg_0 = vec2<f32>(seconds_to_screen_x(arr_secs, 0), y);
+        segments[pair_index] = make_segment(entry, seg_0, seg_1);
+    } else {
+        segments[pair_index] = invalid_segment();
+    }
 
     if !can_connect {
         segments[pair_index + 1] = invalid_segment();
@@ -171,8 +208,12 @@ fn cs_main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let next_arr_secs = signed_25_to_i32(next_entry.field0 & 0x01ffffffu);
     let next_y = height_to_screen_y(stations[next_station_index]);
 
-    let seg_2 = vec2<f32>(seconds_to_screen_x(next_arr_secs, 0), next_y);
-    segments[pair_index + 1] = make_segment(entry, seg_1, seg_2);
+    if is_in_time_range(dep_secs, next_arr_secs) {
+        let seg_2 = vec2<f32>(seconds_to_screen_x(next_arr_secs, 0), next_y);
+        segments[pair_index + 1] = make_segment(entry, seg_1, seg_2);
+    } else {
+        segments[pair_index + 1] = invalid_segment();
+    }
 }
 
 struct VertexOut {

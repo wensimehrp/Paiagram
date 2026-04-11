@@ -117,10 +117,10 @@ struct GpuUniforms {
     repeat_from: i32,
     repeat_count: u32,
     source_instance_count: u32,
-    style_count: u32,
+    visible_ticks_min: i32,
     feathering_radius: f32,
     lod_stride: u32,
-    _pad0: u32,
+    visible_ticks_max: i32,
     styles: [[u32; 4]; STYLE_TABLE_CAPACITY],
 }
 
@@ -137,10 +137,10 @@ impl Default for GpuUniforms {
             repeat_from: 0,
             repeat_count: 1,
             source_instance_count: 0,
-            style_count: 0,
+            visible_ticks_min: 0,
             feathering_radius: 0.0,
             lod_stride: 1,
-            _pad0: 0,
+            visible_ticks_max: 0,
             styles: [[0, 0, 0, 0]; STYLE_TABLE_CAPACITY],
         }
     }
@@ -795,7 +795,8 @@ impl CallbackTrait for TripCallback {
             repeat_count: repeat_count.min(u32::MAX as usize) as u32,
             lod_stride: lod_stride as u32,
             source_instance_count: state.entries.len() as u32,
-            style_count: state.styles.len().min(STYLE_TABLE_CAPACITY) as u32,
+            visible_ticks_min,
+            visible_ticks_max,
             feathering_radius: match state.antialiasing_mode {
                 AntialiasingMode::On => 1.2 / screen_descriptor.pixels_per_point,
                 AntialiasingMode::Off => 0.0,
