@@ -1,6 +1,8 @@
 use paiagram_core::{
     i18n::Language,
-    settings::{AntialiasingMode, ProjectSettings, TripRenderMode, UserPreferences},
+    settings::{
+        AntialiasingMode, LevelOfDetailMode, ProjectSettings, UserPreferences,
+    },
 };
 
 use super::Tab;
@@ -51,26 +53,6 @@ fn show_settings(
         ui.checkbox(&mut preferences.developer_mode, "");
         ui.end_row();
 
-        ui.label("Trip segment render mode");
-        egui::ComboBox::new("trip segment mode", "")
-            .selected_text(match preferences.trip_render_mode {
-                TripRenderMode::Gpu => "Graphics Card",
-                TripRenderMode::Cpu => "CPU",
-            })
-            .show_ui(ui, |ui| {
-                ui.selectable_value(
-                    &mut preferences.trip_render_mode,
-                    TripRenderMode::Gpu,
-                    "Graphics Card",
-                );
-                ui.selectable_value(
-                    &mut preferences.trip_render_mode,
-                    TripRenderMode::Cpu,
-                    "CPU",
-                );
-            });
-        ui.end_row();
-
         ui.label("Antialising Options");
         egui::ComboBox::new("antialiasing", "")
             .selected_text(match preferences.antialiasing_mode {
@@ -87,6 +69,32 @@ fn show_settings(
                     &mut preferences.antialiasing_mode,
                     AntialiasingMode::On,
                     "On",
+                );
+            });
+        ui.end_row();
+
+        ui.label("LOD Mode");
+        egui::ComboBox::new("lod", "")
+            .selected_text(match preferences.level_of_detail_mode {
+                LevelOfDetailMode::Off => "Off",
+                LevelOfDetailMode::Lod2 => "2×",
+                LevelOfDetailMode::Lod4 => "4×",
+            })
+            .show_ui(ui, |ui| {
+                ui.selectable_value(
+                    &mut preferences.level_of_detail_mode,
+                    LevelOfDetailMode::Off,
+                    "Off",
+                );
+                ui.selectable_value(
+                    &mut preferences.level_of_detail_mode,
+                    LevelOfDetailMode::Lod2,
+                    "2×",
+                );
+                ui.selectable_value(
+                    &mut preferences.level_of_detail_mode,
+                    LevelOfDetailMode::Lod4,
+                    "4×",
                 );
             });
         ui.end_row();

@@ -22,7 +22,7 @@ use paiagram_core::entry::{
 };
 use paiagram_core::export::ExportObject;
 use paiagram_core::route::Route;
-use paiagram_core::settings::{ProjectSettings, UserPreferences};
+use paiagram_core::settings::{LevelOfDetailMode, ProjectSettings, UserPreferences};
 use paiagram_core::station::Station;
 use paiagram_core::trip::class::DisplayedStroke;
 use paiagram_core::trip::{TripBundle, TripClass, TripQuery};
@@ -582,9 +582,30 @@ fn main_display(
         state.msaa_samples = msaa_samples;
     }
 
-    state.segment_build_mode = world.resource::<UserPreferences>().trip_render_mode;
-    state.antialiasing_mode = world.resource::<UserPreferences>().antialiasing_mode;
+    let preferences = world.resource::<UserPreferences>();
     let repeat_frequency = world.resource::<ProjectSettings>().repeat_frequency;
+    state.antialiasing_mode = preferences.antialiasing_mode;
+    let visible_x = tab.navi.visible_x();
+    let visible_span_seconds = (visible_x.end.to_timetable_time() - visible_x.start.to_timetable_time()).0;
+    state.level_of_detail_mode = match preferences.level_of_detail_mode {
+        LevelOfDetailMode::Off => LevelOfDetailMode::Off,
+        LevelOfDetailMode::Lod2 => {
+            if visible_span_seconds >= 86400 / 2 {
+                LevelOfDetailMode::Lod2
+            } else {
+                LevelOfDetailMode::Off
+            }
+        }
+        LevelOfDetailMode::Lod4 => {
+            if visible_span_seconds >= 86400 {
+                LevelOfDetailMode::Lod4
+            } else if visible_span_seconds >= 86400 / 2 {
+                LevelOfDetailMode::Lod2
+            } else {
+                LevelOfDetailMode::Off
+            }
+        }
+    };
 
     if let Some(cache) = tab.cached_trips.as_ref() {
         let dark_mode = ui.visuals().dark_mode;

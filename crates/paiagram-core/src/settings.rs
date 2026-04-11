@@ -4,13 +4,6 @@
 use crate::{i18n::Language, units::time::Duration};
 use bevy::prelude::*;
 
-#[derive(Default, Reflect, Copy, Clone, Debug, PartialEq, Eq)]
-pub enum TripRenderMode {
-    #[default]
-    Gpu,
-    Cpu,
-}
-
 #[derive(Reflect, Copy, Clone, Debug, PartialEq, Eq)]
 pub enum AntialiasingMode {
     On,
@@ -23,6 +16,33 @@ impl Default for AntialiasingMode {
             Self::Off
         } else {
             Self::On
+        }
+    }
+}
+
+#[derive(Reflect, Copy, Clone, Debug, PartialEq, Eq)]
+pub enum LevelOfDetailMode {
+    Off,
+    Lod2,
+    Lod4,
+}
+
+impl LevelOfDetailMode {
+    pub fn as_u8(self) -> u8 {
+        match self {
+            Self::Off => 1,
+            Self::Lod2 => 2,
+            Self::Lod4 => 4,
+        }
+    }
+}
+
+impl Default for LevelOfDetailMode {
+    fn default() -> Self {
+        if cfg!(target_arch = "wasm32") {
+            Self::Lod4
+        } else {
+            Self::Lod2
         }
     }
 }
@@ -45,8 +65,8 @@ pub struct UserPreferences {
     pub lang: Language,
     pub dark_mode: bool,
     pub developer_mode: bool,
-    pub trip_render_mode: TripRenderMode,
     pub antialiasing_mode: AntialiasingMode,
+    pub level_of_detail_mode: LevelOfDetailMode,
 }
 
 impl Default for UserPreferences {
@@ -55,8 +75,8 @@ impl Default for UserPreferences {
             lang: Language::EnCA,
             dark_mode: false,
             developer_mode: cfg!(debug_assertions),
-            trip_render_mode: TripRenderMode::default(),
             antialiasing_mode: AntialiasingMode::default(),
+            level_of_detail_mode: LevelOfDetailMode::default(),
         }
     }
 }

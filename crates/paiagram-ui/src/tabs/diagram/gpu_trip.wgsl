@@ -11,7 +11,8 @@ struct Uniforms {
     source_instance_count: u32,
     style_count: u32,
     feathering_radius: f32,
-    _uniform_pad0: vec2<u32>,
+    lod_stride: u32,
+    _pad0: u32,
     styles: array<vec4<u32>, 256>,
 };
 
@@ -139,16 +140,16 @@ fn invalid_segment() -> SegmentOut {
 
 @compute @workgroup_size(COMPUTE_WORKGROUP_SIZE)
 fn cs_main(@builtin(global_invocation_id) global_id: vec3<u32>) {
-    let entry_index = global_id.x;
+    let entry_index = global_id.x * uniforms.lod_stride;
     let source_count = uniforms.source_instance_count;
-    let pair_index = entry_index * 2;
+    let pair_index = global_id.x * 2u;
     if entry_index >= source_count {
         return;
     }
 
     let entry = entries[entry_index];
     let connects_to_next = ((entry.field1 >> 25u) & 1u) != 0u;
-    let can_connect = connects_to_next && (entry_index + 1u < source_count);
+    let can_connect = connects_to_next && (entry_index + uniforms.lod_stride < source_count);
 
     let arr_secs = signed_25_to_i32(entry.field0 & 0x01ffffffu);
     let dep_secs = signed_25_to_i32(entry.field1 & 0x01ffffffu);
@@ -165,7 +166,7 @@ fn cs_main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         return;
     }
 
-    let next_entry = entries[entry_index + 1u];
+    let next_entry = entries[entry_index + uniforms.lod_stride];
     let next_station_index = (next_entry.field2 >> 16u) & 0xFFFFu;
     let next_arr_secs = signed_25_to_i32(next_entry.field0 & 0x01ffffffu);
     let next_y = height_to_screen_y(stations[next_station_index]);
@@ -183,7 +184,7 @@ struct VertexOut {
 @vertex
 fn vs_main(@builtin(vertex_index) vertex_index: u32, @builtin(instance_index) instance_index: u32) -> VertexOut {
     let source_count = uniforms.source_instance_count;
-    let base_segment_count = source_count * 2u;
+    let base_segment_count = source_count * 2u / uniforms.lod_stride;
     let repeat_index = instance_index / base_segment_count;
     let segment_index = instance_index % base_segment_count;
     let repeat = uniforms.repeat_from + i32(repeat_index);

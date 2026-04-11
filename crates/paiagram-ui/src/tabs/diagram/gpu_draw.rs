@@ -6,7 +6,7 @@ use eframe::egui_wgpu::{self, wgpu};
 use eframe::wgpu::include_wgsl;
 use egui::{Rect, mutex::Mutex};
 use egui_wgpu::CallbackTrait;
-use paiagram_core::settings::{AntialiasingMode, TripRenderMode};
+use paiagram_core::settings::{AntialiasingMode, LevelOfDetailMode};
 use paiagram_core::trip::TripClass;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -26,7 +26,7 @@ pub(crate) struct GpuTripRendererState {
     pub target_format: Option<wgpu::TextureFormat>,
     pub msaa_samples: u32,
     pub antialiasing_mode: AntialiasingMode,
-    pub segment_build_mode: TripRenderMode,
+    pub level_of_detail_mode: LevelOfDetailMode,
 }
 
 /// field0: .......A AAAAAAAA AAAAAAAA AAAAAAAA
@@ -119,7 +119,8 @@ struct GpuUniforms {
     source_instance_count: u32,
     style_count: u32,
     feathering_radius: f32,
-    _uniform_pad0: [u32; 2],
+    lod_stride: u32,
+    _pad0: u32,
     styles: [[u32; 4]; STYLE_TABLE_CAPACITY],
 }
 
@@ -138,7 +139,8 @@ impl Default for GpuUniforms {
             source_instance_count: 0,
             style_count: 0,
             feathering_radius: 0.0,
-            _uniform_pad0: [0, 0],
+            lod_stride: 1,
+            _pad0: 0,
             styles: [[0, 0, 0, 0]; STYLE_TABLE_CAPACITY],
         }
     }
@@ -190,107 +192,9 @@ impl Default for GpuTripRendererState {
             target_format: None,
             msaa_samples: 1,
             antialiasing_mode: AntialiasingMode::default(),
-            segment_build_mode: TripRenderMode::default(),
+            level_of_detail_mode: LevelOfDetailMode::default(),
         }
     }
-}
-
-fn invalid_segment() -> GpuSegment {
-    GpuSegment {
-        p0: [1.0e9, 1.0e9],
-        p1: [1.0e9, 1.0e9],
-        half_width: 1.0,
-        nx: 0.0,
-        ny: 0.0,
-        pad0: 0.0,
-        color: [0.0, 0.0, 0.0, 0.0],
-    }
-}
-
-fn make_segment(entry: Entry, seg_a: [f32; 2], seg_b: [f32; 2], styles: &[u32]) -> GpuSegment {
-    let style_index = (entry.field3 & 0xFF) as usize;
-    let style = styles.get(style_index).copied().unwrap_or(0);
-    let width_steps = (style >> 24) & 0xFF;
-    let width_px = (width_steps as f32 * 0.25).max(1.0);
-
-    let packed_color = style & 0x00ff_ffff;
-    let color = [
-        ((packed_color >> 0) & 0xFF) as f32 / 255.0,
-        ((packed_color >> 8) & 0xFF) as f32 / 255.0,
-        ((packed_color >> 16) & 0xFF) as f32 / 255.0,
-        1.0,
-    ];
-
-    let dx = seg_b[0] - seg_a[0];
-    let dy = seg_b[1] - seg_a[1];
-    let inv_len = 1.0 / (dx * dx + dy * dy).max(1e-12).sqrt();
-    let nx = -dy * inv_len;
-    let ny = dx * inv_len;
-
-    GpuSegment {
-        p0: seg_a,
-        p1: seg_b,
-        half_width: width_px * 0.5,
-        nx,
-        ny,
-        pad0: 0.0,
-        color,
-    }
-}
-
-fn build_segments_cpu(state: &GpuTripRendererState, ticks_min: i32, y_min: f32) -> Vec<GpuSegment> {
-    let source_count = state.entries.len();
-    let mut segments = vec![invalid_segment(); source_count.saturating_mul(2)];
-
-    if source_count == 0 || state.uniforms.x_per_unit == 0.0 || state.uniforms.y_per_unit == 0.0 {
-        return segments;
-    }
-
-    let seconds_to_screen_x = |secs: i32| -> f32 {
-        let ticks = secs.saturating_mul(100);
-        (ticks - ticks_min) as f32 / state.uniforms.x_per_unit
-    };
-    let height_to_screen_y = |height: f32| -> f32 { (height - y_min) / state.uniforms.y_per_unit };
-
-    for (entry_index, entry) in state.entries.iter().copied().enumerate() {
-        let connects_to_next = ((entry.field1 >> 25) & 1) != 0;
-        if connects_to_next && entry_index + 1 < source_count {
-            let station_index = ((entry.field2 >> 16) & 0xFFFF) as usize;
-            let next_entry = state.entries[entry_index + 1];
-            let next_station_index = ((next_entry.field2 >> 16) & 0xFFFF) as usize;
-            if let (Some(&station_h), Some(&next_station_h)) = (
-                state.stations.get(station_index),
-                state.stations.get(next_station_index),
-            ) {
-                let dep_secs = entry.dep_secs();
-                let next_arr_secs = next_entry.arr_secs();
-                let track_index = (entry.field2 & 0xFFFF) as f32;
-                let next_track_index = (next_entry.field2 & 0xFFFF) as f32;
-                let seg_a = [
-                    seconds_to_screen_x(dep_secs),
-                    height_to_screen_y(station_h + track_index),
-                ];
-                let seg_b = [
-                    seconds_to_screen_x(next_arr_secs),
-                    height_to_screen_y(next_station_h + next_track_index),
-                ];
-                segments[entry_index * 2 + 1] = make_segment(entry, seg_a, seg_b, &state.styles);
-            }
-        }
-
-        let station_index = ((entry.field2 >> 16) & 0xFFFF) as usize;
-        if let Some(&station_h) = state.stations.get(station_index) {
-            let arr_secs = entry.arr_secs();
-            let dep_secs = entry.dep_secs();
-            let track_index = (entry.field2 & 0xFFFF) as f32;
-            let y = height_to_screen_y(station_h + track_index);
-            let seg_a = [seconds_to_screen_x(arr_secs), y];
-            let seg_b = [seconds_to_screen_x(dep_secs), y];
-            segments[entry_index * 2] = make_segment(entry, seg_a, seg_b, &state.styles);
-        }
-    }
-
-    segments
 }
 
 pub fn upload_trip_strokes(
@@ -377,14 +281,54 @@ pub fn rewrite_trip_cache(
                 continue;
             };
 
-            state.entries.push(Entry::new(
+            let last_entry = Entry::new(
                 last.arr.seconds(),
                 last.dep.seconds(),
                 station_index,
                 0,
                 false,
                 style_index,
-            ));
+            );
+
+            let empty_entry = Entry::new(0, 0, 0, 0, false, 0);
+
+            match state.entries.len() % 4 {
+                0 => {
+                    state.entries.push(last_entry); // <-
+                    state.entries.push(empty_entry);
+                    state.entries.push(empty_entry);
+                    state.entries.push(empty_entry);
+                    // next entry start
+                }
+                1 => {
+                    state.entries.push(last_entry);
+                    state.entries.push(last_entry);
+                    state.entries.push(last_entry);
+                    state.entries.push(last_entry); // <-
+                    state.entries.push(empty_entry);
+                    state.entries.push(empty_entry);
+                    state.entries.push(empty_entry);
+                    // next entry start
+                }
+                2 => {
+                    state.entries.push(last_entry);
+                    state.entries.push(last_entry);
+                    state.entries.push(last_entry); // <-
+                    state.entries.push(empty_entry);
+                    state.entries.push(empty_entry);
+                    state.entries.push(empty_entry);
+                    // next entry start
+                }
+                3 => {
+                    state.entries.push(last_entry);
+                    state.entries.push(last_entry); // <-
+                    state.entries.push(empty_entry);
+                    state.entries.push(empty_entry);
+                    state.entries.push(empty_entry);
+                    // next entry start
+                }
+                _ => unreachable!("mod 4 cannot produce numbers greater than 4"),
+            }
         }
     }
 }
@@ -810,6 +754,7 @@ impl CallbackTrait for TripCallback {
             .ticks_min
             .saturating_add((uniforms.screen_size[0] * uniforms.x_per_unit) as i32);
         let repeat_interval = state.uniforms.repeat_interval_ticks.max(0);
+        let lod_stride = state.level_of_detail_mode.as_u8() as usize;
         let repeat_from = if repeat_interval > 0 {
             (visible_ticks_min - data_tick_max).div_euclid(repeat_interval)
         } else {
@@ -822,11 +767,11 @@ impl CallbackTrait for TripCallback {
             1usize
         };
 
-        let pair_count = state.entries.len();
-        let base_segment_count = pair_count.saturating_mul(2);
-        let total_instances = base_segment_count.saturating_mul(repeat_count);
+        let logical_entry_count = state.entries.len() / lod_stride;
+        let rendered_segment_count = logical_entry_count.saturating_mul(2);
+        let total_instances = rendered_segment_count.saturating_mul(repeat_count);
 
-        let required_segment_count = base_segment_count.max(1);
+        let required_segment_count = rendered_segment_count.max(1);
         let required_segment_size =
             (required_segment_count * std::mem::size_of::<GpuSegment>()) as u64;
         if required_segment_size > resources.segment_buffer.size() {
@@ -848,6 +793,7 @@ impl CallbackTrait for TripCallback {
             repeat_interval_ticks: repeat_interval,
             repeat_from,
             repeat_count: repeat_count.min(u32::MAX as usize) as u32,
+            lod_stride: lod_stride as u32,
             source_instance_count: state.entries.len() as u32,
             style_count: state.styles.len().min(STYLE_TABLE_CAPACITY) as u32,
             feathering_radius: match state.antialiasing_mode {
@@ -863,14 +809,6 @@ impl CallbackTrait for TripCallback {
         let uniform_bytes = bytes_of(&uniforms);
         queue.write_buffer(&resources.uniform_buffer, 0, uniform_bytes);
 
-        if state.segment_build_mode == TripRenderMode::Cpu {
-            let cpu_segments = build_segments_cpu(&state, uniforms.ticks_min, uniforms.y_min);
-            if !cpu_segments.is_empty() {
-                let bytes = cast_slice(cpu_segments.as_slice());
-                queue.write_buffer(&resources.segment_buffer, 0, bytes);
-            }
-        }
-
         let indirect_init = DrawIndirectArgs {
             vertex_count: match state.antialiasing_mode {
                 AntialiasingMode::On => 18,
@@ -882,9 +820,9 @@ impl CallbackTrait for TripCallback {
         };
         queue.write_buffer(&resources.indirect_buffer, 0, bytes_of(&indirect_init));
 
-        if pair_count > 0 && state.segment_build_mode == TripRenderMode::Gpu {
-            let source_count_u32 = state.entries.len().min(u32::MAX as usize) as u32;
-            let dispatch_x = source_count_u32.saturating_add(COMPUTE_WORKGROUP_SIZE - 1)
+        if logical_entry_count > 0 {
+            let dispatch_x = (logical_entry_count.min(u32::MAX as usize) as u32)
+                .saturating_add(COMPUTE_WORKGROUP_SIZE - 1)
                 / COMPUTE_WORKGROUP_SIZE;
             let mut compute_pass = egui_encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("gpu_trip_prepare_segments"),
