@@ -4,7 +4,7 @@ use bevy::{platform::collections::HashMap, prelude::*};
 use moonshine_core::kind::Instance;
 
 use crate::{
-    colors::{DisplayColor, PredefinedColor},
+    colors::{DisplayedColor, PredefinedColor},
     entry::{EntryBundle, TravelMode},
     graph::{Graph, Node, NodeCoor},
     route::Route,
@@ -49,11 +49,11 @@ fn class_name(route: Option<&gtfs_structures::Route>, route_id: &str) -> String 
         .unwrap_or_else(|| route_id.to_string())
 }
 
-fn class_color(route: Option<&gtfs_structures::Route>) -> DisplayColor {
+fn class_color(route: Option<&gtfs_structures::Route>) -> DisplayedColor {
     if let Some(rgb) = route.and_then(|r| r.color) {
-        return DisplayColor::Custom(egui::Color32::from_rgb(rgb.r, rgb.g, rgb.b));
+        return DisplayedColor::Custom(egui::Color32::from_rgb(rgb.r, rgb.g, rgb.b));
     }
-    DisplayColor::Predefined(PredefinedColor::Neutral)
+    DisplayedColor::Predefined(PredefinedColor::Neutral)
 }
 
 fn stop_display_name(stop: &gtfs_structures::Stop) -> String {

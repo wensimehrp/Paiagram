@@ -5,7 +5,7 @@ use egui_i18n::tr;
 use moonshine_core::prelude::MapEntities;
 use std::borrow::Cow;
 
-pub mod all_trips;
+pub mod route_timetable;
 pub mod classes;
 pub mod diagram;
 pub mod graph;
@@ -17,7 +17,7 @@ pub mod station;
 pub mod trip;
 
 pub mod all_tabs {
-    pub use super::all_trips::AllTripsTab;
+    pub use super::route_timetable::RouteTimetableTab;
     pub use super::classes::ClassesTab;
     pub use super::diagram::DiagramTab;
     pub use super::graph::GraphTab;
@@ -207,10 +207,6 @@ pub trait Tab: MapEntities {
     /// The internal name of the tab used for identification. This must be a static string.
     /// The actual displayed name could be different based on e.g. the localization or other contents.
     const NAME: &'static str;
-    /// Called before rendering the tab.
-    fn pre_render(&mut self, _world: &mut World) {}
-    /// Called after rendering the tab.
-    fn post_render(&mut self, _world: &mut World) {}
     /// The main display of the tab.
     fn main_display(&mut self, world: &mut World, ui: &mut Ui);
     /// The edit display
@@ -261,9 +257,5 @@ pub trait Tab: MapEntities {
     /// The icon of the tab
     fn icon(&self) -> Cow<'static, str> {
         "🖳".into()
-    }
-    /// The rendering order of the tab. Lower = higher priority
-    fn rendering_order(&self) -> isize {
-        0
     }
 }

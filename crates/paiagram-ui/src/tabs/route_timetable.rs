@@ -17,25 +17,25 @@ use paiagram_core::{
 use crate::widgets::TimeDragValueOud;
 
 #[derive(Serialize, Deserialize, Clone, MapEntities)]
-pub struct AllTripsTab {
+pub struct RouteTimetableTab {
     #[entities]
     route_entity: Entity,
 }
 
-impl AllTripsTab {
+impl RouteTimetableTab {
     pub fn new(e: Entity) -> Self {
         Self { route_entity: e }
     }
 }
 
-impl PartialEq for AllTripsTab {
+impl PartialEq for RouteTimetableTab {
     fn eq(&self, other: &Self) -> bool {
         self.route_entity == other.route_entity
     }
 }
 
-impl super::Tab for AllTripsTab {
-    const NAME: &'static str = "All Trips";
+impl super::Tab for RouteTimetableTab {
+    const NAME: &'static str = "Route Timetable";
     fn scroll_bars(&self) -> [bool; 2] {
         [false; 2]
     }
@@ -66,7 +66,7 @@ impl super::Tab for AllTripsTab {
     }
 }
 
-struct AllTripsDisplayer<'w> {
+struct RouteTimetableDisplayer<'w> {
     route: &'w Route,
     route_display_modes: &'w mut RouteDisplayModes,
     names: &'w [&'w str],
@@ -78,7 +78,7 @@ struct AllTripsDisplayer<'w> {
     parent_station_or_station: &'w Query<'w, 'w, ParentStationOrStation>,
 }
 
-impl<'w> AllTripsDisplayer<'w> {
+impl<'w> RouteTimetableDisplayer<'w> {
     fn table_cell_width() -> f32 {
         36.0
     }
@@ -87,7 +87,7 @@ impl<'w> AllTripsDisplayer<'w> {
     }
 }
 
-impl<'w> TableDelegate for AllTripsDisplayer<'w> {
+impl<'w> TableDelegate for RouteTimetableDisplayer<'w> {
     fn prepare(&mut self, info: &egui_table::PrefetchInfo) {
         self.trips.clear();
 
@@ -275,7 +275,7 @@ impl<'w> TableDelegate for AllTripsDisplayer<'w> {
             if display_mode.arrival {
                 let font = FontId::new(15.0, egui::FontFamily::Name("dia_pro".into()));
                 let res = ui.put(
-                    Rect::from_min_size(ui.max_rect().left_top(), AllTripsDisplayer::cell_size()),
+                    Rect::from_min_size(ui.max_rect().left_top(), RouteTimetableDisplayer::cell_size()),
                     |ui: &mut egui::Ui| match entry {
                         EntryDisplayMode::Skipped => ui.button(RichText::new("║").font(font)),
                         EntryDisplayMode::NoOperation => ui.button(
@@ -313,7 +313,7 @@ impl<'w> TableDelegate for AllTripsDisplayer<'w> {
                         } else {
                             ui.max_rect().left_top()
                         },
-                        AllTripsDisplayer::cell_size(),
+                        RouteTimetableDisplayer::cell_size(),
                     ),
                     |ui: &mut egui::Ui| match entry {
                         EntryDisplayMode::Skipped => ui.button(RichText::new("║").font(font)),
@@ -371,7 +371,7 @@ fn display_table(
         .iter_many(route.stops.iter())
         .map(|it| it.as_str())
         .collect();
-    let mut displayer = AllTripsDisplayer {
+    let mut displayer = RouteTimetableDisplayer {
         route,
         route_display_modes: &mut *route_display_modes,
         names: &names,
@@ -397,7 +397,7 @@ fn display_table(
                 .chain(std::iter::once(Column::new(20.0).resizable(false)))
                 .chain(
                     (0..trips_to_display.len()).map(|_| {
-                        Column::new(AllTripsDisplayer::table_cell_width()).resizable(false)
+                        Column::new(RouteTimetableDisplayer::table_cell_width()).resizable(false)
                     }),
                 )
                 .collect::<Vec<_>>(),

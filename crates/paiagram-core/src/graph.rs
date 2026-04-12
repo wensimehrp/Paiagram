@@ -615,7 +615,7 @@ fn debug_graph_set_diff(
             .iter()
             .map(|e| match names.get(*e) {
                 Ok(name) => format!("{} ({})", name.as_str(), e.index()),
-                Err(_) => format!("<unnamed> ({})", e.index()),
+                Err(_) => format!("<??> ({})", e.index()),
             })
             .collect();
         out.sort_unstable();

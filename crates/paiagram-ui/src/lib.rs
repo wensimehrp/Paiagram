@@ -11,15 +11,15 @@ mod widgets;
 use bevy::prelude::*;
 use chrono::{Local, Timelike};
 use egui::{
-    Context, Frame, Key, KeyboardShortcut, Modifiers, OpenUrl, Panel, Response, RichText,
-    ScrollArea, Stroke, Ui,
+    Color32, Context, Frame, Id, Key, KeyboardShortcut, Modifiers, OpenUrl, Panel, Response,
+    RichText, ScrollArea, Sense, Stroke, TextStyle, Ui, Vec2, vec2,
 };
 use egui_i18n::tr;
 use egui_tiles::{
     Behavior, ContainerKind, SimplificationOptions, Tile, TileId, Tiles, Tree, UiResponse,
 };
 use moonshine_core::prelude::{MapEntities, ReflectMapEntities};
-use paiagram_core::colors::PredefinedColor;
+use paiagram_core::colors::{DisplayedColor, PredefinedColor};
 use paiagram_core::import::LoadLlt;
 use paiagram_core::units::time::Tick;
 use paiagram_core::{
@@ -418,9 +418,26 @@ macro_rules! for_all_tabs {
             MainTab::Graph($t) => $body,
             MainTab::Inspector($t) => $body,
             MainTab::Trip($t) => $body,
-            MainTab::AllTrips($t) => $body,
+            MainTab::RouteTimetable($t) => $body,
             MainTab::PriorityGraph($t) => $body,
             MainTab::Station($t) => $body,
+        }
+    };
+}
+
+macro_rules! for_all_tab_types {
+    ($tab:expr, $body:ident) => {
+        match $tab {
+            MainTab::Start(_) => StartTab::$body,
+            MainTab::Diagram(_) => DiagramTab::$body,
+            MainTab::Settings(_) => SettingsTab::$body,
+            MainTab::Classes(_) => ClassesTab::$body,
+            MainTab::Graph(_) => GraphTab::$body,
+            MainTab::Inspector(_) => InspectorTab::$body,
+            MainTab::Trip(_) => TripTab::$body,
+            MainTab::RouteTimetable(_) => RouteTimetableTab::$body,
+            MainTab::PriorityGraph(_) => PriorityGraphTab::$body,
+            MainTab::Station(_) => StationTab::$body,
         }
     };
 }
@@ -434,7 +451,7 @@ pub enum MainTab {
     Graph(GraphTab),
     Inspector(InspectorTab),
     Trip(TripTab),
-    AllTrips(AllTripsTab),
+    RouteTimetable(RouteTimetableTab),
     PriorityGraph(PriorityGraphTab),
     Station(StationTab),
 }
@@ -547,7 +564,7 @@ impl<'w> MainTabViewer<'w> {
                 ui.close();
             }
         }
-        ui.menu_button("All Trips", |ui| {
+        ui.menu_button("Route Timetable", |ui| {
             if ui.button("New Route").clicked() {}
             ui.separator();
             ScrollArea::vertical().show(ui, |ui| {
@@ -557,7 +574,9 @@ impl<'w> MainTabViewer<'w> {
                     .unwrap()
                 {
                     self.world
-                        .write_message(OpenOrFocus(MainTab::AllTrips(AllTripsTab::new(e))));
+                        .write_message(OpenOrFocus(MainTab::RouteTimetable(
+                            RouteTimetableTab::new(e),
+                        )));
                 }
             });
         });
@@ -681,6 +700,21 @@ impl<'w> Behavior<MainTab> for MainTabViewer<'w> {
         egui::Popup::menu(&res).show(|ui| {
             self.add_popup(ui);
         });
+    }
+    fn tab_bg_color(
+        &self,
+        visuals: &egui::Visuals,
+        tiles: &Tiles<MainTab>,
+        tile_id: TileId,
+        state: &egui_tiles::TabState,
+    ) -> Color32 {
+        let base = match tiles.get(tile_id) {
+            None | Some(Tile::Container(_)) => visuals.panel_fill,
+            Some(Tile::Pane(tab)) => {
+                DisplayedColor::from_seed(for_all_tab_types!(tab, NAME)).get(visuals.dark_mode)
+            }
+        };
+        base.gamma_multiply(if state.active { 0.7 } else { 0.2 })
     }
 }
 

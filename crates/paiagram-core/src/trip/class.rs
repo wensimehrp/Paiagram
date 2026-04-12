@@ -1,4 +1,4 @@
-use crate::colors::{DisplayColor, PredefinedColor};
+use crate::colors::{DisplayedColor, PredefinedColor};
 use bevy::{ecs::query::QueryData, prelude::*};
 use moonshine_core::prelude::{MapEntities, ReflectMapEntities};
 
@@ -12,14 +12,14 @@ impl Plugin for ClassPlugin {
 #[derive(Debug, Reflect, Component, Clone, Copy)]
 #[reflect(Component)]
 pub struct DisplayedStroke {
-    pub color: DisplayColor,
+    pub color: DisplayedColor,
     pub width: f32,
 }
 
 impl Default for DisplayedStroke {
     fn default() -> Self {
         Self {
-            color: DisplayColor::Predefined(PredefinedColor::Emerald),
+            color: DisplayedColor::Predefined(PredefinedColor::Emerald),
             width: 1.0,
         }
     }
@@ -27,13 +27,8 @@ impl Default for DisplayedStroke {
 
 impl DisplayedStroke {
     pub fn from_seed(data: impl AsRef<[u8]>) -> Self {
-        let bytes = data.as_ref();
-        let mut sum = 0u8;
-        for byte in bytes.iter().copied() {
-            sum = sum.wrapping_add(byte);
-        }
         Self {
-            color: DisplayColor::Predefined(PredefinedColor::from_index(sum as usize)),
+            color: DisplayedColor::from_seed(data),
             width: 1.0,
         }
     }
@@ -45,7 +40,7 @@ impl DisplayedStroke {
     }
     pub fn neutral(is_dark: bool) -> egui::Stroke {
         egui::Stroke {
-            color: DisplayColor::Predefined(PredefinedColor::Neutral).get(is_dark),
+            color: DisplayedColor::Predefined(PredefinedColor::Neutral).get(is_dark),
             width: 1.0,
         }
     }
@@ -90,7 +85,7 @@ impl FromWorld for ClassResource {
                 class: Class::default(),
                 name: Name::new(name),
                 stroke: DisplayedStroke {
-                    color: DisplayColor::Predefined(PredefinedColor::Neutral),
+                    color: DisplayedColor::Predefined(PredefinedColor::Neutral),
                     width: 1.0,
                 },
             })

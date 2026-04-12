@@ -9,12 +9,23 @@ use strum_macros::{EnumCount, EnumIter};
 
 #[derive(Reflect, Debug, Clone, Copy, Serialize, Deserialize)]
 #[reflect(opaque, Serialize, Deserialize)]
-pub enum DisplayColor {
+pub enum DisplayedColor {
     Predefined(PredefinedColor),
     Custom(Color32),
 }
 
-impl Default for DisplayColor {
+impl DisplayedColor {
+    pub fn from_seed(data: impl AsRef<[u8]>) -> Self {
+        let bytes = data.as_ref();
+        let mut sum = 0u8;
+        for byte in bytes.iter().copied() {
+            sum = sum.wrapping_add(byte);
+        }
+        Self::Predefined(PredefinedColor::from_index(sum as usize))
+    }
+}
+
+impl Default for DisplayedColor {
     fn default() -> Self {
         Self::Predefined(PredefinedColor::Neutral)
     }
@@ -49,14 +60,14 @@ fn color_button(ui: &mut egui::Ui, color: Color32, open: bool) -> egui::Response
     response
 }
 
-impl egui::Widget for &mut DisplayColor {
+impl egui::Widget for &mut DisplayedColor {
     fn ui(self, ui: &mut egui::Ui) -> egui::Response {
         let is_dark = ui.visuals().dark_mode;
         let button_res = color_button(ui, self.get(is_dark), false);
 
         let current_predefined = match *self {
-            DisplayColor::Predefined(p) => Some(p),
-            DisplayColor::Custom(_) => None,
+            DisplayedColor::Predefined(p) => Some(p),
+            DisplayedColor::Custom(_) => None,
         };
 
         egui::Popup::menu(&button_res)
@@ -81,7 +92,7 @@ impl egui::Widget for &mut DisplayColor {
                                     });
 
                                 if ui.add(button).clicked() {
-                                    *self = DisplayColor::Predefined(predefined);
+                                    *self = DisplayedColor::Predefined(predefined);
                                 }
                             }
                         });
@@ -90,11 +101,11 @@ impl egui::Widget for &mut DisplayColor {
                     ui.vertical(|ui| {
                         ui.label("Custom");
                         let mut custom_color = match *self {
-                            DisplayColor::Custom(c) => c,
-                            DisplayColor::Predefined(p) => p.get(is_dark),
+                            DisplayedColor::Custom(c) => c,
+                            DisplayedColor::Predefined(p) => p.get(is_dark),
                         };
                         if color_picker_color32(ui, &mut custom_color, Alpha::Opaque) {
-                            *self = DisplayColor::Custom(custom_color);
+                            *self = DisplayedColor::Custom(custom_color);
                         }
                     });
                 })
@@ -103,7 +114,7 @@ impl egui::Widget for &mut DisplayColor {
     }
 }
 
-impl DisplayColor {
+impl DisplayedColor {
     /// get the color as [`Color32`]
     pub fn get(self, is_dark: bool) -> Color32 {
         match self {

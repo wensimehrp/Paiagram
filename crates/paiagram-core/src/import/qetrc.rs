@@ -5,7 +5,7 @@ use serde::Deserialize;
 use serde_json;
 
 use crate::{
-    colors::DisplayColor,
+    colors::DisplayedColor,
     entry::{EntryBundle, TravelMode},
     graph::Graph,
     route::Route,
@@ -140,7 +140,7 @@ pub fn load_qetrc(event: On<super::LoadQETRC>, mut commands: Commands, mut graph
                 name: Name::new(class.clone()),
                 stroke: DisplayedStroke {
                     width: 1.0,
-                    color: DisplayColor::Custom(Color32::from_rgb(r, g, b)),
+                    color: DisplayedColor::Custom(Color32::from_rgb(r, g, b)),
                 },
             });
         }

@@ -1,5 +1,5 @@
 use crate::{
-    colors::DisplayColor,
+    colors::DisplayedColor,
     entry::{EntryBundle, TravelMode},
     graph::Graph,
     import::OuDiaContentType,
@@ -64,7 +64,7 @@ pub fn load_oud(msg: On<super::LoadOuDia>, mut commands: Commands, mut graph: Re
                     class: ClassComponent::default(),
                     name: Name::new(it.name),
                     stroke: DisplayedStroke {
-                        color: DisplayColor::Custom(egui::Color32::from_rgb(r, g, b)),
+                        color: DisplayedColor::Custom(egui::Color32::from_rgb(r, g, b)),
                         width: 1.0,
                     },
                 })
@@ -172,7 +172,7 @@ pub fn load_oud(msg: On<super::LoadOuDia>, mut commands: Commands, mut graph: Re
                 .spawn_empty()
                 .add_children(&nominal_entries)
                 .insert(TripBundle::new(
-                    &trip.name.unwrap_or("<unnamed>".to_string()),
+                    &trip.name.unwrap_or("<??>".to_string()),
                     TripClass(trip_class.entity()),
                     nominal_entries,
                 ));

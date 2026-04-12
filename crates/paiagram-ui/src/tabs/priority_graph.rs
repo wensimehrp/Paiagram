@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::tabs::Navigatable;
 use paiagram_core::{
-    colors::DisplayColor,
+    colors::DisplayedColor,
     entry::EntryQuery,
     route::{Route, RouteByDirectionTrips},
     station::{ParentStationOrStation, Station},
@@ -231,7 +231,7 @@ fn draw_priority_lines(
     // let route = route_q.get(route_entity).unwrap();
     let stroke = Stroke {
         width: 2.0,
-        color: DisplayColor::Predefined(paiagram_core::colors::PredefinedColor::Amber).get(false),
+        color: DisplayedColor::Predefined(paiagram_core::colors::PredefinedColor::Amber).get(false),
     };
     let mut line_map: EntityHashMap<Vec<Pos2>> = EntityHashMap::new();
     for (station_idx, map) in maps.iter().enumerate() {
