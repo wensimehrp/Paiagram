@@ -22,6 +22,12 @@
           inherit system overlays;
         };
 
+        rustToolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
+        rustPlatform = pkgs.makeRustPlatform {
+          cargo = rustToolchain;
+          rustc = rustToolchain;
+        };
+
         # Define the runtime dependencies needed by Bevy
         runtimeLibs = with pkgs; [
           vulkan-loader
@@ -37,17 +43,9 @@
           dbus
         ];
 
-        rustToolchain = pkgs.rust-bin.stable.latest.default.override {
-          extensions = [ "rust-src" ];
-          targets = [
-            "x86_64-unknown-linux-gnu"
-            "wasm32-unknown-unknown"
-          ];
-        };
-
       in
       {
-        packages.default = pkgs.rustPlatform.buildRustPackage {
+        packages.default = rustPlatform.buildRustPackage {
           pname = "paiagram";
           version = "0.1.0";
           src = ./.;
@@ -87,7 +85,7 @@
               stdenv.cc.cc
             ];
 
-            RUST_SRC_PATH = "${pkgs.rust.packages.stable.rustPlatform.rustLibSrc}";
+            RUST_SRC_PATH = "${rustToolchain}/lib/rustlib/src/rust/library";
             LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath (runtimeLibs ++ [ stdenv.cc.cc ]);
           };
       }
