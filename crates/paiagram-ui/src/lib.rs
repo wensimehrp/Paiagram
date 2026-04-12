@@ -986,36 +986,6 @@ pub fn show_ui(ui: &mut Ui, world: &mut World, cpu_time: Option<f32>) {
                     });
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let mut timer = world.resource_mut::<GlobalTimer>();
-                    let mut time = timer.read_ticks().to_timetable_time();
-                    ui.add_enabled(
-                        !timer.sync_to_real_time,
-                        egui::Checkbox::new(&mut timer.animation_playing, "Play animation"),
-                    );
-                    let time_response = ui.add(TimeDragValue(&mut time));
-                    ui.add_enabled(
-                        !timer.sync_to_real_time,
-                        egui::Slider::new(&mut timer.animation_speed, -500.0..=500.0)
-                            .fixed_decimals(1)
-                            .text("Speed")
-                            .clamping(egui::SliderClamping::Always),
-                    );
-                    egui::Popup::menu(&time_response).show(|ui| {
-                        ui.checkbox(&mut timer.sync_to_real_time, "Sync with system clock");
-                    });
-                    unsafe {
-                        if !timer.sync_to_real_time
-                            && time_response.dragged()
-                            && timer.try_lock_unchecked(1)
-                        {
-                            timer.write_ticks(Tick::from_timetable_time(time));
-                        } else {
-                            timer.try_unlock_unchecked(1);
-                        }
-                    }
-                    if timer.animation_playing {
-                        ui.ctx().request_repaint();
-                    }
                     world.resource_scope(|world, mut history: Mut<actions::ActionHistory>| {
                         if ui
                             .add_enabled(history.can_undo(), egui::Button::new("Undo"))
@@ -1030,7 +1000,42 @@ pub fn show_ui(ui: &mut Ui, world: &mut World, cpu_time: Option<f32>) {
                             history.try_redo(world);
                         }
                     });
+                    let mut aus = world.resource_mut::<AdditionalUiState>();
+                    ui.checkbox(&mut aus.expanded, "");
                 });
+            })
+        });
+    Panel::bottom("bottom panel")
+        .exact_size(24.0)
+        .show_inside(ui, |ui| {
+            ui.horizontal_centered(|ui| {
+                let mut timer = world.resource_mut::<GlobalTimer>();
+                let mut time = timer.read_ticks().to_timetable_time();
+                ui.add_enabled(
+                    !timer.sync_to_real_time,
+                    egui::Checkbox::new(&mut timer.animation_playing, ""),
+                );
+                let time_response = ui.add(TimeDragValue(&mut time));
+                ui.add_enabled(
+                    !timer.sync_to_real_time,
+                    egui::DragValue::new(&mut timer.animation_speed)
+                        .fixed_decimals(1)
+                        .suffix("×"),
+                );
+                egui::Popup::menu(&time_response).show(|ui| {
+                    ui.checkbox(&mut timer.sync_to_real_time, "Sync with system clock");
+                });
+                if !timer.sync_to_real_time
+                    && time_response.dragged()
+                    && timer.try_lock(Entity::PLACEHOLDER)
+                {
+                    timer.write_ticks(Tick::from_timetable_time(time));
+                } else {
+                    timer.try_unlock(Entity::PLACEHOLDER);
+                }
+                if timer.animation_playing {
+                    ui.ctx().request_repaint();
+                }
             })
         });
     world.resource_scope(|world, mut aus: Mut<AdditionalUiState>| {
@@ -1048,11 +1053,6 @@ pub fn show_ui(ui: &mut Ui, world: &mut World, cpu_time: Option<f32>) {
                         }
                     }),
             };
-            Panel::right("right toolbar")
-                .exact_size(30.0)
-                .show_inside(ui, |ui| {
-                    ui.checkbox(&mut aus.expanded, "");
-                });
             Panel::right("right panel")
                 .frame(Frame::default())
                 .show_animated_inside(ui, aus.expanded, |ui| {
