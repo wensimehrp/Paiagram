@@ -716,6 +716,24 @@ impl<'w> Behavior<MainTab> for MainTabViewer<'w> {
         };
         base.gamma_multiply(if state.active { 0.7 } else { 0.2 })
     }
+    fn tab_outline_stroke(
+            &self,
+            visuals: &egui::Visuals,
+            tiles: &Tiles<MainTab>,
+            tile_id: TileId,
+            state: &egui_tiles::TabState,
+        ) -> Stroke {
+        let base = match tiles.get(tile_id) {
+            None | Some(Tile::Container(_)) => visuals.panel_fill,
+            Some(Tile::Pane(tab)) => {
+                DisplayedColor::from_seed(for_all_tab_types!(tab, NAME)).get(visuals.dark_mode)
+            }
+        };
+        Stroke::new(1.0, base.gamma_multiply(if state.active { 1.0 } else { 0.7 }))
+    }
+    fn tab_bar_hline_stroke(&self, visuals: &egui::Visuals) -> Stroke {
+        Stroke::new(1.0, Color32::TRANSPARENT)
+    }
 }
 
 fn show_name_button<T: Component>(
