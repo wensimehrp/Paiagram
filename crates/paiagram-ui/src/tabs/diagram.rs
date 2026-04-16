@@ -37,7 +37,7 @@ mod gpu_draw;
 pub mod prep_segments;
 
 impl SelectedItems {
-    pub fn to_canvas_state(&mut self) -> CanvasState<'_> {
+    fn to_canvas_state(&mut self) -> CanvasState<'_> {
         match self {
             Self::None => CanvasState::Idle,
             Self::Trips(i) => CanvasState::SelectingTrips(i),
@@ -586,7 +586,8 @@ fn main_display(
     let repeat_frequency = world.resource::<ProjectSettings>().repeat_frequency;
     state.antialiasing_mode = preferences.antialiasing_mode;
     let visible_x = tab.navi.visible_x();
-    let visible_span_seconds = (visible_x.end.to_timetable_time() - visible_x.start.to_timetable_time()).0;
+    let visible_span_seconds =
+        (visible_x.end.to_timetable_time() - visible_x.start.to_timetable_time()).0;
     state.level_of_detail_mode = match preferences.level_of_detail_mode {
         LevelOfDetailMode::Off => LevelOfDetailMode::Off,
         LevelOfDetailMode::Lod2 => {

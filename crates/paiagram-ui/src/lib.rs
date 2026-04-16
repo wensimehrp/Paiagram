@@ -11,8 +11,8 @@ mod widgets;
 use bevy::prelude::*;
 use chrono::{Local, Timelike};
 use egui::{
-    Color32, Context, Frame, Id, Key, KeyboardShortcut, Modifiers, OpenUrl, Panel, Response,
-    RichText, ScrollArea, Sense, Stroke, TextStyle, Ui, Vec2, vec2,
+    Color32, Context, Frame, Hyperlink, Key, KeyboardShortcut, Layout, Modifiers, OpenUrl, Panel,
+    Response, RichText, ScrollArea, Stroke, Ui,
 };
 use egui_i18n::tr;
 use egui_tiles::{
@@ -717,19 +717,22 @@ impl<'w> Behavior<MainTab> for MainTabViewer<'w> {
         base.gamma_multiply(if state.active { 0.7 } else { 0.2 })
     }
     fn tab_outline_stroke(
-            &self,
-            visuals: &egui::Visuals,
-            tiles: &Tiles<MainTab>,
-            tile_id: TileId,
-            state: &egui_tiles::TabState,
-        ) -> Stroke {
+        &self,
+        visuals: &egui::Visuals,
+        tiles: &Tiles<MainTab>,
+        tile_id: TileId,
+        state: &egui_tiles::TabState,
+    ) -> Stroke {
         let base = match tiles.get(tile_id) {
             None | Some(Tile::Container(_)) => visuals.panel_fill,
             Some(Tile::Pane(tab)) => {
                 DisplayedColor::from_seed(for_all_tab_types!(tab, NAME)).get(visuals.dark_mode)
             }
         };
-        Stroke::new(1.0, base.gamma_multiply(if state.active { 1.0 } else { 0.7 }))
+        Stroke::new(
+            1.0,
+            base.gamma_multiply(if state.active { 1.0 } else { 0.7 }),
+        )
     }
     fn tab_bar_hline_stroke(&self, visuals: &egui::Visuals) -> Stroke {
         Stroke::new(1.0, Color32::TRANSPARENT)
@@ -1054,6 +1057,9 @@ pub fn show_ui(ui: &mut Ui, world: &mut World, cpu_time: Option<f32>) {
                 if timer.animation_playing {
                     ui.ctx().request_repaint();
                 }
+                ui.with_layout(Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.add(Hyperlink::new("https://paiagram.com"))
+                });
             })
         });
     world.resource_scope(|world, mut aus: Mut<AdditionalUiState>| {

@@ -275,7 +275,10 @@ impl<'w> TableDelegate for RouteTimetableDisplayer<'w> {
             if display_mode.arrival {
                 let font = FontId::new(15.0, egui::FontFamily::Name("dia_pro".into()));
                 let res = ui.put(
-                    Rect::from_min_size(ui.max_rect().left_top(), RouteTimetableDisplayer::cell_size()),
+                    Rect::from_min_size(
+                        ui.max_rect().left_top(),
+                        RouteTimetableDisplayer::cell_size(),
+                    ),
                     |ui: &mut egui::Ui| match entry {
                         EntryDisplayMode::Skipped => ui.button(RichText::new("║").font(font)),
                         EntryDisplayMode::NoOperation => ui.button(
@@ -395,11 +398,9 @@ fn display_table(
         .columns(
             std::iter::once(Column::new(80.0).resizable(true))
                 .chain(std::iter::once(Column::new(20.0).resizable(false)))
-                .chain(
-                    (0..trips_to_display.len()).map(|_| {
-                        Column::new(RouteTimetableDisplayer::table_cell_width()).resizable(false)
-                    }),
-                )
+                .chain((0..trips_to_display.len()).map(|_| {
+                    Column::new(RouteTimetableDisplayer::table_cell_width()).resizable(false)
+                }))
                 .collect::<Vec<_>>(),
         )
         .show(ui, &mut displayer);

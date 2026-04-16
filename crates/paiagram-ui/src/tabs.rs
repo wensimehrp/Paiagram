@@ -5,24 +5,24 @@ use egui_i18n::tr;
 use moonshine_core::prelude::MapEntities;
 use std::borrow::Cow;
 
-pub mod route_timetable;
 pub mod classes;
 pub mod diagram;
 pub mod graph;
 pub mod inspector;
 pub mod priority_graph;
+pub mod route_timetable;
 pub mod settings;
 pub mod start;
 pub mod station;
 pub mod trip;
 
 pub mod all_tabs {
-    pub use super::route_timetable::RouteTimetableTab;
     pub use super::classes::ClassesTab;
     pub use super::diagram::DiagramTab;
     pub use super::graph::GraphTab;
     pub use super::inspector::InspectorTab;
     pub use super::priority_graph::PriorityGraphTab;
+    pub use super::route_timetable::RouteTimetableTab;
     pub use super::settings::SettingsTab;
     pub use super::start::StartTab;
     pub use super::station::StationTab;

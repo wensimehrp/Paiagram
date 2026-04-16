@@ -1,8 +1,6 @@
 use paiagram_core::{
     i18n::Language,
-    settings::{
-        AntialiasingMode, LevelOfDetailMode, ProjectSettings, UserPreferences,
-    },
+    settings::{AntialiasingMode, LevelOfDetailMode, ProjectSettings, UserPreferences},
 };
 
 use super::Tab;

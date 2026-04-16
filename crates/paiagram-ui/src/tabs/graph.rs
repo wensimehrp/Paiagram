@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use egui::{
-    Align2, Color32, CornerRadius, FontId, Margin, Painter, Pos2, Rect, Sense, Stroke, Ui, Vec2,
+    Align2, Color32, CornerRadius, FontId, Id, Margin, Painter, Pos2, Rect, Sense, Stroke, Ui, Vec2,
 };
 use egui_i18n::tr;
 use moonshine_core::prelude::MapEntities;
@@ -13,7 +13,10 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use walkers::sources::Attribution;
 
-use crate::{IntervalSelection, SelectedItem, SelectedItems, StationSelection, TripSelection};
+use crate::{
+    IntervalSelection, ModifySelectedItems, SelectedItem, SelectedItems, StationSelection,
+    TripSelection,
+};
 
 use crate::tabs::graph::gpu_draw::ShapeInstance;
 use crate::{GlobalTimer, tabs::Navigatable};
@@ -29,6 +32,36 @@ use paiagram_core::{
 
 mod gpu_draw;
 mod underlay;
+
+impl SelectedItems {
+    fn to_graph_state(&self) -> GraphState<'_> {
+        match self {
+            Self::None => GraphState::Idle,
+            Self::Trips(it) => GraphState::SelectingTrips(it),
+            Self::Intervals(it) => GraphState::SelectingIntervals(it),
+            Self::Stations(it) => GraphState::SelectingStations(it),
+            Self::ExtendingRoute(it) => GraphState::Idle,
+            Self::ExtendingTrip(it) => GraphState::Idle,
+        }
+    }
+}
+
+/// The state of the graph
+#[derive(Default)]
+enum GraphState<'a> {
+    /// User is doing nothing
+    #[default]
+    Idle,
+    /// User is selecting some trips
+    SelectingTrips(&'a [TripSelection]),
+    /// User is selecting some intervals
+    SelectingIntervals(&'a [IntervalSelection]),
+    /// User is selecting some stations
+    SelectingStations(&'a [StationSelection]),
+    // /// There's nothing to do with this tab, however the user is editing
+    // /// something else in another tab
+    // IdleNoInterrupt
+}
 
 #[derive(Serialize, Deserialize, Clone, MapEntities)]
 pub struct GraphTab {
@@ -262,16 +295,20 @@ fn display_station_info(
 }
 
 fn display(tab: &mut GraphTab, world: &mut World, ui: &mut egui::Ui) {
+    // allocate painter for drawing afterwards
     let (response, mut painter) =
         ui.allocate_painter(ui.available_size_before_wrap(), Sense::click_and_drag());
     tab.navi.visible = response.rect;
     tab.navi.handle_navigation(ui, &response);
+
+    // fetch attribution info to draw later
     let attribution = world
         .run_system_cached_with(
             underlay::draw_underlay,
             (&mut painter, &tab.navi, ui, tab.underlay_tile_change),
         )
         .unwrap();
+
     let mut state = tab.gpu_state.lock();
     if let Some(target_format) = ui.ctx().data(|data| {
         data.get_temp::<eframe::egui_wgpu::wgpu::TextureFormat>(egui::Id::new("wgpu_target_format"))
@@ -284,46 +321,32 @@ fn display(tab: &mut GraphTab, world: &mut World, ui: &mut egui::Ui) {
     {
         state.msaa_samples = msaa_samples;
     }
+
     let interact_pos = response
         .clicked()
         .then_some(ui.input(|r| r.pointer.interact_pos()))
         .flatten();
-    let (selected_stations, selected_trips) = {
-        // let selected_items = world.resource::<SelectedItems>();
-        // let station_set: Vec<_> = selected_items
-        //     .station_selection()
-        //     .iter()
-        //     .map(|it| it.station)
-        //     .collect();
-        // let mut trip_set: Vec<_> = selected_items
-        //     .entry_selection()
-        //     .iter()
-        //     .map(|it| it.parent)
-        //     .collect();
-        // trip_set.sort_unstable();
-        // trip_set.dedup();
-        // (station_set, trip_set)
-        (Vec::new(), Vec::new())
-    };
-    let selected_item = world
+
+    // push draw items and handle selection
+    world
         .run_system_cached_with(
             push_draw_items,
             (
-                ui.visuals().dark_mode,
+                (ui.visuals().dark_mode, ui.input(|r| r.modifiers.command)),
                 &tab.navi,
                 &mut state.instances,
                 &mut painter,
                 interact_pos,
-                &selected_stations,
-                &selected_trips,
                 ui.ctx()
                     .animate_bool(ui.id().with("gugugaga"), tab.navi.zoom > 0.002),
             ),
         )
         .unwrap();
+
     let callback = gpu_draw::paint_callback(response.rect, tab.gpu_state.clone());
     painter.add(callback);
 
+    // draw the attribution and the scale bar
     if let Some(attribution) = attribution {
         draw_attribution(ui, response.rect, &attribution);
     }
@@ -334,173 +357,16 @@ fn display(tab: &mut GraphTab, world: &mut World, ui: &mut egui::Ui) {
         ui.visuals().text_color(),
     );
 
-    // handle selection
-    let selected_items = world.resource_mut::<SelectedItems>().into_inner();
-    let shift_pressed = ui.input(|i| i.modifiers.shift);
-    if shift_pressed
-        && let SelectedItems::Stations(stations) = selected_items
-        && stations.len() == 1
-        && let Some(hover_pos) = ui.input(|r| r.pointer.hover_pos())
-    {
-        let entity = stations[0].station;
-        let (x, y) = world.get::<Node>(entity).unwrap().coor.to_xy();
-        let pos = tab.navi.xy_to_screen_pos(x, y);
-        ui.painter()
-            .line_segment([pos, hover_pos], Stroke::new(1.0, Color32::BLUE));
-    }
-    let selected_items = world.resource::<SelectedItems>();
-    if let SelectedItems::Stations(stations) = selected_items {
-        for station in stations.clone().iter() {
-            let coor = world.get::<Node>(station.station).unwrap().coor;
-            let (x, y) = coor.to_xy();
-            let pos = tab.navi.xy_to_screen_pos(x, y);
-            let rect = Rect::from_pos(pos).expand(8.0);
-            let res = ui
-                .interact(
-                    rect,
-                    ui.id().with(station.station).with("popup response"),
-                    Sense::drag(),
-                )
-                .on_hover_cursor(egui::CursorIcon::Grab);
-            if res.dragged() {
-                ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
-                let new_pos = pos + res.drag_delta();
-                let (x, y) = tab.navi.screen_pos_to_xy(new_pos);
-                let new_coor = NodeCoor::from_xy(x, y);
-                world.get_mut::<Node>(station.station).unwrap().coor = new_coor;
-            }
-            let inner = |ui: &mut Ui| {
-                ui.set_width(150.0);
-                ui.horizontal(|ui| {
-                    world.get_mut::<Name>(station.station).unwrap().mutate(|s| {
-                        ui.text_edit_singleline(s);
-                    });
-                    if ui.button("A").clicked() {
-                        world
-                            .commands()
-                            .entity(station.station)
-                            .insert(StationNamePending::new(coor));
-                    }
-                });
-                ui.small(coor.to_string());
-            };
-            egui::Popup::menu(&res)
-                .open_memory(Some(egui::SetOpenCommand::Bool(true)))
-                .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
-                .show(inner);
-        }
-    }
-    // TODO: fix the lifetime here
+    // TODO: restore this part
     world.resource_scope(|world, selected_items: Mut<SelectedItems>| {
-        let selected_items = selected_items.into_inner();
-        match (selected_item, selected_items) {
-            (None, SelectedItems::Stations(stations))
-                if shift_pressed && response.secondary_clicked() && stations.len() == 1 =>
-            {
-                let pos = ui.input(|r| r.pointer.interact_pos()).unwrap();
-                let (x, y) = tab.navi.screen_pos_to_xy(pos);
-                let coor = NodeCoor::from_xy(x, y);
-                let prev_station = stations[0];
-                let new_station = if ui.input(|r| r.modifiers.alt) {
-                    world
-                        .commands()
-                        .spawn((
-                            StationBundle::new("Name Pending".into(), Node { coor }),
-                            StationNamePending::new(coor),
-                        ))
-                        .id()
-                } else {
-                    world
-                        .commands()
-                        .spawn(StationBundle::new("WP".into(), Node { coor }))
-                        .id()
-                };
-                stations[0] = StationSelection {
-                    station: new_station,
-                };
-                world.trigger(AddIntervalPair {
-                    source: prev_station.station,
-                    target: new_station,
-                    length: Distance::from_m(1000),
-                });
-            }
-            (Some(SelectedItem::Station(station)), SelectedItems::Stations(stations))
-                if shift_pressed && stations.len() == 1 =>
-            {
-                let prev_station = stations[0];
-                stations[0] = station;
-                world.trigger(AddIntervalPair {
-                    source: prev_station.station,
-                    target: station.station,
-                    length: Distance::from_m(1000),
-                });
-            }
-            (Some(item), items) => {
-                let ctrl_pressed = ui.input(|i| i.modifiers.ctrl || i.modifiers.command);
-                if ctrl_pressed {
-                    items.toggle_selection(item);
-                } else {
-                    items.set_single_selection(item);
-                }
-            }
-            (None, _) => {}
+        let state = selected_items.to_graph_state();
+        match state {
+            GraphState::Idle => {}
+            GraphState::SelectingTrips(it) => {}
+            GraphState::SelectingIntervals(it) => {}
+            GraphState::SelectingStations(it) => {}
         }
     });
-    // enhance highlighted station path
-    painter.line(
-        tab.highlight_station_intervals
-            .iter()
-            .copied()
-            .map(|entity| {
-                let (x, y) = world.get::<Node>(entity).unwrap().coor.to_xy();
-                tab.navi.xy_to_screen_pos(x, y)
-            })
-            .collect(),
-        Stroke::new(1.5, Color32::RED),
-    );
-    // create new station
-    if response.secondary_clicked()
-        && !shift_pressed
-        && let Some(pos) = ui.input(|r| r.pointer.interact_pos())
-    {
-        tab.clicked_coor = Some(tab.navi.screen_pos_to_xy(pos));
-    } else if response.clicked() {
-        tab.clicked_coor = None
-    }
-    if let Some((x, y)) = tab.clicked_coor {
-        let pos = tab.navi.xy_to_screen_pos(x, y);
-        let rect = Rect::from_pos(pos).expand(8.0);
-        ui.painter()
-            .circle_filled(pos, 6.0, PredefinedColor::Red.get(ui.visuals().dark_mode));
-        let res = ui
-            .interact(rect, ui.id().with("popup response"), Sense::drag())
-            .on_hover_cursor(egui::CursorIcon::Grab);
-        if res.dragged() {
-            ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
-            let new_pos = pos + res.drag_delta();
-            tab.clicked_coor = Some(tab.navi.screen_pos_to_xy(new_pos));
-        }
-        let inner = |ui: &mut Ui| {
-            ui.set_width(200.0);
-            ui.text_edit_singleline(&mut tab.new_station_name);
-            let coor = NodeCoor::from_xy(x, y);
-            if ui.button("New Station").clicked() {
-                tab.clicked_coor = None;
-                let name = if tab.new_station_name.is_empty() {
-                    None
-                } else {
-                    Some(tab.new_station_name.clone())
-                };
-                world.trigger(CreateNewStation { name, coor });
-                tab.new_station_name.clear();
-            }
-            ui.small(coor.to_string());
-        };
-        egui::Popup::menu(&res)
-            .open_memory(Some(egui::SetOpenCommand::Bool(true)))
-            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
-            .show(inner);
-    }
 }
 
 fn draw_scale_bar(painter: &Painter, viewport: Rect, zoom: f32, color: egui::Color32) {
@@ -621,22 +487,18 @@ fn draw_attribution(ui: &mut Ui, viewport: Rect, attribution: &Attribution) {
 
 fn push_draw_items(
     (
-        In(is_dark),
+        In((is_dark, command_clicked)),
         InRef(navi),
         InMut(buffer),
         InMut(painter),
         In(maybe_interact_pos),
-        InRef(selected_stations),
-        InRef(selected_trips),
         In(text_strength),
     ): (
-        In<bool>,
+        In<(bool, bool)>,
         InRef<GraphNavigation>,
         InMut<Vec<ShapeInstance>>,
         InMut<Painter>,
         In<Option<Pos2>>,
-        InRef<[Entity]>,
-        InRef<[Entity]>,
         In<f32>,
     ),
     nodes: Query<(Entity, &Node, Option<&Name>)>,
@@ -647,10 +509,16 @@ fn push_draw_items(
     trip_meta_q: Query<(&Name, &TripClass), With<Trip>>,
     stroke_q: Query<&DisplayedStroke, With<Class>>,
     timer: Res<GlobalTimer>,
-) -> Option<SelectedItem> {
+    selected_items: Res<SelectedItems>,
+    mut commands: Commands,
+) {
     buffer.clear();
 
-    let mut selected = SelectedItem::None;
+    let state = selected_items.to_graph_state();
+    let selection_strength = painter.ctx().animate_bool_responsive(
+        Id::new("graph selection animation"),
+        !matches!(state, GraphState::Idle),
+    );
 
     // prepare time
     let time = timer.read_seconds();
@@ -675,6 +543,30 @@ fn push_draw_items(
         }
     };
 
+    // in the case of pushing a selected item the interface only allows pushing if:
+    // there is interaction i.e. maybe_interaction_pos is Some AND there aren't any
+    // previously selected items AND one of the following:
+    //   1. the current state is idle, OR
+    //   2. the current state's items matches the pushed item's type.
+    //      e.g. SelectingStations and StationSelection
+    let mut has_selected_item = false;
+    macro_rules! push_selected_item {
+        ($f:expr, $p:pat) => {
+            if let Some(interact_pos) = maybe_interact_pos
+                && !has_selected_item
+                && matches!(state, GraphState::Idle | $p)
+                && let Some(selected_item) = $f(interact_pos)
+            {
+                commands.write_message(if command_clicked {
+                    ModifySelectedItems::Toggle(selected_item)
+                } else {
+                    ModifySelectedItems::SetSingle(selected_item)
+                });
+                has_selected_item = true;
+            }
+        };
+    }
+
     // prepare visuals
     let color = PredefinedColor::Neutral.get(is_dark);
     let margin_x = 12.0 / navi.zoom_x().max(f32::EPSILON) as f64;
@@ -690,58 +582,57 @@ fn push_draw_items(
     const SELECTION_RADIUS: f32 = 10.0;
 
     // intervals
-    // TODO: handle interval selection
-    let selected_interval: Option<IntervalSelection> = None;
+    // TODO: interval selection
     for segment in interval_spatial_index.query_xy_aabb(min_x, min_y, max_x, max_y) {
         let spos = navi.xy_to_screen_pos(segment.p0[0], segment.p0[1]);
         let tpos = navi.xy_to_screen_pos(segment.p1[0], segment.p1[1]);
         buffer.push(gpu_draw::ShapeInstance::segment(spos, tpos, 1.0, color));
     }
-    if let Some(i) = selected_interval {
-        selected = SelectedItem::Interval(i)
-    }
 
     // prepare candidates
     let candidate_nodes: Vec<Entity> =
         spatial_index.entities_in_xy_aabb(min_x, min_y, max_x, max_y);
-    // nodes
-    let mut selected_node: Option<StationSelection> = None;
 
     // draw station selection
-    for (_, node, _) in nodes.iter_many(selected_stations) {
-        let [x, y] = node.coor.to_xy_arr();
-        let pos = navi.xy_to_screen_pos(x, y);
-        painter.circle(
-            pos,
-            SELECTION_RADIUS,
-            Color32::RED.gamma_multiply(0.5),
-            Stroke::new(1.0, Color32::RED),
-        );
+    if let GraphState::SelectingStations(selected) = state {
+        for (_, node, _) in nodes.iter_many(selected.into_iter().map(|it| it.station)) {
+            let [x, y] = node.coor.to_xy_arr();
+            let pos = navi.xy_to_screen_pos(x, y);
+            painter.circle(
+                pos,
+                SELECTION_RADIUS,
+                Color32::RED
+                    .gamma_multiply(0.5)
+                    .gamma_multiply(selection_strength),
+                Stroke::new(1.0, Color32::RED.gamma_multiply(selection_strength)),
+            );
+        }
     }
 
     // draw other stations
-    for (entity, node, name) in nodes.iter_many(candidate_nodes) {
+    for (station_entity, node, name) in nodes.iter_many(candidate_nodes) {
         let [x, y] = node.coor.to_xy_arr();
-        let pos = navi.xy_to_screen_pos(x, y);
+        let station_screen_pos = navi.xy_to_screen_pos(x, y);
+        push_selected_item!(
+            |pos| {
+                let r = Rect::from_pos(station_screen_pos).expand(STATION_SELECTION_RADIUS);
+                r.contains(pos)
+                    .then_some(SelectedItem::Station(StationSelection {
+                        station: station_entity,
+                    }))
+            },
+            GraphState::SelectingStations(_)
+        );
 
-        if let Some(interact_pos) = maybe_interact_pos
-            && selected_node.is_none()
-        {
-            let r = Rect::from_pos(pos).expand(STATION_SELECTION_RADIUS);
-            if r.contains(interact_pos) {
-                selected_node = Some(StationSelection { station: entity })
-            };
-        }
-
-        buffer.push(gpu_draw::ShapeInstance::circle(pos, 4.0, color));
-        draw_name(name.map(Name::as_str), pos, color);
-    }
-    if let Some(n) = selected_node {
-        selected = SelectedItem::Station(n);
+        buffer.push(gpu_draw::ShapeInstance::circle(
+            station_screen_pos,
+            4.0,
+            color,
+        ));
+        draw_name(name.map(Name::as_str), station_screen_pos, color);
     }
 
     // entries
-    let mut selected_entry: Option<TripSelection> = None;
     for sample in
         trip_spatial_index.query_xy_time(min_x..=max_x, min_y..=max_y, query_time..=query_time)
     {
@@ -755,7 +646,7 @@ fn push_draw_items(
 
         let pos0 = navi.xy_to_screen_pos(sample.p0[0], sample.p0[1]);
         let pos1 = navi.xy_to_screen_pos(sample.p1[0], sample.p1[1]);
-        let pos = if query_time <= sample.t1 {
+        let entry_pos = if query_time <= sample.t1 {
             pos0
         } else if query_time >= sample.t2 {
             pos1
@@ -764,34 +655,39 @@ fn push_draw_items(
             pos0.lerp(pos1, f as f32)
         };
 
-        if let Some(interact_pos) = maybe_interact_pos
-            && selected_entry.is_none()
-        {
-            let r = Rect::from_pos(pos).expand(STATION_SELECTION_RADIUS);
-            if r.contains(interact_pos) {
-                selected_entry = Some(TripSelection {
+        push_selected_item!(
+            |pos| {
+                let r = Rect::from_pos(entry_pos).expand(STATION_SELECTION_RADIUS);
+                r.contains(pos).then_some(SelectedItem::Trip(TripSelection {
                     entries: vec1::vec1![sample.entry1],
                     trip: sample.trip,
-                })
-            };
-        }
+                }))
+            },
+            GraphState::SelectingTrips(_)
+        );
 
-        if selected_trips.contains(&sample.trip) {
+        if let GraphState::SelectingTrips(trips) = state
+            && trips.iter().any(|it| it.trip == sample.trip)
+        {
             painter.circle(
-                pos,
+                entry_pos,
                 SELECTION_RADIUS,
-                Color32::BLUE.gamma_multiply(0.5),
-                Stroke::new(1.0, Color32::BLUE),
+                Color32::BLUE
+                    .gamma_multiply(0.5)
+                    .gamma_multiply(selection_strength),
+                Stroke::new(1.0, Color32::BLUE.gamma_multiply(selection_strength)),
             );
         }
 
         buffer.push(gpu_draw::ShapeInstance::stealth_arrow(
-            pos0, pos1, pos, color,
+            pos0, pos1, entry_pos, color,
         ));
-        draw_name(Some(name.as_str()), pos, color);
+        draw_name(Some(name.as_str()), entry_pos, color);
     }
-    if let Some(e) = selected_entry {
-        selected = SelectedItem::Trip(e);
+
+    // clear in case if there aren't any valid interactions
+    // ignored when command is down
+    if maybe_interact_pos.is_some() && !has_selected_item && !command_clicked {
+        commands.write_message(ModifySelectedItems::Clear);
     }
-    maybe_interact_pos.map(|_| selected)
 }
