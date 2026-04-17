@@ -1,13 +1,14 @@
 use bevy::prelude::*;
 use egui::{
-    Align2, Color32, CornerRadius, FontId, Id, Margin, Painter, Pos2, Rect, Sense, Stroke, Ui, Vec2,
+    Align2, Color32, CornerRadius, CursorIcon, FontId, Id, Margin, Painter, Popup,
+    PopupCloseBehavior, Pos2, Rect, Sense, Stroke, Ui, Vec2,
 };
 use egui_i18n::tr;
 use moonshine_core::prelude::MapEntities;
 use paiagram_core::graph::{AddIntervalPair, Graph, NodeCoor};
 use paiagram_core::interval::IntervalQuery;
 use paiagram_core::route::Route;
-use paiagram_core::station::{CreateNewStation, StationBundle, StationNamePending, StationQuery};
+use paiagram_core::station::{CreateNewStation, StationNamePending, StationQuery};
 use paiagram_core::units::distance::Distance;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -33,34 +34,47 @@ use paiagram_core::{
 mod gpu_draw;
 mod underlay;
 
-impl SelectedItems {
-    fn to_graph_state(&self) -> GraphState<'_> {
-        match self {
-            Self::None => GraphState::Idle,
-            Self::Trips(it) => GraphState::SelectingTrips(it),
-            Self::Intervals(it) => GraphState::SelectingIntervals(it),
-            Self::Stations(it) => GraphState::SelectingStations(it),
-            Self::ExtendingRoute(it) => GraphState::Idle,
-            Self::ExtendingTrip(it) => GraphState::Idle,
-        }
-    }
-}
-
 /// The state of the graph
-#[derive(Default)]
-enum GraphState<'a> {
-    /// User is doing nothing
-    #[default]
-    Idle,
+enum GraphGlobalState<'a> {
+    /// Looking at local state now
+    LocalDependent(&'a mut GraphLocalState),
     /// User is selecting some trips
     SelectingTrips(&'a [TripSelection]),
     /// User is selecting some intervals
     SelectingIntervals(&'a [IntervalSelection]),
     /// User is selecting some stations
     SelectingStations(&'a [StationSelection]),
-    // /// There's nothing to do with this tab, however the user is editing
-    // /// something else in another tab
-    // IdleNoInterrupt
+    /// User has only selected one station
+    SelectingStation(&'a StationSelection),
+}
+
+impl<'a> From<(&'a SelectedItems, &'a mut GraphLocalState)> for GraphGlobalState<'a> {
+    fn from((selected_items, local_state): (&'a SelectedItems, &'a mut GraphLocalState)) -> Self {
+        match selected_items {
+            SelectedItems::None => GraphGlobalState::LocalDependent(local_state),
+            SelectedItems::Trips(it) => GraphGlobalState::SelectingTrips(it),
+            SelectedItems::Intervals(it) => GraphGlobalState::SelectingIntervals(it),
+            SelectedItems::Stations(it) if it.len() == 1 => {
+                GraphGlobalState::SelectingStation(it.first())
+            }
+            SelectedItems::Stations(it) => GraphGlobalState::SelectingStations(it),
+            SelectedItems::ExtendingRoute(_it) => GraphGlobalState::LocalDependent(local_state),
+            SelectedItems::ExtendingTrip(_it) => GraphGlobalState::LocalDependent(local_state),
+        }
+    }
+}
+
+/// There's something specific to the graph that is unrelated with the global state
+#[derive(Default, Clone)]
+enum GraphLocalState {
+    /// Idle
+    #[default]
+    Idle,
+    /// The user has selected a position. This position may be used to e.g. generate a station
+    SelectingPosition {
+        pos: (f64, f64),
+        name_candidate: String,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, MapEntities)]
@@ -68,12 +82,10 @@ pub struct GraphTab {
     navi: GraphNavigation,
     underlay_tile_type: underlay::UnderlayTileType,
     #[serde(skip, default)]
+    local_state: GraphLocalState,
+    #[serde(skip, default)]
     underlay_tile_change: Option<underlay::UnderlayTileType>,
     #[serde(skip, default)]
-    clicked_coor: Option<(f64, f64)>,
-    #[serde(skip, default)]
-    new_station_name: String,
-    #[serde(skip, default = "default_arrange_iterations")]
     arrange_iterations: u32,
     #[serde(skip, default)]
     osm_area_name: String,
@@ -93,8 +105,7 @@ impl Default for GraphTab {
             navi: GraphNavigation::default(),
             underlay_tile_type: underlay::UnderlayTileType::None,
             underlay_tile_change: None,
-            clicked_coor: None,
-            new_station_name: String::new(),
+            local_state: GraphLocalState::default(),
             arrange_iterations: default_arrange_iterations(),
             osm_area_name: String::new(),
             gpu_state: Arc::new(egui::mutex::Mutex::new(
@@ -310,14 +321,13 @@ fn display(tab: &mut GraphTab, world: &mut World, ui: &mut egui::Ui) {
         .unwrap();
 
     let mut state = tab.gpu_state.lock();
-    if let Some(target_format) = ui.ctx().data(|data| {
+    if let Some(target_format) = ui.data(|data| {
         data.get_temp::<eframe::egui_wgpu::wgpu::TextureFormat>(egui::Id::new("wgpu_target_format"))
     }) {
         state.target_format = Some(target_format);
     }
-    if let Some(msaa_samples) = ui
-        .ctx()
-        .data(|data| data.get_temp::<u32>(egui::Id::new("wgpu_msaa_samples")))
+    if let Some(msaa_samples) =
+        ui.data(|data| data.get_temp::<u32>(egui::Id::new("wgpu_msaa_samples")))
     {
         state.msaa_samples = msaa_samples;
     }
@@ -328,20 +338,45 @@ fn display(tab: &mut GraphTab, world: &mut World, ui: &mut egui::Ui) {
         .flatten();
 
     // push draw items and handle selection
-    world
+    let selected_item = world
         .run_system_cached_with(
             push_draw_items,
             (
-                (ui.visuals().dark_mode, ui.input(|r| r.modifiers.command)),
+                ui.visuals().dark_mode,
                 &tab.navi,
                 &mut state.instances,
                 &mut painter,
                 interact_pos,
-                ui.ctx()
-                    .animate_bool(ui.id().with("gugugaga"), tab.navi.zoom > 0.002),
+                ui.animate_bool(ui.id().with("gugugaga"), tab.navi.zoom > 0.002),
             ),
         )
         .unwrap();
+
+    let shift_pressed = ui.input(|r| r.modifiers.shift);
+    match (
+        selected_item.clone(),
+        ui.input(|r| r.modifiers.command),
+        shift_pressed,
+    ) {
+        (Some(Some(selected_item)), true, _) => {
+            world.write_message(ModifySelectedItems::Toggle(selected_item));
+        }
+        (Some(Some(selected_item)), false, _) => {
+            world.write_message(ModifySelectedItems::SetSingle(selected_item));
+        }
+        (Some(None), true, _) => {
+            // do nothing in this case.
+        }
+        (Some(None), false, true) => {
+            // also do nothing in this case.
+        }
+        (Some(None), false, false) => {
+            world.write_message(ModifySelectedItems::Clear);
+        }
+        (None, _, _) => {
+            // do nothing in this case. No interactions, no response
+        }
+    }
 
     let callback = gpu_draw::paint_callback(response.rect, tab.gpu_state.clone());
     painter.add(callback);
@@ -357,14 +392,135 @@ fn display(tab: &mut GraphTab, world: &mut World, ui: &mut egui::Ui) {
         ui.visuals().text_color(),
     );
 
-    // TODO: restore this part
     world.resource_scope(|world, selected_items: Mut<SelectedItems>| {
-        let state = selected_items.to_graph_state();
+        let state: GraphGlobalState<'_> = (selected_items.as_ref(), &mut tab.local_state).into();
+        let interact_pos = response
+            .clicked()
+            .then(|| ui.input(|r| r.pointer.interact_pos()))
+            .flatten();
+
+        let mut new_state: Option<GraphLocalState> = None;
+
+        let mut display_station_info = |ui: &mut Ui, station_entity: Entity| {
+            let coor = world.get::<Node>(station_entity).unwrap().coor;
+            let (x, y) = coor.to_xy();
+            let pos = tab.navi.xy_to_screen_pos(x, y);
+            let rect = Rect::from_pos(pos).expand(8.0);
+            let res = ui
+                .allocate_rect(rect, Sense::drag())
+                .on_hover_cursor(CursorIcon::Grab);
+            if res.dragged() {
+                ui.set_cursor_icon(egui::CursorIcon::Grabbing);
+                let new_pos = pos + res.drag_delta();
+                let (x, y) = tab.navi.screen_pos_to_xy(new_pos);
+                let new_coor = NodeCoor::from_xy(x, y);
+                world.get_mut::<Node>(station_entity).unwrap().coor = new_coor;
+            }
+            Popup::menu(&res)
+                .open(true)
+                .close_behavior(PopupCloseBehavior::CloseOnClickOutside)
+                .show(|ui| {
+                    ui.set_width(150.0);
+                    ui.horizontal(|ui| {
+                        world.get_mut::<Name>(station_entity).unwrap().mutate(|s| {
+                            ui.text_edit_singleline(s);
+                        });
+                        if ui.button("A").clicked() {
+                            world
+                                .commands()
+                                .entity(station_entity)
+                                .insert(StationNamePending::new(coor));
+                        }
+                    });
+                    ui.small(coor.to_string());
+                });
+        };
+
         match state {
-            GraphState::Idle => {}
-            GraphState::SelectingTrips(it) => {}
-            GraphState::SelectingIntervals(it) => {}
-            GraphState::SelectingStations(it) => {}
+            GraphGlobalState::LocalDependent(GraphLocalState::Idle)
+                if let Some(interact_pos) = interact_pos =>
+            {
+                let pos = tab.navi.screen_pos_to_xy(interact_pos);
+                new_state = Some(GraphLocalState::SelectingPosition {
+                    pos,
+                    name_candidate: String::new(),
+                })
+            }
+            GraphGlobalState::LocalDependent(GraphLocalState::Idle) => {
+                // there's no interaction! in this case do nothing.
+            }
+            GraphGlobalState::LocalDependent(GraphLocalState::SelectingPosition {
+                pos,
+                name_candidate,
+            }) => {
+                let screen_pos = tab.navi.xy_to_screen_pos(pos.0, pos.1);
+                let rect = Rect::from_pos(screen_pos).expand(6.0);
+                painter.rect(
+                    rect,
+                    0,
+                    Color32::RED.gamma_multiply(0.5),
+                    Stroke::new(1.0, Color32::RED),
+                    egui::StrokeKind::Middle,
+                );
+                let res = ui
+                    .allocate_rect(rect, Sense::drag())
+                    .on_hover_cursor(egui::CursorIcon::Grab);
+                if res.dragged() {
+                    ui.set_cursor_icon(egui::CursorIcon::Grabbing);
+                    let new_pos = screen_pos + res.drag_delta();
+                    *pos = tab.navi.screen_pos_to_xy(new_pos);
+                }
+
+                Popup::menu(&res)
+                    .open(true)
+                    .close_behavior(PopupCloseBehavior::CloseOnClickOutside)
+                    .show(|ui| {
+                        ui.set_width(200.0);
+                        ui.text_edit_singleline(name_candidate);
+                        let coor = NodeCoor::from_xy(pos.0, pos.1);
+                        if ui.button("New Station").clicked() {
+                            let name = (!name_candidate.is_empty()).then(|| name_candidate.clone());
+                            world.trigger(CreateNewStation { name, coor });
+                            new_state = Some(GraphLocalState::Idle);
+                        }
+                        ui.small(coor.to_string());
+                    });
+
+                if selected_item.is_some() {
+                    new_state = Some(GraphLocalState::Idle);
+                }
+            }
+            GraphGlobalState::SelectingTrips(it) => {
+                // TODO
+            }
+            GraphGlobalState::SelectingIntervals(it) => {
+                // TODO
+            }
+            GraphGlobalState::SelectingStations(stations) => {
+                for station in stations {
+                    display_station_info(ui, station.station);
+                }
+            }
+            GraphGlobalState::SelectingStation(station) => {
+                display_station_info(ui, station.station);
+                // check if shift is down
+                if shift_pressed && let Some(cursor_pos) = ui.input(|r| r.pointer.hover_pos()) {
+                    let coor = world.get::<Node>(station.station).unwrap().coor;
+                    let (x, y) = coor.to_xy();
+                    let station_pos = tab.navi.xy_to_screen_pos(x, y);
+                    painter.line_segment([station_pos, cursor_pos], Stroke::new(1.0, Color32::RED));
+                    if let Some(Some(SelectedItem::Station(selected))) = selected_item {
+                        world.trigger(AddIntervalPair {
+                            source: station.station,
+                            target: selected.station,
+                            length: Distance::from_m(1000),
+                        });
+                    }
+                }
+            }
+        }
+        if let Some(new_state) = new_state {
+            tab.local_state = new_state
         }
     });
 }
@@ -487,14 +643,14 @@ fn draw_attribution(ui: &mut Ui, viewport: Rect, attribution: &Attribution) {
 
 fn push_draw_items(
     (
-        In((is_dark, command_clicked)),
+        In(is_dark),
         InRef(navi),
         InMut(buffer),
         InMut(painter),
         In(maybe_interact_pos),
         In(text_strength),
     ): (
-        In<(bool, bool)>,
+        In<bool>,
         InRef<GraphNavigation>,
         InMut<Vec<ShapeInstance>>,
         InMut<Painter>,
@@ -510,14 +666,18 @@ fn push_draw_items(
     stroke_q: Query<&DisplayedStroke, With<Class>>,
     timer: Res<GlobalTimer>,
     selected_items: Res<SelectedItems>,
-    mut commands: Commands,
-) {
+) -> Option<Option<SelectedItem>> {
     buffer.clear();
 
-    let state = selected_items.to_graph_state();
+    let mut binding = GraphLocalState::Idle;
+    let state: GraphGlobalState<'_> = (selected_items.as_ref(), &mut binding).into();
+
     let selection_strength = painter.ctx().animate_bool_responsive(
         Id::new("graph selection animation"),
-        !matches!(state, GraphState::Idle),
+        !matches!(
+            state,
+            GraphGlobalState::LocalDependent(GraphLocalState::Idle)
+        ),
     );
 
     // prepare time
@@ -549,20 +709,18 @@ fn push_draw_items(
     //   1. the current state is idle, OR
     //   2. the current state's items matches the pushed item's type.
     //      e.g. SelectingStations and StationSelection
-    let mut has_selected_item = false;
+    let mut selected_item: Option<SelectedItem> = None;
     macro_rules! push_selected_item {
         ($f:expr, $p:pat) => {
             if let Some(interact_pos) = maybe_interact_pos
-                && !has_selected_item
-                && matches!(state, GraphState::Idle | $p)
-                && let Some(selected_item) = $f(interact_pos)
+                && selected_item.is_none()
+                && matches!(
+                    state,
+                    GraphGlobalState::LocalDependent(GraphLocalState::Idle) | $p
+                )
+                && let Some(candidate_item) = $f(interact_pos)
             {
-                commands.write_message(if command_clicked {
-                    ModifySelectedItems::Toggle(selected_item)
-                } else {
-                    ModifySelectedItems::SetSingle(selected_item)
-                });
-                has_selected_item = true;
+                selected_item = Some(candidate_item);
             }
         };
     }
@@ -594,19 +752,22 @@ fn push_draw_items(
         spatial_index.entities_in_xy_aabb(min_x, min_y, max_x, max_y);
 
     // draw station selection
-    if let GraphState::SelectingStations(selected) = state {
-        for (_, node, _) in nodes.iter_many(selected.into_iter().map(|it| it.station)) {
-            let [x, y] = node.coor.to_xy_arr();
-            let pos = navi.xy_to_screen_pos(x, y);
-            painter.circle(
-                pos,
-                SELECTION_RADIUS,
-                Color32::RED
-                    .gamma_multiply(0.5)
-                    .gamma_multiply(selection_strength),
-                Stroke::new(1.0, Color32::RED.gamma_multiply(selection_strength)),
-            );
-        }
+    let selected = match state {
+        GraphGlobalState::SelectingStations(it) => it,
+        GraphGlobalState::SelectingStation(it) => std::slice::from_ref(it),
+        _ => &[],
+    };
+    for (_, node, _) in nodes.iter_many(selected.into_iter().map(|it| it.station)) {
+        let [x, y] = node.coor.to_xy_arr();
+        let pos = navi.xy_to_screen_pos(x, y);
+        painter.circle(
+            pos,
+            SELECTION_RADIUS,
+            Color32::RED
+                .gamma_multiply(0.5)
+                .gamma_multiply(selection_strength),
+            Stroke::new(1.0, Color32::RED.gamma_multiply(selection_strength)),
+        );
     }
 
     // draw other stations
@@ -621,7 +782,7 @@ fn push_draw_items(
                         station: station_entity,
                     }))
             },
-            GraphState::SelectingStations(_)
+            GraphGlobalState::SelectingStations(_) | GraphGlobalState::SelectingStation(_)
         );
 
         buffer.push(gpu_draw::ShapeInstance::circle(
@@ -663,10 +824,10 @@ fn push_draw_items(
                     trip: sample.trip,
                 }))
             },
-            GraphState::SelectingTrips(_)
+            GraphGlobalState::SelectingTrips(_)
         );
 
-        if let GraphState::SelectingTrips(trips) = state
+        if let GraphGlobalState::SelectingTrips(trips) = state
             && trips.iter().any(|it| it.trip == sample.trip)
         {
             painter.circle(
@@ -685,9 +846,5 @@ fn push_draw_items(
         draw_name(Some(name.as_str()), entry_pos, color);
     }
 
-    // clear in case if there aren't any valid interactions
-    // ignored when command is down
-    if maybe_interact_pos.is_some() && !has_selected_item && !command_clicked {
-        commands.write_message(ModifySelectedItems::Clear);
-    }
+    maybe_interact_pos.map(|_| selected_item)
 }
