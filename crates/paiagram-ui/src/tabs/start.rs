@@ -28,18 +28,6 @@ impl Tab for StartTab {
     fn title(&self) -> egui::WidgetText {
         tr!("tab-start").into()
     }
-    fn edit_display(&mut self, world: &mut bevy::ecs::world::World, ui: &mut Ui) {
-        // if let Err(e) = world.run_system_cached_with(tree_view::show_tree_view, ui) {
-        //     error!("UI Error while displaying tree view: {e}")
-        // }
-    }
-    fn display_display(&mut self, world: &mut bevy::ecs::world::World, ui: &mut Ui) {
-        // for field in CurrentField::iter() {
-        //     ui.add_sized(vec2(ui.available_width(), 20.0), |ui: &mut Ui| {
-        //         ui.selectable_value(&mut self.current_field, field, field.name())
-        //     });
-        // }
-    }
     fn scroll_bars(&self) -> [bool; 2] {
         [false, true]
     }
