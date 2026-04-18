@@ -14,7 +14,7 @@ use wgpu::BufferDescriptor;
 use wgpu::{BufferBindingType, BufferUsages, ShaderStages};
 
 pub(crate) struct GpuTripRendererState {
-    entries: Vec<Entry>,
+    entries: Vec<(Box<[Entry]>, usize, i32)>,
     styles: Vec<u32>,
     class_style_index: EntityHashMap<u16>,
     data_tick_min: i32,
@@ -29,65 +29,65 @@ pub(crate) struct GpuTripRendererState {
     pub level_of_detail_mode: LevelOfDetailMode,
 }
 
-/// field0: .......A AAAAAAAA AAAAAAAA AAAAAAAA
-/// field1: ......ND DDDDDDDD DDDDDDDD DDDDDDDD
-/// field2: SSSSSSSS SSSSSSSS RRRRRRRR RRRRRRRR
-/// field3: ........ ........ ........ IIIIIIII
+/// field0: .......C AAAAAAAA AAAAAAAA AAAAAAAA
+/// field1: IIIIIIII DDDDDDDD DDDDDDDD DDDDDDDD
+/// field2: SSSSSSSS SSSSSSSS TTTTTTTT TTTTTTTT
 ///
-/// A: arrival seconds (signed). 2^25 ~= 388 days (194 days on each side)
+/// C: This bit is set if the entry connects to the next entry
+/// A: arrival seconds (signed). 2^24 ~= 194 days (97 days on each side)
 /// D: departure seconds (signed). Same as arrival seconds.
 /// S: station index
-/// R: track index
+/// T: track index
 /// I: style table index (8-bit, 0..=255).
 ///    style data (width + colour) is stored in uniform buffer.
-/// N: whether the current entry connects to the next entry
-///    when this bit is set it connects to the next entry.
 #[repr(C)]
-#[derive(Copy, Clone, Pod, Zeroable)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 struct Entry {
-    pub field0: u32,
-    pub field1: u32,
-    pub field2: u32,
-    pub field3: u32,
+    field0: u32,
+    field1: u32,
+    field2: u32,
 }
 
 impl Entry {
-    fn signed_25(value: u32) -> i32 {
-        ((value << 7) as i32) >> 7
+    const INVALID: Self = Self::new(0, 0, 0, 0, 0, false);
+
+    fn signed_24(value: u32) -> i32 {
+        ((value << 8) as i32) >> 8
     }
 
-    fn arr_secs(self) -> i32 {
-        Self::signed_25(self.field0 & 0x01ff_ffff)
+    const fn pack_signed_24(value: i32) -> u32 {
+        (value as u32) & 0x00ff_ffff
     }
 
-    fn dep_secs(self) -> i32 {
-        Self::signed_25(self.field1 & 0x01ff_ffff)
+    fn arr_secs(&self) -> i32 {
+        Self::signed_24(self.field0 & 0x00ff_ffff)
     }
 
-    fn pack_signed_25(value: i32) -> u32 {
-        const MIN: i32 = -(1 << 24);
-        const MAX: i32 = (1 << 24) - 1;
-        (value.clamp(MIN, MAX) as u32) & 0x01ff_ffff
+    fn dep_secs(&self) -> i32 {
+        Self::signed_24(self.field1 & 0x00ff_ffff)
     }
 
-    fn new(
+    const fn new(
         arr_secs: i32,
         dep_secs: i32,
         station_index: u16,
         track_index: u16,
-        connects_to_next: bool,
-        style_index: u16,
+        style_index: u8,
+        connects_to_next_entry: bool,
     ) -> Self {
-        let field0 = Self::pack_signed_25(arr_secs);
-        let field1 = Self::pack_signed_25(dep_secs) | ((connects_to_next as u32) << 25);
-        let field2 = ((station_index as u32) << 16) | (track_index as u32);
-        let field3 = (style_index as u32) & 0xFF;
+        // .......C AAAAAAAA AAAAAAAA AAAAAAAA
+        let field0 = (connects_to_next_entry as u32) << 24 | Self::pack_signed_24(arr_secs);
+
+        // IIIIIIII DDDDDDDD DDDDDDDD DDDDDDDD
+        let field1 = (style_index as u32) << 24 | Self::pack_signed_24(dep_secs);
+
+        // SSSSSSSS SSSSSSSS TTTTTTTT TTTTTTTT
+        let field2 = (station_index as u32) << 16 | track_index as u32;
 
         Self {
             field0,
             field1,
             field2,
-            field3,
         }
     }
 }
@@ -117,10 +117,10 @@ struct GpuUniforms {
     repeat_from: i32,
     repeat_count: u32,
     source_instance_count: u32,
-    visible_ticks_min: i32,
+    visible_entry_min_index: u32,
     feathering_radius: f32,
     lod_stride: u32,
-    visible_ticks_max: i32,
+    visible_entry_max_index: u32,
     styles: [[u32; 4]; STYLE_TABLE_CAPACITY],
 }
 
@@ -137,10 +137,10 @@ impl Default for GpuUniforms {
             repeat_from: 0,
             repeat_count: 1,
             source_instance_count: 0,
-            visible_ticks_min: 0,
+            visible_entry_min_index: 0,
             feathering_radius: 0.0,
             lod_stride: 1,
-            visible_ticks_max: 0,
+            visible_entry_max_index: 0,
             styles: [[0, 0, 0, 0]; STYLE_TABLE_CAPACITY],
         }
     }
@@ -238,7 +238,7 @@ pub fn rewrite_trip_cache(
     state: &mut GpuTripRendererState,
 ) {
     const MAX_STATION_COUNT: usize = (u16::MAX as usize) + 1;
-    const DEFAULT_STYLE_INDEX: u16 = 0;
+    const DEFAULT_STYLE_INDEX: u8 = 0;
 
     state.entries.clear();
     state.stations.clear();
@@ -249,87 +249,67 @@ pub fn rewrite_trip_cache(
     if state.styles.is_empty() {
         state.styles.push(pack_style(4, [0, 0, 0]));
     }
+
     if state.stations.len() > MAX_STATION_COUNT {
         state.stations.truncate(MAX_STATION_COUNT);
     }
 
-    for (trip_entity, lines) in cache.iter() {
+    for (trip_entity, segments) in cache.iter() {
         let style_index = class_lookup
             .get(*trip_entity)
             .ok()
             .and_then(|class_entity| state.class_style_index.get(&class_entity.0))
             .copied()
+            .and_then(|index| u8::try_from(index).ok())
             .unwrap_or(DEFAULT_STYLE_INDEX);
-
-        for (last, rest) in lines.iter().filter_map(|it| it.split_last()) {
-            for entry in rest {
-                let Ok(station_index) = u16::try_from(entry.station_index) else {
-                    continue;
-                };
-
-                state.entries.push(Entry::new(
-                    entry.arr.seconds(),
-                    entry.dep.seconds(),
-                    station_index,
+        for (last, rest) in segments.iter().filter_map(|it| it.split_last()) {
+            let capacity = ((rest.len() + 1) / 4 + 2) * 4;
+            let mut segment_entries: Vec<Entry> = Vec::with_capacity(capacity);
+            segment_entries.extend(rest.iter().map(|it| {
+                Entry::new(
+                    it.arr.seconds(),
+                    it.dep.seconds(),
+                    it.station_index as u16,
                     0,
-                    true,
                     style_index,
-                ));
-            }
-
-            let Ok(station_index) = u16::try_from(last.station_index) else {
-                continue;
-            };
-
+                    true,
+                )
+            }));
+            // manually push the last entry
             let last_entry = Entry::new(
                 last.arr.seconds(),
                 last.dep.seconds(),
-                station_index,
+                last.station_index as u16,
                 0,
-                false,
                 style_index,
+                false,
             );
-
-            let empty_entry = Entry::new(0, 0, 0, 0, false, 0);
-
-            match state.entries.len() % 4 {
-                0 => {
-                    state.entries.push(last_entry); // <-
-                    state.entries.push(empty_entry);
-                    state.entries.push(empty_entry);
-                    state.entries.push(empty_entry);
-                    // next entry start
-                }
-                1 => {
-                    state.entries.push(last_entry);
-                    state.entries.push(last_entry);
-                    state.entries.push(last_entry);
-                    state.entries.push(last_entry); // <-
-                    state.entries.push(empty_entry);
-                    state.entries.push(empty_entry);
-                    state.entries.push(empty_entry);
-                    // next entry start
-                }
-                2 => {
-                    state.entries.push(last_entry);
-                    state.entries.push(last_entry);
-                    state.entries.push(last_entry); // <-
-                    state.entries.push(empty_entry);
-                    state.entries.push(empty_entry);
-                    state.entries.push(empty_entry);
-                    // next entry start
-                }
-                3 => {
-                    state.entries.push(last_entry);
-                    state.entries.push(last_entry); // <-
-                    state.entries.push(empty_entry);
-                    state.entries.push(empty_entry);
-                    state.entries.push(empty_entry);
-                    // next entry start
-                }
-                _ => unreachable!("mod 4 cannot produce numbers greater than 4"),
-            }
+            // |    |    |    |
+            // 0000 0000 TTTT T... 0 (5)
+            // 0000 0000 0TTT T... 1 (4)
+            // 0000 0000 00TT T... 2 (3)
+            // 0000 0000 000T T... 3 (2)
+            let padding_count = 4 - segment_entries.len() % 4 + 1;
+            segment_entries.extend(std::iter::repeat(last_entry).take(padding_count));
+            segment_entries.extend(std::iter::repeat(Entry::INVALID).take(3));
+            state
+                .entries
+                .push((segment_entries.into_boxed_slice(), 0, 0));
         }
+    }
+
+    // sort the entries based on starting time
+    state
+        .entries
+        .sort_unstable_by_key(|it| it.0.first().unwrap().arr_secs());
+    // calculate the prefix sums
+    let mut sum: usize = 0;
+    let mut max: i32 = 0;
+    for (entries, curr_sum, curr_max) in state.entries.iter_mut() {
+        sum += entries.len();
+        *curr_sum = sum;
+        max = std::cmp::max(entries.last().unwrap().dep_secs(), max);
+        *curr_max = max;
     }
 }
 
@@ -673,7 +653,7 @@ impl CallbackTrait for TripCallback {
         if state.entries_dirty {
             let mut data_tick_min = i32::MAX;
             let mut data_tick_max = i32::MIN;
-            for entry in &state.entries {
+            for entry in state.entries.iter().flat_map(|(it, _, _)| it) {
                 let arr_ticks = entry.arr_secs().saturating_mul(100);
                 let dep_ticks = entry.dep_secs().saturating_mul(100);
                 data_tick_min = data_tick_min.min(arr_ticks.min(dep_ticks));
@@ -688,10 +668,17 @@ impl CallbackTrait for TripCallback {
         }
         let data_tick_min = state.data_tick_min;
         let data_tick_max = state.data_tick_max;
+        let total_entry_count = state
+            .entries
+            .last()
+            .map(|(_, count, _)| *count)
+            .unwrap_or(0);
 
         // Entries
-        {
-            let entry_bytes = cast_slice(state.entries.as_slice());
+        if total_entry_count > 0 {
+            let mut entry_vec = Vec::with_capacity(total_entry_count);
+            entry_vec.extend(state.entries.iter().flat_map(|(it, _, _)| it).copied());
+            let entry_bytes = cast_slice(entry_vec.as_slice());
             let required_size = entry_bytes.len();
             let mut should_upload = state.entries_dirty;
             if required_size as u64 > resources.entry_buffer.size() {
@@ -767,7 +754,7 @@ impl CallbackTrait for TripCallback {
             1usize
         };
 
-        let logical_entry_count = state.entries.len() / lod_stride;
+        let logical_entry_count = total_entry_count / lod_stride;
         let rendered_segment_count = logical_entry_count.saturating_mul(2);
         let total_instances = rendered_segment_count.saturating_mul(repeat_count);
 
@@ -794,9 +781,9 @@ impl CallbackTrait for TripCallback {
             repeat_from,
             repeat_count: repeat_count.min(u32::MAX as usize) as u32,
             lod_stride: lod_stride as u32,
-            source_instance_count: state.entries.len() as u32,
-            visible_ticks_min,
-            visible_ticks_max,
+            source_instance_count: total_entry_count.min(u32::MAX as usize) as u32,
+            visible_entry_min_index: 0,
+            visible_entry_max_index: 0,
             feathering_radius: match state.antialiasing_mode {
                 AntialiasingMode::On => 1.2 / screen_descriptor.pixels_per_point,
                 AntialiasingMode::Off => 0.0,

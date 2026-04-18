@@ -9,31 +9,52 @@ struct Uniforms {
     repeat_from: i32,
     repeat_count: u32,
     source_instance_count: u32,
-    visible_ticks_min: i32,
+    visible_entry_min_index: u32,
     feathering_radius: f32,
     lod_stride: u32,
-    visible_ticks_max: i32,
+    visible_entry_max_index: u32,
     styles: array<vec4<u32>, 256>,
 };
 
-/// field0: .......A AAAAAAAA AAAAAAAA AAAAAAAA
-/// field1: ......ND DDDDDDDD DDDDDDDD DDDDDDDD
-/// field2: SSSSSSSS SSSSSSSS RRRRRRRR RRRRRRRR
-/// field3: ........ ........ ........ IIIIIIII
+/// field0: .......C AAAAAAAA AAAAAAAA AAAAAAAA
+/// field1: IIIIIIII DDDDDDDD DDDDDDDD DDDDDDDD
+/// field2: SSSSSSSS SSSSSSSS TTTTTTTT TTTTTTTT
 ///
-/// A: arrival seconds (signed). 2^25 ~= 388 days (194 days on each side)
+/// C: This bit is set if the entry connects to the next entry
+/// A: arrival seconds (signed). 2^24 ~= 194 days (97 days on each side)
 /// D: departure seconds (signed). Same as arrival seconds.
 /// S: station index
-/// R: track index
+/// T: track index
 /// I: style table index (8-bit, 0..=255).
 ///    style data (width + colour) is stored in uniform buffer.
-/// N: whether the current entry connects to the next entry
-///    when this bit is set it connects to the next entry.
 struct Entry {
     field0: u32,
     field1: u32,
     field2: u32,
-    field3: u32,
+}
+
+fn entry_connects_to_next_entry(e: Entry) -> bool {
+    return ((e.field0 >> 24) & 1u) != 0;
+}
+
+fn entry_arrival_seconds(e: Entry) -> i32 {
+    return bitcast<i32>((e.field0 & 0x00ffffffu) << 8u) >> 8;
+}
+
+fn entry_departure_seconds(e: Entry) -> i32 {
+    return bitcast<i32>((e.field1 & 0x00ffffffu) << 8u) >> 8;
+}
+
+fn entry_style_index(e: Entry) -> u32 {
+    return e.field1 >> 24;
+}
+
+fn entry_station_index(e: Entry) -> u32 {
+    return e.field2 >> 16;
+}
+
+fn entry_track_index(e: Entry) -> u32 {
+    return e.field2 & 0x0000ffffu;
 }
 
 struct SegmentMeshVertex {
@@ -78,11 +99,6 @@ const SEGMENT_MESH_INDICES: array<u32, 18> = array<u32, 18>(
 const TICKS_PER_SECOND: i32 = 100;
 const COMPUTE_WORKGROUP_SIZE: u32 = 64u;
 
-fn signed_25_to_i32(bits: u32) -> i32 {
-    // Sign bit is at bit 24, so shift left then arithmetic-shift right.
-    return bitcast<i32>(bits << 7u) >> 7;
-}
-
 fn seconds_to_screen_x(secs: i32, repeat: i32) -> f32 {
     let repeat_offset_ticks = repeat * uniforms.repeat_interval_ticks;
     let ticks = secs * TICKS_PER_SECOND + repeat_offset_ticks;
@@ -94,7 +110,7 @@ fn height_to_screen_y(height: f32) -> f32 {
 }
 
 fn make_segment(entry: Entry, seg_a: vec2<f32>, seg_b: vec2<f32>) -> SegmentOut {
-    let style_index = entry.field3 & 0xFFu;
+    let style_index = entry_style_index(entry);
     let style = uniforms.styles[style_index].x;
     let width_steps = (style >> 24u) & 0xFFu;
     let width_px = max(f32(width_steps) * 0.25, 1.0);
@@ -137,39 +153,7 @@ fn invalid_segment() -> SegmentOut {
         vec4<f32>(0.0, 0.0, 0.0, 0.0),
     );
 }
-fn is_in_time_range(
-    arr_secs: i32,
-    dep_secs: i32
-) -> bool {
-    let arr_ticks = arr_secs * TICKS_PER_SECOND;
-    let dep_ticks = dep_secs * TICKS_PER_SECOND;
-    let a = min(arr_ticks, dep_ticks);
-    let b = max(arr_ticks, dep_ticks);
-    let m = uniforms.visible_ticks_min;
-    let n = uniforms.visible_ticks_max;
-    let d = uniforms.repeat_interval_ticks;
 
-    if (max(m, a) <= min(n, b)) {
-        return true;
-    }
-
-    let left = a - n;
-    let right = b - m;
-
-    if (d == 0) { return false; }
-    if (right - left >= d) { return true; }
-
-    let rem = left % d;
-    var distance_to_next: i32;
-
-    if (rem <= 0) {
-        distance_to_next = -rem;
-    } else {
-        distance_to_next = d - rem;
-    }
-
-    return (left + distance_to_next) <= right;
-}
 
 @compute @workgroup_size(COMPUTE_WORKGROUP_SIZE)
 fn cs_main(@builtin(global_invocation_id) global_id: vec3<u32>) {
@@ -181,22 +165,18 @@ fn cs_main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     }
 
     let entry = entries[entry_index];
-    let connects_to_next = ((entry.field1 >> 25u) & 1u) != 0u;
+    let connects_to_next = entry_connects_to_next_entry(entry);
     let can_connect = connects_to_next && (entry_index + uniforms.lod_stride < source_count);
 
-    let arr_secs = signed_25_to_i32(entry.field0 & 0x01ffffffu);
-    let dep_secs = signed_25_to_i32(entry.field1 & 0x01ffffffu);
-    let station_index = (entry.field2 >> 16u) & 0xFFFFu;
+    let arr_secs = entry_arrival_seconds(entry);
+    let dep_secs = entry_departure_seconds(entry);
+    let station_index = entry_station_index(entry);
     // currently no track index
     let y = height_to_screen_y(stations[station_index]);
 
+    let seg_0 = vec2<f32>(seconds_to_screen_x(arr_secs, 0), y);
     let seg_1 = vec2<f32>(seconds_to_screen_x(dep_secs, 0), y);
-    if is_in_time_range(arr_secs, dep_secs) {
-        let seg_0 = vec2<f32>(seconds_to_screen_x(arr_secs, 0), y);
-        segments[pair_index] = make_segment(entry, seg_0, seg_1);
-    } else {
-        segments[pair_index] = invalid_segment();
-    }
+    segments[pair_index] = make_segment(entry, seg_0, seg_1);
 
     if !can_connect {
         segments[pair_index + 1] = invalid_segment();
@@ -204,16 +184,12 @@ fn cs_main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     }
 
     let next_entry = entries[entry_index + uniforms.lod_stride];
-    let next_station_index = (next_entry.field2 >> 16u) & 0xFFFFu;
-    let next_arr_secs = signed_25_to_i32(next_entry.field0 & 0x01ffffffu);
+    let next_station_index = entry_station_index(next_entry);
+    let next_arr_secs = entry_arrival_seconds(next_entry);
     let next_y = height_to_screen_y(stations[next_station_index]);
 
-    if is_in_time_range(dep_secs, next_arr_secs) {
-        let seg_2 = vec2<f32>(seconds_to_screen_x(next_arr_secs, 0), next_y);
-        segments[pair_index + 1] = make_segment(entry, seg_1, seg_2);
-    } else {
-        segments[pair_index + 1] = invalid_segment();
-    }
+    let seg_2 = vec2<f32>(seconds_to_screen_x(next_arr_secs, 0), next_y);
+    segments[pair_index + 1] = make_segment(entry, seg_1, seg_2);
 }
 
 struct VertexOut {
