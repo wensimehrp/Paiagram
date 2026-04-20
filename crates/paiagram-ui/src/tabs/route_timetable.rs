@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use egui::{FontId, Layout, Rect, RichText, Ui, Vec2, vec2};
 use egui_table::{Column, Table, TableDelegate};
-use moonshine_core::prelude::MapEntities;
+use bevy::ecs::entity::MapEntities;
 use serde::{Deserialize, Serialize};
 
 use paiagram_core::{

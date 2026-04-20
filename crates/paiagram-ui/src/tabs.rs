@@ -1,8 +1,8 @@
+use bevy::ecs::entity::MapEntities;
 use bevy::ecs::world::World;
 use egui::emath;
 use egui::{Id, Key, NumExt, Response, Ui, Vec2, WidgetText, vec2};
 use egui_i18n::tr;
-use moonshine_core::prelude::MapEntities;
 use std::borrow::Cow;
 
 pub mod classes;

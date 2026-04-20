@@ -5,7 +5,7 @@ use bevy::{
 };
 // use bevy_inspector_egui::bevy_inspector::ui_for_entity_with_children;
 use egui_table::{Column, Table, TableDelegate};
-use moonshine_core::prelude::MapEntities;
+use bevy::ecs::entity::MapEntities;
 use paiagram_core::entry::EntryMode;
 use serde::{Deserialize, Serialize};
 

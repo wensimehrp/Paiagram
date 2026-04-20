@@ -4,7 +4,7 @@ use egui::{
     PopupCloseBehavior, Pos2, Rect, Sense, Stroke, Ui, Vec2,
 };
 use egui_i18n::tr;
-use moonshine_core::prelude::MapEntities;
+use bevy::ecs::entity::MapEntities;
 use paiagram_core::graph::{AddIntervalPair, Graph, NodeCoor};
 use paiagram_core::interval::IntervalQuery;
 use paiagram_core::route::Route;

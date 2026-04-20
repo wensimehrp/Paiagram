@@ -5452,7 +5452,6 @@ dependencies = [
  "instant",
  "itertools",
  "js-sys",
- "moonshine-core",
  "paiagram-core",
  "paiagram-raptor",
  "paiagram-rw",

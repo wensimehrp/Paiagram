@@ -12,7 +12,7 @@ use super::Tab;
 use bevy::prelude::*;
 use egui::{RectAlign, Ui, Vec2, vec2};
 use egui_i18n::tr;
-use moonshine_core::prelude::MapEntities;
+use bevy::ecs::entity::MapEntities;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, MapEntities, Clone)]

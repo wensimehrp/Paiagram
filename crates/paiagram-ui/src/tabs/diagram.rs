@@ -16,7 +16,7 @@ use egui::{
 use egui_i18n::tr;
 use instant::Instant;
 use itertools::Itertools;
-use moonshine_core::prelude::MapEntities;
+use bevy::ecs::entity::MapEntities;
 use paiagram_core::entry::{
     AdjustEntryMode, EntryEstimate, EntryMode, EntryModeAdjustment, EntryQuery, TravelMode,
 };

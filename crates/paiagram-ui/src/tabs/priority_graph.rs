@@ -6,7 +6,7 @@ use egui::{
     epaint::TextShape, pos2,
 };
 use either::Either;
-use moonshine_core::prelude::MapEntities;
+use bevy::ecs::entity::MapEntities;
 use serde::{Deserialize, Serialize};
 
 use crate::tabs::Navigatable;

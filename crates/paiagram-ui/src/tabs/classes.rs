@@ -1,7 +1,7 @@
 use super::Tab;
 use bevy::prelude::*;
 use egui::Ui;
-use moonshine_core::prelude::MapEntities;
+use bevy::ecs::entity::MapEntities;
 use paiagram_core::trip::class::{Class, DisplayedStroke};
 use serde::{Deserialize, Serialize};
 

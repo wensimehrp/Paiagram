@@ -9,7 +9,7 @@ use super::Tab;
 use bevy::prelude::*;
 use egui::Ui;
 use egui_i18n::tr;
-use moonshine_core::prelude::MapEntities;
+use bevy::ecs::entity::MapEntities;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Default, MapEntities)]

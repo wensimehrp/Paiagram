@@ -8,6 +8,8 @@ pub mod save;
 pub mod tabs;
 mod widgets;
 
+use bevy::ecs::entity::MapEntities;
+use bevy::ecs::reflect::ReflectMapEntities;
 use bevy::prelude::*;
 use chrono::{Local, Timelike};
 use egui::{
@@ -18,7 +20,6 @@ use egui_i18n::tr;
 use egui_tiles::{
     Behavior, ContainerKind, SimplificationOptions, Tile, TileId, Tiles, Tree, UiResponse,
 };
-use moonshine_core::prelude::{MapEntities, ReflectMapEntities};
 use paiagram_core::colors::{DisplayedColor, PredefinedColor};
 use paiagram_core::import::LoadLlt;
 use paiagram_core::units::time::Tick;

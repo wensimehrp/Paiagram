@@ -7,7 +7,7 @@ use crate::{
 use bevy::prelude::*;
 use egui::{Color32, Rect, RichText, Stroke};
 use either::Either;
-use moonshine_core::prelude::MapEntities;
+use bevy::ecs::entity::MapEntities;
 use paiagram_core::{
     class::ClassQuery,
     entry::EntryQuery,
