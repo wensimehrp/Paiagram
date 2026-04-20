@@ -4,8 +4,6 @@ use egui::Color32;
 use egui::color_picker::{Alpha, color_picker_color32, show_color_at};
 use egui_i18n::tr;
 use serde::{Deserialize, Serialize};
-use strum::IntoEnumIterator;
-use strum_macros::{EnumCount, EnumIter};
 
 #[derive(Reflect, Debug, Clone, Copy, Serialize, Deserialize)]
 #[reflect(opaque, Serialize, Deserialize)]
@@ -79,7 +77,7 @@ impl egui::Widget for &mut DisplayedColor {
                         ui.set_max_width(200.0);
                         ui.horizontal_wrapped(|ui| {
                             ui.style_mut().spacing.item_spacing = egui::Vec2::splat(4.0);
-                            for predefined in PredefinedColor::iter() {
+                            for predefined in PredefinedColor::ALL {
                                 let color = predefined.get(is_dark);
                                 let is_selected = current_predefined == Some(predefined);
                                 let button = egui::Button::new("")
@@ -124,7 +122,7 @@ impl DisplayedColor {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCount, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PredefinedColor {
     Red,
     Orange,

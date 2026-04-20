@@ -13,12 +13,12 @@ use crate::{
         time::{Duration, TimetableTime},
     },
 };
-use anyhow::{Result, anyhow};
 use bevy::{
     platform::collections::HashMap,
     prelude::*,
     tasks::{AsyncComputeTaskPool, Task, block_on, futures_lite::future::poll_once},
 };
+use eros::bail;
 use moonshine_core::kind::*;
 use paiagram_rw::save::{LoadCandidate, SaveData};
 
@@ -211,7 +211,7 @@ fn infer_path_from_url(url: &str) -> Option<PathBuf> {
     Some(PathBuf::from(filename))
 }
 
-pub fn load_and_trigger(path: &PathBuf, content: Vec<u8>, commands: &mut Commands) -> Result<()> {
+pub fn load_and_trigger(path: &PathBuf, content: Vec<u8>, commands: &mut Commands) -> eros::Result<()> {
     match path.extension().and_then(|s| s.to_str()) {
         Some("paia") => {
             commands.insert_resource(LoadCandidate(SaveData::CompressedCbor(content)));
@@ -234,8 +234,8 @@ pub fn load_and_trigger(path: &PathBuf, content: Vec<u8>, commands: &mut Command
         Some("ron") => {
             commands.insert_resource(LoadCandidate(SaveData::Ron(content)));
         }
-        Some(e) => return Err(anyhow!("Unexpected extension: {e}")),
-        None => return Err(anyhow!("Path does not have an extension")),
+        Some(e) => bail!("Unexpected extension: {}", e),
+        None =>bail!("Path does not have an extension"),
     }
     return Ok(());
 }

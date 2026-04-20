@@ -4,12 +4,11 @@ use paiagram_core::{
 };
 
 use super::Tab;
+use bevy::ecs::entity::MapEntities;
 use bevy::prelude::*;
 use egui::Ui;
 use egui_i18n::tr;
-use bevy::ecs::entity::MapEntities;
 use serde::{Deserialize, Serialize};
-use strum::IntoEnumIterator;
 
 #[derive(Serialize, Deserialize, Clone, Default, MapEntities, PartialEq)]
 pub struct SettingsTab;
@@ -41,8 +40,8 @@ fn show_settings(
         egui::ComboBox::new("language", "")
             .selected_text(preferences.lang.name())
             .show_ui(ui, |ui| {
-                for lang in Language::iter() {
-                    ui.selectable_value(&mut preferences.lang, lang, lang.name());
+                for lang in Language::ALL {
+                    ui.selectable_value(&mut preferences.lang, *lang, lang.name());
                 }
             });
         ui.end_row();

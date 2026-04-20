@@ -6,4 +6,4 @@ license = "MIT OR Apache-2.0"
 repository.workspace = true
 
 [dependencies]
-petgraph = "0.8.3"
+petgraph.workspace = true

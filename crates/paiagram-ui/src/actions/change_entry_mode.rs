@@ -1,6 +1,6 @@
 use super::RevertableActions::ChangeEntryMode as ChangeEntryModeWrapper;
-use anyhow::{Result, anyhow};
 use bevy::prelude::*;
+use eros::bail;
 use paiagram_core::entry::{AdjustEntryMode, EntryMode, EntryModeAdjustment, transform_entry_mode};
 
 pub(super) fn watch_entry_mode_changes(
@@ -53,14 +53,14 @@ pub(super) enum ChangeEntryMode {
 }
 
 impl super::RevertableAction for ChangeEntryMode {
-    fn undo(&self, world: &mut World) -> Result<()> {
+    fn undo(&self, world: &mut World) -> eros::Result<()> {
         match self {
             Self::ShiftArrival((t, _)) => t.undo(world),
             Self::ShiftDeparture((t, _)) => t.undo(world),
             Self::Other(t) => t.undo(world),
         }
     }
-    fn redo(&self, world: &mut World) -> Result<()> {
+    fn redo(&self, world: &mut World) -> eros::Result<()> {
         match self {
             Self::ShiftArrival((t, _)) => t.redo(world),
             Self::ShiftDeparture((t, _)) => t.redo(world),
@@ -77,16 +77,16 @@ pub(super) struct ChangeEntryModeInner {
 }
 
 impl super::RevertableAction for ChangeEntryModeInner {
-    fn undo(&self, world: &mut World) -> Result<()> {
+    fn undo(&self, world: &mut World) -> eros::Result<()> {
         let Some(mut mode) = world.get_mut::<EntryMode>(self.entry) else {
-            return Err(anyhow!("The entry has been modified or deleted"));
+            bail!("The entry has been modified or deleted")
         };
         *mode = self.previous_state;
         Ok(())
     }
-    fn redo(&self, world: &mut World) -> Result<()> {
+    fn redo(&self, world: &mut World) -> eros::Result<()> {
         let Some(mut mode) = world.get_mut::<EntryMode>(self.entry) else {
-            return Err(anyhow!("The entry has been modified or deleted"));
+            bail!("The entry has been modified or deleted")
         };
         *mode = self.new_state;
         Ok(())

@@ -13,22 +13,13 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-bevy = { version = "0.18.0", default-features = false, features = [
-    "multi_threaded",
-    "bevy_state",
-    "std",
-    "bevy_log",
-    "bevy_color",
-    "bevy_scene",
-    "serialize",
-    "reflect_auto_register",
-] }
-serde = "1.0.228"
-rfd = "0.17.2"
-lz4_flex = "0.12.0"
-ron = "0.12.0"
+bevy.workspace = true
+serde.workspace = true
+rfd.workspace = true
+lz4_flex.workspace = true
+ron.workspace = true
 cbor4ii = { version = "1.2.2", features = ["serde", "serde1", "use_std"] }
-num-format = "0.4.4"
+num-format.workspace = true
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-wasm-bindgen = "0.2"
+wasm-bindgen.workspace = true

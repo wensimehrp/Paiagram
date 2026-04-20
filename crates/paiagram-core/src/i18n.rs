@@ -1,10 +1,9 @@
 use bevy::prelude::*;
 use egui_i18n::*;
-use strum_macros::EnumIter;
 
 /// Languages
 /// Sorted alphabetically
-#[derive(Reflect, Clone, Copy, Debug, EnumIter, PartialEq, Eq, Default)]
+#[derive(Reflect, Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum Language {
     #[default]
     EnCA,
@@ -13,7 +12,7 @@ pub enum Language {
 }
 
 impl Language {
-    const ALL: &[Self] = &[Self::EnCA, Self::JaJP, Self::ZhHans];
+    pub const ALL: &[Self] = &[Self::EnCA, Self::JaJP, Self::ZhHans];
     /// The native name of the language.
     pub fn name(self) -> &'static str {
         match self {

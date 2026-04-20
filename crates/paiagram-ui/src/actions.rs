@@ -1,8 +1,8 @@
 //! A set of actions the user can perform
 //! Each action has a reverse action that would be triggered when the user hits the revert shortcut
 
-use anyhow::{Result, anyhow};
 use bevy::prelude::*;
+use eros::bail;
 use std::collections::VecDeque;
 
 mod change_entry_mode;
@@ -16,8 +16,8 @@ impl Plugin for ActionsPlugin {
 }
 
 pub(crate) trait RevertableAction {
-    fn undo(&self, world: &mut World) -> Result<()>;
-    fn redo(&self, world: &mut World) -> Result<()>;
+    fn undo(&self, world: &mut World) -> eros::Result<()>;
+    fn redo(&self, world: &mut World) -> eros::Result<()>;
 }
 
 macro_rules! for_all_actions {
@@ -34,10 +34,10 @@ enum RevertableActions {
 }
 
 impl RevertableActions {
-    fn undo(&self, world: &mut World) -> Result<()> {
+    fn undo(&self, world: &mut World) -> eros::Result<()> {
         for_all_actions!(self, it, it.undo(world))
     }
-    fn redo(&self, world: &mut World) -> Result<()> {
+    fn redo(&self, world: &mut World) -> eros::Result<()> {
         for_all_actions!(self, it, it.redo(world))
     }
 }
@@ -72,16 +72,16 @@ impl ActionHistory {
         }
         self.ptr = self.history.len();
     }
-    pub(crate) fn try_undo(&mut self, world: &mut World) -> Result<()> {
+    pub(crate) fn try_undo(&mut self, world: &mut World) -> eros::Result<()> {
         if !self.can_undo() {
-            return Err(anyhow!("Cannot undo!"));
+            bail!("Cannot undo!");
         }
         self.ptr -= 1;
         self.history[self.ptr].undo(world)
     }
-    pub(crate) fn try_redo(&mut self, world: &mut World) -> Result<()> {
+    pub(crate) fn try_redo(&mut self, world: &mut World) -> eros::Result<()> {
         if !self.can_redo() {
-            return Err(anyhow!("Cannot redo!"));
+            bail!("Cannot redo!");
         }
         let result = self.history[self.ptr].redo(world);
         self.ptr += 1;
