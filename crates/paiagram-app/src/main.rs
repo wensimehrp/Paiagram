@@ -52,6 +52,8 @@ impl PaiagramApp {
             class::ClassPlugin,
             ReadPlugin,
             SavePlugin,
+            bevy::asset::AssetPlugin::default(),
+            bevy::scene::ScenePlugin,
         ));
         info!("Initialized Bevy App.");
         #[cfg(not(target_arch = "wasm32"))]
