@@ -13,7 +13,7 @@ use bevy::prelude::*;
 use egui::emath::Numeric;
 use egui::{
     Align2, Button, Color32, FontId, Id, Margin, NumExt, Painter, Pos2, Rect, RectAlign, Sense,
-    Stroke, StrokeKind, Ui, Vec2, vec2,
+    Shape, Stroke, StrokeKind, Ui, Vec2, vec2,
 };
 use egui_i18n::tr;
 use itertools::Itertools;
@@ -905,14 +905,14 @@ fn main_display(
             painter.vline(current_pos.x, response.rect.y_range(), stroke);
             painter.text(
                 current_pos,
-                Align2::LEFT_BOTTOM,
+                Align2::RIGHT_BOTTOM,
                 world.get::<Name>(cand_stn).unwrap().as_str(),
                 FontId::default(),
                 ui.visuals().text_color(),
             );
             painter.text(
                 current_pos,
-                Align2::LEFT_TOP,
+                Align2::RIGHT_TOP,
                 cand_t.to_string(),
                 FontId::default(),
                 ui.visuals().text_color(),
@@ -923,6 +923,26 @@ fn main_display(
                 let t = previous_time.to_ticks();
                 let pos = tab.navi.xy_to_screen_pos(t, prev_h as f64);
                 painter.line_segment([pos, current_pos], stroke);
+                if pos.distance(current_pos) > 50.0 {
+                    let mut shape = ui.fonts_mut(|r| {
+                        Shape::text(
+                            r,
+                            pos.lerp(current_pos, 0.5),
+                            Align2::CENTER_BOTTOM,
+                            (cand_t - previous_time).to_string(),
+                            FontId::default(),
+                            ui.visuals().text_color(),
+                        )
+                    });
+                    if let Shape::Text(it) = &mut shape {
+                        *it = it.clone().with_angle_and_anchor(
+                            (current_pos.y - pos.y).atan2(current_pos.x - pos.x),
+                            Align2::CENTER_BOTTOM,
+                        );
+                    }
+                    painter.add(shape);
+                }
+                painter.circle_filled(pos, 3.0, Color32::RED);
             }
             // submit current station
             if response.clicked() {

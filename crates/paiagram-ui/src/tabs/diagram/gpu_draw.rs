@@ -1,3 +1,6 @@
+// TODO: this still doesn't quite work since trips that span across multiple days would get culled
+// in certain circumstances.
+
 use bevy::ecs::entity::EntityHashMap;
 use bevy::prelude::Entity;
 use bytemuck::{Pod, Zeroable};
