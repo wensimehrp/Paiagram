@@ -102,9 +102,12 @@ pub(crate) struct ExtendingRouteSelection {
     pub prev_station: Entity,
 }
 
+// Extending or creating a new trip
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub(crate) struct ExtendingTripSelection {
-    pub entry: Entity,
+    // The current focused trip
+    pub trip: Entity,
+    // previous position on the canvas
     pub previous_pos: Option<(TimetableTime, usize)>,
     pub last_time: Option<TimetableTime>,
     pub current_entry: Option<Entity>,

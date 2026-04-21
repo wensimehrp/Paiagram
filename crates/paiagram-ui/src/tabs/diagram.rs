@@ -8,23 +8,25 @@ use crate::{
     SelectedItem, SelectedItems, StationSelection, TripSelection,
 };
 use bevy::ecs::entity::EntityHashMap;
+use bevy::ecs::entity::MapEntities;
 use bevy::prelude::*;
 use egui::emath::Numeric;
 use egui::{
-    Button, Color32, Id, Margin, Painter, Pos2, Rect, RectAlign, Sense, Stroke, Ui, Vec2, vec2,
+    Align2, Button, Color32, FontId, Id, Margin, NumExt, Painter, Pos2, Rect, RectAlign, Sense,
+    Stroke, StrokeKind, Ui, Vec2, vec2,
 };
 use egui_i18n::tr;
-use instant::Instant;
 use itertools::Itertools;
-use bevy::ecs::entity::MapEntities;
 use paiagram_core::entry::{
-    AdjustEntryMode, EntryEstimate, EntryMode, EntryModeAdjustment, EntryQuery, TravelMode,
+    AdjustEntryMode, EntryBundle, EntryEstimate, EntryMode, EntryModeAdjustment, EntryQuery,
+    TravelMode,
 };
 use paiagram_core::export::ExportObject;
 use paiagram_core::route::Route;
 use paiagram_core::settings::{LevelOfDetailMode, ProjectSettings, UserPreferences};
 use paiagram_core::station::Station;
 use paiagram_core::trip::class::DisplayedStroke;
+use paiagram_core::trip::routing::AddEntryToTrip;
 use paiagram_core::trip::{TripBundle, TripClass, TripQuery};
 use paiagram_core::units::time::{Duration, Tick, TimetableTime};
 use paiagram_raptor::Journey;
@@ -88,8 +90,6 @@ pub struct DiagramTab {
     /// RAPTOR's results
     #[serde(skip, default)]
     raptor_params: RaptorParams,
-    #[serde(skip, default)]
-    times: (f32, f32, f32),
     /// GPU state for drawing the lines
     #[serde(skip, default)]
     gpu_state: Arc<egui::mutex::Mutex<gpu_draw::GpuTripRendererState>>,
@@ -144,7 +144,6 @@ impl DiagramTab {
             route_entity,
             use_global_timer: false,
             cached_trips: None,
-            times: (0.0, 0.0, 0.0),
             raptor_params: RaptorParams::default(),
             gpu_state: Arc::new(egui::mutex::Mutex::new(
                 gpu_draw::GpuTripRendererState::default(),
@@ -233,95 +232,6 @@ pub(crate) struct TripPoint {
     station_index: usize,
 }
 
-// fn render_points(
-//     (InRef(cache), InMut(buf), InRef(navi), InRef(station_heights)): (
-//         InRef<TripCache>,
-//         InMut<Vec<DrawnTrip>>,
-//         InRef<DiagramTabNavigation>,
-//         InRef<[(Entity, f32)]>,
-//     ),
-//     trip_class_q: Query<&TripClass>,
-//     stroke_q: Query<&DisplayedStroke>,
-//     settings: Res<ProjectSettings>,
-// ) {
-//     if buf.len() < cache.len() {
-//         buf.resize_with(cache.len(), DrawnTrip::empty);
-//     }
-//     let visible_ticks = navi.visible_x();
-//     let repeat_freq_ticks = Tick::from_timetable_time(TimetableTime(settings.repeat_frequency.0));
-//     for ((trip_entry, lines), buf) in cache.iter().zip(buf.iter_mut()) {
-//         let class = trip_class_q.get(*trip_entry).unwrap();
-//         let stroke = stroke_q.get(class.entity()).unwrap();
-//         buf.entity = *trip_entry;
-//         buf.stroke = *stroke;
-//         let mut drawn_count = 0;
-//         for line in lines.iter() {
-//             let mut line_min = i64::MAX;
-//             let mut line_max = i64::MIN;
-//             for TripPoint { arr, dep, .. } in line.iter() {
-//                 let arr_ticks = Tick::from_timetable_time(*arr).0;
-//                 let dep_ticks = Tick::from_timetable_time(*dep).0;
-//                 line_min = line_min.min(arr_ticks.min(dep_ticks));
-//                 line_max = line_max.max(arr_ticks.max(dep_ticks));
-//             }
-//             if line_min > line_max {
-//                 continue;
-//             }
-//
-//             let (repeat_start, repeat_end) = if repeat_freq_ticks.0 > 0 {
-//                 (
-//                     (visible_ticks.start.0 - line_max).div_euclid(repeat_freq_ticks.0),
-//                     (visible_ticks.end.0 - line_min).div_euclid(repeat_freq_ticks.0),
-//                 )
-//             } else {
-//                 (0, 0)
-//             };
-//
-//             for repeat in repeat_start..=repeat_end {
-//                 if drawn_count >= buf.points.len() {
-//                     buf.points.resize_with(drawn_count + 1, Vec::new);
-//                 }
-//                 if drawn_count >= buf.entries.len() {
-//                     buf.entries.resize_with(drawn_count + 1, Vec::new);
-//                 }
-//                 let pt_buf = &mut buf.points[drawn_count];
-//                 let et_buf = &mut buf.entries[drawn_count];
-//
-//                 pt_buf.clear();
-//                 et_buf.clear();
-//                 et_buf.reserve(line.len());
-//                 pt_buf.reserve(line.len());
-//
-//                 let repeat_offset = repeat * repeat_freq_ticks.0;
-//                 for TripPoint {
-//                     arr,
-//                     dep,
-//                     entry,
-//                     station_index,
-//                 } in line.iter()
-//                 {
-//                     let (_, height) = station_heights[*station_index];
-//                     let arr_tick = Tick::from_timetable_time(*arr);
-//                     let dep_tick = Tick::from_timetable_time(*dep);
-//                     let arr_pos =
-//                         navi.xy_to_screen_pos(Tick(arr_tick.0 + repeat_offset), height as f64);
-//                     let dep_pos =
-//                         navi.xy_to_screen_pos(Tick(dep_tick.0 + repeat_offset), height as f64);
-//                     et_buf.push(*entry);
-//                     pt_buf.push([arr_pos, arr_pos, dep_pos, dep_pos]);
-//                 }
-//
-//                 if !pt_buf.is_empty() {
-//                     drawn_count += 1;
-//                 }
-//             }
-//         }
-//         buf.draw_amount = drawn_count;
-//         buf.points.truncate(drawn_count);
-//         buf.entries.truncate(drawn_count);
-//     }
-// }
-
 impl Tab for DiagramTab {
     const NAME: &'static str = "Diagram";
     fn id(&self) -> Id {
@@ -356,9 +266,6 @@ impl Tab for DiagramTab {
         }
     }
     fn edit_display(&mut self, world: &mut World, ui: &mut Ui) {
-        ui.monospace(format!("trip calc:  {}", self.times.0));
-        ui.monospace(format!("screen pos: {}", self.times.1));
-        ui.monospace(format!("rendering:  {}", self.times.2));
         ui.checkbox(&mut self.use_global_timer, "Use global timer");
         let selected = world.resource::<SelectedItems>().clone();
         match selected {
@@ -379,7 +286,7 @@ impl Tab for DiagramTab {
                         .id();
                     *world.resource_mut::<SelectedItems>() =
                         SelectedItems::ExtendingTrip(ExtendingTripSelection {
-                            entry: new_trip,
+                            trip: new_trip,
                             previous_pos: None,
                             current_entry: None,
                             last_time: None,
@@ -387,12 +294,12 @@ impl Tab for DiagramTab {
                 }
             }
             SelectedItems::ExtendingTrip(ExtendingTripSelection {
-                entry,
+                trip,
                 previous_pos: _,
                 current_entry: _,
                 last_time: _,
             }) => {
-                let mut name = world.get_mut::<Name>(entry).unwrap();
+                let mut name = world.get_mut::<Name>(trip).unwrap();
                 name.mutate(|n| {
                     ui.text_edit_singleline(n);
                 });
@@ -400,11 +307,7 @@ impl Tab for DiagramTab {
                     *world.resource_mut::<SelectedItems>() = SelectedItems::None
                 }
             }
-            SelectedItems::Trips(_selected_trips) => {
-                // world
-                //     .run_system_cached_with(display_entry_info, (ui, selected_entries.as_slice()))
-                //     .unwrap();
-            }
+            SelectedItems::Trips(_selected_trips) => {}
             SelectedItems::Intervals(_) => {}
             SelectedItems::Stations(_) => {}
             SelectedItems::ExtendingRoute(_) => {}
@@ -556,17 +459,14 @@ fn main_display(
     draw_lines::draw_time_lines(&mut painter, &tab.navi);
 
     // Calculate the visible trains
-    let now = Instant::now();
     let cached_trips_are_changed = world
         .run_system_cached_with(
             prep_segments::calc,
             (tab.route_entity, &station_heights, &mut tab.cached_trips),
         )
         .unwrap();
-    tab.times.0 = tab.times.0 * 0.9 + now.elapsed().as_secs_f32() * 1000.0 * 0.1;
 
     // Prepare GPU drawing
-    let now = Instant::now();
     let mut state = tab.gpu_state.lock();
 
     // some locking...
@@ -608,24 +508,23 @@ fn main_display(
         }
     };
 
-    if let Some(cache) = tab.cached_trips.as_ref() {
-        let dark_mode = ui.visuals().dark_mode;
-        gpu_draw::upload_trip_strokes(
-            cache.iter().filter_map(|(trip_entity, _)| {
-                let class = world.get::<TripClass>(*trip_entity)?;
-                let class_entity = class.entity();
-                let displayed = world.get::<DisplayedStroke>(class_entity)?;
-                let stroke = displayed.egui_stroke(dark_mode);
-                let [r, g, b, _] = stroke.color.to_array();
-                Some((class_entity, stroke.width, [r, g, b]))
-            }),
-            &mut state,
-        );
-    }
+    let cached_trips = tab.cached_trips.as_ref().unwrap();
+
+    gpu_draw::upload_trip_strokes(
+        cached_trips.iter().filter_map(|(trip_entity, _)| {
+            let class = world.get::<TripClass>(*trip_entity)?;
+            let class_entity = class.entity();
+            let displayed = world.get::<DisplayedStroke>(class_entity)?;
+            let stroke = displayed.egui_stroke(ui.visuals().dark_mode);
+            let [r, g, b, _] = stroke.color.to_array();
+            Some((class_entity, stroke.width, [r, g, b]))
+        }),
+        &mut state,
+    );
 
     if cached_trips_are_changed {
         gpu_draw::rewrite_trip_cache(
-            tab.cached_trips.as_ref().unwrap(),
+            cached_trips,
             station_heights.iter().map(|(_, y)| *y),
             &world.query::<&TripClass>().query(world),
             &mut state,
@@ -647,12 +546,17 @@ fn main_display(
     let callback = gpu_draw::paint_callback(response.rect, tab.gpu_state.clone());
     painter.add(callback);
 
-    tab.times.2 = tab.times.2 * 0.9 + now.elapsed().as_secs_f32() * 1000.0 * 0.1;
-
     // check for selection
     let selection_strength = ui.ctx().animate_bool(
         ui.id().with("selection"),
-        !matches!(canvas_state, CanvasState::Idle),
+        match canvas_state {
+            CanvasState::Idle => false,
+            CanvasState::ExtendingTrip(_) => false,
+            CanvasState::SelectingTrips(trips) => {
+                trips.iter().any(|it| cached_trips.contains_key(&it.trip))
+            }
+            _ => true,
+        },
     );
 
     let s = (selection_strength * 0.5 * u8::MAX as f32) as u8;
@@ -672,16 +576,31 @@ fn main_display(
         .flatten();
     let repeat_interval_ticks = Tick::from_timetable_time(TimetableTime(repeat_frequency.0));
 
+    let get_closest_station = |selected_y: f32| -> (Entity, f32, usize) {
+        let idx = station_heights.partition_point(|(_, y)| *y < selected_y);
+        let (e, h) = if idx == 0 {
+            station_heights.first().copied().unwrap()
+        } else if idx >= station_heights.len() {
+            station_heights.last().copied().unwrap()
+        } else {
+            let (prev_e, prev_y) = station_heights[idx - 1];
+            let (curr_e, curr_y) = station_heights[idx];
+            if selected_y > (prev_y + curr_y) / 2.0 {
+                return (curr_e, curr_y, idx);
+            } else {
+                return (prev_e, prev_y, idx - 1);
+            }
+        };
+        (e, h, idx)
+    };
+
     match canvas_state {
         // The current canvas is idle.
         // When idle, the user should be able to select intervals, entries, and stations
-        // TODO: replace this with if let guard
-        CanvasState::Idle if interact_pos.is_some() => {
-            let pos = interact_pos.unwrap();
+        CanvasState::Idle if let Some(pos) = interact_pos => {
             // state transformation
-            let cache = tab.cached_trips.as_ref().unwrap();
             if let Some(selection) = select_trip(
-                cache,
+                cached_trips,
                 pos,
                 &station_heights,
                 &tab.navi,
@@ -701,33 +620,17 @@ fn main_display(
         CanvasState::IdleNoInterrupt if interact_pos.is_some() => {
             tab.last_secondary_click_position = None;
         }
-        CanvasState::Idle | CanvasState::IdleNoInterrupt if response.secondary_clicked() => {
-            let pos = ui.input(|it| it.pointer.interact_pos()).unwrap();
+        CanvasState::Idle | CanvasState::IdleNoInterrupt
+            if response.secondary_clicked()
+                && let Some(pos) = ui.input(|it| it.pointer.interact_pos()) =>
+        {
             tab.last_secondary_click_position = Some(tab.navi.screen_pos_to_xy(pos));
         }
         CanvasState::Idle | CanvasState::IdleNoInterrupt
-            if tab.last_secondary_click_position.is_some() =>
+            if let Some((x, y)) = tab.last_secondary_click_position =>
         {
-            let (x, y) = tab.last_secondary_click_position.unwrap();
             // Determine the closest station and get its entity and height
-            let (closest_station, station_y) = {
-                let selected_y = y as f32;
-                let idx = station_heights.partition_point(|(_, y)| *y < selected_y);
-                if idx == 0 {
-                    station_heights.first().copied()
-                } else if idx >= station_heights.len() {
-                    station_heights.last().copied()
-                } else {
-                    let (prev_e, prev_y) = station_heights[idx - 1];
-                    let (curr_e, curr_y) = station_heights[idx];
-                    if selected_y > (prev_y + curr_y) / 2.0 {
-                        Some((curr_e, curr_y))
-                    } else {
-                        Some((prev_e, prev_y))
-                    }
-                }
-            }
-            .unwrap();
+            let (closest_station, station_y, _) = get_closest_station(y as f32);
             let station_y = tab.navi.logical_y_to_screen_y(station_y as f64);
             let screen_pos = tab.navi.xy_to_screen_pos(x, y);
 
@@ -787,12 +690,10 @@ fn main_display(
         // entries, or quit the current state
         CanvasState::SelectingTrips(selection) => {
             // highlight all of the entries
-            let cache = tab.cached_trips.as_ref().unwrap();
             let visible_ticks = tab.navi.visible_x();
-            for (trip_entity, segments, entries) in selection
-                .iter()
-                .filter_map(|it| Some((it.trip, cache.get(&it.trip)?, it.entries.as_slice())))
-            {
+            for (trip_entity, segments, entries) in selection.iter().filter_map(|it| {
+                Some((it.trip, cached_trips.get(&it.trip)?, it.entries.as_slice()))
+            }) {
                 for (seg_idx, segment) in segments.iter().enumerate() {
                     let mut seg_min = i64::MAX;
                     let mut seg_max = i64::MIN;
@@ -918,7 +819,7 @@ fn main_display(
             if let Some(pos) = interact_pos {
                 match (
                     select_trip(
-                        cache,
+                        cached_trips,
                         pos,
                         &station_heights,
                         &tab.navi,
@@ -943,13 +844,90 @@ fn main_display(
         CanvasState::SelectingIntervals(_i) => {
             // highlight the intervals
         }
-        // Select more stations or quit the current state
-        CanvasState::SelectingStations(_i) => {
+        CanvasState::SelectingStations(stations) => {
             // highlight the stations
+            for station in stations {
+                for (_, height) in station_heights
+                    .iter()
+                    .copied()
+                    .filter(|(e, _)| *e == station.station)
+                {
+                    let y = tab.navi.logical_y_to_screen_y(height as f64);
+                    painter.rect(
+                        Rect::from_x_y_ranges(response.rect.x_range(), (y - 5.0)..=(y + 5.0)),
+                        0,
+                        Color32::RED.gamma_multiply(0.5),
+                        Stroke::new(1.0, Color32::RED),
+                        StrokeKind::Inside,
+                    );
+                }
+            }
+            // Select more stations or quit the current state
         }
-        // Extend the trip or quit the current state
-        CanvasState::ExtendingTrip(_i) => {
-            // TODO: restore that
+        CanvasState::ExtendingTrip(sel)
+            if response.contains_pointer()
+                && let Some(hover_pos) = ui.input(|r| r.pointer.hover_pos()) =>
+        {
+            let (cand_stn, cand_h, cand_idx) =
+                get_closest_station(tab.navi.screen_y_to_logical_y(hover_pos.y) as f32);
+            // smoothing
+            let dt = ui.input(|input| input.stable_dt).at_most(0.1);
+            let new_y = tab.navi.logical_y_to_screen_y(cand_h as f64);
+            let cand_t = tab
+                .navi
+                .screen_x_to_logical_x(hover_pos.x)
+                .to_timetable_time();
+            let curr_y = ui.data_mut(|r| {
+                let smoothed = r.get_temp_mut_or(ui.id().with("selection"), new_y);
+                let t = egui::emath::exponential_smooth_factor(0.9, 0.03, dt);
+                *smoothed = smoothed.lerp(new_y, t);
+                *smoothed
+            });
+            if (curr_y - new_y).abs() >= 0.05 {
+                ui.request_repaint();
+            }
+            // draw indicator and indication text
+            let mut current_pos = Pos2::new(hover_pos.x, curr_y);
+            let stroke = DisplayedStroke::default().egui_stroke(false);
+            stroke.round_center_to_pixel(ui.pixels_per_point(), &mut current_pos.x);
+            stroke.round_center_to_pixel(ui.pixels_per_point(), &mut current_pos.y);
+            painter.hline(response.rect.x_range(), current_pos.y, stroke);
+            painter.vline(current_pos.x, response.rect.y_range(), stroke);
+            painter.text(
+                current_pos,
+                Align2::LEFT_BOTTOM,
+                world.get::<Name>(cand_stn).unwrap().as_str(),
+                FontId::default(),
+                ui.visuals().text_color(),
+            );
+            painter.text(
+                current_pos,
+                Align2::LEFT_TOP,
+                cand_t.to_string(),
+                FontId::default(),
+                ui.visuals().text_color(),
+            );
+            if let Some((previous_time, previous_station_index)) = sel.previous_pos
+                && let Some((_, prev_h)) = station_heights.get(previous_station_index).copied()
+            {
+                let t = previous_time.to_ticks();
+                let pos = tab.navi.xy_to_screen_pos(t, prev_h as f64);
+                painter.line_segment([pos, current_pos], stroke);
+            }
+            // submit current station
+            if response.clicked() {
+                sel.previous_pos = Some((cand_t, cand_idx));
+                let entry = world
+                    .spawn(EntryBundle::new(None, TravelMode::At(cand_t), cand_stn))
+                    .id();
+                world.write_message(AddEntryToTrip {
+                    trip: sel.trip,
+                    entry,
+                });
+            }
+        }
+        CanvasState::ExtendingTrip(_) => {
+            // pointer is off-screen
         }
     }
 
@@ -973,88 +951,6 @@ fn main_display(
         time_indicator_stroke,
     );
 }
-
-// fn draw_trip_lines<'a>(
-//     (
-//         InRef(trips),
-//         InMut(ui),
-//         InMut(painter),
-//         // InRef(selected),
-//         InMut((indices, rects)),
-//         In(strength),
-//     ): (
-//         InRef<[DrawnTrip]>,
-//         InMut<Ui>,
-//         InMut<Painter>,
-//         // InRef<[EntrySelection]>,
-//         InMut<(Vec<usize>, Vec<Rect>)>,
-//         In<f32>,
-//     ),
-//     name_q: Query<&Name, With<Trip>>,
-// ) {
-//     indices.clear();
-//     rects.clear();
-//
-//     for (idx, trip) in trips.iter().enumerate() {
-//         // let selected_entries: Vec<Entity> = selected
-//         //     .iter()
-//         //     .filter(|EntrySelection { parent, .. }| *parent == trip.entity)
-//         //     .map(|EntrySelection { entry, .. }| *entry)
-//         //     .collect();
-//         let selected_entries: &[Entity] = &[];
-//
-//         if selected_entries.is_empty() {
-//             continue;
-//         }
-//
-//         indices.push(idx);
-//         rects.extend(
-//             trip.points
-//                 .iter()
-//                 .flatten()
-//                 .zip(trip.entries.iter().flatten())
-//                 .filter_map(|(p, e)| {
-//                     if selected_entries.iter().any(|it| it == e) {
-//                         Some(Rect::from_two_pos(p[1], p[2]).expand(8.0))
-//                     } else {
-//                         None
-//                     }
-//                 }),
-//         );
-//     }
-//     if strength < 0.1 {
-//         return;
-//     }
-//     for trip in trips.iter() {
-//         let draw_color = trip
-//             .stroke
-//             .color
-//             .get(ui.visuals().dark_mode)
-//             .gamma_multiply(strength);
-//         let name = name_q.get(trip.entity).unwrap().to_string();
-//         let galley = painter.layout_no_wrap(name, egui::FontId::proportional(13.0), draw_color);
-//         for ([.., curr], [next, ..]) in trip.points.iter().filter_map(|it| {
-//             if let (Some(a), Some(b)) = (it.get(0), it.get(1)) {
-//                 return Some((a, b));
-//             } else {
-//                 return None;
-//             }
-//         }) {
-//             let angle = (*next - *curr).angle();
-//             let text_shape = TextShape::new(
-//                 *curr
-//                     - Vec2 {
-//                         y: galley.rect.height(),
-//                         x: 0.0,
-//                     },
-//                 galley.clone(),
-//                 draw_color,
-//             )
-//             .with_angle_and_anchor(angle, Align2::LEFT_BOTTOM);
-//             painter.add(text_shape);
-//         }
-//     }
-// }
 
 fn select_trip(
     cache: &TripCache,
