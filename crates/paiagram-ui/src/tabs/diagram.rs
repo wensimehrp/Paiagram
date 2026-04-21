@@ -543,6 +543,16 @@ fn main_display(
             .clamp(i32::MIN as i64, i32::MAX as i64) as i32,
     };
 
+    let r = tab.navi.visible_x();
+    state.visible_secs_min = r
+        .start
+        .normalized_with(repeat_frequency.to_ticks())
+        .to_timetable_time();
+    state.visible_secs_max = r
+        .end
+        .normalized_with(repeat_frequency.to_ticks())
+        .to_timetable_time();
+
     let callback = gpu_draw::paint_callback(response.rect, tab.gpu_state.clone());
     painter.add(callback);
 

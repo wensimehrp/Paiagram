@@ -70,6 +70,7 @@ impl Into<f64> for Tick {
 pub struct TimetableTime(pub i32);
 
 impl TimetableTime {
+    pub const ZERO: Self = Self(0);
     #[inline]
     pub fn as_duration(self) -> Duration {
         Duration(self.0)
@@ -304,6 +305,12 @@ impl Duration {
         let minutes = (self.0 % 3600) / 60;
         let seconds = self.0 % 60;
         (hours, minutes, seconds)
+    }
+    pub fn to_timetable_time(self) -> TimetableTime {
+        TimetableTime(self.0)
+    }
+    pub fn to_ticks(self) -> Tick {
+        TimetableTime::to_ticks(self.to_timetable_time())
     }
 }
 

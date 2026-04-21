@@ -8,19 +8,22 @@ use egui::{Rect, mutex::Mutex};
 use egui_wgpu::CallbackTrait;
 use paiagram_core::settings::{AntialiasingMode, LevelOfDetailMode};
 use paiagram_core::trip::TripClass;
+use paiagram_core::units::time::TimetableTime;
 use std::collections::HashMap;
 use std::sync::Arc;
 use wgpu::BufferDescriptor;
 use wgpu::{BufferBindingType, BufferUsages, ShaderStages};
 
 pub(crate) struct GpuTripRendererState {
-    entries: Vec<(Box<[Entry]>, usize, i32)>,
+    entries: Vec<(Box<[Entry]>, usize, TimetableTime)>,
     styles: Vec<u32>,
     class_style_index: EntityHashMap<u16>,
     data_tick_min: i32,
     data_tick_max: i32,
     entries_dirty: bool,
     stations_dirty: bool,
+    pub visible_secs_min: TimetableTime,
+    pub visible_secs_max: TimetableTime,
     pub stations: Vec<f32>,
     pub uniforms: Uniforms,
     pub target_format: Option<wgpu::TextureFormat>,
@@ -59,12 +62,12 @@ impl Entry {
         (value as u32) & 0x00ff_ffff
     }
 
-    fn arr_secs(&self) -> i32 {
-        Self::signed_24(self.field0 & 0x00ff_ffff)
+    fn arr_secs(&self) -> TimetableTime {
+        TimetableTime(Self::signed_24(self.field0 & 0x00ff_ffff))
     }
 
-    fn dep_secs(&self) -> i32 {
-        Self::signed_24(self.field1 & 0x00ff_ffff)
+    fn dep_secs(&self) -> TimetableTime {
+        TimetableTime(Self::signed_24(self.field1 & 0x00ff_ffff))
     }
 
     const fn new(
@@ -120,7 +123,7 @@ struct GpuUniforms {
     visible_entry_min_index: u32,
     feathering_radius: f32,
     lod_stride: u32,
-    visible_entry_max_index: u32,
+    visible_entry_count: u32,
     styles: [[u32; 4]; STYLE_TABLE_CAPACITY],
 }
 
@@ -140,7 +143,7 @@ impl Default for GpuUniforms {
             visible_entry_min_index: 0,
             feathering_radius: 0.0,
             lod_stride: 1,
-            visible_entry_max_index: 0,
+            visible_entry_count: 0,
             styles: [[0, 0, 0, 0]; STYLE_TABLE_CAPACITY],
         }
     }
@@ -185,6 +188,8 @@ impl Default for GpuTripRendererState {
             class_style_index: EntityHashMap::new(),
             data_tick_min: 0,
             data_tick_max: 0,
+            visible_secs_min: TimetableTime::ZERO,
+            visible_secs_max: TimetableTime::ZERO,
             entries_dirty: true,
             stations_dirty: true,
             stations: Vec::new(),
@@ -285,16 +290,16 @@ pub fn rewrite_trip_cache(
                 false,
             );
             // |    |    |    |
-            // 0000 0000 TTTT T... 0 (5)
+            // 0000 0000 T... 0000 0 (1)
             // 0000 0000 0TTT T... 1 (4)
             // 0000 0000 00TT T... 2 (3)
             // 0000 0000 000T T... 3 (2)
-            let padding_count = 4 - segment_entries.len() % 4 + 1;
+            let padding_count = 4 - (segment_entries.len() + 3) % 4;
             segment_entries.extend(std::iter::repeat(last_entry).take(padding_count));
             segment_entries.extend(std::iter::repeat(Entry::INVALID).take(3));
             state
                 .entries
-                .push((segment_entries.into_boxed_slice(), 0, 0));
+                .push((segment_entries.into_boxed_slice(), 0, TimetableTime::ZERO));
         }
     }
 
@@ -302,13 +307,15 @@ pub fn rewrite_trip_cache(
     state
         .entries
         .sort_unstable_by_key(|it| it.0.first().unwrap().arr_secs());
-    // calculate the prefix sums
+    // calculate the prefix sums and the maximums
     let mut sum: usize = 0;
-    let mut max: i32 = 0;
+    let mut max = TimetableTime::ZERO;
     for (entries, curr_sum, curr_max) in state.entries.iter_mut() {
         sum += entries.len();
         *curr_sum = sum;
-        max = std::cmp::max(entries.last().unwrap().dep_secs(), max);
+        // Ignore the trailing INVALID sentinels
+        let dep_max = entries[entries.len() - 4].dep_secs();
+        max = std::cmp::max(dep_max, max);
         *curr_max = max;
     }
 }
@@ -654,8 +661,8 @@ impl CallbackTrait for TripCallback {
             let mut data_tick_min = i32::MAX;
             let mut data_tick_max = i32::MIN;
             for entry in state.entries.iter().flat_map(|(it, _, _)| it) {
-                let arr_ticks = entry.arr_secs().saturating_mul(100);
-                let dep_ticks = entry.dep_secs().saturating_mul(100);
+                let arr_ticks = entry.arr_secs().0.saturating_mul(100);
+                let dep_ticks = entry.dep_secs().0.saturating_mul(100);
                 data_tick_min = data_tick_min.min(arr_ticks.min(dep_ticks));
                 data_tick_max = data_tick_max.max(arr_ticks.max(dep_ticks));
             }
@@ -668,11 +675,55 @@ impl CallbackTrait for TripCallback {
         }
         let data_tick_min = state.data_tick_min;
         let data_tick_max = state.data_tick_max;
+
         let total_entry_count = state
             .entries
             .last()
             .map(|(_, count, _)| *count)
             .unwrap_or(0);
+        let visible_window_wraps = state.visible_secs_min >= state.visible_secs_max;
+
+        // Find the visible source-entry window [min, max) over the flattened entry array.
+        // `curr_max` is a prefix max departure time; `arr_secs` is segment start time.
+        let mut visible_entry_min_index = if state.entries.is_empty() {
+            0
+        } else {
+            let idx = state
+                .entries
+                .partition_point(|(_, _, max_secs)| *max_secs < state.visible_secs_min);
+            if idx == 0 {
+                0
+            } else {
+                state.entries[idx - 1].1
+            }
+        };
+        let visible_entry_max_index = if state.entries.is_empty() {
+            0
+        } else {
+            let idx = state.entries.partition_point(|(segment, _, _)| {
+                segment
+                    .first()
+                    .map(|entry| entry.arr_secs() <= state.visible_secs_max)
+                    .unwrap_or(false)
+            });
+            if idx == 0 {
+                0
+            } else {
+                state.entries[idx - 1].1
+            }
+        }
+        .min(total_entry_count);
+
+        let mut in_viewport_entry_count = if total_entry_count == 0 {
+            0
+        } else if visible_window_wraps {
+            total_entry_count
+                .saturating_sub(visible_entry_min_index)
+                .saturating_add(visible_entry_max_index)
+                .min(total_entry_count)
+        } else {
+            visible_entry_max_index.saturating_sub(visible_entry_min_index)
+        };
 
         // Entries
         if total_entry_count > 0 {
@@ -741,6 +792,16 @@ impl CallbackTrait for TripCallback {
             .ticks_min
             .saturating_add((uniforms.screen_size[0] * uniforms.x_per_unit) as i32);
         let repeat_interval = state.uniforms.repeat_interval_ticks.max(0);
+
+        // If one viewport already spans at least one full repeat period, culling would only
+        // remove segments that are still visible after wrapping. Render everything instead.
+        if repeat_interval > 0
+            && visible_ticks_max.saturating_sub(visible_ticks_min) >= repeat_interval
+        {
+            visible_entry_min_index = 0;
+            in_viewport_entry_count = total_entry_count;
+        }
+
         let lod_stride = state.level_of_detail_mode.as_u8() as usize;
         let repeat_from = if repeat_interval > 0 {
             (visible_ticks_min - data_tick_max).div_euclid(repeat_interval)
@@ -754,7 +815,7 @@ impl CallbackTrait for TripCallback {
             1usize
         };
 
-        let logical_entry_count = total_entry_count / lod_stride;
+        let logical_entry_count = in_viewport_entry_count.div_ceil(lod_stride);
         let rendered_segment_count = logical_entry_count.saturating_mul(2);
         let total_instances = rendered_segment_count.saturating_mul(repeat_count);
 
@@ -782,8 +843,8 @@ impl CallbackTrait for TripCallback {
             repeat_count: repeat_count.min(u32::MAX as usize) as u32,
             lod_stride: lod_stride as u32,
             source_instance_count: total_entry_count.min(u32::MAX as usize) as u32,
-            visible_entry_min_index: 0,
-            visible_entry_max_index: 0,
+            visible_entry_min_index: visible_entry_min_index.min(u32::MAX as usize) as u32,
+            visible_entry_count: in_viewport_entry_count.min(u32::MAX as usize) as u32,
             feathering_radius: match state.antialiasing_mode {
                 AntialiasingMode::On => 1.2 / screen_descriptor.pixels_per_point,
                 AntialiasingMode::Off => 0.0,

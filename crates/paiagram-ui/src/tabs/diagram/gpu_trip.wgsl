@@ -12,7 +12,7 @@ struct Uniforms {
     visible_entry_min_index: u32,
     feathering_radius: f32,
     lod_stride: u32,
-    visible_entry_max_index: u32,
+    visible_entry_count: u32,
     styles: array<vec4<u32>, 256>,
 };
 
@@ -154,19 +154,22 @@ fn invalid_segment() -> SegmentOut {
     );
 }
 
-
 @compute @workgroup_size(COMPUTE_WORKGROUP_SIZE)
 fn cs_main(@builtin(global_invocation_id) global_id: vec3<u32>) {
-    let entry_index = global_id.x * uniforms.lod_stride;
     let source_count = uniforms.source_instance_count;
-    let pair_index = global_id.x * 2u;
-    if entry_index >= source_count {
+    let visible_offset = global_id.x * uniforms.lod_stride;
+    if source_count == 0u || visible_offset >= uniforms.visible_entry_count {
         return;
     }
 
+    let entry_index = (uniforms.visible_entry_min_index + visible_offset) % source_count;
+    let pair_index = global_id.x * 2u;
+
     let entry = entries[entry_index];
     let connects_to_next = entry_connects_to_next_entry(entry);
-    let can_connect = connects_to_next && (entry_index + uniforms.lod_stride < source_count);
+    let has_visible_next = visible_offset + uniforms.lod_stride < uniforms.visible_entry_count;
+    let can_connect =
+        connects_to_next && has_visible_next && (entry_index + uniforms.lod_stride < source_count);
 
     let arr_secs = entry_arrival_seconds(entry);
     let dep_secs = entry_departure_seconds(entry);
@@ -200,8 +203,9 @@ struct VertexOut {
 
 @vertex
 fn vs_main(@builtin(vertex_index) vertex_index: u32, @builtin(instance_index) instance_index: u32) -> VertexOut {
-    let source_count = uniforms.source_instance_count;
-    let base_segment_count = source_count * 2u / uniforms.lod_stride;
+    let visible_entry_count = uniforms.visible_entry_count;
+    let logical_entry_count = (visible_entry_count + uniforms.lod_stride - 1u) / uniforms.lod_stride;
+    let base_segment_count = max(logical_entry_count * 2u, 1u);
     let repeat_index = instance_index / base_segment_count;
     let segment_index = instance_index % base_segment_count;
     let repeat = uniforms.repeat_from + i32(repeat_index);
