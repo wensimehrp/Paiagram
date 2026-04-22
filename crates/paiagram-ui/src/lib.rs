@@ -29,7 +29,6 @@ use paiagram_core::{
     settings::UserPreferences,
     trip::Trip,
     units::time::TimetableTime,
-    vehicle::Vehicle,
 };
 use paiagram_rw::read::CallbackFn;
 use serde::{Deserialize, Serialize};
@@ -44,6 +43,7 @@ use wasm_bindgen::JsCast;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
+use crate::tabs::text::TextMessage;
 use crate::widgets::TimeDragValue;
 pub struct UiPlugin;
 impl Plugin for UiPlugin {
@@ -424,6 +424,7 @@ macro_rules! for_all_tabs {
             MainTab::Trip($t) => $body,
             MainTab::RouteTimetable($t) => $body,
             MainTab::PriorityGraph($t) => $body,
+            MainTab::Text($t) => $body,
             MainTab::Station($t) => $body,
         }
     };
@@ -441,13 +442,14 @@ macro_rules! for_all_tab_types {
             MainTab::Trip(_) => TripTab::$body,
             MainTab::RouteTimetable(_) => RouteTimetableTab::$body,
             MainTab::PriorityGraph(_) => PriorityGraphTab::$body,
+            MainTab::Text(_) => TextTab::$body,
             MainTab::Station(_) => StationTab::$body,
         }
     };
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq)]
-pub enum MainTab {
+pub(crate) enum MainTab {
     Start(StartTab),
     Diagram(DiagramTab),
     Settings(SettingsTab),
@@ -457,6 +459,7 @@ pub enum MainTab {
     Trip(TripTab),
     RouteTimetable(RouteTimetableTab),
     PriorityGraph(PriorityGraphTab),
+    Text(TextTab),
     Station(StationTab),
 }
 
@@ -468,7 +471,7 @@ impl MapEntities for MainTab {
 
 #[derive(Reflect, Resource, Serialize, Deserialize, Clone, Deref, DerefMut)]
 #[reflect(opaque, Resource, Serialize, Deserialize, MapEntities)]
-pub struct MainUiState {
+pub(crate) struct MainUiState {
     #[deref]
     tree: Tree<MainTab>,
     maximized: Option<TileId>,
@@ -627,19 +630,24 @@ impl<'w> MainTabViewer<'w> {
                 }
             });
         });
-        ui.menu_button("Vehicles", |ui| {
-            if ui.button("New Vehicle").clicked() {}
+        ui.menu_button("Text", |ui| {
+            if ui.button("New Text Message").clicked() {
+                self.world
+                    .spawn((TextMessage(String::new()), Name::new("New Message")));
+            }
             ui.separator();
-            ScrollArea::vertical().show(ui, |ui| {
-                if let Some(_e) = self
-                    .world
-                    .run_system_cached_with(show_name_button::<Vehicle>, ui)
-                    .unwrap()
-                {
-                    // self.world
-                    //     .write_message(OpenTab(MainTab::Diagram(DiagramTab::new(e))));
-                }
-            });
+            if ui.button("Project remarks").clicked() {
+                self.world
+                    .write_message(OpenOrFocus(MainTab::Text(TextTab { entity: None })));
+            }
+            if let Some(e) = self
+                .world
+                .run_system_cached_with(show_name_button::<TextMessage>, ui)
+                .unwrap()
+            {
+                self.world
+                    .write_message(OpenOrFocus(MainTab::Text(TextTab { entity: Some(e) })));
+            }
         });
     }
 }

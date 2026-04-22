@@ -5,28 +5,30 @@ use egui::{Id, Key, NumExt, Response, Ui, Vec2, WidgetText, vec2};
 use egui_i18n::tr;
 use std::borrow::Cow;
 
-pub mod classes;
-pub mod diagram;
-pub mod graph;
-pub mod inspector;
-pub mod priority_graph;
-pub mod route_timetable;
-pub mod settings;
-pub mod start;
-pub mod station;
-pub mod trip;
+pub(crate) mod classes;
+pub(crate) mod diagram;
+pub(crate) mod graph;
+pub(crate) mod inspector;
+pub(crate) mod priority_graph;
+pub(crate) mod route_timetable;
+pub(crate) mod settings;
+pub(crate) mod start;
+pub(crate) mod station;
+pub(crate) mod text;
+pub(crate) mod trip;
 
 pub mod all_tabs {
-    pub use super::classes::ClassesTab;
-    pub use super::diagram::DiagramTab;
-    pub use super::graph::GraphTab;
-    pub use super::inspector::InspectorTab;
-    pub use super::priority_graph::PriorityGraphTab;
-    pub use super::route_timetable::RouteTimetableTab;
-    pub use super::settings::SettingsTab;
-    pub use super::start::StartTab;
-    pub use super::station::StationTab;
-    pub use super::trip::TripTab;
+    pub(crate) use super::classes::ClassesTab;
+    pub(crate) use super::diagram::DiagramTab;
+    pub(crate) use super::graph::GraphTab;
+    pub(crate) use super::inspector::InspectorTab;
+    pub(crate) use super::priority_graph::PriorityGraphTab;
+    pub(crate) use super::route_timetable::RouteTimetableTab;
+    pub(crate) use super::settings::SettingsTab;
+    pub(crate) use super::start::StartTab;
+    pub(crate) use super::station::StationTab;
+    pub(crate) use super::text::TextTab;
+    pub(crate) use super::trip::TripTab;
 }
 
 fn handle_keyboard_navigation(ui: &Ui) -> Vec2 {
