@@ -638,7 +638,7 @@ impl<'w> MainTabViewer<'w> {
             ui.separator();
             if ui.button("Project remarks").clicked() {
                 self.world
-                    .write_message(OpenOrFocus(MainTab::Text(TextTab { entity: None })));
+                    .write_message(OpenOrFocus(MainTab::Text(TextTab::new(None))));
             }
             if let Some(e) = self
                 .world
@@ -646,7 +646,7 @@ impl<'w> MainTabViewer<'w> {
                 .unwrap()
             {
                 self.world
-                    .write_message(OpenOrFocus(MainTab::Text(TextTab { entity: Some(e) })));
+                    .write_message(OpenOrFocus(MainTab::Text(TextTab::new(Some(e)))));
             }
         });
     }
