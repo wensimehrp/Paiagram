@@ -5305,7 +5305,7 @@ dependencies = [
 
 [[package]]
 name = "paiagram"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "bevy",
  "clap",
@@ -5322,7 +5322,7 @@ dependencies = [
 
 [[package]]
 name = "paiagram-core"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "bevy",
  "bevy_reflect",
@@ -5386,14 +5386,14 @@ dependencies = [
 
 [[package]]
 name = "paiagram-pdf"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "krilla",
 ]
 
 [[package]]
 name = "paiagram-raptor"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "bevy",
  "paiagram-core",
@@ -5402,7 +5402,7 @@ dependencies = [
 
 [[package]]
 name = "paiagram-rw"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "bevy",
  "cbor4ii",
@@ -5423,7 +5423,7 @@ dependencies = [
 
 [[package]]
 name = "paiagram-ui"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "bevy",
  "bytemuck",
