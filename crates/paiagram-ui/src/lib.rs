@@ -13,8 +13,8 @@ use bevy::ecs::reflect::ReflectMapEntities;
 use bevy::prelude::*;
 use chrono::{Local, Timelike};
 use egui::{
-    Color32, Context, Frame, Hyperlink, Key, KeyboardShortcut, Layout, Modifiers, OpenUrl, Panel,
-    Response, RichText, ScrollArea, Stroke, Ui,
+    Color32, Context, Frame, Key, KeyboardShortcut, Modifiers, OpenUrl, Panel, Response, RichText,
+    ScrollArea, Sense, Stroke, Ui,
 };
 use egui_i18n::tr;
 use egui_tiles::{
@@ -22,6 +22,7 @@ use egui_tiles::{
 };
 use paiagram_core::colors::{DisplayedColor, PredefinedColor};
 use paiagram_core::import::LoadLlt;
+use paiagram_core::settings::ProjectSettings;
 use paiagram_core::units::time::Tick;
 use paiagram_core::{
     import::{DownloadFile, LoadGTFS, LoadOuDia, LoadQETRC},
@@ -746,7 +747,7 @@ impl<'w> Behavior<MainTab> for MainTabViewer<'w> {
             base.gamma_multiply(if state.active { 1.0 } else { 0.7 }),
         )
     }
-    fn tab_bar_hline_stroke(&self, visuals: &egui::Visuals) -> Stroke {
+    fn tab_bar_hline_stroke(&self, _visuals: &egui::Visuals) -> Stroke {
         Stroke::new(1.0, Color32::TRANSPARENT)
     }
 }
@@ -1042,6 +1043,10 @@ pub fn show_ui(ui: &mut Ui, world: &mut World, cpu_time: Option<f32>) {
         .exact_size(24.0)
         .show_inside(ui, |ui| {
             ui.horizontal_centered(|ui| {
+                let ticks_in_cycle = world
+                    .resource::<ProjectSettings>()
+                    .repeat_frequency
+                    .to_ticks();
                 let mut timer = world.resource_mut::<GlobalTimer>();
                 let mut time = timer.read_ticks().to_timetable_time();
                 ui.add_enabled(
@@ -1069,9 +1074,33 @@ pub fn show_ui(ui: &mut Ui, world: &mut World, cpu_time: Option<f32>) {
                 if timer.animation_playing {
                     ui.ctx().request_repaint();
                 }
-                ui.with_layout(Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.add(Hyperlink::new("https://paiagram.com"))
-                });
+
+                // cycle progress bar
+                // don't allocate a painter here instead directly use ui's painter
+                // to avoid the content from being clipped
+                let (_id, rect) = ui.allocate_space(ui.available_size());
+                let progress_stroke = ui.visuals().window_stroke();
+                ui.painter()
+                    .hline(rect.x_range(), rect.center().y, progress_stroke);
+                let amount_of_ticks = 24;
+                for i in 0..(amount_of_ticks + 1) {
+                    let progress = (1.0 / amount_of_ticks as f32) * i as f32;
+                    let x = rect.left().lerp(rect.right(), progress);
+                    let y_range = if i % 4 == 0 {
+                        rect.y_range()
+                    } else {
+                        rect.y_range().shrink(5.0)
+                    };
+                    ui.painter().vline(x, y_range, progress_stroke);
+                }
+                let indicator_stroke = Stroke::new(1.5, Color32::RED);
+                let progress = timer.read_ticks().normalized_with(ticks_in_cycle);
+                let progress = progress.0 as f32 / ticks_in_cycle.0 as f32;
+                ui.painter().vline(
+                    rect.left().lerp(rect.right(), progress),
+                    rect.y_range(),
+                    indicator_stroke,
+                );
             })
         });
     world.resource_scope(|world, mut aus: Mut<AdditionalUiState>| {
