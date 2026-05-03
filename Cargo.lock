@@ -5439,6 +5439,7 @@ dependencies = [
  "ib-matcher",
  "instant",
  "itertools",
+ "itoa",
  "js-sys",
  "paiagram-core",
  "paiagram-raptor",

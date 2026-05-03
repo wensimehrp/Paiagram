@@ -56,6 +56,12 @@ pub struct Class {
     trips: Vec<Entity>,
 }
 
+impl Class {
+    pub fn as_trips(&self) -> &[Entity] {
+        self.trips.as_slice()
+    }
+}
+
 #[derive(Bundle)]
 pub struct ClassBundle {
     pub class: Class,

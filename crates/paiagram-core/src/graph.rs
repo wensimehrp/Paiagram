@@ -460,7 +460,7 @@ fn apply_graph_interval_spatial_index_task(
 /// The position of the node.
 ///
 /// This stores longitude and latitude values only.
-#[derive(Reflect, Clone, Copy, Debug)]
+#[derive(Reflect, Clone, Copy, Debug, PartialEq)]
 pub struct NodeCoor {
     pub lon: f64,
     pub lat: f64,

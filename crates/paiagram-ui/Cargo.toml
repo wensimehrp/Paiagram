@@ -39,6 +39,7 @@ vec1.workspace = true
 itertools.workspace = true
 smallvec.workspace = true
 eros.workspace = true
+itoa.workspace = true
 egui_commonmark = "0.23.0"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
