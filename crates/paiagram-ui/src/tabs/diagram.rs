@@ -41,7 +41,7 @@ pub mod prep_segments;
 impl SelectedItems {
     fn to_canvas_state(&mut self) -> CanvasState<'_> {
         match self {
-            Self::None => CanvasState::Idle,
+            Self::None | SelectedItems::Coordinate { .. } => CanvasState::Idle,
             Self::Trips(i) => CanvasState::SelectingTrips(i),
             Self::Intervals(i) => CanvasState::SelectingIntervals(i),
             Self::Stations(i) => CanvasState::SelectingStations(i),
@@ -269,7 +269,7 @@ impl Tab for DiagramTab {
         ui.checkbox(&mut self.use_global_timer, "Use global timer");
         let selected = world.resource::<SelectedItems>().clone();
         match selected {
-            SelectedItems::None => {
+            SelectedItems::None | SelectedItems::Coordinate { .. } => {
                 ui.strong("New Trip");
                 ui.label("Create a new trip from scratch");
                 if ui.button("Create a new trip").clicked() {

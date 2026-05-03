@@ -21,6 +21,7 @@ use egui_tiles::{
     Behavior, ContainerKind, SimplificationOptions, Tile, TileId, Tiles, Tree, UiResponse,
 };
 use paiagram_core::colors::{DisplayedColor, PredefinedColor};
+use paiagram_core::graph::NodeCoor;
 use paiagram_core::import::LoadLlt;
 use paiagram_core::settings::ProjectSettings;
 use paiagram_core::units::time::Tick;
@@ -114,6 +115,12 @@ pub(crate) struct ExtendingTripSelection {
     pub current_entry: Option<Entity>,
 }
 
+#[derive(Clone, PartialEq, Debug)]
+pub(crate) struct CoordinateSelection {
+    pub coor: NodeCoor,
+    pub name_candidate: String,
+}
+
 #[derive(Resource, Clone, PartialEq, Debug)]
 #[non_exhaustive]
 pub(crate) enum SelectedItems {
@@ -123,6 +130,7 @@ pub(crate) enum SelectedItems {
     Stations(Vec1<StationSelection>),
     ExtendingRoute(ExtendingRouteSelection),
     ExtendingTrip(ExtendingTripSelection),
+    Coordinate(CoordinateSelection),
 }
 
 #[derive(Message, Clone)]
@@ -226,6 +234,7 @@ impl SelectedItems {
             SelectedItem::Trip(it) => *self = Self::Trips(vec1![it]),
             SelectedItem::Interval(it) => *self = Self::Intervals(vec1![it]),
             SelectedItem::Station(it) => *self = Self::Stations(vec1![it]),
+            SelectedItem::Coordinate(coor) => *self = Self::Coordinate(coor),
         }
     }
 }
@@ -237,6 +246,7 @@ pub(crate) enum SelectedItem {
     Trip(TripSelection),
     Interval(IntervalSelection),
     Station(StationSelection),
+    Coordinate(CoordinateSelection),
 }
 
 impl Default for SelectedItems {
