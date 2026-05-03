@@ -151,7 +151,7 @@ impl CommandPalette {
                 (InspectorTab::NAME, || {
                     MainTab::Inspector(InspectorTab::default())
                 }),
-                (ClassesTab::NAME, || MainTab::Classes(ClassesTab)),
+                (ClassesTab::NAME, || MainTab::Classes(ClassesTab::default())),
             ];
             for (name, fn_ptr) in PANEL_INFO.iter().copied() {
                 match_string.clear();

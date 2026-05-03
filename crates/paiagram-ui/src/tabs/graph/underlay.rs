@@ -242,6 +242,7 @@ pub fn draw_underlay(
 
     while let Some(tile_id) = stack.pop() {
         if !visited.insert(tile_id) {
+            // already contains tile_id
             continue;
         }
 
@@ -252,6 +253,7 @@ pub fn draw_underlay(
             map_center_projected.y(),
             clip,
         );
+
         if !clip.intersects(tile_rect) {
             continue;
         }
