@@ -1,12 +1,11 @@
 use core::f32;
 
+use bevy::ecs::entity::MapEntities;
 use bevy::{ecs::entity::EntityHashMap, prelude::*};
 use egui::{
-    Align2, Margin, Painter, Pos2, Rect, Response, Sense, Stroke, Ui, Vec2, Visuals,
-    epaint::TextShape, pos2,
+    Align2, Margin, Painter, Pos2, Rect, Sense, Stroke, Vec2, Visuals, epaint::TextShape, pos2,
 };
 use either::Either;
-use bevy::ecs::entity::MapEntities;
 use serde::{Deserialize, Serialize};
 
 use crate::tabs::Navigatable;

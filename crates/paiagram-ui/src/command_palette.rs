@@ -41,7 +41,7 @@ enum MatchedType {
 
 impl CommandPalette {
     pub fn toggle(&mut self) {
-        self.visible = !self.visible;
+        self.visible ^= true;
     }
     pub fn show(&mut self, ctx: &Context, world: &mut World) {
         self.visible &= !ctx.input_mut(|i| i.key_pressed(Key::Escape));
@@ -148,9 +148,6 @@ impl CommandPalette {
             const PANEL_INFO: &[(&str, fn() -> MainTab)] = &[
                 (StartTab::NAME, || MainTab::Start(StartTab::default())),
                 (SettingsTab::NAME, || MainTab::Settings(SettingsTab)),
-                (InspectorTab::NAME, || {
-                    MainTab::Inspector(InspectorTab::default())
-                }),
                 (ClassesTab::NAME, || MainTab::Classes(ClassesTab::default())),
             ];
             for (name, fn_ptr) in PANEL_INFO.iter().copied() {

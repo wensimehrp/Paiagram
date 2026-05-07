@@ -14,7 +14,7 @@ use bevy::prelude::*;
 use chrono::{Local, Timelike};
 use egui::{
     Color32, Context, Frame, Key, KeyboardShortcut, Modifiers, OpenUrl, Panel, Response, RichText,
-    ScrollArea, Sense, Stroke, Ui,
+    ScrollArea, Stroke, Ui,
 };
 use egui_i18n::tr;
 use egui_tiles::{
@@ -431,7 +431,6 @@ macro_rules! for_all_tabs {
             MainTab::Settings($t) => $body,
             MainTab::Classes($t) => $body,
             MainTab::Graph($t) => $body,
-            MainTab::Inspector($t) => $body,
             MainTab::Trip($t) => $body,
             MainTab::RouteTimetable($t) => $body,
             MainTab::PriorityGraph($t) => $body,
@@ -449,7 +448,6 @@ macro_rules! for_all_tab_types {
             MainTab::Settings(_) => SettingsTab::$body,
             MainTab::Classes(_) => ClassesTab::$body,
             MainTab::Graph(_) => GraphTab::$body,
-            MainTab::Inspector(_) => InspectorTab::$body,
             MainTab::Trip(_) => TripTab::$body,
             MainTab::RouteTimetable(_) => RouteTimetableTab::$body,
             MainTab::PriorityGraph(_) => PriorityGraphTab::$body,
@@ -466,7 +464,6 @@ pub(crate) enum MainTab {
     Settings(SettingsTab),
     Classes(ClassesTab),
     Graph(GraphTab),
-    Inspector(InspectorTab),
     Trip(TripTab),
     RouteTimetable(RouteTimetableTab),
     PriorityGraph(PriorityGraphTab),
@@ -572,7 +569,6 @@ impl<'w> MainTabViewer<'w> {
     fn add_popup(&mut self, ui: &mut Ui) {
         for (s, t) in [
             ("Start", MainTab::Start(StartTab::default())),
-            ("Inspector", MainTab::Inspector(InspectorTab::default())),
             ("Settings", MainTab::Settings(SettingsTab::default())),
             ("Classes", MainTab::Classes(ClassesTab::default())),
             ("Graph", MainTab::Graph(GraphTab::default())),
