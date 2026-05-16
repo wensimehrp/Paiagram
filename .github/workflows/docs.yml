@@ -28,7 +28,7 @@ jobs:
       - uses: DeterminateSystems/magic-nix-cache-action@v13
 
       - name: Compile docs
-        run: nix develop ./docs/template#default --command ./docs/book.typ
+        run: nix develop ./docs/template#default --command ./docs/book.typ ./dist --root .
 
       - name: Deploy
         uses: peaceiris/actions-gh-pages@v4
@@ -38,5 +38,5 @@ jobs:
           user_name: github-actions[bot]
           user_email: 41898282+github-actions[bot]@users.noreply.github.com
           publish_branch: main
-          publish_dir: ./docs/book/docs
+          publish_dir: ./dist/docs
           destination_dir: docs

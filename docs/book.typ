@@ -1,12 +1,13 @@
 #!/usr/bin/env -S typst compile --features bundle,html --format bundle
 
 #import "template/lib.typ"
+#import "./links.typ": links
 
 // temporary workaround so I don't need to write so many include statements
 #let chapter-path(path) = lib.chapter(path, content: include path + ".typ")
 
 #lib.book(
-  title: "Paiagram's Documentation",
+  title: "Paiagram " + links.paiagram-version + " Documentation",
   description: "Paiagram user documentation",
   canonical-url: "https://paiagram.com",
   root: "docs/",

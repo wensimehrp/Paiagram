@@ -12,4 +12,5 @@
   sono-sujiya: "https://www.sinjidai.com/sujiya/",
   qq: "865211882",
   home: "https://paiagram.com",
+  paiagram-version: toml("../Cargo.toml").workspace.package.version,
 )
