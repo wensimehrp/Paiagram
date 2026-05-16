@@ -27,7 +27,6 @@ bevy = { version = "0.18.0", default-features = false, features = [
     "bevy_scene",
     "serialize",
     "reflect_auto_register",
-    "http",
 ] }
 bytemuck = { version = "1.23.2", features = ["extern_crate_alloc"] }
 chrono = "0.4.44"
