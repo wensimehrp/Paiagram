@@ -19,18 +19,12 @@ paiagram-rw = { path = "../paiagram-rw" }
 egui_tiles = "0.15.0"
 bevy.workspace = true
 serde.workspace = true
-serde_json.workspace = true
 egui.workspace = true
 eframe.workspace = true
 # TODO: investigate why 0.2.0 causes a bug
 egui-i18n.workspace = true
 egui_table = "0.8.0"
-# bevy-inspector-egui = { version = "0.36.0", default-features = false }
-urlencoding.workspace = true
-rfd.workspace = true
-instant.workspace = true
 either.workspace = true
-rayon.workspace = true
 bytemuck.workspace = true
 walkers = { version = "0.53.0", features = ["mvt"] }
 ib-matcher.workspace = true
@@ -46,3 +40,7 @@ egui_commonmark = "0.23.0"
 wasm-bindgen.workspace = true
 wasm-bindgen-futures.workspace = true
 js-sys.workspace = true
+
+[lib]
+test = false
+doctest = false

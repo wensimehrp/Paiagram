@@ -47,13 +47,11 @@ eframe = { version = "0.34.2", default-features = false, features = [
 egui-i18n = { version = "0.1.2", features = ["fluent"] }
 either = "1.15.0"
 ib-matcher = { version = "0.4.3", features = ["pinyin", "romaji"] }
-instant = { version = "0.1.13", features = ["wasm-bindgen"] }
 itertools = "0.14.0"
 js-sys = "0.3"
 lz4_flex = "0.12.0"
 num-format = "0.4.4"
 petgraph = { version = "0.8.3", features = ["serde-1", "rayon"] }
-rayon = "1.11.0"
 rfd = "0.17.2"
 ron = "0.12.0"
 serde = { version = "1.0.228", features = ["derive"] }

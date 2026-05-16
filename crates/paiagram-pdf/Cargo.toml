@@ -12,5 +12,6 @@ homepage.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
-[dependencies]
-krilla = "0.6.0"
+[lib]
+test = false
+doctest = false
