@@ -1,6 +1,4 @@
-#import "../book.typ": book-page
-
-#show: book-page.with(title: "Exporting to .paia")
+#title[Exporting to .paia]
 
 `.paia` (PAI-YAA) is the native file format.
 

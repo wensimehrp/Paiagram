@@ -1,6 +1,6 @@
-#import "../book.typ": book-page, links
+#title[Importing OuDia and OuDiaSecond Files]
 
-#show: book-page.with(title: "Importing OuDia and OuDiaSecond Files")
+#import "../links.typ": links
 
 #link(links.oudia)[OuDia]
 and #link(links.oudia-second)[OuDiaSecond] are popular Japanese timetabling applications. Paiagram provides builtin

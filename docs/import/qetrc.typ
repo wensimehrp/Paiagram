@@ -1,10 +1,9 @@
-#import "../book.typ": book-page, links
+#title[Importing qETRC/pyETRC Files]
 
-#show: book-page.with(title: "Importing qETRC/pyETRC Files")
+#import "../links.typ": links
 
-#link(links.qetrc)[qETRC] and #link(links.pyetrc)[pyETRC] are
-timetable applications developed by x.e.p.. Paiagram provides builtin support
-for reading their output formats, `.pyetgr`.
+#link(links.qetrc)[qETRC] and #link(links.pyetrc)[pyETRC] are timetable applications developed by x.e.p.. Paiagram
+provides builtin support for reading their output formats, `.pyetgr`.
 
 = Importing in the App
 

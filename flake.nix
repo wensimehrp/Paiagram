@@ -1,5 +1,5 @@
 {
-  description = "bevy flake";
+  description = "Paiagram development flake";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -18,17 +18,14 @@
       system:
       let
         overlays = [ (import rust-overlay) ];
+
         pkgs = import nixpkgs {
           inherit system overlays;
         };
 
         rustToolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
-        rustPlatform = pkgs.makeRustPlatform {
-          cargo = rustToolchain;
-          rustc = rustToolchain;
-        };
 
-        # Define the runtime dependencies needed by Bevy
+        # Define the runtime dependencies needed by egui
         runtimeLibs = with pkgs; [
           vulkan-loader
           libX11
@@ -45,24 +42,6 @@
 
       in
       {
-        packages.default = rustPlatform.buildRustPackage {
-          pname = "paiagram";
-          version = "0.1.0";
-          src = ./.;
-
-          cargoLock.lockFile = ./Cargo.lock;
-          nativeBuildInputs = [
-            pkgs.pkg-config
-            pkgs.openssl # TODO: remove this
-            pkgs.makeWrapper
-          ];
-          buildInputs = runtimeLibs;
-          postInstall = ''
-            wrapProgram $out/bin/paiagram \
-              --prefix LD_LIBRARY_PATH : "${pkgs.lib.makeLibraryPath runtimeLibs}"
-          '';
-        };
-
         devShells.default =
           with pkgs;
           mkShell {
@@ -76,6 +55,7 @@
               p7zip
               binaryen
               cargo-about
+              cargo-shear
               gitui
             ]
             ++ runtimeLibs

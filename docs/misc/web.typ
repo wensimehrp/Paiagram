@@ -1,6 +1,6 @@
-#import "../book.typ": book-page, links
+#title[Paiagram Web]
 
-#show: book-page.with(title: "Paiagram Web")
+#import "../links.typ": links
 
 = Using the Web Version
 
@@ -21,8 +21,8 @@ Chrome uses the default power profile, which tends to save power aggressively. Y
 If you are on Windows 7, Windows 8, or Windows 8.1 then sorry -- your device does not support WebGPU. Consider upgrading
 to Windows 10 or 11, or #link("https://fedoraproject.org/")[use Linux instead].
 
-If you are on Windows 10 or Windows 11, make sure that you are using the latest version of Chrome. Afterwards, navigate to
-`chrome://flags/` then set "Unsafe WebGPU" to true.
+If you are on Windows 10 or Windows 11, make sure that you are using the latest version of Chrome. Afterwards, navigate
+to `chrome://flags/` then set "Unsafe WebGPU" to true.
 
 = Linux Specific Issues
 

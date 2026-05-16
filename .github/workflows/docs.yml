@@ -5,8 +5,8 @@ on:
     branches:
       - main
     paths:
-      - 'docs/**'
-      - '.github/workflows/docs.yml'
+      - "docs/**"
+      - ".github/workflows/docs.yml"
   workflow_dispatch:
 
 concurrency:
@@ -20,29 +20,15 @@ jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     steps:
-
       - uses: actions/checkout@v5
-
-      - name: Get shiroa latest commit hash
-        id: get-rev
-        run: echo "rev=$(git ls-remote https://github.com/Myriad-Dreamin/shiroa HEAD | awk '{ print $1 }')" >> $GITHUB_OUTPUT
-      - name: Cache shiroa
-        id: cache-shiroa
-        uses: actions/cache@v3
         with:
-          path: ~/.cargo/bin/shiroa
-          key: ${{ runner.os }}-shiroa-${{ steps.get-rev.outputs.rev }}
-      - name: Install Rust
-        if: steps.cache-shiroa.outputs.cache-hit != 'true'
-        uses: dtolnay/rust-toolchain@stable
-      - name: Install shiroa
-        if: steps.cache-shiroa.outputs.cache-hit != 'true'
-        run: cargo install --git https://github.com/Myriad-Dreamin/shiroa --locked shiroa
-
+          submodules: true
       - uses: extractions/setup-just@v3
+      - uses: DeterminateSystems/nix-installer-action@v20
+      - uses: DeterminateSystems/magic-nix-cache-action@v13
 
       - name: Compile docs
-        run: just prep-docs
+        run: nix develop ./docs/template#default --command ./docs/book.typ
 
       - name: Deploy
         uses: peaceiris/actions-gh-pages@v4
@@ -52,5 +38,5 @@ jobs:
           user_name: github-actions[bot]
           user_email: 41898282+github-actions[bot]@users.noreply.github.com
           publish_branch: main
-          publish_dir: ./dist/docs
+          publish_dir: ./docs/book/docs
           destination_dir: docs

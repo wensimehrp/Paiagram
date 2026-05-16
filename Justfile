@@ -43,14 +43,3 @@ prep-wasm: rust-docs build-wasm
     # fix for input tools. See https://github.com/wasm-bindgen/wasm-bindgen/pull/5034 for details
     sed -i '/function passStringToWasm0/a\
         arg = arg ?? "";' dist/nightly/paiagram.js
-
-prep-docs:
-    rm -rf dist/docs
-    mkdir -p dist/docs
-    shiroa build docs --mode static-html --path-to-root /docs
-    cp -r docs/dist/. dist/docs
-
-prep-main:
-    rm -rf dist/main
-    mkdir -p dist/main
-    cp -r web/main/. dist/main

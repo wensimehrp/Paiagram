@@ -1,6 +1,6 @@
-#import "./book.typ": book-page, links
+#title[Introduction]
 
-#show: book-page.with(title: "Introduction")
+#import "./links.typ": links
 
 Since you are looking at this page, I would assume you are interested in some aspects of transport. You might be
 interested in railway locomotives, bento boxes, tracks and yards, or operation in general. So here is Paiagram, read it
