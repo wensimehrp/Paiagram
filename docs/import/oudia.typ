@@ -1,4 +1,4 @@
-#title[Importing OuDia and OuDiaSecond Files]
+#title[Importing OuDia(Second)]
 
 #import "../links.typ": links
 

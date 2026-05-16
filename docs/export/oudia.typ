@@ -1,4 +1,4 @@
-#title[Exporting to OuDia Format]
+#title[Exporting to OuDia]
 
 You can export the current diagram to `.oud` in case if you need to further edit the diagram in OuDia or OuDiaSecond.
 

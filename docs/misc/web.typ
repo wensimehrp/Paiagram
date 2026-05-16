@@ -4,9 +4,10 @@
 
 = Using the Web Version
 
-You can directly #link(links.home)[open the web version] in your browser. The experience is the same on both web and
-native. The app runs best on Google Chrome and Chromium based-browsers, although other browsers (e.g. Safari) are also
-supported.
+You can directly #link(links.home)[open the web version] in your browser. The experience is mostly the same on both web
+and native. There may be a \~10% yet negligible performance penalty for the web version.
+
+As a result, you get instant update and immediate access to the nightly version if using the web version.
 
 = Windows Specific Issues
 
@@ -28,9 +29,12 @@ to `chrome://flags/` then set "Unsafe WebGPU" to true.
 
 == My browser does not support WebGPU
 
-- In general, Non-chromium browsers tend to support WebGPU poorly.
-- Try switching to Chromium.
-- Use x.org to launch Chromium. I ran into problems trying to let it use Wayland.
-- Navigate to `chrome://flags/` then modify the following settings:
-  - Unsafe WebGPU: enable
-  - Vulkan: enable
+Please refer to your specific browser's troubleshooting guide. The author of Paiagram has tested these browsers on some
+devices:
+
+- Firefox: supports WebGPU on an Intel iGPU. Doesn't support Nvidia.
+  - Works with wayland on the iGPU.
+- Google Chrome: supports WebGPU.
+  - Works on an Intel iGPU.
+  - Works on an Nvidia 4060 mobile. This requires enabling Vulkan, Vulkan ANGLE layer, and X.org. Wayland would not
+    work.

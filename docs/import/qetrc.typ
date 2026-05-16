@@ -1,4 +1,4 @@
-#title[Importing qETRC/pyETRC Files]
+#title[Importing qETRC/pyETRC]
 
 #import "../links.typ": links
 
