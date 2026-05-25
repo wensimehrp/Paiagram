@@ -5157,23 +5157,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "paiagram"
-version = "0.1.2"
-dependencies = [
- "bevy",
- "clap",
- "eframe",
- "egui",
- "paiagram-core",
- "paiagram-rw",
- "paiagram-ui",
- "serde",
- "serde_html_form",
- "wasm-bindgen",
- "wasm-bindgen-futures",
-]
-
-[[package]]
 name = "paiagram-core"
 version = "0.1.2"
 dependencies = [
@@ -5255,6 +5238,7 @@ dependencies = [
  "bevy",
  "bytemuck",
  "chrono",
+ "clap",
  "eframe",
  "egui",
  "egui-i18n",
@@ -5271,6 +5255,7 @@ dependencies = [
  "paiagram-raptor",
  "paiagram-rw",
  "serde",
+ "serde_html_form",
  "smallvec",
  "vec1",
  "walkers",

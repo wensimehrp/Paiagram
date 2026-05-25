@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use crate::tabs::Navigatable;
 
 #[derive(Serialize, Deserialize, MapEntities, Clone)]
-pub struct PriorityGraphTab {
+pub(crate) struct PriorityGraphTab {
     #[entities]
     route_entity: Entity,
     navi: PriorityTabNavigation,
@@ -27,7 +27,7 @@ pub struct PriorityGraphTab {
 }
 
 impl PriorityGraphTab {
-    pub fn new(route_entity: Entity) -> Self {
+    pub(crate) fn new(route_entity: Entity) -> Self {
         Self {
             route_entity,
             navi: PriorityTabNavigation::default(),

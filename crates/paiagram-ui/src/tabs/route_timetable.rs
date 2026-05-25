@@ -13,13 +13,13 @@ use serde::{Deserialize, Serialize};
 use crate::widgets::TimeDragValueOud;
 
 #[derive(Serialize, Deserialize, Clone, MapEntities)]
-pub struct RouteTimetableTab {
+pub(crate) struct RouteTimetableTab {
     #[entities]
     route_entity: Entity,
 }
 
 impl RouteTimetableTab {
-    pub fn new(e: Entity) -> Self {
+    pub(crate) fn new(e: Entity) -> Self {
         Self { route_entity: e }
     }
 }

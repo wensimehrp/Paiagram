@@ -55,10 +55,10 @@ impl ActionHistory {
     // TODO: use size limitation in user settings?
     /// The hard limit of the action history stack
     const SIZE: usize = 1000;
-    pub fn can_undo(&self) -> bool {
+    pub(crate) fn can_undo(&self) -> bool {
         self.ptr != 0
     }
-    pub fn can_redo(&self) -> bool {
+    pub(crate) fn can_redo(&self) -> bool {
         self.ptr < self.history.len()
     }
     /// Add a variant of [`RevertableActions`] to the action queue

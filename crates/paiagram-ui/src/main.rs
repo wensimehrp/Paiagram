@@ -1,3 +1,5 @@
+//! The entrypoint of the application
+
 use std::path::PathBuf;
 
 use bevy::ecs::system::RunSystemOnce;
@@ -17,6 +19,8 @@ struct PaiagramApp {
 
 impl PaiagramApp {
     fn new(cc: &eframe::CreationContext) -> Self {
+        // Modifications to the defualt style
+        // TODO: define own styles
         cc.egui_ctx.global_style_mut(|style| {
             style.spacing.window_margin = egui::Margin::same(2);
             style.interaction.selectable_labels = false;
@@ -56,7 +60,7 @@ impl PaiagramApp {
             class::ClassPlugin,
             ReadPlugin,
             SavePlugin,
-            bevy::asset::AssetPlugin::default(),
+            bevy::asset::AssetPlugin::default(), // TODO: remove
             bevy::scene::ScenePlugin,
         ));
         info!("Initialized Bevy App.");

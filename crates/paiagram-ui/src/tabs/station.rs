@@ -15,14 +15,14 @@ use crate::widgets::indicators::{
 };
 
 #[derive(MapEntities, Serialize, Deserialize, Clone, PartialEq)]
-pub struct StationTab {
+pub(crate) struct StationTab {
     #[entities]
     station_entity: Entity,
     include_nonstop: bool,
 }
 
 impl StationTab {
-    pub fn new(station_entity: Entity) -> Self {
+    pub(crate) fn new(station_entity: Entity) -> Self {
         Self {
             station_entity,
             include_nonstop: false,

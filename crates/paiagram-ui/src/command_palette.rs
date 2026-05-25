@@ -27,7 +27,7 @@ static ROMAJI_MATCH_DATA: LazyLock<RomajiMatchConfig> =
     std::sync::LazyLock::new(|| RomajiMatchConfig::builder().build());
 
 #[derive(Resource, Default)]
-pub struct CommandPalette {
+pub(crate) struct CommandPalette {
     visible: bool,
     query: String,
     selected_alternative: usize,
@@ -41,10 +41,10 @@ enum MatchedType {
 }
 
 impl CommandPalette {
-    pub fn toggle(&mut self) {
+    pub(crate) fn toggle(&mut self) {
         self.visible ^= true;
     }
-    pub fn show(&mut self, ctx: &Context, world: &mut World) {
+    pub(crate) fn show(&mut self, ctx: &Context, world: &mut World) {
         self.visible &= !ctx.input_mut(|i| i.key_pressed(Key::Escape));
         if !self.visible {
             self.query.clear();

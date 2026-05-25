@@ -5,7 +5,7 @@ use paiagram_core::units::time::{Tick, TimetableTime};
 use crate::tabs::Navigatable;
 use crate::tabs::diagram::DiagramTabNavigation;
 
-pub fn draw_station_lines(
+pub(crate) fn draw_station_lines(
     painter: &mut Painter,
     navi: &DiagramTabNavigation,
     to_draw: impl Iterator<Item = (Entity, f32)>,
@@ -41,7 +41,7 @@ pub fn draw_station_lines(
 }
 
 /// Draw vertical time lines and labels
-pub fn draw_time_lines(painter: &mut Painter, navi: &DiagramTabNavigation) {
+pub(crate) fn draw_time_lines(painter: &mut Painter, navi: &DiagramTabNavigation) {
     const MAX_SCREEN_WIDTH: f64 = 64.0;
     const MIN_SCREEN_WIDTH: f64 = 32.0;
     let sizes = [

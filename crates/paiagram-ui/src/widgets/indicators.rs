@@ -2,7 +2,7 @@ use egui::{Color32, Id, Painter, Rect, Shadow};
 
 /// Display the time indicator's indicator given the SCREEN coordinates
 /// of the clip rect and the time indicator.
-pub fn display_time_indicator_indicator_vertical(
+pub(crate) fn display_time_indicator_indicator_vertical(
     id: Id,
     rect: Rect,
     time_indicator_y: f32,
@@ -29,7 +29,7 @@ pub fn display_time_indicator_indicator_vertical(
 
 /// Display the time indicator's indicator given the SCREEN coordinates
 /// of the clip rect and the time indicator.
-pub fn display_time_indicator_indicator_horizontal(
+pub(crate) fn display_time_indicator_indicator_horizontal(
     id: Id,
     rect: Rect,
     time_indicator_x: f32,

@@ -19,7 +19,7 @@ impl ShapeInstance {
         let offset = unit_perpendicular * offset_amount;
         (a + offset, b + offset)
     }
-    pub fn segment(a: Pos2, b: Pos2, width: f32, color: Color32) -> Self {
+    pub(crate) fn segment(a: Pos2, b: Pos2, width: f32, color: Color32) -> Self {
         let (a, b) = Self::offset_perpendicular(a, b, 1.5);
         let rgba = color.to_array();
         Self {
@@ -35,7 +35,7 @@ impl ShapeInstance {
             kind: 0,
         }
     }
-    pub fn circle(center: Pos2, radius: f32, color: Color32) -> Self {
+    pub(crate) fn circle(center: Pos2, radius: f32, color: Color32) -> Self {
         let rgba = color.to_array();
         Self {
             a: [center.x, center.y],
@@ -50,7 +50,7 @@ impl ShapeInstance {
             kind: 1,
         }
     }
-    pub fn stealth_arrow(from: Pos2, to: Pos2, center: Pos2, color: Color32) -> Self {
+    pub(crate) fn stealth_arrow(from: Pos2, to: Pos2, center: Pos2, color: Color32) -> Self {
         let direction = to - from;
         let direction_len = direction.length();
         let unit_direction = if direction_len > f32::EPSILON {
@@ -77,7 +77,7 @@ impl ShapeInstance {
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct ShapeInstance {
+pub(crate) struct ShapeInstance {
     a: [f32; 2],
     b: [f32; 2],
     size: f32,
@@ -85,10 +85,10 @@ pub struct ShapeInstance {
     kind: u32,
 }
 
-pub struct GpuGraphRendererState {
-    pub target_format: Option<wgpu::TextureFormat>,
-    pub msaa_samples: u32,
-    pub instances: Vec<ShapeInstance>,
+pub(crate) struct GpuGraphRendererState {
+    pub(crate) target_format: Option<wgpu::TextureFormat>,
+    pub(crate) msaa_samples: u32,
+    pub(crate) instances: Vec<ShapeInstance>,
 }
 
 impl Default for GpuGraphRendererState {
@@ -101,7 +101,10 @@ impl Default for GpuGraphRendererState {
     }
 }
 
-pub fn paint_callback(rect: Rect, state: Arc<Mutex<GpuGraphRendererState>>) -> egui::PaintCallback {
+pub(crate) fn paint_callback(
+    rect: Rect,
+    state: Arc<Mutex<GpuGraphRendererState>>,
+) -> egui::PaintCallback {
     egui_wgpu::Callback::new_paint_callback(rect, GraphCallback { state })
 }
 

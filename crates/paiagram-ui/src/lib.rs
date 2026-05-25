@@ -1,11 +1,10 @@
-//! # UI
-//! Module for the user interface.
+//! Definitions for the user interface.
 
 mod actions;
 mod command_palette;
-pub mod export_typst_diagram;
-pub mod save;
-pub mod tabs;
+mod export_typst_diagram;
+mod save;
+mod tabs;
 mod widgets;
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -74,8 +73,8 @@ impl Plugin for UiPlugin {
 
 #[derive(Clone, Debug)]
 pub(crate) struct TripSelection {
-    pub trip: Entity,
-    pub entries: Vec1<Entity>,
+    pub(crate) trip: Entity,
+    pub(crate) entries: Vec1<Entity>,
 }
 
 impl PartialEq for TripSelection {
@@ -86,35 +85,35 @@ impl PartialEq for TripSelection {
 
 #[derive(Clone, Copy, PartialEq, Hash, Debug, Eq, PartialOrd, Ord)]
 pub(crate) struct IntervalSelection {
-    pub source: Entity,
-    pub target: Entity,
+    pub(crate) source: Entity,
+    pub(crate) target: Entity,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct StationSelection {
-    pub station: Entity,
+    pub(crate) station: Entity,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub(crate) struct ExtendingRouteSelection {
-    pub prev_station: Entity,
+    pub(crate) prev_station: Entity,
 }
 
 // Extending or creating a new trip
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub(crate) struct ExtendingTripSelection {
     // The current focused trip
-    pub trip: Entity,
+    pub(crate) trip: Entity,
     // previous position on the canvas
-    pub previous_pos: Option<(TimetableTime, usize)>,
-    pub last_time: Option<TimetableTime>,
-    pub current_entry: Option<Entity>,
+    pub(crate) previous_pos: Option<(TimetableTime, usize)>,
+    pub(crate) last_time: Option<TimetableTime>,
+    pub(crate) current_entry: Option<Entity>,
 }
 
 #[derive(Clone, PartialEq, Debug)]
 pub(crate) struct CoordinateSelection {
-    pub coor: NodeCoor,
-    pub name_candidate: String,
+    pub(crate) coor: NodeCoor,
+    pub(crate) name_candidate: String,
 }
 
 #[derive(Resource, Clone, PartialEq, Debug)]
@@ -325,7 +324,7 @@ impl Default for FrameTimeHistory {
 
 #[derive(Resource, Reflect)]
 #[reflect(Resource)]
-pub struct GlobalTimer {
+pub(crate) struct GlobalTimer {
     value: AtomicI64,
     locker: AtomicU64,
     animation_speed: f64,
@@ -362,29 +361,29 @@ impl Default for GlobalTimer {
 
 impl GlobalTimer {
     const UNLOCKED: u64 = u64::MAX;
-    pub fn read_ticks(&self) -> Tick {
+    pub(crate) fn read_ticks(&self) -> Tick {
         Tick(self.value.load(Ordering::Acquire))
     }
 
-    pub fn write_ticks(&self, value: Tick) {
+    pub(crate) fn write_ticks(&self, value: Tick) {
         self.value.store(value.0, Ordering::Release);
     }
 
-    pub fn read_seconds(&self) -> f64 {
+    pub(crate) fn read_seconds(&self) -> f64 {
         self.read_ticks().as_seconds_f64()
     }
 
-    pub fn write_seconds(&self, value: f64) {
+    pub(crate) fn write_seconds(&self, value: f64) {
         let ticks_per_second = Tick::from_timetable_time(TimetableTime(1)).0 as f64;
         let ticks = (value * ticks_per_second).round() as i64;
         self.write_ticks(Tick(ticks));
     }
 
-    pub fn is_locked(&self) -> bool {
+    pub(crate) fn is_locked(&self) -> bool {
         self.locker.load(Ordering::Acquire) != Self::UNLOCKED
     }
 
-    pub fn try_lock(&self, id: Entity) -> bool {
+    pub(crate) fn try_lock(&self, id: Entity) -> bool {
         let id_bits = id.to_bits();
 
         let result = self.locker.compare_exchange(
@@ -397,7 +396,7 @@ impl GlobalTimer {
         result.is_ok() || result.unwrap_err() == id_bits
     }
 
-    pub fn try_unlock(&self, id: Entity) {
+    pub(crate) fn try_unlock(&self, id: Entity) {
         let _ = self.locker.compare_exchange(
             id.to_bits(),
             Self::UNLOCKED,
@@ -406,15 +405,15 @@ impl GlobalTimer {
         );
     }
 
-    pub fn owner(&self) -> u64 {
+    pub(crate) fn owner(&self) -> u64 {
         self.locker.load(Ordering::Acquire)
     }
 
-    pub unsafe fn try_lock_unchecked(&self, id: u64) -> bool {
+    pub(crate) unsafe fn try_lock_unchecked(&self, id: u64) -> bool {
         self.try_lock(Entity::from_bits(id))
     }
 
-    pub unsafe fn try_unlock_unchecked(&self, id: u64) {
+    pub(crate) unsafe fn try_unlock_unchecked(&self, id: u64) {
         self.try_unlock(Entity::from_bits(id))
     }
 }
@@ -482,7 +481,7 @@ pub(crate) struct MainUiState {
 }
 
 impl MainUiState {
-    pub fn push_to_focused_leaf(&mut self, new_pane: MainTab) -> TileId {
+    pub(crate) fn push_to_focused_leaf(&mut self, new_pane: MainTab) -> TileId {
         let new_id = self.tree.tiles.insert_pane(new_pane);
 
         // Try to add it to the same Tabs container that is currently focused
