@@ -1,8 +1,9 @@
 //! # Route
-//! Routes are slices of the graph that can be used as the foundation of diagrams.
-//! Diagrams use routes as their station list.
+//! Routes are slices of the graph that can be used as the foundation of
+//! diagrams. Diagrams use routes as their station list.
 
-use bevy::{ecs::entity::EntityHashSet, prelude::*};
+use bevy::ecs::entity::EntityHashSet;
+use bevy::prelude::*;
 use moonshine_core::prelude::{MapEntities, ReflectMapEntities};
 
 pub struct RoutePlugin;
@@ -14,13 +15,11 @@ impl Plugin for RoutePlugin {
     }
 }
 
-use crate::{
-    entry::{EntryMode, EntryQuery},
-    graph::Graph,
-    interval::{Interval, UpdateInterval},
-    station::{ParentStationOrStation, Platform, PlatformEntries, Station, StationQuery},
-    trip::TripQuery,
-};
+use crate::entry::{EntryMode, EntryQuery};
+use crate::graph::Graph;
+use crate::interval::{Interval, UpdateInterval};
+use crate::station::{ParentStationOrStation, Platform, PlatformEntries, Station, StationQuery};
+use crate::trip::TripQuery;
 
 /// Marker component for automatically updating route interval length.
 #[derive(Reflect, Component)]

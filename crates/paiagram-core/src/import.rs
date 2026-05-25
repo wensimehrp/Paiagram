@@ -3,24 +3,20 @@
 
 use std::path::PathBuf;
 
-use crate::{
-    graph::Graph,
-    interval::Interval,
-    station::Station,
-    trip::class::{Class, ClassBundle},
-    units::{
-        distance::Distance,
-        time::{Duration, TimetableTime},
-    },
-};
-use bevy::{
-    platform::collections::HashMap,
-    prelude::*,
-    tasks::{AsyncComputeTaskPool, Task, block_on, futures_lite::future::poll_once},
-};
+use bevy::platform::collections::HashMap;
+use bevy::prelude::*;
+use bevy::tasks::futures_lite::future::poll_once;
+use bevy::tasks::{AsyncComputeTaskPool, Task, block_on};
 use eros::bail;
 use moonshine_core::kind::*;
 use paiagram_rw::save::{LoadCandidate, SaveData};
+
+use crate::graph::Graph;
+use crate::interval::Interval;
+use crate::station::Station;
+use crate::trip::class::{Class, ClassBundle};
+use crate::units::distance::Distance;
+use crate::units::time::{Duration, TimetableTime};
 
 mod gtfs;
 mod llt;
@@ -211,7 +207,11 @@ fn infer_path_from_url(url: &str) -> Option<PathBuf> {
     Some(PathBuf::from(filename))
 }
 
-pub fn load_and_trigger(path: &PathBuf, content: Vec<u8>, commands: &mut Commands) -> eros::Result<()> {
+pub fn load_and_trigger(
+    path: &PathBuf,
+    content: Vec<u8>,
+    commands: &mut Commands,
+) -> eros::Result<()> {
     match path.extension().and_then(|s| s.to_str()) {
         Some("paia") => {
             commands.insert_resource(LoadCandidate(SaveData::CompressedCbor(content)));
@@ -235,7 +235,7 @@ pub fn load_and_trigger(path: &PathBuf, content: Vec<u8>, commands: &mut Command
             commands.insert_resource(LoadCandidate(SaveData::Ron(content)));
         }
         Some(e) => bail!("Unexpected extension: {}", e),
-        None =>bail!("Path does not have an extension"),
+        None => bail!("Path does not have an extension"),
     }
     return Ok(());
 }

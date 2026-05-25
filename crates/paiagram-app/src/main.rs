@@ -1,11 +1,15 @@
-use bevy::{ecs::system::RunSystemOnce, log::LogPlugin, prelude::*};
+use std::path::PathBuf;
+
+use bevy::ecs::system::RunSystemOnce;
+use bevy::log::LogPlugin;
+use bevy::prelude::*;
 use clap::Parser;
 use paiagram_core::settings::UserPreferences;
 use paiagram_core::trip::class;
 use paiagram_core::{entry, graph, i18n, import, problems, route, settings, station, trip};
-use paiagram_rw::{read::ReadPlugin, save::SavePlugin};
+use paiagram_rw::read::ReadPlugin;
+use paiagram_rw::save::SavePlugin;
 use serde::Deserialize;
-use std::path::PathBuf;
 
 struct PaiagramApp {
     bevy_app: App,

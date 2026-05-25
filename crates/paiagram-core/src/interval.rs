@@ -1,4 +1,5 @@
-use bevy::{ecs::query::QueryData, prelude::*};
+use bevy::ecs::query::QueryData;
+use bevy::prelude::*;
 
 use crate::units::distance::Distance;
 

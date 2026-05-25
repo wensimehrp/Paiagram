@@ -1,16 +1,14 @@
-use paiagram_core::{
-    interval::IntervalQuery,
-    station::{PlatformQuery, StationQuery},
-    trip::TripQuery,
-    vehicle::VehicleQuery,
-};
-
-use super::Tab;
+use bevy::ecs::entity::MapEntities;
 use bevy::prelude::*;
 use egui::Ui;
 use egui_i18n::tr;
-use bevy::ecs::entity::MapEntities;
+use paiagram_core::interval::IntervalQuery;
+use paiagram_core::station::{PlatformQuery, StationQuery};
+use paiagram_core::trip::TripQuery;
+use paiagram_core::vehicle::VehicleQuery;
 use serde::{Deserialize, Serialize};
+
+use super::Tab;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Default, MapEntities)]
 pub struct StartTab;

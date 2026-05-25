@@ -2,7 +2,8 @@ use bevy::prelude::*;
 use egui::{Color32, FontId, Painter, Pos2, Stroke, Visuals};
 use paiagram_core::units::time::{Tick, TimetableTime};
 
-use crate::tabs::{Navigatable, diagram::DiagramTabNavigation};
+use crate::tabs::Navigatable;
+use crate::tabs::diagram::DiagramTabNavigation;
 
 pub fn draw_station_lines(
     painter: &mut Painter,

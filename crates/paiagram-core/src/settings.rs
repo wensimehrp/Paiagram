@@ -1,8 +1,10 @@
 //! # Settings
 //! Module for user preferences and project settings.
 
-use crate::{i18n::Language, units::time::Duration};
 use bevy::prelude::*;
+
+use crate::i18n::Language;
+use crate::units::time::Duration;
 
 #[derive(Reflect, Copy, Clone, Debug, PartialEq, Eq)]
 pub enum AntialiasingMode {

@@ -1,17 +1,15 @@
 use bevy::prelude::*;
 use itertools::Itertools;
 
-use crate::{
-    entry::{DerivedEntryBundle, EntryEstimate, EntryMode, EntryStop, IsDerivedEntry, TravelMode},
-    graph::Graph,
-    interval::IntervalQuery,
-    station::ParentStationOrStation,
-    trip::{TripClass, TripNominalSchedule, TripQuery, TripSchedule},
-    units::{
-        distance::Distance,
-        time::{Duration, TimetableTime},
-    },
+use crate::entry::{
+    DerivedEntryBundle, EntryEstimate, EntryMode, EntryStop, IsDerivedEntry, TravelMode,
 };
+use crate::graph::Graph;
+use crate::interval::IntervalQuery;
+use crate::station::ParentStationOrStation;
+use crate::trip::{TripClass, TripNominalSchedule, TripQuery, TripSchedule};
+use crate::units::distance::Distance;
+use crate::units::time::{Duration, TimetableTime};
 
 pub struct RoutingPlugin;
 

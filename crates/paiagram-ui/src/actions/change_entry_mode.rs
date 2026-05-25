@@ -1,7 +1,8 @@
-use super::RevertableActions::ChangeEntryMode as ChangeEntryModeWrapper;
 use bevy::prelude::*;
 use eros::bail;
 use paiagram_core::entry::{AdjustEntryMode, EntryMode, EntryModeAdjustment, transform_entry_mode};
+
+use super::RevertableActions::ChangeEntryMode as ChangeEntryModeWrapper;
 
 pub(super) fn watch_entry_mode_changes(
     msg: On<AdjustEntryMode>,

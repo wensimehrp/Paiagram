@@ -2,25 +2,24 @@ use std::collections::HashMap;
 
 pub mod arrange;
 
-use crate::entry::EntryStop;
-use crate::interval::Interval;
-use crate::interval::IntervalQuery;
-use crate::route::Route;
-use crate::station::Platforms;
-use crate::station::Station;
-use crate::units::distance::Distance;
-use bevy::ecs::entity::EntityHashMap;
-use bevy::ecs::entity::EntityHashSet;
-use bevy::tasks::{AsyncComputeTaskPool, Task, block_on, futures_lite::future::poll_once};
-use bevy::{ecs::entity::EntityHash, prelude::*};
-use moonshine_core::kind::Instance;
-use moonshine_core::kind::SpawnInstance;
+use bevy::ecs::entity::{EntityHash, EntityHashMap, EntityHashSet};
+use bevy::prelude::*;
+use bevy::tasks::futures_lite::future::poll_once;
+use bevy::tasks::{AsyncComputeTaskPool, Task, block_on};
+use moonshine_core::kind::{Instance, SpawnInstance};
 use moonshine_core::prelude::{MapEntities, ReflectMapEntities};
+use petgraph::algo::astar;
 use petgraph::prelude::DiGraphMap;
-use petgraph::{algo::astar, visit::EdgeRef};
+use petgraph::visit::EdgeRef;
 use rstar::{AABB, PointDistance, RTree, RTreeObject};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
+
+use crate::entry::EntryStop;
+use crate::interval::{Interval, IntervalQuery};
+use crate::route::Route;
+use crate::station::{Platforms, Station};
+use crate::units::distance::Distance;
 
 pub struct GraphPlugin;
 impl Plugin for GraphPlugin {

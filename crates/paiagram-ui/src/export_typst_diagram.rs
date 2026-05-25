@@ -1,6 +1,7 @@
+use std::io::Write;
+
 use bevy::prelude::*;
 use paiagram_core::export::ExportObject;
-use std::io::Write;
 
 pub struct TypstModule;
 

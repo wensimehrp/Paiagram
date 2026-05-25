@@ -1,14 +1,6 @@
-use super::{Navigatable, Tab};
-use crate::tabs::station::StationTab;
-use crate::widgets::indicators::display_time_indicator_indicator_horizontal;
-use crate::widgets::timetable_popup::{POPUP_WIDTH, arrival_popup, departure_popup};
-use crate::widgets::{TimeDragValue, buttons};
-use crate::{
-    ExtendingTripSelection, GlobalTimer, IntervalSelection, ModifySelectedItems, OpenOrFocus,
-    SelectedItem, SelectedItems, StationSelection, TripSelection,
-};
-use bevy::ecs::entity::EntityHashMap;
-use bevy::ecs::entity::MapEntities;
+use std::sync::Arc;
+
+use bevy::ecs::entity::{EntityHashMap, MapEntities};
 use bevy::prelude::*;
 use egui::emath::Numeric;
 use egui::{
@@ -32,8 +24,17 @@ use paiagram_core::units::time::{Duration, Tick, TimetableTime};
 use paiagram_raptor::Journey;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
-use std::sync::Arc;
 use vec1::Vec1;
+
+use super::{Navigatable, Tab};
+use crate::tabs::station::StationTab;
+use crate::widgets::indicators::display_time_indicator_indicator_horizontal;
+use crate::widgets::timetable_popup::{POPUP_WIDTH, arrival_popup, departure_popup};
+use crate::widgets::{TimeDragValue, buttons};
+use crate::{
+    ExtendingTripSelection, GlobalTimer, IntervalSelection, ModifySelectedItems, OpenOrFocus,
+    SelectedItem, SelectedItems, StationSelection, TripSelection,
+};
 mod draw_lines;
 mod gpu_draw;
 pub mod prep_segments;
@@ -241,8 +242,9 @@ impl Tab for DiagramTab {
         [false; 2]
     }
     fn export_display(&mut self, world: &mut World, ui: &mut Ui) {
-        use crate::export_typst_diagram::{TypstDiagram, TypstModule};
         use paiagram_core::export::oudia::OuDia;
+
+        use crate::export_typst_diagram::{TypstDiagram, TypstModule};
         ui.strong(tr!("tab-diagram-save-typst-module"));
         ui.label(tr!("tab-diagram-save-typst-module-desc"));
         if ui.button(tr!("export")).clicked() {
@@ -253,14 +255,14 @@ impl Tab for DiagramTab {
         if ui.button(tr!("export")).clicked() {
             TypstDiagram {
                 route_entity: self.route_entity,
-                world: world,
+                world,
             }
             .export_to_file();
         }
         if ui.button("Export to OuDia").clicked() {
             OuDia {
                 route_entity: self.route_entity,
-                world: world,
+                world,
             }
             .export_to_file();
         }

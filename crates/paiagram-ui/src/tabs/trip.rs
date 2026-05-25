@@ -1,19 +1,16 @@
-use paiagram_core::{
-    entry::{EntryEstimate, EntryMode, EntryQuery, EntryQueryItem, TravelMode},
-    station::{PlatformQuery, StationQuery},
-    trip::{TripQuery, TripQueryItem},
-};
-
-use crate::widgets::timetable_popup::{
-    arrival_popup, departure_popup, shift_at_value, shift_for_value,
-};
-
-use super::Tab;
+use bevy::ecs::entity::MapEntities;
 use bevy::prelude::*;
 use egui::{RectAlign, Ui, Vec2, vec2};
 use egui_i18n::tr;
-use bevy::ecs::entity::MapEntities;
+use paiagram_core::entry::{EntryEstimate, EntryMode, EntryQuery, EntryQueryItem, TravelMode};
+use paiagram_core::station::{PlatformQuery, StationQuery};
+use paiagram_core::trip::{TripQuery, TripQueryItem};
 use serde::{Deserialize, Serialize};
+
+use super::Tab;
+use crate::widgets::timetable_popup::{
+    arrival_popup, departure_popup, shift_at_value, shift_for_value,
+};
 
 #[derive(Serialize, Deserialize, MapEntities, Clone)]
 pub struct TripTab {

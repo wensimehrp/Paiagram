@@ -1,12 +1,13 @@
-use bevy::tasks::{AsyncComputeTaskPool, Task, block_on, futures_lite::future::poll_once};
-use bevy::{ecs::entity::EntityHashMap, prelude::*};
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+use bevy::ecs::entity::EntityHashMap;
+use bevy::prelude::*;
+use bevy::tasks::futures_lite::future::poll_once;
+use bevy::tasks::{AsyncComputeTaskPool, Task, block_on};
 use petgraph::graph::NodeIndex;
 use serde::Deserialize;
-use std::collections::{HashMap, HashSet, VecDeque};
-use std::sync::{
-    Arc,
-    atomic::{AtomicUsize, Ordering},
-};
 use visgraph::layout::force_directed::force_directed_layout;
 
 use super::{Graph, Node, NodeCoor};

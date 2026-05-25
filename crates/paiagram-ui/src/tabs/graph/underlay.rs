@@ -1,14 +1,14 @@
+use std::collections::HashSet;
+
 use bevy::ecs::system::{In, InMut, InRef, Local};
 use egui::{Mesh, Painter, Rect, Shape, Stroke, Ui, Widget, pos2};
 use egui_i18n::tr;
+use paiagram_core::graph::{lon_lat_to_xy, xy_to_lon_lat};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
-use walkers::mercator;
 use walkers::sources::{Attribution, OpenStreetMap, TileSource};
-use walkers::{HttpTiles, Tile, TileId, Tiles};
+use walkers::{HttpTiles, Tile, TileId, Tiles, mercator};
 
 use crate::tabs::Navigatable;
-use paiagram_core::graph::{lon_lat_to_xy, xy_to_lon_lat};
 
 #[derive(Default, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub enum UnderlayTileType {

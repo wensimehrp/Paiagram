@@ -1,7 +1,5 @@
-use super::MainTab;
-use super::OpenOrFocus;
-use crate::tabs::Tab;
-use crate::tabs::all_tabs::*;
+use std::sync::LazyLock;
+
 use bevy::prelude::*;
 use egui::{Context, Key, NumExt, Ui};
 use ib_matcher::matcher::{IbMatcher, PinyinMatchConfig, RomajiMatchConfig};
@@ -9,7 +7,10 @@ use ib_matcher::pinyin::PinyinNotation;
 use paiagram_core::route::Route;
 use paiagram_core::station::Station;
 use paiagram_core::trip::Trip;
-use std::sync::LazyLock;
+
+use super::{MainTab, OpenOrFocus};
+use crate::tabs::Tab;
+use crate::tabs::all_tabs::*;
 
 // TODO: make this based on settings
 // TODO: make this a resource instead?

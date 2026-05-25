@@ -1,18 +1,19 @@
-use crate::{
-    entry::{self, EntryMode},
-    graph::Node,
-    settings::ProjectSettings,
-    station::Station,
-    trip::class::{Class, DisplayedStroke},
-    units::time::Duration,
-    vehicle::Vehicle,
-};
-use bevy::tasks::{AsyncComputeTaskPool, Task, block_on, futures_lite::future::poll_once};
-use bevy::{ecs::query::QueryData, prelude::*};
+use std::ops::RangeInclusive;
+
+use bevy::ecs::entity::{EntityHashMap, EntityHashSet};
+use bevy::ecs::query::QueryData;
+use bevy::prelude::*;
 use moonshine_core::prelude::{MapEntities, ReflectMapEntities};
 use rstar::{AABB, RTree, RTreeObject};
 use smallvec::SmallVec;
-use std::ops::RangeInclusive;
+
+use crate::entry::{self, EntryMode};
+use crate::graph::Node;
+use crate::settings::ProjectSettings;
+use crate::station::Station;
+use crate::trip::class::{Class, DisplayedStroke};
+use crate::units::time::Duration;
+use crate::vehicle::Vehicle;
 
 pub mod class;
 pub mod routing;
@@ -22,16 +23,7 @@ impl Plugin for TripPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(routing::RoutingPlugin)
             .init_resource::<TripSpatialIndex>()
-            .init_resource::<TripSpatialIndexState>()
-            .add_systems(
-                Update,
-                (
-                    mark_trip_spatial_index_dirty,
-                    start_trip_spatial_index_rebuild,
-                    apply_trip_spatial_index_task,
-                )
-                    .chain(),
-            )
+            .add_systems(Update, update_trip_spatial_index)
             .add_observer(update_nominal_schedule)
             .add_observer(convert_derived_entry_to_explicit)
             .add_observer(update_add_trip_vehicles)
@@ -40,7 +32,7 @@ impl Plugin for TripPlugin {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TripSpatialIndexItem {
     pub trip: Entity,
     pub entry0: Entity,
@@ -74,6 +66,7 @@ impl RTreeObject for TripSpatialIndexItem {
 #[derive(Resource, Default)]
 pub struct TripSpatialIndex {
     tree: RTree<TripSpatialIndexItem>,
+    entities: EntityHashMap<Vec<TripSpatialIndexItem>>,
 }
 
 impl TripSpatialIndex {
@@ -100,74 +93,92 @@ impl TripSpatialIndex {
             .copied()
     }
 
-    fn replace_tree(&mut self, tree: RTree<TripSpatialIndexItem>) {
-        self.tree = tree;
+    pub fn clear(&mut self) {
+        self.tree = RTree::new();
+        self.entities.clear();
     }
 }
 
-#[derive(Resource)]
-struct TripSpatialIndexState {
-    dirty: bool,
-    task: Option<Task<RTree<TripSpatialIndexItem>>>,
-}
-
-impl Default for TripSpatialIndexState {
-    fn default() -> Self {
-        Self {
-            dirty: true,
-            task: None,
-        }
-    }
-}
-
-// TODO: replace the dirty method with specific updates
-fn mark_trip_spatial_index_dirty(
-    mut state: ResMut<TripSpatialIndexState>,
-    changed_trips: Query<(), Or<(Added<Trip>, Changed<Children>)>>,
-    changed_stops: Query<(), Or<(Added<entry::EntryStop>, Changed<entry::EntryStop>)>>,
+fn update_trip_spatial_index(
+    mut index: ResMut<TripSpatialIndex>,
+    trips: Query<(Entity, &TripSchedule), With<Trip>>,
+    changed_trips: Query<Entity, Or<(Added<Trip>, Changed<TripSchedule>)>>,
+    changed_stops: Query<Entity, Or<(Added<entry::EntryStop>, Changed<entry::EntryStop>)>>,
     changed_estimates: Query<
-        (),
-        Or<(
-            Added<entry::EntryEstimate>,
-            Changed<entry::EntryEstimate>,
-            Added<Node>,
-            Changed<Node>,
-        )>,
+        Entity,
+        Or<(Added<entry::EntryEstimate>, Changed<entry::EntryEstimate>)>,
     >,
+    changed_nodes: Query<Entity, Or<(Added<Node>, Changed<Node>)>>,
     mut removed_trips: RemovedComponents<Trip>,
-    mut removed_children: RemovedComponents<Children>,
     mut removed_stop: RemovedComponents<entry::EntryStop>,
     mut removed_estimate: RemovedComponents<entry::EntryEstimate>,
     mut removed_node: RemovedComponents<Node>,
-) {
-    if !changed_trips.is_empty()
-        || !changed_stops.is_empty()
-        || !changed_estimates.is_empty()
-        || removed_trips.read().next().is_some()
-        || removed_children.read().next().is_some()
-        || removed_stop.read().next().is_some()
-        || removed_estimate.read().next().is_some()
-        || removed_node.read().next().is_some()
-    {
-        state.dirty = true;
-    }
-}
-
-fn start_trip_spatial_index_rebuild(
-    mut state: ResMut<TripSpatialIndexState>,
-    trips: Query<(Entity, &TripSchedule), With<Trip>>,
+    platform_q: Query<AnyOf<(&Station, &ChildOf)>>,
     stop_q: Query<&entry::EntryStop>,
     estimate_q: Query<&entry::EntryEstimate>,
-    platform_q: Query<AnyOf<(&Station, &ChildOf)>>,
     node_q: Query<&Node>,
     settings: Res<ProjectSettings>,
 ) {
-    if !state.dirty || state.task.is_some() {
+    let mut to_remove_trips = EntityHashSet::default();
+
+    for entity in removed_trips.read() {
+        to_remove_trips.insert(entity);
+    }
+
+    let mut changed_trip_set = EntityHashSet::default();
+
+    for entity in &changed_trips {
+        changed_trip_set.insert(entity);
+    }
+
+    let has_changed_entries = !changed_stops.is_empty()
+        || !changed_estimates.is_empty()
+        || !changed_nodes.is_empty()
+        || removed_stop.read().next().is_some()
+        || removed_estimate.read().next().is_some()
+        || removed_node.read().next().is_some();
+
+    if has_changed_entries {
+        let changed_stops_set: EntityHashSet = changed_stops.iter().collect();
+        let changed_est_set: EntityHashSet = changed_estimates.iter().collect();
+        let changed_nodes_set: EntityHashSet = changed_nodes.iter().collect();
+
+        let check_entry = |entry: Entity| -> bool {
+            if changed_stops_set.contains(&entry) || changed_est_set.contains(&entry) {
+                return true;
+            }
+            if let Ok(stop) = stop_q.get(entry) {
+                let platform_entity = stop.entity();
+                if changed_nodes_set.contains(&platform_entity) {
+                    return true;
+                }
+                if let Ok((_, Some(parent))) = platform_q.get(platform_entity) {
+                    if changed_nodes_set.contains(&parent.parent()) {
+                        return true;
+                    }
+                }
+            }
+            false
+        };
+
+        for (trip_entity, schedule) in &trips {
+            if schedule.iter().any(|e| check_entry(*e)) {
+                changed_trip_set.insert(trip_entity);
+            }
+        }
+    }
+
+    for trip in to_remove_trips.iter() {
+        if let Some(old_items) = index.entities.remove(trip) {
+            for item in old_items {
+                index.tree.remove(&item);
+            }
+        }
+    }
+
+    if changed_trip_set.is_empty() && to_remove_trips.is_empty() {
         return;
     }
-    state.dirty = false;
-
-    let mut snapshot = Vec::<TripSpatialIndexItem>::new();
 
     let get_station_xy = |entry_entity: Entity| -> Option<[f64; 2]> {
         let platform_entity = stop_q.get(entry_entity).ok()?.entity();
@@ -181,10 +192,25 @@ fn start_trip_spatial_index_rebuild(
 
     let repeat_time = settings.repeat_frequency.0 as f64;
 
-    for (trip_entity, schedule) in &trips {
+    for trip_entity in changed_trip_set {
+        if to_remove_trips.contains(&trip_entity) {
+            continue;
+        }
+
+        if let Some(old_items) = index.entities.remove(&trip_entity) {
+            for item in old_items {
+                index.tree.remove(&item);
+            }
+        }
+
+        let Ok((_, schedule)) = trips.get(trip_entity) else {
+            continue;
+        };
         if schedule.len() < 1 {
             continue;
         }
+
+        let mut new_items = Vec::new();
 
         for pair in schedule.windows(2).chain(std::iter::once(
             [schedule.last().unwrap().clone(); 2].as_slice(),
@@ -209,17 +235,15 @@ fn start_trip_spatial_index_rebuild(
                 continue;
             };
 
-            // include the previous arr time
             let t0 = estimate0.arr.0 as f64;
             let t1 = estimate0.dep.0 as f64;
-            // we do a .max(t1) here to make that the last entry gets included properly
             let t2 = (estimate1.arr.0 as f64).max(t1);
 
             if repeat_time > 0.0 {
                 let dep_duration = t1 - t0;
                 let arr_duration = t2 - t0;
                 if arr_duration >= repeat_time {
-                    snapshot.push(TripSpatialIndexItem {
+                    new_items.push(TripSpatialIndexItem {
                         trip: trip_entity,
                         entry0,
                         entry1,
@@ -235,7 +259,7 @@ fn start_trip_spatial_index_rebuild(
                 let normalized_t0 = t0.rem_euclid(repeat_time);
                 let normalized_t1 = normalized_t0 + dep_duration;
                 let normalized_t2 = normalized_t0 + arr_duration;
-                snapshot.push(TripSpatialIndexItem {
+                new_items.push(TripSpatialIndexItem {
                     trip: trip_entity,
                     entry0,
                     entry1,
@@ -247,7 +271,7 @@ fn start_trip_spatial_index_rebuild(
                 });
 
                 if normalized_t2 > repeat_time {
-                    snapshot.push(TripSpatialIndexItem {
+                    new_items.push(TripSpatialIndexItem {
                         trip: trip_entity,
                         entry0,
                         entry1,
@@ -259,7 +283,7 @@ fn start_trip_spatial_index_rebuild(
                     });
                 }
             } else {
-                snapshot.push(TripSpatialIndexItem {
+                new_items.push(TripSpatialIndexItem {
                     trip: trip_entity,
                     entry0,
                     entry1,
@@ -271,23 +295,12 @@ fn start_trip_spatial_index_rebuild(
                 });
             }
         }
+
+        for item in &new_items {
+            index.tree.insert(*item);
+        }
+        index.entities.insert(trip_entity, new_items);
     }
-
-    state.task = Some(AsyncComputeTaskPool::get().spawn(async move { RTree::bulk_load(snapshot) }));
-}
-
-fn apply_trip_spatial_index_task(
-    mut state: ResMut<TripSpatialIndexState>,
-    mut index: ResMut<TripSpatialIndex>,
-) {
-    let Some(task) = state.task.as_mut() else {
-        return;
-    };
-    let Some(tree) = block_on(poll_once(task)) else {
-        return;
-    };
-    index.replace_tree(tree);
-    state.task = None;
 }
 
 /// Marker component for a trip
@@ -364,9 +377,10 @@ pub struct TripQuery {
 }
 
 impl<'w, 's> TripQueryItem<'w, 's> {
-    /// The duration of the trip, from the first entry's arrival time to the last entry's
-    /// departure time. This method only checks the first and last entries' times, hence
-    /// any intermediate entries are not considered.
+    /// The duration of the trip, from the first entry's arrival time to the
+    /// last entry's departure time. This method only checks the first and
+    /// last entries' times, hence any intermediate entries are not
+    /// considered.
     pub fn duration<'a>(&self, q: &Query<'a, 'a, &entry::EntryEstimate>) -> Option<Duration> {
         let beg = self.schedule.first().cloned()?;
         let end = self.schedule.last().cloned()?;

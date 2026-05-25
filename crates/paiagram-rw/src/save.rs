@@ -1,7 +1,5 @@
-use bevy::{
-    prelude::*,
-    scene::serde::{SceneDeserializer, SceneSerializer},
-};
+use bevy::prelude::*;
+use bevy::scene::serde::{SceneDeserializer, SceneSerializer};
 use cbor4ii::core::utils::IoReader;
 use serde::de::DeserializeSeed;
 

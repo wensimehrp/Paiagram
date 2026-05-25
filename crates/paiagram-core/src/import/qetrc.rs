@@ -1,28 +1,27 @@
-use bevy::{platform::collections::HashMap, prelude::*};
+use bevy::platform::collections::HashMap;
+use bevy::prelude::*;
 use egui::Color32;
 use moonshine_core::kind::*;
 use serde::Deserialize;
 use serde_json;
 
-use crate::{
-    colors::DisplayedColor,
-    entry::{EntryBundle, TravelMode},
-    graph::Graph,
-    route::Route,
-    station::Station,
-    trip::{
-        TripBundle, TripClass,
-        class::{Class, ClassBundle, DisplayedStroke},
-    },
-    units::{distance::Distance, time::TimetableTime},
-};
+use crate::colors::DisplayedColor;
+use crate::entry::{EntryBundle, TravelMode};
+use crate::graph::Graph;
+use crate::route::Route;
+use crate::station::Station;
+use crate::trip::class::{Class, ClassBundle, DisplayedStroke};
+use crate::trip::{TripBundle, TripClass};
+use crate::units::distance::Distance;
+use crate::units::time::TimetableTime;
 
 /// The root structure of the qETRC JSON data
 #[derive(Deserialize)]
 struct Root {
     // qetrc_release: u32,
     // qetrc_version: String,
-    /// Trains in the original qETRC data. Each "train" corresponds to a [`crate::trip::Trip`] in Paiagram.
+    /// Trains in the original qETRC data. Each "train" corresponds to a
+    /// [`crate::trip::Trip`] in Paiagram.
     #[serde(rename = "trains")]
     services: Vec<Service>,
     // qETRC has the line field and the lines array, both contains line data.
@@ -31,11 +30,13 @@ struct Root {
     // The lines would be chained together later with std::iter::once and chain
     /// A single [`Line`]
     line: Line,
-    /// Additional [`Line`]s. This field does not exist in pyETRC, only in qETRC.
+    /// Additional [`Line`]s. This field does not exist in pyETRC, only in
+    /// qETRC.
     lines: Option<Vec<Line>>,
     /// Vehicles in the qETRC data.
-    /// They are named "circuits" in the original qETRC data. A "circuit" refers to a train that runs a set of services
-    /// in a given period, which matches the concept of [`Vehicle`] in Paiagram.
+    /// They are named "circuits" in the original qETRC data. A "circuit" refers
+    /// to a train that runs a set of services in a given period, which
+    /// matches the concept of [`Vehicle`] in Paiagram.
     #[serde(rename = "circuits")]
     vehicles: Vec<Vehicle>,
     config: Option<Config>,
@@ -63,7 +64,8 @@ struct QStation {
 #[derive(Deserialize)]
 struct Service {
     /// Each service may have multiple service numbers.
-    /// In qETRC's case, the first service number is always the main one, and we use that one in Paiagram.
+    /// In qETRC's case, the first service number is always the main one, and we
+    /// use that one in Paiagram.
     #[serde(rename = "checi")]
     service_number: Vec<String>,
     #[serde(rename = "type")]
@@ -74,13 +76,16 @@ struct Service {
 
 #[derive(Deserialize)]
 struct TimetableEntry {
-    /// Whether the train would stop and load/unload passengers or freight at the station.
+    /// Whether the train would stop and load/unload passengers or freight at
+    /// the station.
     #[serde(rename = "business")]
     would_stop: Option<bool>,
-    /// Arrival time in "HH:MM" format. "ddsj" in the original qETRC data refers to "到达时间".
+    /// Arrival time in "HH:MM" format. "ddsj" in the original qETRC data refers
+    /// to "到达时间".
     #[serde(rename = "ddsj")]
     arrival: String,
-    /// Departure time in "HH:MM" format. "cfsj" in the original qETRC data refers to "出发时间".
+    /// Departure time in "HH:MM" format. "cfsj" in the original qETRC data
+    /// refers to "出发时间".
     #[serde(rename = "cfsj")]
     departure: String,
     /// Station name

@@ -1,21 +1,21 @@
-// TODO: this still doesn't quite work since trips that span across multiple days would get culled
-// in certain circumstances.
+// TODO: this still doesn't quite work since trips that span across multiple
+// days would get culled in certain circumstances.
+
+use std::collections::HashMap;
+use std::sync::Arc;
 
 use bevy::ecs::entity::EntityHashMap;
 use bevy::prelude::Entity;
-use bytemuck::{Pod, Zeroable};
-use bytemuck::{bytes_of, cast_slice};
+use bytemuck::{Pod, Zeroable, bytes_of, cast_slice};
 use eframe::egui_wgpu::{self, wgpu};
 use eframe::wgpu::include_wgsl;
-use egui::{Rect, mutex::Mutex};
+use egui::Rect;
+use egui::mutex::Mutex;
 use egui_wgpu::CallbackTrait;
 use paiagram_core::settings::{AntialiasingMode, LevelOfDetailMode};
 use paiagram_core::trip::TripClass;
 use paiagram_core::units::time::TimetableTime;
-use std::collections::HashMap;
-use std::sync::Arc;
-use wgpu::BufferDescriptor;
-use wgpu::{BufferBindingType, BufferUsages, ShaderStages};
+use wgpu::{BufferBindingType, BufferDescriptor, BufferUsages, ShaderStages};
 
 pub(crate) struct GpuTripRendererState {
     entries: Vec<(Box<[Entry]>, usize, TimetableTime)>,
@@ -686,8 +686,9 @@ impl CallbackTrait for TripCallback {
             .unwrap_or(0);
         let visible_window_wraps = state.visible_secs_min >= state.visible_secs_max;
 
-        // Find the visible source-entry window [min, max) over the flattened entry array.
-        // `curr_max` is a prefix max departure time; `arr_secs` is segment start time.
+        // Find the visible source-entry window [min, max) over the flattened entry
+        // array. `curr_max` is a prefix max departure time; `arr_secs` is
+        // segment start time.
         let mut visible_entry_min_index = if state.entries.is_empty() {
             0
         } else {
@@ -796,8 +797,9 @@ impl CallbackTrait for TripCallback {
             .saturating_add((uniforms.screen_size[0] * uniforms.x_per_unit) as i32);
         let repeat_interval = state.uniforms.repeat_interval_ticks.max(0);
 
-        // If one viewport already spans at least one full repeat period, culling would only
-        // remove segments that are still visible after wrapping. Render everything instead.
+        // If one viewport already spans at least one full repeat period, culling would
+        // only remove segments that are still visible after wrapping. Render
+        // everything instead.
         if repeat_interval > 0
             && visible_ticks_max.saturating_sub(visible_ticks_min) >= repeat_interval
         {

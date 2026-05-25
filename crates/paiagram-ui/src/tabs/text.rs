@@ -8,13 +8,14 @@
 
 use std::sync::LazyLock;
 
-use super::Tab;
 use bevy::ecs::entity::MapEntities;
 use bevy::prelude::{Component, Entity};
 use egui::mutex::Mutex;
 use egui::{Frame, ScrollArea, TextEdit};
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 use paiagram_core::settings::ProjectSettings;
+
+use super::Tab;
 
 #[derive(Component)]
 pub(crate) struct TextMessage(pub String);

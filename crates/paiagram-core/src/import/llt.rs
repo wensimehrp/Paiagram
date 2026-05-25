@@ -4,15 +4,14 @@ use moonshine_core::kind::Instance;
 use serde::{Deserialize, Serialize};
 use serde_json;
 
-use crate::{
-    class::{Class, ClassBundle, DisplayedStroke},
-    entry::{EntryBundle, TravelMode},
-    graph::Graph,
-    route::Route,
-    station::Station,
-    trip::{TripBundle, TripClass},
-    units::{distance::Distance, time::TimetableTime},
-};
+use crate::class::{Class, ClassBundle, DisplayedStroke};
+use crate::entry::{EntryBundle, TravelMode};
+use crate::graph::Graph;
+use crate::route::Route;
+use crate::station::Station;
+use crate::trip::{TripBundle, TripClass};
+use crate::units::distance::Distance;
+use crate::units::time::TimetableTime;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TimetableData {

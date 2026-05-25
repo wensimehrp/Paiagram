@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use bevy::ecs::entity::MapEntities;
 use bevy::prelude::*;
 use egui::{
@@ -5,30 +7,25 @@ use egui::{
     PopupCloseBehavior, Pos2, Rect, Sense, Stroke, Ui, Vec2,
 };
 use egui_i18n::tr;
-use paiagram_core::graph::{AddIntervalPair, Graph, NodeCoor};
+use paiagram_core::colors::PredefinedColor;
+use paiagram_core::graph::{
+    AddIntervalPair, Graph, GraphIntervalSpatialIndex, GraphSpatialIndex, Node, NodeCoor,
+};
 use paiagram_core::interval::IntervalQuery;
 use paiagram_core::route::Route;
+use paiagram_core::settings::ProjectSettings;
 use paiagram_core::station::{CreateNewStation, StationNamePending, StationQuery};
+use paiagram_core::trip::class::{Class, DisplayedStroke};
+use paiagram_core::trip::{Trip, TripClass, TripSpatialIndex};
 use paiagram_core::units::distance::Distance;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use walkers::sources::Attribution;
 
-use crate::{
-    CoordinateSelection, IntervalSelection, ModifySelectedItems, SelectedItem, SelectedItems,
-    StationSelection, TripSelection,
-};
-
+use crate::tabs::Navigatable;
 use crate::tabs::graph::gpu_draw::ShapeInstance;
-use crate::{GlobalTimer, tabs::Navigatable};
-use paiagram_core::{
-    colors::PredefinedColor,
-    graph::{GraphIntervalSpatialIndex, GraphSpatialIndex, Node},
-    settings::ProjectSettings,
-    trip::{
-        Trip, TripClass, TripSpatialIndex,
-        class::{Class, DisplayedStroke},
-    },
+use crate::{
+    CoordinateSelection, GlobalTimer, IntervalSelection, ModifySelectedItems, SelectedItem,
+    SelectedItems, StationSelection, TripSelection,
 };
 
 mod gpu_draw;
@@ -234,8 +231,8 @@ impl super::Tab for GraphTab {
             | SelectedItems::Coordinate { .. } => {}
             SelectedItems::Trips(trips) => {
                 // world
-                //     .run_system_cached_with(crate::display_entry_info, (ui, entries.as_slice()))
-                //     .unwrap();
+                //     .run_system_cached_with(crate::display_entry_info, (ui,
+                // entries.as_slice()))     .unwrap();
             }
             SelectedItems::Stations(stations) => {
                 world
@@ -696,8 +693,8 @@ fn push_draw_items(
     // there is interaction i.e. maybe_interaction_pos is Some AND there aren't any
     // previously selected items AND one of the following:
     //   1. the current state is idle, OR
-    //   2. the current state's items matches the pushed item's type.
-    //      e.g. SelectingStations and StationSelection
+    //   2. the current state's items matches the pushed item's type. e.g.
+    //      SelectingStations and StationSelection
     let mut selected_item: Option<SelectedItem> = None;
     macro_rules! push_selected_item {
         ($f:expr, $p:pat) => {

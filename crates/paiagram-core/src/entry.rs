@@ -1,10 +1,9 @@
-use bevy::{ecs::query::QueryData, prelude::*};
+use bevy::ecs::query::QueryData;
+use bevy::prelude::*;
 use moonshine_core::prelude::{MapEntities, ReflectMapEntities};
 
-use crate::{
-    trip::TripQueryItem,
-    units::time::{Duration, TimetableTime},
-};
+use crate::trip::TripQueryItem;
+use crate::units::time::{Duration, TimetableTime};
 
 pub struct EntryPlugin;
 impl Plugin for EntryPlugin {
@@ -43,8 +42,8 @@ impl EntryMode {
             dep: TravelMode::Flexible,
         }
     }
-    /// Shift the arrival time. The function does nothing if the arrival mode is [`TravelMode::Flexible`]
-    /// or [`Option::None`]
+    /// Shift the arrival time. The function does nothing if the arrival mode is
+    /// [`TravelMode::Flexible`] or [`Option::None`]
     pub fn shift_arr(&mut self, d: Duration) {
         match &mut self.arr {
             Some(TravelMode::At(t)) => *t += d,
@@ -52,7 +51,8 @@ impl EntryMode {
             Some(TravelMode::Flexible) | None => (),
         }
     }
-    /// Shift the departure time. The function does nothing if the departure mode is [`TravelMode::Flexible`]
+    /// Shift the departure time. The function does nothing if the departure
+    /// mode is [`TravelMode::Flexible`]
     pub fn shift_dep(&mut self, d: Duration) {
         match &mut self.dep {
             TravelMode::At(t) => *t += d,
@@ -62,7 +62,8 @@ impl EntryMode {
     }
 }
 
-/// Where the vehicle stops. The stop could be a station, or a platform that belongs to the station.
+/// Where the vehicle stops. The stop could be a station, or a platform that
+/// belongs to the station.
 #[derive(Reflect, Component, MapEntities, Deref, DerefMut)]
 #[reflect(Component, MapEntities)]
 #[relationship(relationship_target = crate::station::PlatformEntries)]
@@ -73,7 +74,8 @@ pub struct EntryStop(
     pub Entity,
 );
 
-/// The estimated arrival and departure times of the entry. This is not a hard requirement for entries.
+/// The estimated arrival and departure times of the entry. This is not a hard
+/// requirement for entries.
 #[derive(Reflect, Component, Clone, Copy)]
 #[reflect(Component)]
 pub struct EntryEstimate {

@@ -1,6 +1,7 @@
+use std::io::Write;
+
 use bevy::tasks::IoTaskPool;
 use num_format::{Locale, ToFormattedString};
-use std::io::Write;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn write_file<F>(filename: String, produce_data: F)

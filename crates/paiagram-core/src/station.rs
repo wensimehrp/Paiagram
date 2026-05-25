@@ -1,11 +1,11 @@
 use std::borrow::Cow;
 
-use crate::{
-    graph::{Graph, Node, NodeCoor},
-    trip::class::DisplayedStroke,
-};
-use bevy::{ecs::query::QueryData, prelude::*};
+use bevy::ecs::query::QueryData;
+use bevy::prelude::*;
 use moonshine_core::prelude::{MapEntities, ReflectMapEntities};
+
+use crate::graph::{Graph, Node, NodeCoor};
+use crate::trip::class::DisplayedStroke;
 
 mod fetch_name;
 pub use fetch_name::StationNamePending;

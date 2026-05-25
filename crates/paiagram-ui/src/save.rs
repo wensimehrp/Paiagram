@@ -1,4 +1,5 @@
-use bevy::{ecs::entity::EntityHashMap, prelude::*};
+use bevy::ecs::entity::EntityHashMap;
+use bevy::prelude::*;
 
 pub fn save(world: &mut World, filename: String) {
     let entities: Vec<_> = world.query::<Entity>().iter(world).collect();
@@ -22,6 +23,8 @@ pub fn apply_loaded_scene(world: &mut World) {
     loaded.0.write_to_world(world, &mut entity_map).unwrap();
 }
 
+// TODO: remove make scene and replace with custom CBOR structs
+// DynamicScene is not stable
 fn make_scene(world: &World, entities: impl Iterator<Item = Entity>) -> DynamicScene {
     DynamicSceneBuilder::from_world(world)
         .deny_all_resources()
