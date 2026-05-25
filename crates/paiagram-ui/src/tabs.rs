@@ -16,7 +16,7 @@ pub(crate) mod station;
 pub(crate) mod text;
 pub(crate) mod trip;
 
-pub mod all_tabs {
+pub(crate) mod all_tabs {
     pub(crate) use super::classes::ClassesTab;
     pub(crate) use super::diagram::DiagramTab;
     pub(crate) use super::graph::GraphTab;
@@ -70,7 +70,7 @@ fn handle_keyboard_navigation(ui: &Ui) -> Vec2 {
     smoothed_delta
 }
 
-pub trait Navigatable {
+pub(crate) trait Navigatable {
     type XOffset: Into<f64> + From<f64>;
     type YOffset: Into<f64> + From<f64>;
     fn zoom_x(&self) -> f32;
@@ -203,7 +203,7 @@ pub trait Navigatable {
     fn post_navigation(&mut self, _response: &Response) {}
 }
 
-pub trait Tab: MapEntities {
+pub(crate) trait Tab: MapEntities {
     /// The internal name of the tab used for identification. This must be a
     /// static string. The actual displayed name could be different based on
     /// e.g. the localization or other contents.

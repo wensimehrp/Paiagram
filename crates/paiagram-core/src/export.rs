@@ -4,6 +4,9 @@ pub mod graphviz;
 pub mod oudia;
 // pub mod typst_timetable;
 
+// TODO: plugins
+// TODO: make it so that wasm extensions can use this interface
+// TODO: wasm interface should additionally support requesting fonts
 pub trait ExportObject {
     /// Export contents to a `Vec<u8>` buffer, with optional parameters
     fn export_to_buffer(&mut self, buffer: &mut Vec<u8>);

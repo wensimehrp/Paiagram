@@ -25,14 +25,14 @@ pub(crate) struct GpuTripRendererState {
     data_tick_max: i32,
     entries_dirty: bool,
     stations_dirty: bool,
-    pub visible_secs_min: TimetableTime,
-    pub visible_secs_max: TimetableTime,
-    pub stations: Vec<f32>,
-    pub uniforms: Uniforms,
-    pub target_format: Option<wgpu::TextureFormat>,
-    pub msaa_samples: u32,
-    pub antialiasing_mode: AntialiasingMode,
-    pub level_of_detail_mode: LevelOfDetailMode,
+    pub(crate) visible_secs_min: TimetableTime,
+    pub(crate) visible_secs_max: TimetableTime,
+    pub(crate) stations: Vec<f32>,
+    pub(crate) uniforms: Uniforms,
+    pub(crate) target_format: Option<wgpu::TextureFormat>,
+    pub(crate) msaa_samples: u32,
+    pub(crate) antialiasing_mode: AntialiasingMode,
+    pub(crate) level_of_detail_mode: LevelOfDetailMode,
 }
 
 /// field0: .......C AAAAAAAA AAAAAAAA AAAAAAAA
@@ -100,14 +100,14 @@ impl Entry {
 
 #[repr(C)]
 #[derive(Copy, Clone, Default)]
-pub struct Uniforms {
-    pub ticks_min: i64,
-    pub y_min: f64,
-    pub screen_size: [f32; 2],
-    pub x_per_unit: f32,
-    pub y_per_unit: f32,
-    pub screen_origin: [f32; 2],
-    pub repeat_interval_ticks: i32,
+pub(crate) struct Uniforms {
+    pub(crate) ticks_min: i64,
+    pub(crate) y_min: f64,
+    pub(crate) screen_size: [f32; 2],
+    pub(crate) x_per_unit: f32,
+    pub(crate) y_per_unit: f32,
+    pub(crate) screen_origin: [f32; 2],
+    pub(crate) repeat_interval_ticks: i32,
 }
 
 #[repr(C)]
@@ -205,7 +205,7 @@ impl Default for GpuTripRendererState {
     }
 }
 
-pub fn upload_trip_strokes(
+pub(crate) fn upload_trip_strokes(
     strokes: impl Iterator<Item = (Entity, f32, [u8; 3])>,
     state: &mut GpuTripRendererState,
 ) {
@@ -239,7 +239,7 @@ pub fn upload_trip_strokes(
     }
 }
 
-pub fn rewrite_trip_cache(
+pub(crate) fn rewrite_trip_cache(
     cache: &super::TripCache,
     stations: impl Iterator<Item = f32>,
     class_lookup: &bevy::prelude::Query<&TripClass>,
@@ -323,7 +323,10 @@ pub fn rewrite_trip_cache(
     }
 }
 
-pub fn paint_callback(rect: Rect, state: Arc<Mutex<GpuTripRendererState>>) -> egui::PaintCallback {
+pub(crate) fn paint_callback(
+    rect: Rect,
+    state: Arc<Mutex<GpuTripRendererState>>,
+) -> egui::PaintCallback {
     egui_wgpu::Callback::new_paint_callback(rect, TripCallback { state })
 }
 

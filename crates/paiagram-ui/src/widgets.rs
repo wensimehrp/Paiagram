@@ -2,12 +2,12 @@ use egui::DragValue;
 use egui::emath::Numeric;
 use paiagram_core::units::time::{Duration, TimetableTime};
 
-pub mod buttons;
-pub mod indicators;
-pub mod timetable_popup;
+pub(crate) mod buttons;
+pub(crate) mod indicators;
+pub(crate) mod timetable_popup;
 
 /// [`DragValue`] for [`TimetableTime`].
-pub struct TimeDragValue<'a>(pub &'a mut TimetableTime);
+pub(crate) struct TimeDragValue<'a>(pub &'a mut TimetableTime);
 
 impl<'a> egui::Widget for TimeDragValue<'a> {
     fn ui(self, ui: &mut egui::Ui) -> egui::Response {
@@ -30,7 +30,7 @@ impl<'a> egui::Widget for TimeDragValue<'a> {
 }
 
 /// [`DragValue`] for [`TimetableTime`], in Japanese timetable style.
-pub struct TimeDragValueOud<'a>(pub &'a mut TimetableTime, pub bool);
+pub(crate) struct TimeDragValueOud<'a>(pub &'a mut TimetableTime, pub bool);
 
 impl<'a> egui::Widget for TimeDragValueOud<'a> {
     fn ui(self, ui: &mut egui::Ui) -> egui::Response {
@@ -54,7 +54,7 @@ impl<'a> egui::Widget for TimeDragValueOud<'a> {
 }
 
 /// [`DragValue`] for [`Duration`].
-pub struct DurationDragValue<'a>(pub &'a mut Duration);
+pub(crate) struct DurationDragValue<'a>(pub &'a mut Duration);
 
 impl<'a> egui::Widget for DurationDragValue<'a> {
     fn ui(self, ui: &mut egui::Ui) -> egui::Response {

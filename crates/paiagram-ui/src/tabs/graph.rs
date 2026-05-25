@@ -68,7 +68,7 @@ impl<'a> From<&'a mut SelectedItems> for GraphState<'a> {
 }
 
 #[derive(Serialize, Deserialize, Clone, MapEntities)]
-pub struct GraphTab {
+pub(crate) struct GraphTab {
     navi: GraphNavigation,
     underlay_tile_type: underlay::UnderlayTileType,
     #[serde(skip, default)]
@@ -110,7 +110,7 @@ impl PartialEq for GraphTab {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-pub struct GraphNavigation {
+pub(crate) struct GraphNavigation {
     x_offset: f64,
     y_offset: f64,
     zoom: f32,
@@ -693,8 +693,8 @@ fn push_draw_items(
     // there is interaction i.e. maybe_interaction_pos is Some AND there aren't any
     // previously selected items AND one of the following:
     //   1. the current state is idle, OR
-    //   2. the current state's items matches the pushed item's type. e.g.
-    //      SelectingStations and StationSelection
+    //   2. the current state's items matches the pushed item's type. e.g. SelectingStations and
+    //      StationSelection
     let mut selected_item: Option<SelectedItem> = None;
     macro_rules! push_selected_item {
         ($f:expr, $p:pat) => {

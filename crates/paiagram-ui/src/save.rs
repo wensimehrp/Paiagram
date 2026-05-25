@@ -1,21 +1,21 @@
 use bevy::ecs::entity::EntityHashMap;
 use bevy::prelude::*;
 
-pub fn save(world: &mut World, filename: String) {
+pub(crate) fn save(world: &mut World, filename: String) {
     let entities: Vec<_> = world.query::<Entity>().iter(world).collect();
     let registry = world.resource::<AppTypeRegistry>().clone();
     let scene = make_scene(world, entities.into_iter());
     paiagram_rw::save::save(scene, registry, filename);
 }
 
-pub fn save_ron(world: &mut World, filename: String) {
+pub(crate) fn save_ron(world: &mut World, filename: String) {
     let entities: Vec<_> = world.query::<Entity>().iter(world).collect();
     let registry = world.resource::<AppTypeRegistry>().clone();
     let scene = make_scene(world, entities.into_iter());
     paiagram_rw::save::save_ron(scene, registry, filename);
 }
 
-pub fn apply_loaded_scene(world: &mut World) {
+pub(crate) fn apply_loaded_scene(world: &mut World) {
     let Some(loaded) = world.remove_resource::<paiagram_rw::save::LoadedScene>() else {
         return;
     };

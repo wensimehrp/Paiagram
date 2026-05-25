@@ -6,20 +6,11 @@ use bevy::prelude::*;
 use crate::i18n::Language;
 use crate::units::time::Duration;
 
-#[derive(Reflect, Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Default, Reflect, Copy, Clone, Debug, PartialEq, Eq)]
 pub enum AntialiasingMode {
     On,
+    #[default]
     Off,
-}
-
-impl Default for AntialiasingMode {
-    fn default() -> Self {
-        if cfg!(target_arch = "wasm32") {
-            Self::Off
-        } else {
-            Self::On
-        }
-    }
 }
 
 #[derive(Reflect, Copy, Clone, Debug, PartialEq, Eq)]

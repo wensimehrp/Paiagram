@@ -23,7 +23,7 @@ pub(crate) struct TextMessage(pub String);
 #[derive(MapEntities, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub(crate) struct TextTab {
     #[entities]
-    pub entity: Option<Entity>,
+    pub(crate) entity: Option<Entity>,
     #[serde(skip, default)]
     editing: bool,
 }
@@ -35,7 +35,7 @@ impl PartialEq for TextTab {
 }
 
 impl TextTab {
-    pub fn new(entity: Option<Entity>) -> Self {
+    pub(crate) fn new(entity: Option<Entity>) -> Self {
         Self {
             entity,
             editing: false,

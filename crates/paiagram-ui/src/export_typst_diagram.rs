@@ -3,7 +3,7 @@ use std::io::Write;
 use bevy::prelude::*;
 use paiagram_core::export::ExportObject;
 
-pub struct TypstModule;
+pub(crate) struct TypstModule;
 
 impl ExportObject for TypstModule {
     fn export_to_buffer(&mut self, buffer: &mut Vec<u8>) {
@@ -16,9 +16,9 @@ impl ExportObject for TypstModule {
     }
 }
 
-pub struct TypstDiagram<'a> {
-    pub route_entity: Entity,
-    pub world: &'a mut World,
+pub(crate) struct TypstDiagram<'a> {
+    pub(crate) route_entity: Entity,
+    pub(crate) world: &'a mut World,
 }
 
 impl<'a> ExportObject for TypstDiagram<'a> {

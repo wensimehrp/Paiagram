@@ -37,7 +37,7 @@ use crate::{
 };
 mod draw_lines;
 mod gpu_draw;
-pub mod prep_segments;
+pub(crate) mod prep_segments;
 
 impl SelectedItems {
     fn to_canvas_state(&mut self) -> CanvasState<'_> {
@@ -75,7 +75,7 @@ type TripCache = EntityHashMap<SmallVec<[Vec1<TripPoint>; 1]>>;
 
 /// The diagram tab.
 #[derive(Serialize, Deserialize, Clone, MapEntities)]
-pub struct DiagramTab {
+pub(crate) struct DiagramTab {
     /// The navigation info
     navi: DiagramTabNavigation,
     /// In the case where the user secondary clicked on the page, where?
@@ -97,7 +97,7 @@ pub struct DiagramTab {
 }
 
 #[derive(Clone, Default)]
-pub struct RaptorParams {
+pub(crate) struct RaptorParams {
     departure_time: TimetableTime,
     start_stop: Option<Entity>,
     end_stop: Option<Entity>,
@@ -105,14 +105,14 @@ pub struct RaptorParams {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-pub struct DiagramTabNavigation {
-    pub x_offset: Tick,
-    pub y_offset: f64,
-    pub zoom: Vec2,
+pub(crate) struct DiagramTabNavigation {
+    pub(crate) x_offset: Tick,
+    pub(crate) y_offset: f64,
+    pub(crate) zoom: Vec2,
     #[serde(skip, default = "default_visible_rect")]
-    pub visible_rect: Rect,
+    pub(crate) visible_rect: Rect,
     // cache zone
-    pub max_height: f32,
+    pub(crate) max_height: f32,
 }
 
 impl Default for DiagramTabNavigation {
@@ -138,7 +138,7 @@ impl PartialEq for DiagramTab {
 }
 
 impl DiagramTab {
-    pub fn new(route_entity: Entity) -> Self {
+    pub(crate) fn new(route_entity: Entity) -> Self {
         Self {
             navi: DiagramTabNavigation::default(),
             last_secondary_click_position: None,

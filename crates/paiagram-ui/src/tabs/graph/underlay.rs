@@ -11,7 +11,7 @@ use walkers::{HttpTiles, Tile, TileId, Tiles, mercator};
 use crate::tabs::Navigatable;
 
 #[derive(Default, Clone, Copy, Serialize, Deserialize, PartialEq)]
-pub enum UnderlayTileType {
+pub(crate) enum UnderlayTileType {
     None,
     #[default]
     OpenStreetMap,
@@ -21,7 +21,7 @@ pub enum UnderlayTileType {
 }
 
 #[derive(Default, Clone, Copy, Serialize, Deserialize, PartialEq, Debug)]
-pub enum ChiriinChizuVariant {
+pub(crate) enum ChiriinChizuVariant {
     #[default]
     Standard,
     Light,
@@ -105,7 +105,7 @@ impl Widget for &mut UnderlayTileType {
     }
 }
 
-pub struct ChiriinChizu(ChiriinChizuVariant);
+pub(crate) struct ChiriinChizu(ChiriinChizuVariant);
 
 impl TileSource for ChiriinChizu {
     fn tile_url(&self, tile_id: TileId) -> String {
@@ -131,7 +131,7 @@ impl TileSource for ChiriinChizu {
     }
 }
 
-pub struct AutoNavi;
+pub(crate) struct AutoNavi;
 
 impl TileSource for AutoNavi {
     fn tile_url(&self, tile_id: TileId) -> String {
@@ -158,7 +158,7 @@ impl TileSource for AutoNavi {
     }
 }
 
-pub struct EsriWorldImagery;
+pub(crate) struct EsriWorldImagery;
 
 impl TileSource for EsriWorldImagery {
     fn tile_url(&self, tile_id: TileId) -> String {
@@ -179,7 +179,7 @@ impl TileSource for EsriWorldImagery {
     }
 }
 
-pub fn draw_underlay(
+pub(crate) fn draw_underlay(
     (InMut(painter), InRef(navi), InMut(ui), In(new_type)): (
         InMut<Painter>,
         InRef<super::GraphNavigation>,

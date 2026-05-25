@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use super::Tab;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Default, MapEntities)]
-pub struct StartTab;
+pub(crate) struct StartTab;
 
 impl Tab for StartTab {
     const NAME: &'static str = "Start";

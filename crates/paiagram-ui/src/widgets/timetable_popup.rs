@@ -8,10 +8,10 @@ use paiagram_core::units::time::{Duration, TimetableTime};
 
 use super::{DurationDragValue, TimeDragValue};
 
-pub const POPUP_WIDTH: f32 = 130.0;
-pub const BUTTON_SIZE: Vec2 = vec2(70.0, 18.0);
+pub(crate) const POPUP_WIDTH: f32 = 130.0;
+pub(crate) const BUTTON_SIZE: Vec2 = vec2(70.0, 18.0);
 
-pub fn departure_popup(
+pub(crate) fn departure_popup(
     response: &Response,
     entry: &EntryQueryItem,
     alignment: RectAlign,
@@ -23,7 +23,7 @@ pub fn departure_popup(
         .show(|ui| departure_popup_inner(ui, entry, commands));
 }
 
-pub fn shift_at_value(
+pub(crate) fn shift_at_value(
     t: TimetableTime,
     trip_entity: Entity,
     ui: &mut Ui,
@@ -46,7 +46,7 @@ pub fn shift_at_value(
     res
 }
 
-pub fn shift_for_value(
+pub(crate) fn shift_for_value(
     d: Duration,
     trip_entity: Entity,
     ui: &mut Ui,
@@ -69,7 +69,7 @@ pub fn shift_for_value(
     res
 }
 
-pub fn departure_popup_inner(ui: &mut Ui, entry: &EntryQueryItem, commands: &mut Commands) {
+pub(crate) fn departure_popup_inner(ui: &mut Ui, entry: &EntryQueryItem, commands: &mut Commands) {
     ui.set_width(POPUP_WIDTH);
     // at
     let mut adjustment = None;
@@ -124,7 +124,7 @@ pub fn departure_popup_inner(ui: &mut Ui, entry: &EntryQueryItem, commands: &mut
     }
 }
 
-pub fn arrival_popup(
+pub(crate) fn arrival_popup(
     response: &Response,
     entry: &EntryQueryItem,
     parent: &TripQueryItem,
@@ -138,7 +138,7 @@ pub fn arrival_popup(
         .show(|ui| arrival_popup_inner(ui, entry, parent, entry_q, commands));
 }
 
-pub fn arrival_popup_inner(
+pub(crate) fn arrival_popup_inner(
     ui: &mut Ui,
     entry: &EntryQueryItem,
     parent: &TripQueryItem,

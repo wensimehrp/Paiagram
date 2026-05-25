@@ -13,7 +13,7 @@ use crate::widgets::timetable_popup::{
 };
 
 #[derive(Serialize, Deserialize, MapEntities, Clone)]
-pub struct TripTab {
+pub(crate) struct TripTab {
     #[entities]
     trip_entity: Entity,
 }
@@ -32,7 +32,7 @@ impl Tab for TripTab {
 }
 
 impl TripTab {
-    pub fn new(trip_entity: Entity) -> Self {
+    pub(crate) fn new(trip_entity: Entity) -> Self {
         Self { trip_entity }
     }
 }

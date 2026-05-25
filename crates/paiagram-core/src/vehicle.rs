@@ -1,17 +1,16 @@
-/*!
-A trip defines
-A vehicle, on the other hand
-*/
+//! A [`Vehicle`] is the executor of a [`crate::trip::Trip`]. Each Trip should be executed by a
+//! vehicle. Vehicles contain multiple trips, just like how trips contain multiple entries.
 
 use bevy::ecs::query::QueryData;
 use bevy::prelude::*;
 use moonshine_core::prelude::{MapEntities, ReflectMapEntities};
 
-/// A vehicle is the "executor" of a [`crate::trip::Trip`].
+/// Definition of the Vehicle.
 #[derive(Default, Reflect, Component, MapEntities)]
 #[reflect(Component, MapEntities)]
 #[require(Name)]
 pub struct Vehicle {
+    /// What trips does the vehicle contain
     #[entities]
     pub trips: Vec<Entity>,
 }
