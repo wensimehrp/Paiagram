@@ -1,17 +1,18 @@
 //! # RAPTOR Module
 //! This crate bridges between Paiagram types and the raptor-rs crate
 
-// TODO: in case if the crate author updates, switch to iterators instead of vectors
+// TODO: in case if the crate author updates, switch to iterators instead of
+// vectors
 
 use std::borrow::Cow;
 
-use bevy::{ecs::system::SystemParam, prelude::*};
+use bevy::ecs::system::SystemParam;
+use bevy::prelude::*;
 use paiagram_core::entry::EntryQuery;
 use paiagram_core::station::{ParentStationOrStation, PlatformEntries, StationQuery};
 use paiagram_core::trip::TripQuery;
-use raptor::Timetable;
-
 pub use raptor::Journey;
+use raptor::Timetable;
 pub fn make_query_data(
     (In(departure), In(start), In(end)): (In<usize>, In<Entity>, In<Entity>),
     info: RaptorTimetable<'_, '_>,

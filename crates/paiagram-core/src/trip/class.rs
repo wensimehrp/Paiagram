@@ -1,6 +1,8 @@
-use crate::colors::{DisplayedColor, PredefinedColor};
-use bevy::{ecs::query::QueryData, prelude::*};
+use bevy::ecs::query::QueryData;
+use bevy::prelude::*;
 use moonshine_core::prelude::{MapEntities, ReflectMapEntities};
+
+use crate::colors::{DisplayedColor, PredefinedColor};
 
 pub struct ClassPlugin;
 impl Plugin for ClassPlugin {

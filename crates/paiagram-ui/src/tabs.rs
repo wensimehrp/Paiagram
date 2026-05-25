@@ -1,9 +1,9 @@
+use std::borrow::Cow;
+
 use bevy::ecs::entity::MapEntities;
 use bevy::ecs::world::World;
-use egui::emath;
-use egui::{Id, Key, NumExt, Response, Ui, Vec2, WidgetText, vec2};
+use egui::{Id, Key, NumExt, Response, Ui, Vec2, WidgetText, emath, vec2};
 use egui_i18n::tr;
-use std::borrow::Cow;
 
 pub(crate) mod classes;
 pub(crate) mod diagram;
@@ -204,8 +204,9 @@ pub trait Navigatable {
 }
 
 pub trait Tab: MapEntities {
-    /// The internal name of the tab used for identification. This must be a static string.
-    /// The actual displayed name could be different based on e.g. the localization or other contents.
+    /// The internal name of the tab used for identification. This must be a
+    /// static string. The actual displayed name could be different based on
+    /// e.g. the localization or other contents.
     const NAME: &'static str;
     /// The main display of the tab.
     fn main_display(&mut self, world: &mut World, ui: &mut Ui);
@@ -231,17 +232,8 @@ pub trait Tab: MapEntities {
     fn title(&self) -> WidgetText {
         Self::NAME.into()
     }
-    /// What to do when clicking on the tab button
-    fn on_tab_button(&self, _world: &mut World, _response: &Response) {
-        // if response.hovered() {
-        //     let title_text = self.title();
-        //     let s = &mut world.resource_mut::<StatusBarState>().tooltip;
-        //     s.clear();
-        //     s.push_str(self.icon().as_ref());
-        //     s.push(' ');
-        //     s.push_str(title_text.text());
-        // }
-    }
+    /// What to do with the tab button
+    fn on_tab_button(&self, _world: &mut World, _response: &Response) {}
     /// The id of the tab
     fn id(&self) -> Id {
         Id::new(Self::NAME)

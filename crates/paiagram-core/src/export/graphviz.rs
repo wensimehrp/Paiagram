@@ -1,4 +1,5 @@
-use bevy::{ecs::system::RunSystemOnce, prelude::*};
+use bevy::ecs::system::RunSystemOnce;
+use bevy::prelude::*;
 use petgraph::dot;
 
 use crate::graph::Graph;

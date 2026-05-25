@@ -1,4 +1,10 @@
-use bevy::{ecs::query::QueryData, prelude::*};
+/*!
+A trip defines
+A vehicle, on the other hand
+*/
+
+use bevy::ecs::query::QueryData;
+use bevy::prelude::*;
 use moonshine_core::prelude::{MapEntities, ReflectMapEntities};
 
 /// A vehicle is the "executor" of a [`crate::trip::Trip`].

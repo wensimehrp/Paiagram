@@ -8,6 +8,10 @@ pub mod save;
 pub mod tabs;
 mod widgets;
 
+#[cfg(not(target_arch = "wasm32"))]
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
+
 use bevy::ecs::entity::MapEntities;
 use bevy::ecs::reflect::ReflectMapEntities;
 use bevy::prelude::*;
@@ -22,24 +26,16 @@ use egui_tiles::{
 };
 use paiagram_core::colors::{DisplayedColor, PredefinedColor};
 use paiagram_core::graph::NodeCoor;
-use paiagram_core::import::LoadLlt;
-use paiagram_core::settings::ProjectSettings;
-use paiagram_core::units::time::Tick;
-use paiagram_core::{
-    import::{DownloadFile, LoadGTFS, LoadOuDia, LoadQETRC},
-    route::Route,
-    settings::UserPreferences,
-    trip::Trip,
-    units::time::TimetableTime,
-};
+use paiagram_core::import::{DownloadFile, LoadGTFS, LoadLlt, LoadOuDia, LoadQETRC};
+use paiagram_core::route::Route;
+use paiagram_core::settings::{ProjectSettings, UserPreferences};
+use paiagram_core::trip::Trip;
+use paiagram_core::units::time::{Tick, TimetableTime};
 use paiagram_rw::read::CallbackFn;
 use serde::{Deserialize, Serialize};
-#[cfg(not(target_arch = "wasm32"))]
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
-use tabs::{Tab, all_tabs::*};
+use tabs::Tab;
+use tabs::all_tabs::*;
 use vec1::{Vec1, vec1};
-
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsCast;
 #[cfg(target_arch = "wasm32")]

@@ -1,11 +1,12 @@
-use crate::{OpenOrFocus, tabs::trip::TripTab};
-
-use super::Tab;
 use bevy::ecs::entity::MapEntities;
 use bevy::prelude::*;
 use egui::{Button, Panel, ScrollArea, Ui};
 use paiagram_core::trip::class::{Class, DisplayedStroke};
 use serde::{Deserialize, Serialize};
+
+use super::Tab;
+use crate::OpenOrFocus;
+use crate::tabs::trip::TripTab;
 
 #[derive(Default, PartialEq, Clone, Serialize, Deserialize, MapEntities)]
 pub(crate) struct ClassesTab {

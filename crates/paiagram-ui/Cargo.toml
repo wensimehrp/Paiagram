@@ -1,46 +1,45 @@
 [package]
 name = "paiagram-ui"
 version.workspace = true
-edition.workspace = true
-license.workspace = true
 authors.workspace = true
+edition.workspace = true
 description.workspace = true
 documentation.workspace = true
 readme.workspace = true
-repository.workspace = true
 homepage.workspace = true
+repository.workspace = true
+license.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+[lib]
+doctest = false
+test = false
+
 [dependencies]
+bevy.workspace = true
+bytemuck.workspace = true
+chrono.workspace = true
+eframe.workspace = true
+egui.workspace = true
+egui_commonmark = "0.23.0"
+egui-i18n.workspace = true
+egui_table = "0.8.0"
+egui_tiles = "0.15.0"
+either.workspace = true
+eros.workspace = true
+ib-matcher.workspace = true
+itertools.workspace = true
+itoa.workspace = true
 paiagram-core = { path = "../paiagram-core" }
 paiagram-raptor = { path = "../paiagram-raptor" }
 paiagram-rw = { path = "../paiagram-rw" }
-egui_tiles = "0.15.0"
-bevy.workspace = true
 serde.workspace = true
-egui.workspace = true
-eframe.workspace = true
-# TODO: investigate why 0.2.0 causes a bug
-egui-i18n.workspace = true
-egui_table = "0.8.0"
-either.workspace = true
-bytemuck.workspace = true
-walkers = { version = "0.53.0", features = ["mvt"] }
-ib-matcher.workspace = true
-chrono.workspace = true
-vec1.workspace = true
-itertools.workspace = true
 smallvec.workspace = true
-eros.workspace = true
-itoa.workspace = true
-egui_commonmark = "0.23.0"
+vec1.workspace = true
+walkers = { version = "0.53.0", features = ["mvt"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
+js-sys.workspace = true
 wasm-bindgen.workspace = true
 wasm-bindgen-futures.workspace = true
-js-sys.workspace = true
-
-[lib]
-test = false
-doctest = false

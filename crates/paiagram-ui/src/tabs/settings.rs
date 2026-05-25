@@ -1,14 +1,14 @@
-use paiagram_core::{
-    i18n::Language,
-    settings::{AntialiasingMode, LevelOfDetailMode, ProjectSettings, UserPreferences},
-};
-
-use super::Tab;
 use bevy::ecs::entity::MapEntities;
 use bevy::prelude::*;
 use egui::Ui;
 use egui_i18n::tr;
+use paiagram_core::i18n::Language;
+use paiagram_core::settings::{
+    AntialiasingMode, LevelOfDetailMode, ProjectSettings, UserPreferences,
+};
 use serde::{Deserialize, Serialize};
+
+use super::Tab;
 
 #[derive(Serialize, Deserialize, Clone, Default, MapEntities, PartialEq)]
 pub struct SettingsTab;

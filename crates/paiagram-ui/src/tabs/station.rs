@@ -1,21 +1,18 @@
-use crate::{
-    GlobalTimer,
-    widgets::indicators::{
-        display_time_indicator_indicator_horizontal, display_time_indicator_indicator_vertical,
-    },
-};
+use bevy::ecs::entity::MapEntities;
 use bevy::prelude::*;
 use egui::{Color32, Rect, RichText, Stroke};
 use either::Either;
-use bevy::ecs::entity::MapEntities;
-use paiagram_core::{
-    class::ClassQuery,
-    entry::EntryQuery,
-    station::{ParentStationOrStation, PlatformEntries, StationQuery},
-    trip::TripQuery,
-    units::time::TimetableTime,
-};
+use paiagram_core::class::ClassQuery;
+use paiagram_core::entry::EntryQuery;
+use paiagram_core::station::{ParentStationOrStation, PlatformEntries, StationQuery};
+use paiagram_core::trip::TripQuery;
+use paiagram_core::units::time::TimetableTime;
 use serde::{Deserialize, Serialize};
+
+use crate::GlobalTimer;
+use crate::widgets::indicators::{
+    display_time_indicator_indicator_horizontal, display_time_indicator_indicator_vertical,
+};
 
 #[derive(MapEntities, Serialize, Deserialize, Clone, PartialEq)]
 pub struct StationTab {

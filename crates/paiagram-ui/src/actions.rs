@@ -1,9 +1,11 @@
 //! A set of actions the user can perform
-//! Each action has a reverse action that would be triggered when the user hits the revert shortcut
+//! Each action has a reverse action that would be triggered when the user hits
+//! the revert shortcut
+
+use std::collections::VecDeque;
 
 use bevy::prelude::*;
 use eros::bail;
-use std::collections::VecDeque;
 
 mod change_entry_mode;
 
@@ -60,8 +62,9 @@ impl ActionHistory {
         self.ptr < self.history.len()
     }
     /// Add a variant of [`RevertableActions`] to the action queue
-    /// Note that some types of actions, such as [`RevertableActions::ChangeEntryMode`] might require merging
-    /// actions instead of appending actions.
+    /// Note that some types of actions, such as
+    /// [`RevertableActions::ChangeEntryMode`] might require merging actions
+    /// instead of appending actions.
     fn add(&mut self, action: RevertableActions) {
         if self.ptr < self.history.len() {
             self.history.truncate(self.ptr);

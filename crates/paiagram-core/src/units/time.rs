@@ -1,7 +1,8 @@
+use std::ops;
+
 use bevy::prelude::Reflect;
 use egui::emath;
 use serde::{Deserialize, Serialize};
-use std::ops;
 
 /// A tick. Each tick is 10ms
 #[derive(
@@ -199,7 +200,8 @@ impl TimetableTime {
             _ => None,
         }
     }
-    /// Parses the current time to a oud2 formatted string and drop the date offset.
+    /// Parses the current time to a oud2 formatted string and drop the date
+    /// offset.
     #[inline]
     pub fn to_oud2_str(&self, show_seconds: bool) -> String {
         let (h, m, s, _) = self.to_hmsd();

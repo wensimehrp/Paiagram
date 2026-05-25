@@ -1,23 +1,22 @@
-use crate::{
-    colors::DisplayedColor,
-    entry::{EntryBundle, TravelMode},
-    graph::Graph,
-    import::OuDiaContentType,
-    route::Route,
-    station::Station as StationComponent,
-    trip::{
-        TripBundle, TripClass,
-        class::{Class as ClassComponent, ClassBundle, DisplayedStroke},
-    },
-    units::{distance::Distance, time::TimetableTime},
-};
-use bevy::{platform::collections::HashMap, prelude::*};
+use bevy::platform::collections::HashMap;
+use bevy::prelude::*;
 use itertools::Itertools;
 use moonshine_core::kind::*;
 use paiagram_oudia::{
     Direction, ServiceMode, Time as OuDiaTime, TimetableEntry as OuDiaTimetableEntry,
     parse_oud_to_ir, parse_oud2_to_ir,
 };
+
+use crate::colors::DisplayedColor;
+use crate::entry::{EntryBundle, TravelMode};
+use crate::graph::Graph;
+use crate::import::OuDiaContentType;
+use crate::route::Route;
+use crate::station::Station as StationComponent;
+use crate::trip::class::{Class as ClassComponent, ClassBundle, DisplayedStroke};
+use crate::trip::{TripBundle, TripClass};
+use crate::units::distance::Distance;
+use crate::units::time::TimetableTime;
 
 #[derive(Debug, Clone, Copy)]
 struct TimetableEntry {

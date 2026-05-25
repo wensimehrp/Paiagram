@@ -1,13 +1,13 @@
-use super::{TripCache, TripPoint};
-use bevy::{ecs::entity::EntityHashMap, prelude::*};
-use paiagram_core::{
-    entry::{EntryEstimate, EntryQuery},
-    route::{Route, RouteTrips},
-    station::ParentStationOrStation,
-    trip::TripQuery,
-};
+use bevy::ecs::entity::EntityHashMap;
+use bevy::prelude::*;
+use paiagram_core::entry::{EntryEstimate, EntryQuery};
+use paiagram_core::route::{Route, RouteTrips};
+use paiagram_core::station::ParentStationOrStation;
+use paiagram_core::trip::TripQuery;
 use smallvec::SmallVec;
 use vec1::{Vec1, vec1};
+
+use super::{TripCache, TripPoint};
 
 pub(crate) fn calc(
     (In(route_entity), InRef(heights), InMut(map)): (

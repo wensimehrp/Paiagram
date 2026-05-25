@@ -1,18 +1,14 @@
+use bevy::ecs::entity::MapEntities;
 use bevy::prelude::*;
 use egui::{FontId, Layout, Rect, RichText, Ui, Vec2, vec2};
 use egui_table::{Column, Table, TableDelegate};
-use bevy::ecs::entity::MapEntities;
-use serde::{Deserialize, Serialize};
-
-use paiagram_core::{
-    entry::{EntryQuery, EntryQueryItem, TravelMode},
-    route::{
-        AllTripsDisplayMode, Route, RouteByDirectionTrips, RouteDisplayModes,
-        SortRouteByDirectionTrips,
-    },
-    station::{ParentStationOrStation, Station},
-    trip::{TripQuery, TripQueryItem},
+use paiagram_core::entry::{EntryQuery, EntryQueryItem, TravelMode};
+use paiagram_core::route::{
+    AllTripsDisplayMode, Route, RouteByDirectionTrips, RouteDisplayModes, SortRouteByDirectionTrips,
 };
+use paiagram_core::station::{ParentStationOrStation, Station};
+use paiagram_core::trip::{TripQuery, TripQueryItem};
+use serde::{Deserialize, Serialize};
 
 use crate::widgets::TimeDragValueOud;
 

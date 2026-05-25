@@ -1,22 +1,19 @@
 use core::f32;
 
-use bevy::ecs::entity::MapEntities;
-use bevy::{ecs::entity::EntityHashMap, prelude::*};
-use egui::{
-    Align2, Margin, Painter, Pos2, Rect, Sense, Stroke, Vec2, Visuals, epaint::TextShape, pos2,
-};
+use bevy::ecs::entity::{EntityHashMap, MapEntities};
+use bevy::prelude::*;
+use egui::epaint::TextShape;
+use egui::{Align2, Margin, Painter, Pos2, Rect, Sense, Stroke, Vec2, Visuals, pos2};
 use either::Either;
+use paiagram_core::colors::DisplayedColor;
+use paiagram_core::entry::EntryQuery;
+use paiagram_core::route::{Route, RouteByDirectionTrips};
+use paiagram_core::station::{ParentStationOrStation, Station};
+use paiagram_core::trip::TripQuery;
+use paiagram_core::units::time::TimetableTime;
 use serde::{Deserialize, Serialize};
 
 use crate::tabs::Navigatable;
-use paiagram_core::{
-    colors::DisplayedColor,
-    entry::EntryQuery,
-    route::{Route, RouteByDirectionTrips},
-    station::{ParentStationOrStation, Station},
-    trip::TripQuery,
-    units::time::TimetableTime,
-};
 
 #[derive(Serialize, Deserialize, MapEntities, Clone)]
 pub struct PriorityGraphTab {

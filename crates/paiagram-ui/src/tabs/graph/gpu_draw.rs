@@ -1,8 +1,10 @@
+use std::sync::Arc;
+
 use bytemuck::cast_slice;
 use eframe::egui_wgpu::{self, wgpu};
-use egui::{Color32, Pos2, Rect, Vec2, mutex::Mutex};
+use egui::mutex::Mutex;
+use egui::{Color32, Pos2, Rect, Vec2};
 use egui_wgpu::CallbackTrait;
-use std::sync::Arc;
 
 impl ShapeInstance {
     fn offset_perpendicular(a: Pos2, b: Pos2, offset_amount: f32) -> (Pos2, Pos2) {

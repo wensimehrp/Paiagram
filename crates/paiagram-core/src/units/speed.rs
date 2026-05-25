@@ -1,8 +1,10 @@
-use super::distance::Distance;
-use super::time::Duration;
+use std::ops;
+
 use bevy::prelude::Reflect;
 use derive_more::{Add, AddAssign, Sub, SubAssign};
-use std::ops;
+
+use super::distance::Distance;
+use super::time::Duration;
 
 /// The speed represented in m/s
 #[derive(Reflect, Debug, Clone, Copy, Add, AddAssign, Sub, SubAssign)]

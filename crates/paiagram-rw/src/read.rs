@@ -1,8 +1,6 @@
+use bevy::prelude::*;
 use bevy::tasks::futures_lite::future;
-use bevy::{
-    prelude::*,
-    tasks::{AsyncComputeTaskPool, Task},
-};
+use bevy::tasks::{AsyncComputeTaskPool, Task};
 use rfd::AsyncFileDialog;
 
 pub struct ReadPlugin;

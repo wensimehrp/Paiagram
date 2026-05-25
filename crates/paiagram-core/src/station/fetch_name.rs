@@ -1,11 +1,10 @@
 use std::collections::HashMap;
 
-use crate::graph::{Node, NodeCoor};
-use bevy::{
-    prelude::*,
-    tasks::{AsyncComputeTaskPool, Task, block_on, poll_once},
-};
+use bevy::prelude::*;
+use bevy::tasks::{AsyncComputeTaskPool, Task, block_on, poll_once};
 use serde::Deserialize;
+
+use crate::graph::{Node, NodeCoor};
 
 pub(super) struct FetchNamePlugin;
 
@@ -15,8 +14,8 @@ impl Plugin for FetchNamePlugin {
     }
 }
 
-/// Stations with this marker component is created with a default name, and the name would be
-/// fetched via OSM services
+/// Stations with this marker component is created with a default name, and the
+/// name would be fetched via OSM services
 #[derive(Component)]
 pub struct StationNamePending(Task<Option<(String, NodeCoor)>>);
 
