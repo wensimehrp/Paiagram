@@ -16,6 +16,10 @@ categories.workspace = true
 doctest = false
 test = false
 
+[[bin]]
+name = "paiagram"
+path = "src/main.rs"
+
 [dependencies]
 bevy.workspace = true
 bytemuck.workspace = true
