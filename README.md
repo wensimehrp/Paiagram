@@ -34,3 +34,5 @@ Paiagram is a marey chart editor and timetable visualizer that runs on any moder
 - Import your favourite OuDiaSecond and qETRC/pyETRC diagrams using the builtin import feature.
 - Try it on the web! You can download the app bundle and use it directly in your browser without installation. It works completely offline!
   There's also an online build: <https://paiagram.com>
+
+[![Translation status](https://hosted.weblate.org/widget/paiagram/paiagram-app/multi-auto.svg)](https://hosted.weblate.org/engage/paiagram/)
