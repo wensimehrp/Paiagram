@@ -1,6 +1,7 @@
 use bevy::ecs::entity::MapEntities;
 use bevy::prelude::*;
-use egui::{Color32, Rect, RichText, Stroke};
+use egui::{Color32, Rect, RichText, Stroke, WidgetText};
+use egui_i18n::tr;
 use either::Either;
 use paiagram_core::class::ClassQuery;
 use paiagram_core::entry::EntryQuery;
@@ -32,10 +33,13 @@ impl StationTab {
 
 impl super::Tab for StationTab {
     const NAME: &'static str = "Station";
+    fn title(&self) -> WidgetText {
+        tr!("tab-station").into()
+    }
     fn main_display(&mut self, world: &mut World, ui: &mut egui::Ui) {
         let station_name = world.get::<Name>(self.station_entity).unwrap().as_str();
         ui.heading(station_name);
-        ui.checkbox(&mut self.include_nonstop, "Include non-stop");
+        ui.checkbox(&mut self.include_nonstop, tr!("station-include-non-stop"));
         egui::ScrollArea::both().show(ui, |ui| {
             world
                 .run_system_cached_with(display_time_grid, (ui, self))

@@ -269,11 +269,11 @@ impl Modals {
     fn display(&mut self, ui: &mut egui::Ui, world: &mut World) {
         match self {
             Self::OpenUrl(buf) => {
-                ui.heading("Import from URL");
-                ui.label("Download the file from the Internet then import it into Paiagram");
-                ui.strong("URL:");
+                ui.heading(tr!("menu-import-url-heading"));
+                ui.label(tr!("menu-import-url-desc"));
+                ui.strong(tr!("menu-url-label"));
                 ui.text_edit_singleline(buf);
-                if ui.button("Download and Import").clicked() {
+                if ui.button(tr!("menu-download-and-import")).clicked() {
                     world.trigger(DownloadFile { url: buf.clone() });
                     ui.close();
                 }
@@ -562,19 +562,20 @@ struct MainTabViewer<'w> {
 
 impl<'w> MainTabViewer<'w> {
     fn add_popup(&mut self, ui: &mut Ui) {
-        for (s, t) in [
-            ("Start", MainTab::Start(StartTab::default())),
-            ("Settings", MainTab::Settings(SettingsTab::default())),
-            ("Classes", MainTab::Classes(ClassesTab::default())),
-            ("Graph", MainTab::Graph(GraphTab::default())),
-        ] {
+        let tab_definitions: [(&str, _); 4] = [
+            (&tr!("tab-start"), MainTab::Start(StartTab::default())),
+            (&tr!("tab-settings"), MainTab::Settings(SettingsTab)),
+            (&tr!("tab-classes"), MainTab::Classes(ClassesTab::default())),
+            (&tr!("tab-graph"), MainTab::Graph(GraphTab::default())),
+        ];
+        for (s, t) in tab_definitions {
             if ui.button(s).clicked() {
                 self.world.write_message(OpenOrFocus(t));
                 ui.close();
             }
         }
-        ui.menu_button("Route Timetable", |ui| {
-            if ui.button("New Route").clicked() {}
+        ui.menu_button(tr!("menu-route-timetable"), |ui| {
+            if ui.button(tr!("menu-new-route")).clicked() {}
             ui.separator();
             ScrollArea::vertical().show(ui, |ui| {
                 if let Some(e) = self
@@ -589,8 +590,8 @@ impl<'w> MainTabViewer<'w> {
                 }
             });
         });
-        ui.menu_button("Priority Graph", |ui| {
-            if ui.button("New Route").clicked() {}
+        ui.menu_button(tr!("menu-priority-graph"), |ui| {
+            if ui.button(tr!("menu-new-route")).clicked() {}
             ui.separator();
             ScrollArea::vertical().show(ui, |ui| {
                 if let Some(e) = self
@@ -604,8 +605,8 @@ impl<'w> MainTabViewer<'w> {
                 }
             });
         });
-        ui.menu_button("Diagrams", |ui| {
-            if ui.button("New Route").clicked() {}
+        ui.menu_button(tr!("menu-diagrams"), |ui| {
+            if ui.button(tr!("menu-new-route")).clicked() {}
             ui.separator();
             ScrollArea::vertical().show(ui, |ui| {
                 if let Some(e) = self
@@ -618,8 +619,8 @@ impl<'w> MainTabViewer<'w> {
                 }
             });
         });
-        ui.menu_button("Trips", |ui| {
-            if ui.button("New Trip").clicked() {}
+        ui.menu_button(tr!("menu-trips"), |ui| {
+            if ui.button(tr!("menu-new-trip")).clicked() {}
             ui.separator();
             ScrollArea::vertical().show(ui, |ui| {
                 if let Some(e) = self
@@ -632,13 +633,15 @@ impl<'w> MainTabViewer<'w> {
                 }
             });
         });
-        ui.menu_button("Text", |ui| {
-            if ui.button("New Text Message").clicked() {
-                self.world
-                    .spawn((TextMessage(String::new()), Name::new("New Message")));
+        ui.menu_button(tr!("menu-text"), |ui| {
+            if ui.button(tr!("menu-new-text-message")).clicked() {
+                self.world.spawn((
+                    TextMessage(String::new()),
+                    Name::new(tr!("menu-new-message")),
+                ));
             }
             ui.separator();
-            if ui.button("Project remarks").clicked() {
+            if ui.button(tr!("menu-project-remarks")).clicked() {
                 self.world
                     .write_message(OpenOrFocus(MainTab::Text(TextTab::new(None))));
             }
@@ -807,9 +810,9 @@ struct AdditionalTabViewer<'w> {
 impl<'w> egui_tiles::Behavior<AdditionalTab> for AdditionalTabViewer<'w> {
     fn tab_title_for_pane(&mut self, tab: &AdditionalTab) -> egui::WidgetText {
         match *tab {
-            AdditionalTab::Edit => "Edit",
-            AdditionalTab::Properties => "Properties",
-            AdditionalTab::Export => "Export",
+            AdditionalTab::Edit => tr!("side-panel-edit"),
+            AdditionalTab::Properties => tr!("side-panel-details"),
+            AdditionalTab::Export => tr!("side-panel-export"),
         }
         .into()
     }
@@ -823,7 +826,7 @@ impl<'w> egui_tiles::Behavior<AdditionalTab> for AdditionalTabViewer<'w> {
             .rect_filled(ui.available_rect_before_wrap(), 0, ui.visuals().panel_fill);
         egui::Frame::new().inner_margin(6.0).show(ui, |ui| {
             let Some(ref mut focused) = self.focused_tab else {
-                ui.label("Nothing focused");
+                ui.label(tr!("menu-nothing-focused"));
                 return;
             };
             match *tab {
@@ -966,9 +969,9 @@ pub fn show_ui(ui: &mut Ui, world: &mut World, cpu_time: Option<f32>) {
                         }
                     }
                 });
-                let res = ui.button("About");
+                let res = ui.button(tr!("menu-about"));
                 egui::Popup::menu(&res).show(|ui| {
-                    if ui.button("Documentation").clicked() {
+                    if ui.button(tr!("menu-documentation")).clicked() {
                         ui.ctx()
                             .open_url(OpenUrl::new_tab(if cfg!(target_arch = "wasm32") {
                                 "/docs"
@@ -976,7 +979,7 @@ pub fn show_ui(ui: &mut Ui, world: &mut World, cpu_time: Option<f32>) {
                                 "https://paiagram.com/docs"
                             }));
                     }
-                    if cfg!(target_arch = "wasm32") && ui.button("Legal").clicked() {
+                    if cfg!(target_arch = "wasm32") && ui.button(tr!("menu-legal")).clicked() {
                         ui.ctx().open_url(OpenUrl::new_tab("./license.html"));
                     }
                 });
@@ -1023,13 +1026,13 @@ pub fn show_ui(ui: &mut Ui, world: &mut World, cpu_time: Option<f32>) {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     world.resource_scope(|world, mut history: Mut<actions::ActionHistory>| {
                         if ui
-                            .add_enabled(history.can_undo(), egui::Button::new("Undo"))
+                            .add_enabled(history.can_undo(), egui::Button::new(tr!("menu-undo")))
                             .clicked()
                         {
                             history.try_undo(world);
                         }
                         if ui
-                            .add_enabled(history.can_redo(), egui::Button::new("Redo"))
+                            .add_enabled(history.can_redo(), egui::Button::new(tr!("menu-redo")))
                             .clicked()
                         {
                             history.try_redo(world);
@@ -1062,7 +1065,7 @@ pub fn show_ui(ui: &mut Ui, world: &mut World, cpu_time: Option<f32>) {
                         .suffix("×"),
                 );
                 egui::Popup::menu(&time_response).show(|ui| {
-                    ui.checkbox(&mut timer.sync_to_real_time, "Sync with system clock");
+                    ui.checkbox(&mut timer.sync_to_real_time, tr!("menu-sync-system-clock"));
                 });
                 if !timer.sync_to_real_time
                     && time_response.dragged()
@@ -1141,7 +1144,7 @@ pub fn show_ui(ui: &mut Ui, world: &mut World, cpu_time: Option<f32>) {
                             .show_inside(ui, |ui| {
                                 let res = ui.horizontal(|ui| {
                                     ui.label(tab_viewer.tab_title_for_pane(pane));
-                                    ui.label(RichText::new("Maximized view").italics());
+                                    ui.label(RichText::new(tr!("menu-maximized-view")).italics());
                                     ui.with_layout(
                                         egui::Layout::right_to_left(egui::Align::Center),
                                         |ui| ui.button("x"),

@@ -11,8 +11,9 @@ use std::sync::LazyLock;
 use bevy::ecs::entity::MapEntities;
 use bevy::prelude::{Component, Entity};
 use egui::mutex::Mutex;
-use egui::{Frame, ScrollArea, TextEdit};
+use egui::{Frame, ScrollArea, TextEdit, WidgetText};
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
+use egui_i18n::tr;
 use paiagram_core::settings::ProjectSettings;
 
 use super::Tab;
@@ -48,8 +49,11 @@ static CACHE: LazyLock<Mutex<CommonMarkCache>> =
 
 impl Tab for TextTab {
     const NAME: &'static str = "Text message";
+    fn title(&self) -> WidgetText {
+        tr!("tab-text").into()
+    }
     fn edit_display(&mut self, _world: &mut bevy::ecs::world::World, ui: &mut egui::Ui) {
-        ui.label("You may use markdown here");
+        ui.label(tr!("text-markdown-hint"));
         self.editing ^= ui
             .button(if self.editing { "Finish edit" } else { "Edit" })
             .clicked();
