@@ -56,7 +56,7 @@ impl Plugin for SettingsPlugin {
 #[reflect(Resource)]
 pub struct UserPreferences {
     pub lang: Language,
-    pub dark_mode: bool,
+    pub dark_mode: bool, // TODO: this should be handled by egui instead.
     pub developer_mode: bool,
     pub antialiasing_mode: AntialiasingMode,
     pub level_of_detail_mode: LevelOfDetailMode,

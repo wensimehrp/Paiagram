@@ -99,6 +99,15 @@ impl eframe::App for PaiagramApp {
     }
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         self.bevy_app.update();
+        // TODO: remove this
+        self.bevy_app
+            .world_mut()
+            .resource_mut::<UserPreferences>()
+            .dark_mode = match ui.system_theme() {
+            None => false,
+            Some(egui::Theme::Dark) => true,
+            Some(egui::Theme::Light) => false,
+        };
         paiagram_ui::show_ui(ui, self.bevy_app.world_mut(), frame.info().cpu_usage);
     }
 }
