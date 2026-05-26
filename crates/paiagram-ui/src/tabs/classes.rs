@@ -1,6 +1,7 @@
 use bevy::ecs::entity::MapEntities;
 use bevy::prelude::*;
-use egui::{Button, Panel, ScrollArea, Ui};
+use egui::{Button, Panel, ScrollArea, Ui, WidgetText};
+use egui_i18n::tr;
 use paiagram_core::trip::class::{Class, DisplayedStroke};
 use serde::{Deserialize, Serialize};
 
@@ -18,6 +19,9 @@ pub(crate) struct ClassesTab {
 
 impl Tab for ClassesTab {
     const NAME: &'static str = "Classes";
+    fn title(&self) -> WidgetText {
+        tr!("tab-classes").into()
+    }
     fn main_display(&mut self, world: &mut bevy::ecs::world::World, ui: &mut Ui) {
         world
             .run_system_cached_with(list_classes, (ui, self))
@@ -66,9 +70,9 @@ fn list_classes(
     let mut itoa_buffer = itoa::Buffer::new();
     ScrollArea::vertical().show(ui, |ui| {
         egui::Grid::new("class grid").num_columns(3).show(ui, |ui| {
-            ui.label("Class name");
-            ui.label("Count");
-            ui.label("Color");
+            ui.label(tr!("classes-name"));
+            ui.label(tr!("classes-count"));
+            ui.label(tr!("classes-color"));
             ui.end_row();
             for (class_entity, class, class_name, mut stroke) in class_q.iter_mut() {
                 ui.selectable_value(

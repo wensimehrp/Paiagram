@@ -4,7 +4,7 @@ use bevy::ecs::entity::MapEntities;
 use bevy::prelude::*;
 use egui::{
     Align2, Color32, CornerRadius, CursorIcon, FontId, Id, Margin, Painter, Popup,
-    PopupCloseBehavior, Pos2, Rect, Sense, Stroke, Ui, Vec2,
+    PopupCloseBehavior, Pos2, Rect, Sense, Stroke, Ui, Vec2, WidgetText,
 };
 use egui_i18n::tr;
 use paiagram_core::colors::PredefinedColor;
@@ -157,6 +157,9 @@ impl super::Navigatable for GraphNavigation {
 
 impl super::Tab for GraphTab {
     const NAME: &'static str = "Graph";
+    fn title(&self) -> WidgetText {
+        tr!("tab-graph").into()
+    }
     fn main_display(&mut self, world: &mut World, ui: &mut egui::Ui) {
         egui::Frame::canvas(ui.style())
             .inner_margin(Margin::ZERO)
@@ -266,7 +269,7 @@ fn display_station_info(
     for station in station_q.iter_many(selected_stations.iter().map(|it| it.station)) {
         ui.label(station.name.as_ref());
     }
-    let res = ui.button("Create new route");
+    let res = ui.button(tr!("graph-create-new-route"));
     if selected_stations.len() < 2 {
         *last_hovered = res.hovered();
         return;
@@ -471,7 +474,7 @@ fn display(tab: &mut GraphTab, world: &mut World, ui: &mut egui::Ui) {
                         ui.set_width(200.0);
                         ui.text_edit_singleline(name_candidate);
                         let coor = NodeCoor::from_xy(pos.0, pos.1);
-                        if ui.button("New Station").clicked() {
+                        if ui.button(tr!("graph-new-station")).clicked() {
                             let name = (!name_candidate.is_empty()).then(|| name_candidate.clone());
                             world.trigger(CreateNewStation { name, coor });
                             world.commands().write_message(ModifySelectedItems::Clear);

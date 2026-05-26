@@ -212,26 +212,24 @@ pub(crate) trait Tab: MapEntities {
     fn main_display(&mut self, world: &mut World, ui: &mut Ui);
     /// The edit display
     fn edit_display(&mut self, _world: &mut World, ui: &mut Ui) {
-        ui.label(Self::NAME);
+        ui.label(self.title());
         ui.label(tr!("side-panel-edit-fallback-1"));
         ui.label(tr!("side-panel-edit-fallback-2"));
     }
-    /// The details display
+    /// The display display
     fn display_display(&mut self, _world: &mut World, ui: &mut Ui) {
-        ui.label(Self::NAME);
+        ui.label(self.title());
         ui.label(tr!("side-panel-details-fallback-1"));
         ui.label(tr!("side-panel-details-fallback-2"));
     }
     /// The export display
     fn export_display(&mut self, _world: &mut World, ui: &mut Ui) {
-        ui.label(Self::NAME);
+        ui.label(self.title());
         ui.label(tr!("side-panel-export-fallback-1"));
         ui.label(tr!("side-panel-export-fallback-2"));
     }
     /// The title of the tab
-    fn title(&self) -> WidgetText {
-        Self::NAME.into()
-    }
+    fn title(&self) -> WidgetText;
     /// What to do with the tab button
     fn on_tab_button(&self, _world: &mut World, _response: &Response) {}
     /// The id of the tab

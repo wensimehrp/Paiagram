@@ -5,7 +5,7 @@ use bevy::prelude::*;
 use egui::emath::Numeric;
 use egui::{
     Align2, Button, Color32, FontId, Id, Margin, NumExt, Painter, Pos2, Rect, RectAlign, Sense,
-    Shape, Stroke, StrokeKind, Ui, Vec2, vec2,
+    Shape, Stroke, StrokeKind, Ui, Vec2, WidgetText, vec2,
 };
 use egui_i18n::tr;
 use itertools::Itertools;
@@ -235,6 +235,9 @@ pub(crate) struct TripPoint {
 
 impl Tab for DiagramTab {
     const NAME: &'static str = "Diagram";
+    fn title(&self) -> WidgetText {
+        tr!("tab-diagram").into()
+    }
     fn id(&self) -> Id {
         Id::new(self.route_entity)
     }
@@ -259,7 +262,7 @@ impl Tab for DiagramTab {
             }
             .export_to_file();
         }
-        if ui.button("Export to OuDia").clicked() {
+        if ui.button(tr!("diagram-export-oudia")).clicked() {
             OuDia {
                 route_entity: self.route_entity,
                 world,
@@ -268,13 +271,13 @@ impl Tab for DiagramTab {
         }
     }
     fn edit_display(&mut self, world: &mut World, ui: &mut Ui) {
-        ui.checkbox(&mut self.use_global_timer, "Use global timer");
+        ui.checkbox(&mut self.use_global_timer, tr!("diagram-use-global-timer"));
         let selected = world.resource::<SelectedItems>().clone();
         match selected {
             SelectedItems::None | SelectedItems::Coordinate { .. } => {
-                ui.strong("New Trip");
-                ui.label("Create a new trip from scratch");
-                if ui.button("Create a new trip").clicked() {
+                ui.strong(tr!("menu-new-trip"));
+                ui.label(tr!("diagram-create-new-trip-scratch"));
+                if ui.button(tr!("diagram-create-new-trip")).clicked() {
                     let default_class = world
                         .resource::<paiagram_core::class::ClassResource>()
                         .default_class;
@@ -305,7 +308,7 @@ impl Tab for DiagramTab {
                 name.mutate(|n| {
                     ui.text_edit_singleline(n);
                 });
-                if ui.button("Complete").clicked() {
+                if ui.button(tr!("diagram-complete")).clicked() {
                     *world.resource_mut::<SelectedItems>() = SelectedItems::None
                 }
             }
@@ -317,7 +320,7 @@ impl Tab for DiagramTab {
         ui.separator();
     }
     fn display_display(&mut self, world: &mut World, ui: &mut Ui) {
-        ui.label("Find a route between...");
+        ui.label(tr!("diagram-find-route-between"));
         ui.add(
             egui::Slider::new(
                 &mut self.raptor_params.departure_time,
@@ -379,7 +382,7 @@ impl Tab for DiagramTab {
                     .num_columns(2)
                     .striped(true)
                     .show(ui, |ui| {
-                        ui.label("Arrival Time:");
+                        ui.label(tr!("diagram-arrival-time"));
                         ui.label(TimetableTime(*arrival as i32).to_string());
                         ui.end_row();
                         for (route, stop) in plan.iter().copied() {
@@ -686,8 +689,8 @@ fn main_display(
 
                 // Add a new trip.
                 if matches!(canvas_state, CanvasState::IdleNoInterrupt) {
-                    ui.label("Already editing...");
-                } else if ui.button("New Trip").clicked() {
+                    ui.label(tr!("diagram-already-editing"));
+                } else if ui.button(tr!("menu-new-trip")).clicked() {
                     // also reset the secondary click memory
                     tab.last_secondary_click_position = None;
                     // TODO

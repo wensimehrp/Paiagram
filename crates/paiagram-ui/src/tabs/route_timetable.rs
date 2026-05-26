@@ -1,6 +1,7 @@
 use bevy::ecs::entity::MapEntities;
 use bevy::prelude::*;
-use egui::{FontId, Layout, Rect, RichText, Ui, Vec2, vec2};
+use egui::{FontId, Layout, Rect, RichText, Ui, Vec2, WidgetText, vec2};
+use egui_i18n::tr;
 use egui_table::{Column, Table, TableDelegate};
 use paiagram_core::entry::{EntryQuery, EntryQueryItem, TravelMode};
 use paiagram_core::route::{
@@ -32,11 +33,14 @@ impl PartialEq for RouteTimetableTab {
 
 impl super::Tab for RouteTimetableTab {
     const NAME: &'static str = "Route Timetable";
+    fn title(&self) -> WidgetText {
+        tr!("tab-route-timetable").into()
+    }
     fn scroll_bars(&self) -> [bool; 2] {
         [false; 2]
     }
     fn edit_display(&mut self, world: &mut World, ui: &mut Ui) {
-        if ui.button("Sort entries").clicked() {
+        if ui.button(tr!("route-timetable-sort-entries")).clicked() {
             world.trigger(SortRouteByDirectionTrips {
                 entity: self.route_entity,
             });
@@ -164,7 +168,7 @@ impl<'w> TableDelegate for RouteTimetableDisplayer<'w> {
             ui.visuals().window_stroke(),
         );
         if cell.group_index == 0 {
-            ui.label("Stations");
+            ui.label(tr!("route-timetable-stations"));
             return;
         }
         let dx = vec2(-ui.visuals().window_stroke.width, 0.0);

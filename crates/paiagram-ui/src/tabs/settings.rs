@@ -46,52 +46,52 @@ fn show_settings(
             });
         ui.end_row();
 
-        ui.label("Developer Mode");
+        ui.label(tr!("settings-developer-mode"));
         ui.checkbox(&mut preferences.developer_mode, "");
         ui.end_row();
 
-        ui.label("Antialising Options");
+        ui.label(tr!("settings-antialiasing-options"));
         egui::ComboBox::new("antialiasing", "")
             .selected_text(match preferences.antialiasing_mode {
-                AntialiasingMode::Off => "Off",
-                AntialiasingMode::On => "On",
+                AntialiasingMode::Off => tr!("settings-off"),
+                AntialiasingMode::On => tr!("settings-on"),
             })
             .show_ui(ui, |ui| {
                 ui.selectable_value(
                     &mut preferences.antialiasing_mode,
                     AntialiasingMode::Off,
-                    "Off",
+                    tr!("settings-off"),
                 );
                 ui.selectable_value(
                     &mut preferences.antialiasing_mode,
                     AntialiasingMode::On,
-                    "On",
+                    tr!("settings-on"),
                 );
             });
         ui.end_row();
 
-        ui.label("LOD Mode");
+        ui.label(tr!("settings-lod-mode"));
         egui::ComboBox::new("lod", "")
             .selected_text(match preferences.level_of_detail_mode {
-                LevelOfDetailMode::Off => "Off",
-                LevelOfDetailMode::Lod2 => "2×",
-                LevelOfDetailMode::Lod4 => "4×",
+                LevelOfDetailMode::Off => tr!("settings-off"),
+                LevelOfDetailMode::Lod2 => tr!("settings-lod-2x"),
+                LevelOfDetailMode::Lod4 => tr!("settings-lod-4x"),
             })
             .show_ui(ui, |ui| {
                 ui.selectable_value(
                     &mut preferences.level_of_detail_mode,
                     LevelOfDetailMode::Off,
-                    "Off",
+                    tr!("settings-off"),
                 );
                 ui.selectable_value(
                     &mut preferences.level_of_detail_mode,
                     LevelOfDetailMode::Lod2,
-                    "2×",
+                    tr!("settings-lod-2x"),
                 );
                 ui.selectable_value(
                     &mut preferences.level_of_detail_mode,
                     LevelOfDetailMode::Lod4,
-                    "4×",
+                    tr!("settings-lod-4x"),
                 );
             });
         ui.end_row();

@@ -1,6 +1,6 @@
 use bevy::ecs::entity::MapEntities;
 use bevy::prelude::*;
-use egui::{RectAlign, Ui, Vec2, vec2};
+use egui::{RectAlign, Ui, Vec2, WidgetText, vec2};
 use egui_i18n::tr;
 use paiagram_core::entry::{EntryEstimate, EntryMode, EntryQuery, EntryQueryItem, TravelMode};
 use paiagram_core::station::{PlatformQuery, StationQuery};
@@ -26,6 +26,9 @@ impl PartialEq for TripTab {
 
 impl Tab for TripTab {
     const NAME: &'static str = "Trip";
+    fn title(&self) -> WidgetText {
+        tr!("tab-trip").into()
+    }
     fn main_display(&mut self, world: &mut World, ui: &mut egui::Ui) {
         world.run_system_cached_with(show_trip, (ui, self)).unwrap();
     }

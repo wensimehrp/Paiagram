@@ -2,6 +2,7 @@ use std::sync::LazyLock;
 
 use bevy::prelude::*;
 use egui::{Context, Key, NumExt, Ui};
+use egui_i18n::tr;
 use ib_matcher::matcher::{IbMatcher, PinyinMatchConfig, RomajiMatchConfig};
 use ib_matcher::pinyin::PinyinNotation;
 use paiagram_core::route::Route;
@@ -9,7 +10,6 @@ use paiagram_core::station::Station;
 use paiagram_core::trip::Trip;
 
 use super::{MainTab, OpenOrFocus};
-use crate::tabs::Tab;
 use crate::tabs::all_tabs::*;
 
 // TODO: make this based on settings
@@ -146,14 +146,17 @@ impl CommandPalette {
             *matcher = build_matcher();
             matched.clear();
             let mut match_string = String::new();
-            const PANEL_INFO: &[(&str, fn() -> MainTab)] = &[
-                (StartTab::NAME, || MainTab::Start(StartTab::default())),
-                (SettingsTab::NAME, || MainTab::Settings(SettingsTab)),
-                (ClassesTab::NAME, || MainTab::Classes(ClassesTab::default())),
+            let panel_info: [(String, fn() -> MainTab); 4] = [
+                (tr!("tab-start"), || MainTab::Start(StartTab::default())),
+                (tr!("tab-settings"), || MainTab::Settings(SettingsTab)),
+                (tr!("tab-classes"), || {
+                    MainTab::Classes(ClassesTab::default())
+                }),
+                (tr!("tab-graph"), || MainTab::Graph(GraphTab::default())),
             ];
-            for (name, fn_ptr) in PANEL_INFO.iter().copied() {
+            for (name, fn_ptr) in panel_info.into_iter() {
                 match_string.clear();
-                match_string.push_str(name);
+                match_string.push_str(&name);
                 match_string.push_str(" (Tab)");
                 if !matcher.is_match(match_string.as_str()) {
                     continue;

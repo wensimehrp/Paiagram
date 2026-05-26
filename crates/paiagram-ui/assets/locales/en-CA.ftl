@@ -121,3 +121,92 @@ colour-stone    = Stone
 read-file-prompt   = Read {$name}…
 read-file-title    = Load {$name} files
 read-file-filetype = {$name} Files
+
+# Menu
+menu-import-url-heading = Import from URL
+menu-import-url-desc = Download the file from the Internet then import it into Paiagram
+menu-url-label = URL:
+menu-download-and-import = Download and Import
+menu-route-timetable = Route Timetable
+menu-new-route = New Route
+menu-priority-graph = Priority Graph
+menu-diagrams = Diagrams
+menu-trips = Trips
+menu-new-trip = New Trip
+menu-text = Text
+menu-new-text-message = New Text Message
+menu-new-message = New Message
+menu-project-remarks = Project remarks
+menu-nothing-focused = Nothing focused
+menu-more = More...
+menu-fullscreen = Fullscreen
+menu-import-url-prompt = Import from URL...
+menu-save = Save...
+menu-read = Read...
+menu-load-save = Load Save
+menu-paiagram-savefiles = Paiagram Savefiles
+menu-save-ron = Save RON...
+menu-read-ron = Read RON...
+menu-load-ron-files = Load RON Files
+menu-ron-files = RON Files
+menu-about = About
+menu-documentation = Documentation
+menu-legal = Legal
+menu-sync-system-clock = Sync with system clock
+menu-maximized-view = Maximized view
+menu-undo = Undo
+menu-redo = Redo
+
+# Classes Tab
+tab-classes = Classes
+classes-name = Class name
+classes-count = Count
+classes-color = Color
+
+# Diagram Tab
+diagram-export-oudia = Export to OuDia
+diagram-use-global-timer = Use global timer
+diagram-create-new-trip-scratch = Create a new trip from scratch
+diagram-create-new-trip = Create a new trip
+diagram-complete = Complete
+diagram-find-route-between = Find a route between...
+diagram-arrival-time = Arrival Time:
+diagram-already-editing = Already editing...
+
+# Graph Tab
+graph-create-new-route = Create new route
+graph-new-station = New Station
+
+# Route Timetable Tab
+tab-route-timetable = Route Timetable
+route-timetable-sort-entries = Sort entries
+route-timetable-stations = Stations
+
+# Priority Graph Tab
+tab-priority-graph = Priority Graph
+
+# Settings Tab
+settings-developer-mode = Developer Mode
+settings-antialiasing-options = Antialiasing Options
+settings-off = Off
+settings-on = On
+settings-lod-mode = LOD Mode
+settings-lod-2x = 2×
+settings-lod-4x = 4×
+
+# Station Tab
+tab-station = Station
+station-include-non-stop = Include non-stop
+
+# Text Tab
+tab-text = Text message
+text-markdown-hint = You may use markdown here
+
+# Trip Tab
+tab-trip = Trip
+
+# Widgets
+widget-at = At
+widget-for = For
+widget-flexible = Flexible
+widget-non-stop = Non-stop

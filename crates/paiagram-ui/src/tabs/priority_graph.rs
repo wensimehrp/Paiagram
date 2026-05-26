@@ -3,7 +3,8 @@ use core::f32;
 use bevy::ecs::entity::{EntityHashMap, MapEntities};
 use bevy::prelude::*;
 use egui::epaint::TextShape;
-use egui::{Align2, Margin, Painter, Pos2, Rect, Sense, Stroke, Vec2, Visuals, pos2};
+use egui::{Align2, Margin, Painter, Pos2, Rect, Sense, Stroke, Vec2, Visuals, WidgetText, pos2};
+use egui_i18n::tr;
 use either::Either;
 use paiagram_core::colors::DisplayedColor;
 use paiagram_core::entry::EntryQuery;
@@ -95,6 +96,9 @@ impl super::Navigatable for PriorityTabNavigation {
 
 impl super::Tab for PriorityGraphTab {
     const NAME: &'static str = "Priority Graph";
+    fn title(&self) -> WidgetText {
+        tr!("tab-priority-graph").into()
+    }
     fn main_display(&mut self, world: &mut World, ui: &mut egui::Ui) {
         world
             .run_system_cached_with(
