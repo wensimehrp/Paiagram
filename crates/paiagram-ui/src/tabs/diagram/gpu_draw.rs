@@ -687,7 +687,9 @@ impl CallbackTrait for TripCallback {
             .last()
             .map(|(_, count, _)| *count)
             .unwrap_or(0);
-        let visible_window_wraps = state.visible_secs_min >= state.visible_secs_max;
+        let mut visible_window_wraps = state.visible_secs_min >= state.visible_secs_max;
+
+        let repeat_interval_seconds = state.uniforms.repeat_interval_ticks.max(0) / 100;
 
         // Find the visible source-entry window [min, max) over the flattened entry
         // array. `curr_max` is a prefix max departure time; `arr_secs` is
@@ -698,10 +700,24 @@ impl CallbackTrait for TripCallback {
             let idx = state
                 .entries
                 .partition_point(|(_, _, max_secs)| *max_secs < state.visible_secs_min);
-            if idx == 0 {
+
+            let mut min_idx = idx;
+
+            if repeat_interval_seconds > 0 && !visible_window_wraps {
+                let wrapped_min = TimetableTime(state.visible_secs_min.0 + repeat_interval_seconds);
+                let idx2 = state
+                    .entries
+                    .partition_point(|(_, _, max_secs)| *max_secs < wrapped_min);
+                if idx2 < state.entries.len() {
+                    min_idx = idx2;
+                    visible_window_wraps = true;
+                }
+            }
+
+            if min_idx == 0 {
                 0
             } else {
-                state.entries[idx - 1].1
+                state.entries[min_idx - 1].1
             }
         };
         let visible_entry_max_index = if state.entries.is_empty() {
