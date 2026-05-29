@@ -8,13 +8,14 @@ use crate::units::time::Duration;
 
 #[derive(Default, Reflect, Copy, Clone, Debug, PartialEq, Eq)]
 pub enum AntialiasingMode {
-    On,
     #[default]
+    On,
     Off,
 }
 
-#[derive(Reflect, Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Reflect, Copy, Clone, Debug, PartialEq, Eq, Default)]
 pub enum LevelOfDetailMode {
+    #[default]
     Off,
     Lod2,
     Lod4,
@@ -26,16 +27,6 @@ impl LevelOfDetailMode {
             Self::Off => 1,
             Self::Lod2 => 2,
             Self::Lod4 => 4,
-        }
-    }
-}
-
-impl Default for LevelOfDetailMode {
-    fn default() -> Self {
-        if cfg!(target_arch = "wasm32") {
-            Self::Lod4
-        } else {
-            Self::Lod2
         }
     }
 }
