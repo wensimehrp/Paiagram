@@ -22,7 +22,6 @@ use serde::{Deserialize, Serialize};
 use walkers::sources::Attribution;
 
 use crate::tabs::Navigatable;
-use crate::tabs::graph::gpu_draw::ShapeInstance;
 use crate::{
     CoordinateSelection, GlobalTimer, IntervalSelection, ModifySelectedItems, SelectedItem,
     SelectedItems, StationSelection, TripSelection,
@@ -336,7 +335,7 @@ fn display(tab: &mut GraphTab, world: &mut World, ui: &mut egui::Ui) {
             (
                 ui.visuals().dark_mode,
                 &tab.navi,
-                &mut state.instances,
+                &mut state.scene,
                 &mut painter,
                 interact_pos,
                 ui.animate_bool(ui.id().with("gugugaga"), tab.navi.zoom > 0.002),
@@ -638,14 +637,14 @@ fn push_draw_items(
     (
         In(is_dark),
         InRef(navi),
-        InMut(buffer),
+        InMut(scene),
         InMut(painter),
         In(maybe_interact_pos),
         In(text_strength),
     ): (
         In<bool>,
         InRef<GraphNavigation>,
-        InMut<Vec<ShapeInstance>>,
+        InMut<vello::Scene>,
         InMut<Painter>,
         In<Option<Pos2>>,
         In<f32>,
@@ -660,7 +659,7 @@ fn push_draw_items(
     timer: Res<GlobalTimer>,
     mut selected_items: ResMut<SelectedItems>,
 ) -> Option<Option<SelectedItem>> {
-    buffer.clear();
+    scene.reset();
 
     let state: GraphState<'_> = selected_items.as_mut().into();
 
@@ -730,7 +729,7 @@ fn push_draw_items(
     for segment in interval_spatial_index.query_xy_aabb(min_x, min_y, max_x, max_y) {
         let spos = navi.xy_to_screen_pos(segment.p0[0], segment.p0[1]);
         let tpos = navi.xy_to_screen_pos(segment.p1[0], segment.p1[1]);
-        buffer.push(gpu_draw::ShapeInstance::segment(spos, tpos, 1.0, color));
+        gpu_draw::draw_segment(&mut *scene, spos, tpos, 1.0, color);
     }
 
     // prepare candidates
@@ -771,11 +770,7 @@ fn push_draw_items(
             GraphState::SelectingStations(_) | GraphState::SelectingStation(_)
         );
 
-        buffer.push(gpu_draw::ShapeInstance::circle(
-            station_screen_pos,
-            4.0,
-            color,
-        ));
+        gpu_draw::draw_circle(&mut *scene, station_screen_pos, 4.0, color);
         draw_name(name.map(Name::as_str), station_screen_pos, color);
     }
 
@@ -826,9 +821,7 @@ fn push_draw_items(
             );
         }
 
-        buffer.push(gpu_draw::ShapeInstance::stealth_arrow(
-            pos0, pos1, entry_pos, color,
-        ));
+        gpu_draw::draw_stealth_arrow(&mut *scene, pos0, pos1, entry_pos, color);
         draw_name(Some(name.as_str()), entry_pos, color);
     }
 

@@ -404,18 +404,6 @@ impl GlobalTimer {
             Ordering::Relaxed,
         );
     }
-
-    pub(crate) fn owner(&self) -> u64 {
-        self.locker.load(Ordering::Acquire)
-    }
-
-    pub(crate) unsafe fn try_lock_unchecked(&self, id: u64) -> bool {
-        self.try_lock(Entity::from_bits(id))
-    }
-
-    pub(crate) unsafe fn try_unlock_unchecked(&self, id: u64) {
-        self.try_unlock(Entity::from_bits(id))
-    }
 }
 
 macro_rules! for_all_tabs {
@@ -1229,29 +1217,32 @@ fn build_font_definitions(sarasa: Option<Vec<u8>>) -> egui::FontDefinitions {
         .families
         .insert(egui::FontFamily::Name("dia_pro".into()), dia_pro_family);
 
+    egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Bold);
+
     fonts
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 fn load_sarasa_local() -> Option<Vec<u8>> {
-    let mut candidates = vec![
-        PathBuf::from("assets/fonts/SarasaUiSC-Regular.ttf"),
-        PathBuf::from("crates/paiagram-ui/assets/fonts/SarasaUiSC-Regular.ttf"),
-    ];
+    // let mut candidates = vec![
+    //     PathBuf::from("assets/fonts/SarasaUiSC-Regular.ttf"),
+    //     PathBuf::from("crates/paiagram-ui/assets/fonts/SarasaUiSC-Regular.ttf"),
+    // ];
 
-    if let Ok(exe) = std::env::current_exe()
-        && let Some(parent) = exe.parent()
-    {
-        candidates.push(parent.join("assets/fonts/SarasaUiSC-Regular.ttf"));
-    }
+    // if let Ok(exe) = std::env::current_exe()
+    //     && let Some(parent) = exe.parent()
+    // {
+    //     candidates.push(parent.join("assets/fonts/SarasaUiSC-Regular.ttf"));
+    // }
 
-    for path in candidates {
-        if let Ok(bytes) = std::fs::read(&path) {
-            return Some(bytes);
-        }
-    }
+    // for path in candidates {
+    //     if let Ok(bytes) = std::fs::read(&path) {
+    //         return Some(bytes);
+    //     }
+    // }
 
-    None
+    // None
+    Some(include_bytes!("../assets/fonts/SarasaUiSC-Regular.ttf").to_vec())
 }
 
 #[cfg(target_arch = "wasm32")]

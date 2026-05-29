@@ -1,94 +1,18 @@
 use std::sync::Arc;
 
-use bytemuck::cast_slice;
 use eframe::egui_wgpu::{self, wgpu};
 use egui::mutex::Mutex;
 use egui::{Color32, Pos2, Rect, Vec2};
 use egui_wgpu::CallbackTrait;
-
-impl ShapeInstance {
-    fn offset_perpendicular(a: Pos2, b: Pos2, offset_amount: f32) -> (Pos2, Pos2) {
-        let direction = b - a;
-        let direction_len = direction.length();
-        let unit_perpendicular = if direction_len > f32::EPSILON {
-            let unit_direction = direction / direction_len;
-            Vec2::new(-unit_direction.y, unit_direction.x)
-        } else {
-            Vec2::Y
-        };
-        let offset = unit_perpendicular * offset_amount;
-        (a + offset, b + offset)
-    }
-    pub(crate) fn segment(a: Pos2, b: Pos2, width: f32, color: Color32) -> Self {
-        let (a, b) = Self::offset_perpendicular(a, b, 1.5);
-        let rgba = color.to_array();
-        Self {
-            a: [a.x, a.y],
-            b: [b.x, b.y],
-            size: width,
-            color: [
-                rgba[0] as f32 / 255.0,
-                rgba[1] as f32 / 255.0,
-                rgba[2] as f32 / 255.0,
-                rgba[3] as f32 / 255.0,
-            ],
-            kind: 0,
-        }
-    }
-    pub(crate) fn circle(center: Pos2, radius: f32, color: Color32) -> Self {
-        let rgba = color.to_array();
-        Self {
-            a: [center.x, center.y],
-            b: [center.x, center.y],
-            size: radius,
-            color: [
-                rgba[0] as f32 / 255.0,
-                rgba[1] as f32 / 255.0,
-                rgba[2] as f32 / 255.0,
-                rgba[3] as f32 / 255.0,
-            ],
-            kind: 1,
-        }
-    }
-    pub(crate) fn stealth_arrow(from: Pos2, to: Pos2, center: Pos2, color: Color32) -> Self {
-        let direction = to - from;
-        let direction_len = direction.length();
-        let unit_direction = if direction_len > f32::EPSILON {
-            direction / direction_len
-        } else {
-            Vec2::X
-        };
-        let (a, b) = Self::offset_perpendicular(center, center + unit_direction, 1.5);
-        let rgba = color.to_array();
-        Self {
-            a: [a.x, a.y],
-            b: [b.x, b.y],
-            size: 14.0,
-            color: [
-                rgba[0] as f32 / 255.0,
-                rgba[1] as f32 / 255.0,
-                rgba[2] as f32 / 255.0,
-                rgba[3] as f32 / 255.0,
-            ],
-            kind: 2,
-        }
-    }
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-pub(crate) struct ShapeInstance {
-    a: [f32; 2],
-    b: [f32; 2],
-    size: f32,
-    color: [f32; 4],
-    kind: u32,
-}
+use vello::kurbo::{Affine, BezPath, Circle, Line};
+use vello::peniko::Color;
+use vello::peniko::kurbo::Stroke;
+use vello::{AaConfig, RenderParams, Renderer, RendererOptions, Scene};
 
 pub(crate) struct GpuGraphRendererState {
     pub(crate) target_format: Option<wgpu::TextureFormat>,
     pub(crate) msaa_samples: u32,
-    pub(crate) instances: Vec<ShapeInstance>,
+    pub(crate) scene: Scene,
 }
 
 impl Default for GpuGraphRendererState {
@@ -96,7 +20,7 @@ impl Default for GpuGraphRendererState {
         Self {
             target_format: None,
             msaa_samples: 1,
-            instances: Vec::new(),
+            scene: Scene::new(),
         }
     }
 }
@@ -113,95 +37,78 @@ struct GraphCallback {
 }
 
 struct GraphRenderResources {
+    renderer: Mutex<Renderer>,
     pipeline: wgpu::RenderPipeline,
+    bind_group_layout: wgpu::BindGroupLayout,
+    sampler: wgpu::Sampler,
+
+    texture_extent: wgpu::Extent3d,
+    texture_view: wgpu::TextureView,
     bind_group: wgpu::BindGroup,
-    uniform_buffer: wgpu::Buffer,
-    vertex_buffer: wgpu::Buffer,
-    vertex_capacity: usize,
+
     target_format: wgpu::TextureFormat,
     msaa_samples: u32,
 }
 
 impl GraphRenderResources {
-    fn new(device: &wgpu::Device, target_format: wgpu::TextureFormat, msaa_samples: u32) -> Self {
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("gpu_graph_shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("gpu_graph.wgsl").into()),
-        });
+    fn new(
+        device: &wgpu::Device,
+        target_format: wgpu::TextureFormat,
+        msaa_samples: u32,
+        width: u32,
+        height: u32,
+    ) -> Self {
+        let renderer = Renderer::new(
+            device,
+            RendererOptions {
+                use_cpu: false,
+                antialiasing_support: vello::AaSupport::all(),
+                num_init_threads: None,
+                pipeline_cache: None,
+            },
+        )
+        .expect("Failed to create Vello renderer");
 
-        let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("gpu_graph_uniform"),
-            size: (std::mem::size_of::<[f32; 4]>() as u64).max(16),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("gpu_graph_blit_shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("blit.wgsl").into()),
         });
 
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("gpu_graph_bind_group_layout"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
+            label: Some("gpu_graph_blit_bind_group_layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
                 },
-                count: None,
-            }],
-        });
-
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("gpu_graph_bind_group"),
-            layout: &bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: uniform_buffer.as_entire_binding(),
-            }],
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
         });
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("gpu_graph_pipeline_layout"),
+            label: Some("gpu_graph_blit_pipeline_layout"),
             bind_group_layouts: &[Some(&bind_group_layout)],
             ..Default::default()
         });
 
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("gpu_graph_pipeline"),
+            label: Some("gpu_graph_blit_pipeline"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: Some("vs_main"),
-                buffers: &[wgpu::VertexBufferLayout {
-                    array_stride: std::mem::size_of::<ShapeInstance>() as u64,
-                    step_mode: wgpu::VertexStepMode::Instance,
-                    attributes: &[
-                        wgpu::VertexAttribute {
-                            format: wgpu::VertexFormat::Float32x2,
-                            offset: 0,
-                            shader_location: 0,
-                        },
-                        wgpu::VertexAttribute {
-                            format: wgpu::VertexFormat::Float32x2,
-                            offset: (2 * std::mem::size_of::<f32>()) as u64,
-                            shader_location: 1,
-                        },
-                        wgpu::VertexAttribute {
-                            format: wgpu::VertexFormat::Float32,
-                            offset: (4 * std::mem::size_of::<f32>()) as u64,
-                            shader_location: 2,
-                        },
-                        wgpu::VertexAttribute {
-                            format: wgpu::VertexFormat::Float32x4,
-                            offset: (5 * std::mem::size_of::<f32>()) as u64,
-                            shader_location: 3,
-                        },
-                        wgpu::VertexAttribute {
-                            format: wgpu::VertexFormat::Uint32,
-                            offset: (9 * std::mem::size_of::<f32>()) as u64,
-                            shader_location: 4,
-                        },
-                    ],
-                }],
+                buffers: &[],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
             fragment: Some(wgpu::FragmentState {
@@ -227,22 +134,77 @@ impl GraphRenderResources {
             cache: None,
         });
 
-        let vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("gpu_graph_vertex"),
-            size: 4,
-            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("gpu_graph_sampler"),
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
+            ..Default::default()
         });
 
+        let (texture_extent, texture_view, bind_group) =
+            Self::create_texture(device, &bind_group_layout, &sampler, width, height);
+
         Self {
+            renderer: Mutex::new(renderer),
             pipeline,
+            bind_group_layout,
+            sampler,
+            texture_extent,
+            texture_view,
             bind_group,
-            uniform_buffer,
-            vertex_buffer,
-            vertex_capacity: 0,
             target_format,
             msaa_samples,
         }
+    }
+
+    fn create_texture(
+        device: &wgpu::Device,
+        bind_group_layout: &wgpu::BindGroupLayout,
+        sampler: &wgpu::Sampler,
+        width: u32,
+        height: u32,
+    ) -> (wgpu::Extent3d, wgpu::TextureView, wgpu::BindGroup) {
+        let texture_extent = wgpu::Extent3d {
+            width: width.max(1),
+            height: height.max(1),
+            depth_or_array_layers: 1,
+        };
+
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("gpu_graph_vello_target"),
+            size: texture_extent,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::STORAGE_BINDING
+                | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+
+        let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("gpu_graph_blit_bind_group"),
+            layout: bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&texture_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(sampler),
+                },
+            ],
+        });
+
+        (texture_extent, texture_view, bind_group)
     }
 }
 
@@ -259,9 +221,9 @@ impl CallbackTrait for GraphCallback {
         let Some(target_format) = state.target_format else {
             return Vec::new();
         };
-        if state.instances.is_empty() {
-            return Vec::new();
-        }
+
+        let width = screen_descriptor.size_in_pixels[0];
+        let height = screen_descriptor.size_in_pixels[1];
 
         let needs_rebuild = match resources.get::<GraphRenderResources>() {
             Some(existing) => {
@@ -276,33 +238,50 @@ impl CallbackTrait for GraphCallback {
                 device,
                 target_format,
                 state.msaa_samples,
+                width,
+                height,
             ));
         }
 
-        let resources: &mut GraphRenderResources =
-            resources.get_mut::<GraphRenderResources>().unwrap();
+        let resources = resources.get_mut::<GraphRenderResources>().unwrap();
 
-        let vertex_bytes = cast_slice(state.instances.as_slice());
-        let required_size = vertex_bytes.len();
-        if required_size > resources.vertex_capacity {
-            let new_size = required_size.next_power_of_two().max(256) as u64;
-            resources.vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("gpu_graph_vertex"),
-                size: new_size,
-                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            });
-            resources.vertex_capacity = new_size as usize;
+        if resources.texture_extent.width != width || resources.texture_extent.height != height {
+            let (ext, view, bg) = GraphRenderResources::create_texture(
+                device,
+                &resources.bind_group_layout,
+                &resources.sampler,
+                width,
+                height,
+            );
+            resources.texture_extent = ext;
+            resources.texture_view = view;
+            resources.bind_group = bg;
         }
-        queue.write_buffer(&resources.vertex_buffer, 0, vertex_bytes);
 
-        let screen_size = [
-            screen_descriptor.size_in_pixels[0] as f32 / screen_descriptor.pixels_per_point,
-            screen_descriptor.size_in_pixels[1] as f32 / screen_descriptor.pixels_per_point,
-            0.0,
-            0.0,
-        ];
-        queue.write_buffer(&resources.uniform_buffer, 0, cast_slice(&screen_size));
+        let render_params = RenderParams {
+            base_color: Color::TRANSPARENT,
+            width,
+            height,
+            antialiasing_method: AaConfig::Area,
+        };
+
+        let mut transformed_scene = Scene::new();
+        transformed_scene.append(
+            &state.scene,
+            Some(Affine::scale(screen_descriptor.pixels_per_point as f64)),
+        );
+
+        resources
+            .renderer
+            .lock()
+            .render_to_texture(
+                device,
+                queue,
+                &transformed_scene,
+                &resources.texture_view,
+                &render_params,
+            )
+            .expect("Failed to render Vello scene to texture");
 
         Vec::new()
     }
@@ -316,11 +295,6 @@ impl CallbackTrait for GraphCallback {
         let Some(resources) = resources.get::<GraphRenderResources>() else {
             return;
         };
-
-        let state = self.state.lock();
-        if state.instances.is_empty() {
-            return;
-        }
 
         let clip = info.clip_rect_in_pixels();
         render_pass.set_viewport(
@@ -339,7 +313,87 @@ impl CallbackTrait for GraphCallback {
         );
         render_pass.set_pipeline(&resources.pipeline);
         render_pass.set_bind_group(0, &resources.bind_group, &[]);
-        render_pass.set_vertex_buffer(0, resources.vertex_buffer.slice(..));
-        render_pass.draw(0..6, 0..(state.instances.len() as u32));
+        render_pass.draw(0..6, 0..1);
     }
+}
+
+pub(crate) fn to_vello_color(color: Color32) -> Color {
+    Color::from_rgba8(color.r(), color.g(), color.b(), color.a())
+}
+
+pub(crate) fn draw_segment(scene: &mut Scene, a: Pos2, b: Pos2, width: f32, color: Color32) {
+    let line = Line::new((a.x as f64, a.y as f64), (b.x as f64, b.y as f64));
+    scene.stroke(
+        &Stroke::new(width as f64),
+        Affine::IDENTITY,
+        to_vello_color(color),
+        None,
+        &line,
+    );
+}
+
+pub(crate) fn draw_circle(scene: &mut Scene, center: Pos2, radius: f32, color: Color32) {
+    let circle = Circle::new((center.x as f64, center.y as f64), radius as f64);
+    scene.fill(
+        vello::peniko::Fill::NonZero,
+        Affine::IDENTITY,
+        to_vello_color(color),
+        None,
+        &circle,
+    );
+}
+
+pub(crate) fn draw_stealth_arrow(
+    scene: &mut Scene,
+    from: Pos2,
+    to: Pos2,
+    center: Pos2,
+    color: Color32,
+) {
+    let direction = to - from;
+    let direction_len = direction.length();
+    let unit_direction = if direction_len > f32::EPSILON {
+        direction / direction_len
+    } else {
+        Vec2::X
+    };
+
+    let dir = vello::kurbo::Vec2::new(unit_direction.x as f64, unit_direction.y as f64);
+    let n = vello::kurbo::Vec2::new(-dir.y, dir.x);
+
+    let arrow_len = 14.0;
+    let arrow_width = arrow_len * (12.0 / 14.0);
+    let stealth = 0.2;
+    let tip_x = arrow_len * (1.0 - stealth) * 0.5;
+    let left_x = -arrow_len * (1.0 + stealth) * 0.5;
+    let indent_x = -arrow_len * (1.0 - stealth) * 0.5;
+    let half_w = arrow_width * 0.5;
+
+    let points = [
+        (tip_x, 0.0),
+        (left_x, half_w),
+        (indent_x, 0.0),
+        (left_x, -half_w),
+    ];
+
+    let center_pt = vello::kurbo::Point::new(center.x as f64, center.y as f64);
+
+    let mut path = BezPath::new();
+    for (i, &(x, y)) in points.iter().enumerate() {
+        let pt = center_pt + dir * x + n * y;
+        if i == 0 {
+            path.move_to(pt);
+        } else {
+            path.line_to(pt);
+        }
+    }
+    path.close_path();
+
+    scene.fill(
+        vello::peniko::Fill::NonZero,
+        Affine::IDENTITY,
+        to_vello_color(color),
+        None,
+        &path,
+    );
 }

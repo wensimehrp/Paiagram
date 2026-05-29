@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 use egui::{RectAlign, Response, Ui, Vec2, vec2};
+use egui_i18n::tr;
 use paiagram_core::entry::{
     AdjustEntryMode, EntryEstimate, EntryMode, EntryModeAdjustment, EntryQueryItem, TravelMode,
 };
@@ -77,7 +78,7 @@ pub(crate) fn departure_popup_inner(ui: &mut Ui, entry: &EntryQueryItem, command
     let enable_at = !matches!(entry.mode.dep, TravelMode::At(_));
     if enable_at {
         if ui
-            .add(egui::Button::new("At").right_text(at_time.to_string()))
+            .add(egui::Button::new(tr!("widget-at")).right_text(at_time.to_string()))
             .clicked()
         {
             adjustment = Some(EntryModeAdjustment::SetDeparture(TravelMode::At(at_time)));
@@ -97,7 +98,7 @@ pub(crate) fn departure_popup_inner(ui: &mut Ui, entry: &EntryQueryItem, command
     let enable_for = !matches!(entry.mode.dep, TravelMode::For(_));
     if enable_for {
         if ui
-            .add(egui::Button::new("For").right_text(for_dur.to_string()))
+            .add(egui::Button::new(tr!("widget-for")).right_text(for_dur.to_string()))
             .clicked()
         {
             adjustment = Some(EntryModeAdjustment::SetDeparture(TravelMode::For(for_dur)));
@@ -110,7 +111,7 @@ pub(crate) fn departure_popup_inner(ui: &mut Ui, entry: &EntryQueryItem, command
     if ui
         .add_enabled(
             !matches!(entry.mode.dep, TravelMode::Flexible),
-            egui::Button::new("Flexible").right_text("〇"),
+            egui::Button::new(tr!("widget-flexible")).right_text("〇"),
         )
         .clicked()
     {
@@ -152,7 +153,7 @@ pub(crate) fn arrival_popup_inner(
     let enable_at = !matches!(entry.mode.arr, Some(TravelMode::At(_)));
     if enable_at {
         if ui
-            .add(egui::Button::new("At").right_text(at_time.to_string()))
+            .add(egui::Button::new(tr!("widget-at")).right_text(at_time.to_string()))
             .clicked()
         {
             adjustment = Some(EntryModeAdjustment::SetArrival(Some(TravelMode::At(
@@ -172,7 +173,7 @@ pub(crate) fn arrival_popup_inner(
     let enable_for = !matches!(entry.mode.arr, Some(TravelMode::For(_)));
     if enable_for {
         if ui
-            .add(egui::Button::new("For").right_text(for_dur.to_string()))
+            .add(egui::Button::new(tr!("widget-for")).right_text(for_dur.to_string()))
             .clicked()
         {
             adjustment = Some(EntryModeAdjustment::SetArrival(Some(TravelMode::For(
@@ -186,7 +187,7 @@ pub(crate) fn arrival_popup_inner(
     if ui
         .add_enabled(
             !matches!(entry.mode.arr, Some(TravelMode::Flexible)),
-            egui::Button::new("Flexible").right_text("〇"),
+            egui::Button::new(tr!("widget-flexible")).right_text("〇"),
         )
         .clicked()
     {
@@ -196,7 +197,7 @@ pub(crate) fn arrival_popup_inner(
     if ui
         .add_enabled(
             !matches!(entry.mode.arr, None),
-            egui::Button::new("Non-stop").right_text("↓"),
+            egui::Button::new(tr!("widget-non-stop")).right_text("↓"),
         )
         .clicked()
     {

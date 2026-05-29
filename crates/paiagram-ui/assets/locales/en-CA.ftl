@@ -206,7 +206,7 @@ text-markdown-hint = You may use markdown here
 tab-trip = Trip
 
 # Widgets
-widget-at = At
-widget-for = For
-widget-flexible = Flexible
-widget-non-stop = Non-stop
+widget-at = {"\uE65C"} At
+widget-for = {"\uE12A"} For
+widget-flexible = {"\uE6DE"} Flexible
+widget-non-stop = {"\uE06C"} Non-stop

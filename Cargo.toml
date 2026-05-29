@@ -37,7 +37,6 @@ bytemuck = { version = "1.23.2", features = ["extern_crate_alloc"] }
 chrono = "0.4.44"
 # CLI
 clap = { version = "4.5.51", features = ["derive"] }
-# egui stuff
 eframe = {
   version = "0.34.2",
   default-features = false,
@@ -58,7 +57,6 @@ egui = {
     "serde",
   ]
 }
-# Internationalization
 egui-i18n = { version = "0.2.0", features = ["fluent"] }
 either = "1.15.0"
 eros = "0.5.0"
