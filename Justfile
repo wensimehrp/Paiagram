@@ -13,7 +13,7 @@ get-fonts:
 
 # Build rust docs
 rust-docs:
-    cargo doc --workspace --no-deps --release
+    cargo doc --workspace --no-deps --release --document-private-items
 
 # Build WASM binary
 build-wasm:
