@@ -17,6 +17,6 @@
     // Typst doesn't yet support that
     // Use hard-coded value for now
     // toml("../Cargo.toml").workspace.package.version
-    "0.1.0"
+    "0.1.3"
   },
 )

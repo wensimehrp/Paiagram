@@ -2,6 +2,29 @@
 
 This is the changelog for Paiagram. Visit <https://paiagram.com> for the latest version and documentation.
 
+# 0.1.3 (May. 29, 2026)
+
+## Added
+
+- Auto dark mode switch that synchronizes with the system theme.
+- Time display and cycle progress indicator on the bottom bar.
+- Localization updates
+
+## Changed
+
+- Optimized Classes and Trips panels' layouts, including the removal of dropdowns.
+- Updated `egui` and `eframe` to version `0.34.3`.
+- Switched the documentation generation tool from Shiroa to Otter Docs.
+- Reworked selected item state control.
+
+## Fixed
+
+- Diagram rendering bug where trips were getting cut off on day boundaries.
+
+## Breaking
+
+- Removed the Inspector tab.
+
 # 0.1.2 (Apr. 23, 2026)
 
 ## Added
