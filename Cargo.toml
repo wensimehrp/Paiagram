@@ -39,7 +39,7 @@ chrono = "0.4.44"
 clap = { version = "4.5.51", features = ["derive"] }
 # egui stuff
 eframe = {
-  version = "0.34.2",
+  version = "0.34.3",
   default-features = false,
   features = [
     "accesskit",
@@ -50,7 +50,7 @@ eframe = {
   ]
 }
 egui = {
-  version = "0.34.2",
+  version = "0.34.3",
   default-features = false,
   features = [
     "persistence",
