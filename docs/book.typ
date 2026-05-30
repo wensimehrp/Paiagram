@@ -1,4 +1,5 @@
 #!/usr/bin/env -S typst compile --features bundle,html --format bundle
+// nix develop ./docs/template#default --command typst watch --features bundle,html --format bundle ./docs/book.typ ./dist --root .
 
 #import "template/lib.typ"
 #import "./links.typ": links
@@ -17,14 +18,23 @@
   sidebar-image: html.img(
     src: "https://upload.wikimedia.org/wikipedia/commons/8/88/Thecanadiannearjasper.jpg",
   ),
-  extra-head-content: html.elem(
-    "script",
-    attrs: (
-      defer: "",
-      src: "https://cloud.umami.is/script.js",
-      data-website-id: "067cd05f-b395-4813-916c-2063c383685f",
-    ),
-  ),
+  extra-head-content: {
+    // tracking script
+    html.elem(
+      "script",
+      attrs: (
+        defer: "",
+        src: "https://cloud.umami.is/script.js",
+        data-website-id: "067cd05f-b395-4813-916c-2063c383685f",
+      ),
+    )
+    // icon font
+    html.link(
+      rel: "stylesheet",
+      type: "text/css",
+      href: "https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.2/src/bold/style.css",
+    )
+  },
   debug: true,
   tree: (
     chapter-path("index"),
@@ -36,6 +46,7 @@
     chapter-path("panels/index"),
     chapter-path("panels/diagram"),
     chapter-path("panels/map"),
+    chapter-path("panels/station"),
     [= Importing],
     chapter-path("import/qetrc"),
     chapter-path("import/oudia"),

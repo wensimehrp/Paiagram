@@ -1,6 +1,6 @@
 #title[Trips and Vehicles]
 
-= Trips
+= Trips <trips>
 
 A trip is the basic unit in the network. Each trip has a class, associated vehicles, and an entry list which defines
 which stations to visit.
@@ -69,7 +69,8 @@ entries. In contrast, you can only delete timetabled and fixed entries.
 
 == Editing the Trip's Path
 
-You can edit the trip's path by inserting extra fixed (i.e. Flexible arrival mode, Flexible departure mode) entries.
+In other software such as qETRC You can edit the trip's path by inserting extra fixed (i.e. Flexible arrival mode,
+Flexible departure mode) entries.
 
 = Vehicles
 

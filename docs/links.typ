@@ -12,5 +12,11 @@
   sono-sujiya: "https://www.sinjidai.com/sujiya/",
   qq: "865211882",
   home: "https://paiagram.com",
-  paiagram-version: toml("../Cargo.toml").workspace.package.version,
+  paiagram-version: {
+    // This Cargo.toml file is formatted using TOML 1.1
+    // Typst doesn't yet support that
+    // Use hard-coded value for now
+    // toml("../Cargo.toml").workspace.package.version
+    "0.1.0"
+  },
 )
