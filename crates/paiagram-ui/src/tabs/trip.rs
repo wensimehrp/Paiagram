@@ -1,6 +1,6 @@
 use bevy::ecs::entity::MapEntities;
 use bevy::prelude::*;
-use egui::{RectAlign, Ui, Vec2, WidgetText, vec2};
+use egui::{Color32, RectAlign, Ui, Vec2, WidgetText, vec2};
 use egui_i18n::tr;
 use paiagram_core::entry::{EntryEstimate, EntryMode, EntryQuery, EntryQueryItem, TravelMode};
 use paiagram_core::station::{PlatformQuery, StationQuery};
@@ -93,6 +93,8 @@ fn row_ui(
     // display station label
     ui.label(station.name.as_str());
 
+    // Remove button background
+    ui.visuals_mut().widgets.inactive.weak_bg_fill = Color32::TRANSPARENT;
     // display arrival button
     let arr_res = match it.mode.arr {
         None => ui.add_sized(BUTTON_SIZE, egui::Button::new("↓")),
