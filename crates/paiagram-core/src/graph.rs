@@ -1,3 +1,5 @@
+//! Definitions for the graph.
+
 use std::collections::HashMap;
 
 pub mod arrange;
@@ -21,6 +23,7 @@ use crate::route::Route;
 use crate::station::{Platforms, Station};
 use crate::units::distance::Distance;
 
+/// The graph plugin. Remember to register this plugin.
 pub struct GraphPlugin;
 impl Plugin for GraphPlugin {
     fn build(&self, app: &mut App) {
@@ -62,12 +65,16 @@ impl Plugin for GraphPlugin {
     }
 }
 
+/// The graph. Graph stores the node using an entity and the edge also using an entity entity in a
+/// [`DiGraphMap`] using [`EntityHash`].
 #[derive(Reflect, Clone, Resource, Serialize, Deserialize, Default, Deref, DerefMut)]
 #[reflect(Resource, opaque, Serialize, Deserialize, MapEntities)]
 pub struct Graph {
+    /// The actual map
     pub map: DiGraphMap<Entity, Entity, EntityHash>,
 }
 
+/// Reconstructs the map when mapping entities
 impl MapEntities for Graph {
     fn map_entities<E: EntityMapper>(&mut self, entity_mapper: &mut E) {
         // construct a new graph instead
@@ -89,6 +96,9 @@ impl MapEntities for Graph {
 }
 
 impl Graph {
+    /// Find a route between the source stop and the target stop.
+    /// Returns [`None`] if no valid route exists.
+    /// Returns the total length in i32 and the stations on the route if a valid route is found.
     pub fn route_between(
         &self,
         source: Entity,
@@ -108,6 +118,9 @@ impl Graph {
             |_| 0,
         )
     }
+    /// Find a route given a set of stations that must be on the route.
+    /// Returns [`None`] if no valid route exists.
+    /// Returns the total length in i32 and the stations on the route if a valid route is found.
     pub fn route_between_source_waypoint_target(
         &self,
         mut points: impl Iterator<Item = Entity>,
@@ -135,6 +148,9 @@ impl Graph {
         }
         Some((total_length, passes))
     }
+
+    /// Transforms the graph into a normal [`petgraph::Graph`], which could be useful for mapping to
+    /// e.g. graphviz graphs.
     pub fn into_graph(self) -> petgraph::Graph<Entity, Entity> {
         self.map.into_graph()
     }

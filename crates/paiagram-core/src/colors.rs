@@ -1,3 +1,5 @@
+//! The color definitions.
+
 use bevy::color::Srgba;
 use bevy::color::palettes::tailwind::*;
 use bevy::prelude::*;
@@ -6,14 +8,19 @@ use egui::color_picker::{Alpha, color_picker_color32, show_color_at};
 use egui_i18n::tr;
 use serde::{Deserialize, Serialize};
 
+/// A color displayed in the application. This is used for stations, intervals, and trip classes.
 #[derive(Reflect, Debug, Clone, Copy, Serialize, Deserialize)]
 #[reflect(opaque, Serialize, Deserialize)]
 pub enum DisplayedColor {
+    /// A predefined colour
     Predefined(PredefinedColor),
+    /// A custom colour defined using egui's [`egui::Color32`]
     Custom(Color32),
 }
 
 impl DisplayedColor {
+    /// Generate a displayed color from a seed. The process is not randomized. The seed could be
+    /// anything that can be converted to [u8], e.g., a string.
     pub fn from_seed(data: impl AsRef<[u8]>) -> Self {
         let bytes = data.as_ref();
         let mut sum = 0u8;
@@ -116,7 +123,7 @@ impl egui::Widget for &mut DisplayedColor {
 }
 
 impl DisplayedColor {
-    /// get the color as [`Color32`]
+    /// get the color as [`egui::Color32`]
     pub fn get(self, is_dark: bool) -> Color32 {
         match self {
             Self::Predefined(p) => p.get(is_dark),
@@ -125,6 +132,7 @@ impl DisplayedColor {
     }
 }
 
+/// Tailwind CSS predefined colors used in the program.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PredefinedColor {
     Red,
@@ -176,9 +184,13 @@ impl PredefinedColor {
         Self::Neutral,
         Self::Stone,
     ];
+
+    /// Select a color given the index. The index could be any number.
     pub fn from_index(i: usize) -> Self {
-        Self::ALL[i % 22]
+        Self::ALL[i % Self::ALL.len()]
     }
+
+    /// The (translated) name of the colour
     #[rustfmt::skip]
     pub fn name(self) -> impl AsRef<str> {
         match self {
@@ -207,8 +219,8 @@ impl PredefinedColor {
         }
     }
 
-    // use 700 shade if light, otherwise use 400
-    // neutral is special
+    /// Get the color given the current UI theme. Returns the lighter 400 varation if the theme is
+    /// dark, and returns the (usually) darker 700 variation if the theme is light.
     pub const fn get(self, is_dark: bool) -> Color32 {
         #[rustfmt::skip]
         let c = match (self, is_dark) {
@@ -261,6 +273,7 @@ impl PredefinedColor {
     }
 }
 
+/// Translate a bevy [`Srgba`] to egui [`Color32`]
 pub const fn translate_srgba_to_color32(c: Srgba) -> Color32 {
     Color32::from_rgba_unmultiplied_const(
         (c.red * 256.0) as u8,

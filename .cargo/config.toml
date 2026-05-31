@@ -4,10 +4,10 @@ rustflags = ["-C", "link-arg=-fuse-ld=mold"]
 
 [target.wasm32-unknown-unknown]
 rustflags = [
-    "--cfg",
-    "getrandom_backend=\"wasm_js\"",
-    "-C",
-    "target-feature=+simd128,+atomics,+bulk-memory,+mutable-globals",
+  "--cfg",
+  "getrandom_backend=\"wasm_js\"",
+  "-C",
+  "target-feature=+simd128,+atomics,+bulk-memory,+mutable-globals",
 ]
 runner = "/home/jeremyg/.cargo/bin/wasm-server-runner"
 

@@ -1,3 +1,5 @@
+//! Definitions for how to export the current diagram to another format, e.g., an image.
+
 use bevy::prelude::*;
 
 pub mod graphviz;
@@ -7,6 +9,7 @@ pub mod oudia;
 // TODO: plugins
 // TODO: make it so that wasm extensions can use this interface
 // TODO: wasm interface should additionally support requesting fonts
+/// How to export the current world to another format.
 pub trait ExportObject {
     /// Export contents to a `Vec<u8>` buffer, with optional parameters
     fn export_to_buffer(&mut self, buffer: &mut Vec<u8>);

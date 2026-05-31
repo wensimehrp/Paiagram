@@ -1,3 +1,6 @@
+//! The core of the Paiagram application. This crate contains the systems used in the runtime and
+//! the types.
+
 pub mod colors;
 pub mod entry;
 pub mod export;

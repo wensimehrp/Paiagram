@@ -1,5 +1,4 @@
-//! # Settings
-//! Module for user preferences and project settings.
+//! User preferences and project settings.
 
 use bevy::prelude::*;
 

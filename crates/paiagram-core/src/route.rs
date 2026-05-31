@@ -1,4 +1,3 @@
-//! # Route
 //! Routes are slices of the graph that can be used as the foundation of
 //! diagrams. Diagrams use routes as their station list.
 
