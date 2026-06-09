@@ -1,40 +1,50 @@
 [package]
 name = "paiagram-core"
 version.workspace = true
-edition.workspace = true
-license.workspace = true
 authors.workspace = true
+edition.workspace = true
 description.workspace = true
 documentation.workspace = true
 readme.workspace = true
-repository.workspace = true
 homepage.workspace = true
+repository.workspace = true
+license.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+[lib]
+doctest = false
+test = false
+
 [dependencies]
-paiagram-rw = { path = "../paiagram-rw" }
-paiagram-oudia = { git = "https://github.com/wensimehrp/paiagram-oudia", branch = "main" }
-serde.workspace = true
 bevy.workspace = true
-petgraph.workspace = true
 derive_more = { version = "2.1.0", features = ["full"] }
-serde_json.workspace = true
+ecow.workspace = true
 egui.workspace = true
 egui-i18n.workspace = true
-smallvec.workspace = true
-either.workspace = true
-visgraph = "0.1.0"
-moonshine-core = "0.5.1"
-urlencoding.workspace = true
 ehttp = { version = "0.6.0", features = ["json", "native-async"] }
-strsim = "0.11.1"
-itertools.workspace = true
-gtfs-structures = { version = "0.46.1", default-features = false }
+either.workspace = true
 encoding_rs = "0.8.35"
-rstar = "0.12.2"
 eros.workspace = true
+gtfs-structures = { version = "0.46.1", default-features = false }
+itertools.workspace = true
+moonshine-core = "0.5.1"
+paiagram-oudia = {
+  git = "https://github.com/wensimehrp/paiagram-oudia",
+  branch = "main"
+}
+paiagram-rw = { path = "../paiagram-rw" }
+petgraph.workspace = true
+rhai.workspace = true
+rstar = "0.12.2"
+rustc-hash.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+slotmap.workspace = true
+smallvec.workspace = true
+strsim = "0.11.1"
+urlencoding.workspace = true
+visgraph = "0.1.0"
 
-[lib]
-test = false
-doctest = false
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+gloo-worker.workspace = true
