@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
-let main_world = get_world();
+let world = get_world();
 let alt_world = new_world();
-main_world.replace_with(alt_world);
+// world.replace_with(alt_world);
 
-let keys = [];
-for i in 0..=100 {
-    keys.push(new_trip_key());
-}
-
-print(keys);
+// test commands
+let hi_trip_key = new_trip_key();
+world.add_trip(hi_trip_key, "Hi!", ());
+world.rename_trip(hi_trip_key, "Bonjour!");
+let bye_trip_key = new_trip_key();
+let class_key = new_class_key();
+world.add_trip(bye_trip_key, "Bye!", class_key);

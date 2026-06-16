@@ -189,6 +189,9 @@ pub struct TEntry {
     stn: Option<StationKey>,
 }
 
+const _: [u8; 16] = [0; size_of::<TEntry>()];
+
+/// The style of a stroke
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
 pub struct StrokeStyle {
     color: Color32,
@@ -196,8 +199,7 @@ pub struct StrokeStyle {
 }
 
 // future idea: scripting via rhai
-/// The world stores much of the content using SoA
-/// This is not ECS (however I do thing we would need archetypal ECS by some point)
+/// The world stores much of the content using SoA.
 #[derive(Serialize, Deserialize, Default, Clone, PartialEq, Debug)]
 pub struct WorldSnapshot {
     pub trips: TripCollection,
@@ -219,6 +221,28 @@ impl WorldSnapshot {
             Command::AddTrip { key, view } => (!self.trips.contains_key(key)).then(|| {
                 self.trips.insert(key, view);
                 Command::RemoveTrip { key }
+            }),
+            Command::RenameTrip {
+                key,
+                name: mut new_name,
+            } => self.trips.get_handle(key).map(|handle| {
+                let old_name = self.trips.get_name_mut(handle);
+                std::mem::swap(old_name, &mut new_name);
+                Command::RenameTrip {
+                    key,
+                    name: new_name,
+                }
+            }),
+            Command::ChangeTripClass {
+                key,
+                class: mut new_class,
+            } => self.trips.get_handle(key).map(|handle| {
+                let old_class = self.trips.get_class_mut(handle);
+                std::mem::swap(old_class, &mut new_class);
+                Command::ChangeTripClass {
+                    key,
+                    class: new_class,
+                }
             }),
             Command::RemoveTrip { key } => self
                 .trips
@@ -463,7 +487,7 @@ pub enum Command {
         key: TripKey,
         view: TripView,
     },
-    ChangeTripName {
+    RenameTrip {
         key: TripKey,
         name: EcoString,
     },

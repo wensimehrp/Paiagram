@@ -2,14 +2,15 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use ecow::EcoString;
+use ecow::{EcoString, EcoVec};
 #[cfg(target_arch = "wasm32")]
 use gloo_worker::Spawnable;
 #[cfg(target_arch = "wasm32")]
 use gloo_worker::oneshot::oneshot;
-use rhai::{Engine, ImmutableString};
+use rhai::{Dynamic, Engine, EvalAltResult, ImmutableString};
 
-use super::{Command, WorldSnapshot};
+use super::{Command, TripView, WorldSnapshot};
+use crate::TEntry;
 
 #[derive(Default, Clone)]
 struct ScriptWorldInner {
@@ -18,7 +19,8 @@ struct ScriptWorldInner {
 }
 
 // we use rc here since our script is not running on multiple threads
-/// The reference of the world owned by the script. The script may create multiple worlds when running.
+/// The reference of the world owned by the script. The script may create multiple worlds when
+/// running.
 #[derive(Clone)]
 struct ScriptWorld(Rc<RefCell<ScriptWorldInner>>);
 
@@ -35,40 +37,113 @@ impl ScriptWorld {
 
 macro_rules! generate_rhai_world_module {
     (
-        $(type $key_ident:ident = $target_path:path;)*
+        keys { $(
+            type $key_ident:ident = $target_path:path;
+        )*}
+        commands { $(
+            $(#[$fn_attr:meta])*
+            $cmd_variant:ident( $($arg:ident: $arg_ty:ty),* $(,)? ) {
+                $($cmd_field:ident: $field_constructor:expr),*
+            }
+        )* }
     ) => {
         paste::paste! {
             #[rhai::plugin::export_module]
             mod rhai_module {
                 type World = ScriptWorld;
 
-                // The macro expands these inline
                 $(
                     type $key_ident = $target_path;
 
+                    /// Returns a new key. This function returns a randomly generated
+                    /// key, thus it is volatile.
+                    #[rhai_fn(volatile)]
                     pub fn [<new_ $key_ident:snake>]() -> $key_ident {
                         $target_path::new()
                     }
                 )*
 
-                // Your standard manual functions go here
+                $(
+                    $(#[$fn_attr])*
+                    #[rhai_fn(return_raw)]
+                    pub fn [<$cmd_variant:snake>](
+                        world: &mut World,
+                        $($arg: $arg_ty),*
+                    ) -> Result<(), Box<EvalAltResult>> {
+                        let cmd: Command = Command::$cmd_variant { $(
+                            $cmd_field: $field_constructor,
+                        )* };
+                        // Actually this step might also fail
+                        world.apply_command(cmd);
+                        Ok(())
+                    }
+                )*
+
                 pub fn replace_with(world: &mut World, new_world: World) {
                     let inner_ref = new_world.0.borrow();
                     let snapshot = Box::new(inner_ref.world.clone());
                     world.apply_command(Command::LoadWorld { snapshot });
+                }
+
+                /// Makes sure that all commands are covered
+                #[allow(dead_code)]
+                #[doc(hidden)]
+                fn __check_command_enums(cmd: Command) {
+                    match cmd {
+                        $(
+                            Command::$cmd_variant { .. } => {}
+                        )*
+                        Command::UnloadWorld => {}
+                        Command::Macro(_) => {}
+                        _ => {}
+                    }
                 }
             }
         }
     };
 }
 
+fn extract_class(class: rhai::Dynamic) -> Result<Option<crate::ClassKey>, Box<EvalAltResult>> {
+    if class.is_unit() {
+        return Ok(None);
+    } else if let Some(key) = class.try_cast::<crate::ClassKey>() {
+        return Ok(Some(key));
+    } else {
+        return Err("Class key must be UNIT or an actual key!".into());
+    }
+}
+
+fn extract_entries(entries: rhai::Array) -> Result<Option<EcoVec<TEntry>>, Box<EvalAltResult>> {
+    todo!()
+}
+
 generate_rhai_world_module!(
-    type TripKey = crate::TripKey;
-    type VehicleKey = crate::VehicleKey;
-    type StationKey = crate::StationKey;
-    type IntervalKey = crate::IntervalKey;
-    type ClassKey = crate::ClassKey;
-    type RouteKey = crate::RouteKey;
+    keys {
+        type TripKey = crate::TripKey;
+        type VehicleKey = crate::VehicleKey;
+        type StationKey = crate::StationKey;
+        type IntervalKey = crate::IntervalKey;
+        type ClassKey = crate::ClassKey;
+        type RouteKey = crate::RouteKey;
+    }
+    commands {
+        AddTrip(key: TripKey, name: ImmutableString, class: Dynamic) {
+            key: key,
+            view: TripView {
+                name: EcoString::from(name.as_str()),
+                entries: EcoVec::new(), // TODO: fix this
+                class: extract_class(class)?,
+            }
+        }
+        RenameTrip(key: TripKey, name: ImmutableString) {
+            key: key,
+            name: EcoString::from(name.as_str())
+        }
+        ChangeTripClass(key: TripKey, class: Dynamic) {
+            key: key,
+            class: extract_class(class)?
+        }
+    }
 );
 
 /// Executes the rhai script.
@@ -113,7 +188,7 @@ mod test {
 
     type E = Result<(), Box<dyn std::error::Error>>;
     #[test]
-    fn push_many_functions() -> E {
+    fn test_script_exec() -> E {
         let src = include_str!("script/get_world.rhai");
         let res = execute_rhai_script(WorldSnapshot::default(), src.to_string())?;
         println!("Execute script result");
