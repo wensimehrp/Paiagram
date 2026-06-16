@@ -71,6 +71,7 @@
               binaryen
               cargo-about
               cargo-shear
+              cargo-expand
               gitui
             ]
             ++ runtimeLibs
