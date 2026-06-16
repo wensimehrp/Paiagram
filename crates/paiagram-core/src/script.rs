@@ -113,7 +113,7 @@ fn extract_class(class: rhai::Dynamic) -> Result<Option<crate::ClassKey>, Box<Ev
     }
 }
 
-fn extract_entries(entries: rhai::Array) -> Result<Option<EcoVec<TEntry>>, Box<EvalAltResult>> {
+fn extract_entries(entries: rhai::Array) -> Result<EcoVec<TEntry>, Box<EvalAltResult>> {
     todo!()
 }
 
@@ -138,6 +138,10 @@ generate_rhai_world_module!(
         RenameTrip(key: TripKey, name: ImmutableString) {
             key: key,
             name: EcoString::from(name.as_str())
+        }
+        ChangeTripEntries(key: TripKey, entries: rhai::Array) {
+            key: key,
+            entries: extract_entries(entries)?
         }
         ChangeTripClass(key: TripKey, class: Dynamic) {
             key: key,
