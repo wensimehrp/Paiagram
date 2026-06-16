@@ -398,17 +398,21 @@ impl Source {
     }
 
     /// Internal helper to construct a snapshot from a slice of history.
-    fn build_snapshot(commands: &[Command]) -> Option<WorldSnapshot> {
+    /// Returns Ok(snap) if all commands works.
+    /// Returns Err(snap) if at least one command fails, and returns the so-far-so-good progress.
+    fn build_snapshot(commands: &[Command]) -> Result<WorldSnapshot, WorldSnapshot> {
         let mut new_snap = WorldSnapshot::default();
         for cmd in commands.iter().cloned() {
-            new_snap.apply_command(cmd)?;
+            if new_snap.apply_command(cmd).is_none() {
+                return Err(new_snap);
+            }
         }
-        Some(new_snap)
+        Ok(new_snap)
     }
 
     /// Crushes the history and rebuilds the world snapshot.
     pub fn crush_history(&mut self) -> bool {
-        let Some(new_snap) = Self::build_snapshot(&self.history_log) else {
+        let Ok(new_snap) = Self::build_snapshot(&self.history_log) else {
             return false;
         };
 
@@ -424,7 +428,7 @@ impl Source {
 
     /// Rebuild the world snapshot if the user believes the world is contaminated.
     pub fn rebuild_snapshot(&mut self) -> bool {
-        let Some(new_snap) = Self::build_snapshot(&self.history_log) else {
+        let Ok(new_snap) = Self::build_snapshot(&self.history_log) else {
             return false;
         };
 
@@ -438,7 +442,7 @@ impl Source {
             return false;
         };
 
-        let Some(new_snap) = Self::build_snapshot(commands) else {
+        let Ok(new_snap) = Self::build_snapshot(commands) else {
             return false;
         };
 
@@ -451,22 +455,24 @@ impl Source {
 /// The save file format.
 #[derive(Serialize, Deserialize, Clone)]
 pub enum SaveFile {
-    /// Version 1.
-    V1 {
-        history_log: Vec<Command>,
-        snap: WorldSnapshot,
-    },
+    V1 { history_log: Vec<Command> },
 }
 
-impl From<SaveFile> for Source {
-    fn from(value: SaveFile) -> Self {
+impl TryFrom<SaveFile> for Source {
+    type Error = &'static str;
+    fn try_from(value: SaveFile) -> Result<Self, Self::Error> {
         match value {
-            SaveFile::V1 { history_log, snap } => Self {
-                history_log,
-                snap,
-                undo_len: 0,
-                undos: Vec::new(),
-            },
+            SaveFile::V1 { history_log } => {
+                let Ok(snap) = Source::build_snapshot(history_log.as_slice()) else {
+                    return Err("Cannot load world: commands corrupted");
+                };
+                Ok(Self {
+                    history_log,
+                    undos: Vec::new(),
+                    undo_len: 0,
+                    snap,
+                })
+            }
         }
     }
 }
@@ -475,7 +481,6 @@ impl From<Source> for SaveFile {
     fn from(value: Source) -> Self {
         Self::V1 {
             history_log: value.history_log,
-            snap: value.snap,
         }
     }
 }
@@ -507,14 +512,14 @@ pub enum Command {
         key: VehicleKey,
         name: EcoString,
     },
-    ChangeVehicleName {
+    RenameVehicle {
         key: VehicleKey,
         name: EcoString,
     },
     RemoveVehicle {
         key: VehicleKey,
     },
-    // Classes
+    /// Hybrid
     ChangeVehicleTrips {
         key: VehicleKey,
         trips: EcoVec<TripKey>,
