@@ -12,10 +12,6 @@ license.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
-[lib]
-doctest = false
-test = false
-
 [[bin]]
 name = "paiagram"
 path = "src/main.rs"
