@@ -12,10 +12,6 @@ license.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
-[[bin]]
-name = "paiagram"
-path = "src/main.rs"
-
 [dependencies]
 bevy.workspace = true
 bytemuck.workspace = true
