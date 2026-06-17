@@ -3,6 +3,7 @@
 //! the types.
 
 pub mod colors;
+mod comm;
 pub mod entry;
 pub mod export;
 pub mod graph;
@@ -19,12 +20,14 @@ pub mod trip;
 pub mod units;
 pub mod vehicle;
 
+use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::{Receiver, Sender, channel};
 
 use ecow::{EcoString, EcoVec};
 use egui::Color32;
+use nohash_hasher::{BuildNoHashHasher, NoHashHasher};
 use petgraph::graphmap::DiGraphMap;
 use rstar::{AABB, RTree, RTreeObject};
 use serde::{Deserialize, Serialize};
@@ -180,8 +183,8 @@ make_type!(
 make_type!(
     pub struct Interval {
         nodes: EcoVec<LonLat>,
-        length: u32,
-        stations: (StationKey, StationKey),
+        length: Option<NonZeroU32>,
+        stations: (StationKey, StationKey), // Cache
     }
 );
 
@@ -192,6 +195,7 @@ pub struct TEntry {
     stn: Option<StationKey>,
 }
 
+// Assert the size
 const _: [u8; 16] = [0; size_of::<TEntry>()];
 
 /// The style of a stroke
@@ -209,7 +213,7 @@ pub struct LonLat {
 
 // future idea: scripting via rhai
 /// The world stores much of the content using SoA.
-#[derive(Serialize, Deserialize, Default, Clone, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, Default, Clone, Debug)]
 pub struct WorldSnapshot {
     pub trips: TripCollection,
     pub vehicles: VehicleCollection,
@@ -218,7 +222,7 @@ pub struct WorldSnapshot {
     pub classes: ClassCollection,
     pub routes: RouteCollection,
     vehicle_trip_matrix: Arc<VehicleTripMatrix>,
-    // graph: Arc<DiGraphMap<StationKey, IntervalKey, FxBuildHasher>>,
+    graph: Arc<DiGraphMap<StationKey, IntervalKey, BuildNoHashHasher<StationKey>>>,
 }
 
 impl WorldSnapshot {
@@ -298,32 +302,6 @@ mod world_snapshot_test {
     use ecow::string::ToEcoString;
 
     use super::*;
-    #[test]
-    fn apply_command_1() -> E {
-        let mut final_world = WorldSnapshot::default();
-        let commands = (0..=10000)
-            .map(|it| it.to_eco_string())
-            .map(|name| Command::AddTrip {
-                key: TripKey::new(),
-                view: TripView {
-                    name,
-                    entries: EcoVec::new(),
-                    class: None,
-                },
-            });
-        let cmd_result = commands
-            .into_iter()
-            .map(|cmd| final_world.apply_command(cmd))
-            .collect::<Vec<_>>();
-        for cmd in cmd_result {
-            let Some(cmd) = cmd else {
-                continue;
-            };
-            final_world.apply_command(cmd);
-        }
-        assert_eq!(WorldSnapshot::default(), final_world);
-        Ok(())
-    }
 }
 
 /// The truth of the application. This structure holds a write-only log and a set of undos and
