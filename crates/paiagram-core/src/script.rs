@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: MPL-2.0
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 
 use ecow::{EcoString, EcoVec};
-#[cfg(target_arch = "wasm32")]
-use gloo_worker::Spawnable;
-#[cfg(target_arch = "wasm32")]
-use gloo_worker::oneshot::oneshot;
 use rhai::{Dynamic, Engine, EvalAltResult, ImmutableString};
 
 use super::{Command, TripView, WorldSnapshot};
@@ -156,14 +154,23 @@ generate_rhai_world_module!(
 ///
 /// In web builds, this would print to the JS console.
 /// In desktop builds, this would print to `stdout`.
-#[cfg_attr(target_arch = "wasm32", oneshot)]
-pub fn execute_rhai_script(world: WorldSnapshot, src: String) -> Result<Vec<Command>, String> {
+pub fn execute_rhai_script(
+    world: WorldSnapshot,
+    src: Arc<str>,
+    on_print: impl Fn(&str) + 'static,
+    on_debug: impl Fn(&str, Option<&str>, rhai::Position) + 'static,
+    on_progress: impl Fn(u64) -> Option<rhai::Dynamic> + 'static,
+) -> Result<Vec<Command>, String> {
     let master_world = ScriptWorld(Rc::new(RefCell::new(ScriptWorldInner {
         world,
         command_stack: Vec::new(),
     })));
 
     let mut engine = Engine::new();
+    engine
+        .on_print(on_print)
+        .on_debug(on_debug)
+        .on_progress(on_progress);
     let module = rhai::plugin::exported_module!(rhai_module);
     engine.register_global_module(module.into());
 
@@ -194,9 +201,15 @@ mod test {
     #[test]
     fn test_script_exec() -> E {
         let src = include_str!("script/get_world.rhai");
-        let res = execute_rhai_script(WorldSnapshot::default(), src.to_string())?;
+        let res = execute_rhai_script(
+            WorldSnapshot::default(),
+            src.into(),
+            |s| println!("{}", s),
+            |s, _, p| println!("{:?}: {}", p, s),
+            |_c| None,
+        )?;
         println!("Execute script result");
-        println!("{:?}", res);
+        println!("{:#?}", res);
         Ok(())
     }
 }

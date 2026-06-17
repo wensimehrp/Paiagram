@@ -20,6 +20,8 @@ pub mod units;
 pub mod vehicle;
 
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
+use std::sync::mpsc::{Receiver, Sender, channel};
 
 use ecow::{EcoString, EcoVec};
 use egui::Color32;
@@ -157,6 +159,7 @@ make_type!(
 make_type!(
     pub struct Station {
         name: EcoString,
+        pos: LonLat,
     }
 );
 
@@ -176,7 +179,7 @@ make_type!(
 
 make_type!(
     pub struct Interval {
-        nodes: EcoVec<(i32, i32)>,
+        nodes: EcoVec<LonLat>,
         length: u32,
         stations: (StationKey, StationKey),
     }
@@ -196,6 +199,12 @@ const _: [u8; 16] = [0; size_of::<TEntry>()];
 pub struct StrokeStyle {
     color: Color32,
     width: u8,
+}
+
+#[derive(Clone, Copy, Default, Debug, Serialize, Deserialize, PartialEq)]
+pub struct LonLat {
+    lon: i32,
+    lat: i32,
 }
 
 // future idea: scripting via rhai
@@ -319,7 +328,8 @@ mod world_snapshot_test {
 
 /// The truth of the application. This structure holds a write-only log and a set of undos and
 /// redos, as well as the world's current snapshot.
-#[derive(Clone)]
+///
+/// The source is not clonable, and should not be cloned.
 pub struct Source {
     history_log: Vec<Command>,
     undos: Vec<Command>,
@@ -328,6 +338,8 @@ pub struct Source {
     /// A value of 0 means no more undos available.
     undo_len: usize,
     snap: WorldSnapshot,
+    rtrees: GraphCacheWorld,
+    rhai_script_world: RhaiScriptWorld,
 }
 
 impl Source {
@@ -471,6 +483,8 @@ impl TryFrom<SaveFile> for Source {
                     undos: Vec::new(),
                     undo_len: 0,
                     snap,
+                    rtrees: GraphCacheWorld::new(),
+                    rhai_script_world: RhaiScriptWorld::new(),
                 })
             }
         }
@@ -533,12 +547,77 @@ pub enum Command {
     Macro(Box<[Command]>),
 }
 
-#[cfg_attr(target_arch = "wasm32", derive(Serialize, Deserialize))]
-#[derive(Clone)]
+type IntervalReq = (Arc<Vec<IntervalKey>>, Arc<Vec<EcoVec<LonLat>>>);
+type IntervalRes = RTree<IntervalSpatialEntry>;
+
+/// The graph cache world
 pub struct GraphCacheWorld {
-    pub entry_rtree: RTree<TEntrySpatialEntry>,
-    pub station_rtree: RTree<StationSpatialEntry>,
-    pub interval_rtree: RTree<StationSpatialEntry>,
+    entry_rtree: RTree<TEntrySpatialEntry>,
+    station_rtree: RTree<StationSpatialEntry>,
+    interval_rtree: RTree<IntervalSpatialEntry>,
+    entry_req_tx: (),   // unimplemented
+    entry_res_rx: (),   // unimplemented
+    station_req_tx: (), // unimplemented
+    station_res_rx: (), // unimplemented
+    interval_req_tx: Sender<IntervalReq>,
+    interval_res_rx: Receiver<IntervalRes>,
+}
+
+// TODO: find a way to let it work on wasm
+// On wasm this should use something like gloo-worker
+// TODO: add generation counter to avoid desync
+impl GraphCacheWorld {
+    fn new() -> Self {
+        // TODO
+        // boilerplate hehe
+        let (entry_req_tx, _entry_req_rx) = ((), ());
+        let (_entry_res_tx, entry_res_rx) = ((), ());
+        let (station_req_tx, _station_req_rx) = ((), ());
+        let (_station_res_tx, station_res_rx) = ((), ());
+        let (interval_req_tx, interval_req_rx) = channel::<IntervalReq>();
+        let (interval_res_tx, interval_res_rx) = channel::<IntervalRes>();
+        // Find a way to abort the task in this case
+        // Also find a way to do some sort of damage control
+        // TODO: limit the scope of rebuilds
+        // This does a total rebuild for now. Computing could get real slow by some point
+        std::thread::spawn(move || {
+            while let Ok((keys, points)) = interval_req_rx.recv() {
+                let mut data = Vec::with_capacity(keys.len());
+                for (key, points) in std::iter::zip(keys.iter().cloned(), points.iter().cloned()) {
+                    data.push(IntervalSpatialEntry { key, points });
+                }
+                let built = RTree::bulk_load(data);
+                // discard the error in this case
+                let _ = interval_res_tx.send(built);
+            }
+        });
+        Self {
+            entry_rtree: RTree::default(),
+            station_rtree: RTree::default(),
+            interval_rtree: RTree::default(),
+            entry_req_tx,
+            entry_res_rx,
+            station_req_tx,
+            station_res_rx,
+            interval_req_tx,
+            interval_res_rx,
+        }
+    }
+    /// Called each frame to check if there are any finished works
+    pub fn poll_result(&mut self) {
+        if let Ok(res) = self.interval_res_rx.try_recv() {
+            self.interval_rtree = res;
+        }
+    }
+    /// Update the intervals
+    fn update_intervals(&mut self, intervals: &IntervalCollection) {
+        // rebuild the intervals
+        let keys = intervals.keys.clone();
+        let points = intervals.nodes.clone();
+        self.interval_req_tx
+            .send((keys, points))
+            .expect("Cannot send data to calculate interval rtree!");
+    }
 }
 
 // the serde here is required for gloo-worker
@@ -546,7 +625,7 @@ pub struct GraphCacheWorld {
 #[derive(Clone)]
 pub struct TEntrySpatialEntry {
     /// The reference to the trip
-    pub k: TripKey,
+    pub key: TripKey,
     /// baseline
     pub t1: i32,
     /// delta of t1
@@ -554,31 +633,31 @@ pub struct TEntrySpatialEntry {
     /// delta of t1
     pub t3: i16,
     /// The interval's points
-    pub points: EcoVec<(i32, i32)>,
+    pub points: EcoVec<LonLat>,
 }
 
 #[cfg_attr(target_arch = "wasm32", derive(Serialize, Deserialize))]
 #[derive(Clone, Copy)]
 pub struct StationSpatialEntry {
-    pub k: StationKey,
-    pub p: (i32, i32),
+    pub key: StationKey,
+    pub point: LonLat,
 }
 
 /// Should be trivial to clone this
 #[cfg_attr(target_arch = "wasm32", derive(Serialize, Deserialize))]
 #[derive(Clone)]
 pub struct IntervalSpatialEntry {
-    pub k: IntervalKey,
-    pub points: EcoVec<(i32, i32)>,
+    pub key: IntervalKey,
+    pub points: EcoVec<LonLat>,
 }
 
 impl RTreeObject for TEntrySpatialEntry {
     type Envelope = AABB<[i64; 3]>;
     fn envelope(&self) -> Self::Envelope {
-        let lon_min = self.points.iter().map(|(lon, _)| *lon).min().unwrap() as i64;
-        let lon_max = self.points.iter().map(|(lon, _)| *lon).max().unwrap() as i64;
-        let lat_min = self.points.iter().map(|(_, lat)| *lat).min().unwrap() as i64;
-        let lat_max = self.points.iter().map(|(_, lat)| *lat).max().unwrap() as i64;
+        let lon_min = self.points.iter().map(|p| p.lon).min().unwrap() as i64;
+        let lon_max = self.points.iter().map(|p| p.lon).max().unwrap() as i64;
+        let lat_min = self.points.iter().map(|p| p.lat).min().unwrap() as i64;
+        let lat_max = self.points.iter().map(|p| p.lat).max().unwrap() as i64;
         let tmin = self.t1 as i64;
         let tmax = tmin + self.t3 as i64;
         AABB::from_corners([lon_min, lat_min, tmin], [lon_max, lat_max, tmax])
@@ -588,18 +667,106 @@ impl RTreeObject for TEntrySpatialEntry {
 impl RTreeObject for StationSpatialEntry {
     type Envelope = AABB<[i64; 2]>;
     fn envelope(&self) -> Self::Envelope {
-        AABB::from_point([self.p.0 as i64, self.p.1 as i64])
+        AABB::from_point([self.point.lon as i64, self.point.lat as i64])
     }
 }
 
 impl RTreeObject for IntervalSpatialEntry {
     type Envelope = AABB<[i64; 2]>;
     fn envelope(&self) -> Self::Envelope {
-        let lon_min = self.points.iter().map(|(lon, _)| *lon).min().unwrap() as i64;
-        let lon_max = self.points.iter().map(|(lon, _)| *lon).max().unwrap() as i64;
-        let lat_min = self.points.iter().map(|(_, lat)| *lat).min().unwrap() as i64;
-        let lat_max = self.points.iter().map(|(_, lat)| *lat).max().unwrap() as i64;
+        let lon_min = self.points.iter().map(|p| p.lon).min().unwrap() as i64;
+        let lon_max = self.points.iter().map(|p| p.lon).max().unwrap() as i64;
+        let lat_min = self.points.iter().map(|p| p.lat).min().unwrap() as i64;
+        let lat_max = self.points.iter().map(|p| p.lat).max().unwrap() as i64;
         AABB::from_corners([lon_min, lat_min], [lon_max, lat_max])
+    }
+}
+
+#[derive(Clone)]
+enum ScriptResponse {
+    Output(Arc<str>),
+    Done(Result<Vec<Command>, String>),
+}
+
+#[derive(Clone)]
+pub enum ScriptPollResponse {
+    NotBusy,
+    Busy,
+    Output(Arc<str>),
+    Done(Result<Vec<Command>, String>),
+}
+
+struct RhaiScriptWorld {
+    script_req_tx: Sender<(WorldSnapshot, Arc<str>)>,
+    script_res_rx: Receiver<ScriptResponse>,
+    terminate_script: Arc<AtomicBool>,
+    busy: bool,
+}
+
+impl RhaiScriptWorld {
+    fn new() -> Self {
+        let (script_req_tx, script_req_rx) = channel();
+        let (script_res_tx, script_res_rx) = channel();
+
+        let terminate_script = Arc::new(AtomicBool::new(false));
+        let terminate_script_copy = terminate_script.clone();
+
+        std::thread::spawn(move || {
+            while let Ok((world, src)) = script_req_rx.recv() {
+                let iteration_terminate = terminate_script_copy.clone();
+
+                let print_tx = script_res_tx.clone();
+                let debug_tx = script_res_tx.clone();
+
+                let res = script::execute_rhai_script(
+                    world,
+                    src,
+                    move |s| {
+                        let _ = print_tx.send(ScriptResponse::Output(s.into()));
+                    },
+                    move |s, _, p| {
+                        let dbg_text = format!("{:?}: {}", p, s);
+                        let _ = debug_tx.send(ScriptResponse::Output(dbg_text.into()));
+                    },
+                    move |_c| {
+                        if iteration_terminate.load(std::sync::atomic::Ordering::Relaxed) {
+                            return Some(rhai::Dynamic::UNIT);
+                        }
+                        None
+                    },
+                );
+
+                let _ = script_res_tx.send(ScriptResponse::Done(res));
+            }
+        });
+
+        Self {
+            script_req_tx,
+            script_res_rx,
+            terminate_script,
+            busy: false,
+        }
+    }
+    fn poll(&mut self) -> ScriptPollResponse {
+        if !self.busy {
+            return ScriptPollResponse::NotBusy;
+        }
+        let Ok(res) = self.script_res_rx.try_recv() else {
+            return ScriptPollResponse::Busy;
+        };
+        match res {
+            ScriptResponse::Done(m) => {
+                self.busy = false;
+                ScriptPollResponse::Done(m)
+            }
+            ScriptResponse::Output(m) => ScriptPollResponse::Output(m),
+        }
+    }
+    fn start_execute(&mut self, snap: WorldSnapshot, src: Arc<str>) {
+        self.script_req_tx
+            .send((snap, src))
+            .expect("Script thread closed!");
+        self.busy = true;
     }
 }
 
