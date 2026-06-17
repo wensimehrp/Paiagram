@@ -1,5 +1,6 @@
 .direnv
 /target
+result
 *.json
 *.oud2
 *.oud
