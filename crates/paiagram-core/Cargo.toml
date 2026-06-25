@@ -42,7 +42,6 @@ serde_json.workspace = true
 smallvec.workspace = true
 strsim = "0.11.1"
 urlencoding.workspace = true
-uuid = "1.23.3"
 visgraph = "0.1.0"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]

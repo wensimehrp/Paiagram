@@ -5267,7 +5267,6 @@ dependencies = [
  "smallvec",
  "strsim",
  "urlencoding",
- "uuid",
  "visgraph",
 ]
 
