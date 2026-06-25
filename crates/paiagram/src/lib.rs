@@ -1236,7 +1236,7 @@ fn build_font_definitions(sarasa: Option<Vec<u8>>) -> egui::FontDefinitions {
 fn load_sarasa_local() -> Option<Vec<u8>> {
     let mut candidates = vec![
         PathBuf::from("assets/fonts/SarasaUiSC-Regular.ttf"),
-        PathBuf::from("crates/paiagram-ui/assets/fonts/SarasaUiSC-Regular.ttf"),
+        PathBuf::from("crates/paiagram/assets/fonts/SarasaUiSC-Regular.ttf"),
     ];
 
     if let Ok(exe) = std::env::current_exe()

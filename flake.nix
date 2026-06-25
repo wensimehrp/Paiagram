@@ -84,9 +84,9 @@
           buildInputs = runtimeLibs ++ [ pkgs.openssl ];
 
           postPatch = ''
-            mkdir -p crates/paiagram-ui/assets/fonts
-            ${pkgs.p7zip}/bin/7z x ${sarasaUiSrc} -ocrates/paiagram-ui/assets/fonts -y
-            ${pkgs.p7zip}/bin/7z x ${diaProSrc} -ocrates/paiagram-ui/assets/fonts -y
+            mkdir -p crates/paiagram/assets/fonts
+            ${pkgs.p7zip}/bin/7z x ${sarasaUiSrc} -ocrates/paiagram/assets/fonts -y
+            ${pkgs.p7zip}/bin/7z x ${diaProSrc} -ocrates/paiagram/assets/fonts -y
           '';
 
           postInstall = ''

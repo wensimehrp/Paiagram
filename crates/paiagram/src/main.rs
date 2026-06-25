@@ -25,7 +25,7 @@ impl PaiagramApp {
             style.spacing.window_margin = egui::Margin::same(2);
             style.interaction.selectable_labels = false;
         });
-        paiagram_ui::apply_custom_fonts(&cc.egui_ctx);
+        paiagram::apply_custom_fonts(&cc.egui_ctx);
         if let Some(render_state) = cc.wgpu_render_state.as_ref() {
             cc.egui_ctx.data_mut(|data| {
                 data.insert_temp(
@@ -48,7 +48,7 @@ impl PaiagramApp {
         app.add_plugins(MinimalPlugins);
         app.add_plugins(LogPlugin::default());
         app.add_plugins((
-            paiagram_ui::UiPlugin,
+            paiagram::UiPlugin,
             entry::EntryPlugin,
             graph::GraphPlugin,
             route::RoutePlugin,
@@ -108,7 +108,7 @@ impl eframe::App for PaiagramApp {
             Some(egui::Theme::Dark) => true,
             Some(egui::Theme::Light) => false,
         };
-        paiagram_ui::show_ui(ui, self.bevy_app.world_mut(), frame.info().cpu_usage);
+        paiagram::show_ui(ui, self.bevy_app.world_mut(), frame.info().cpu_usage);
     }
 }
 

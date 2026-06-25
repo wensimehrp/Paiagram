@@ -2,7 +2,7 @@
 resolver = "3"
 members = ["crates/*"]
 exclude = ["crates/epaint_default_fonts"]
-default-members = ["crates/paiagram-ui"]
+default-members = ["crates/paiagram"]
 
 [workspace.package]
 version = "0.1.3"
