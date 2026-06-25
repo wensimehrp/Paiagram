@@ -1,7 +1,6 @@
 [package]
 name = "paiagram-pdf"
 version.workspace = true
-authors.workspace = true
 edition.workspace = true
 description.workspace = true
 documentation.workspace = true
