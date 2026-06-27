@@ -3,7 +3,6 @@
 //! the types.
 
 pub mod colors;
-mod comm;
 pub mod entry;
 pub mod export;
 pub mod graph;
@@ -22,16 +21,27 @@ pub mod vehicle;
 
 use std::num::NonZeroU32;
 use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicU16};
 use std::sync::mpsc::{Receiver, Sender, channel};
 
 use ecow::{EcoString, EcoVec};
 use egui::Color32;
-use nohash_hasher::{BuildNoHashHasher, NoHashHasher};
+use nohash_hasher::BuildNoHashHasher;
 use petgraph::graphmap::DiGraphMap;
 use rstar::{AABB, RTree, RTreeObject};
 use serde::{Deserialize, Serialize};
 pub use trip::class;
+
+pub trait Key: Clone + Copy {
+    fn to_bits(self) -> u64;
+    fn creation_time(self) -> web_time::SystemTime {
+        let ms = self.to_bits() >> 16;
+        web_time::SystemTime::UNIX_EPOCH + web_time::Duration::from_millis(ms)
+    }
+    fn generation(self) -> u16 {
+        self.to_bits() as u16
+    }
+}
 
 macro_rules! make_type {
     (
@@ -45,10 +55,28 @@ macro_rules! make_type {
 
             impl nohash_hasher::IsEnabled for [<$struct_name Key>] {}
 
+            static [<$struct_name:snake:upper _COUNTER>]: AtomicU16 = AtomicU16::new(0);
+
             impl [<$struct_name Key>] {
                 pub fn new() -> Self {
-                    let raw_id = fastrand::u64(1..=u64::MAX);
+                    use web_time::SystemTime;
+                    let now_ms = SystemTime::now()
+                        .duration_since(SystemTime::UNIX_EPOCH)
+                        .unwrap()
+                        .as_millis() as u64;
+                    let timestamp_48 = now_ms & 0xFFFF_FFFF_FFFF;
+                    let counter_16 = [<$struct_name:snake:upper _COUNTER>]
+                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    let raw_id = (timestamp_48 << 16) | (counter_16 as u64);
+                    // I hope nobody would use this app and generate a key
+                    // at exactly Jan 1, 1970 UTC+0...
                     Self(std::num::NonZeroU64::new(raw_id).unwrap())
+                }
+            }
+
+            impl Key for [<$struct_name Key>] {
+                fn to_bits(self) -> u64 {
+                    self.0.get()
                 }
             }
 
@@ -296,22 +324,12 @@ impl WorldSnapshot {
     }
 }
 
-#[cfg(test)]
-mod world_snapshot_test {
-    type E = Result<(), Box<dyn std::error::Error>>;
-    use ecow::string::ToEcoString;
-
-    use super::*;
-}
-
 /// The truth of the application. This structure holds a write-only log and a set of undos and
 /// redos, as well as the world's current snapshot.
 ///
 /// The source is not clonable, and should not be cloned.
 pub struct Source {
-    history_log: Vec<Command>,
     undos: Vec<Command>,
-    // I don't really like inexing stuff
     /// The length or the amount of available undo commands.
     /// A value of 0 means no more undos available.
     undo_len: usize,
@@ -330,7 +348,6 @@ impl Source {
         let Some(inverse) = self.snap.apply_command(cmd.clone()) else {
             return false;
         };
-        self.history_log.push(cmd);
         self.undos.truncate(self.undo_len);
         self.undos.push(inverse);
         self.undo_len = self.undos.len();
@@ -358,7 +375,6 @@ impl Source {
         let Some(redo_cmd) = self.snap.apply_command(cmd.clone()) else {
             return false;
         };
-        self.history_log.push(cmd);
         self.undos[self.undo_len - 1] = redo_cmd;
         self.undo_len -= 1;
 
@@ -380,100 +396,37 @@ impl Source {
         let Some(undo_cmd) = self.snap.apply_command(cmd.clone()) else {
             return false;
         };
-        self.history_log.push(cmd);
         self.undos[self.undo_len] = undo_cmd;
         self.undo_len += 1;
 
         true
-    }
-
-    /// Internal helper to construct a snapshot from a slice of history.
-    /// Returns Ok(snap) if all commands works.
-    /// Returns Err(snap) if at least one command fails, and returns the so-far-so-good progress.
-    fn build_snapshot(commands: &[Command]) -> Result<WorldSnapshot, WorldSnapshot> {
-        let mut new_snap = WorldSnapshot::default();
-        for cmd in commands.iter().cloned() {
-            if new_snap.apply_command(cmd).is_none() {
-                return Err(new_snap);
-            }
-        }
-        Ok(new_snap)
-    }
-
-    /// Crushes the history and rebuilds the world snapshot.
-    pub fn crush_history(&mut self) -> bool {
-        let Ok(new_snap) = Self::build_snapshot(&self.history_log) else {
-            return false;
-        };
-
-        self.history_log.clear();
-        self.undos.clear();
-        self.undo_len = 0;
-        self.snap = WorldSnapshot::default();
-
-        self.apply_command(Command::LoadWorld {
-            snapshot: Box::new(new_snap),
-        })
-    }
-
-    /// Rebuild the world snapshot if the user believes the world is contaminated.
-    pub fn rebuild_snapshot(&mut self) -> bool {
-        let Ok(new_snap) = Self::build_snapshot(&self.history_log) else {
-            return false;
-        };
-
-        self.snap = new_snap;
-        true
-    }
-
-    /// Checkout the snapshot at a specific timepoint
-    pub fn checkout_snapshot(&mut self, idx: usize) -> bool {
-        let Some(commands) = self.history_log.get(..=idx) else {
-            return false;
-        };
-
-        let Ok(new_snap) = Self::build_snapshot(commands) else {
-            return false;
-        };
-
-        self.apply_command(Command::LoadWorld {
-            snapshot: Box::new(new_snap),
-        })
     }
 }
 
 /// The save file format.
 #[derive(Serialize, Deserialize, Clone)]
 pub enum SaveFile {
-    V1 { history_log: Vec<Command> },
+    V1 { world: WorldSnapshot },
 }
 
 impl TryFrom<SaveFile> for Source {
     type Error = &'static str;
     fn try_from(value: SaveFile) -> Result<Self, Self::Error> {
         match value {
-            SaveFile::V1 { history_log } => {
-                let Ok(snap) = Source::build_snapshot(history_log.as_slice()) else {
-                    return Err("Cannot load world: commands corrupted");
-                };
-                Ok(Self {
-                    history_log,
-                    undos: Vec::new(),
-                    undo_len: 0,
-                    snap,
-                    rtrees: GraphCacheWorld::new(),
-                    rhai_script_world: RhaiScriptWorld::new(),
-                })
-            }
+            SaveFile::V1 { world } => Ok(Self {
+                undos: Vec::new(),
+                undo_len: 0,
+                snap: world,
+                rtrees: GraphCacheWorld::new(),
+                rhai_script_world: RhaiScriptWorld::new(),
+            }),
         }
     }
 }
 
 impl From<Source> for SaveFile {
     fn from(value: Source) -> Self {
-        Self::V1 {
-            history_log: value.history_log,
-        }
+        Self::V1 { world: value.snap }
     }
 }
 
@@ -525,20 +478,11 @@ pub enum Command {
     Macro(Box<[Command]>),
 }
 
-type IntervalReq = (Arc<Vec<IntervalKey>>, Arc<Vec<EcoVec<LonLat>>>);
-type IntervalRes = RTree<IntervalSpatialEntry>;
-
 /// The graph cache world
 pub struct GraphCacheWorld {
     entry_rtree: RTree<TEntrySpatialEntry>,
     station_rtree: RTree<StationSpatialEntry>,
     interval_rtree: RTree<IntervalSpatialEntry>,
-    entry_req_tx: (),   // unimplemented
-    entry_res_rx: (),   // unimplemented
-    station_req_tx: (), // unimplemented
-    station_res_rx: (), // unimplemented
-    interval_req_tx: Sender<IntervalReq>,
-    interval_res_rx: Receiver<IntervalRes>,
 }
 
 // TODO: find a way to let it work on wasm
@@ -546,60 +490,14 @@ pub struct GraphCacheWorld {
 // TODO: add generation counter to avoid desync
 impl GraphCacheWorld {
     fn new() -> Self {
-        // TODO
-        // boilerplate hehe
-        let (entry_req_tx, _entry_req_rx) = ((), ());
-        let (_entry_res_tx, entry_res_rx) = ((), ());
-        let (station_req_tx, _station_req_rx) = ((), ());
-        let (_station_res_tx, station_res_rx) = ((), ());
-        let (interval_req_tx, interval_req_rx) = channel::<IntervalReq>();
-        let (interval_res_tx, interval_res_rx) = channel::<IntervalRes>();
-        // Find a way to abort the task in this case
-        // Also find a way to do some sort of damage control
-        // TODO: limit the scope of rebuilds
-        // This does a total rebuild for now. Computing could get real slow by some point
-        std::thread::spawn(move || {
-            while let Ok((keys, points)) = interval_req_rx.recv() {
-                let mut data = Vec::with_capacity(keys.len());
-                for (key, points) in std::iter::zip(keys.iter().cloned(), points.iter().cloned()) {
-                    data.push(IntervalSpatialEntry { key, points });
-                }
-                let built = RTree::bulk_load(data);
-                // discard the error in this case
-                let _ = interval_res_tx.send(built);
-            }
-        });
         Self {
             entry_rtree: RTree::default(),
             station_rtree: RTree::default(),
             interval_rtree: RTree::default(),
-            entry_req_tx,
-            entry_res_rx,
-            station_req_tx,
-            station_res_rx,
-            interval_req_tx,
-            interval_res_rx,
         }
-    }
-    /// Called each frame to check if there are any finished works
-    pub fn poll_result(&mut self) {
-        if let Ok(res) = self.interval_res_rx.try_recv() {
-            self.interval_rtree = res;
-        }
-    }
-    /// Update the intervals
-    fn update_intervals(&mut self, intervals: &IntervalCollection) {
-        // rebuild the intervals
-        let keys = intervals.keys.clone();
-        let points = intervals.nodes.clone();
-        self.interval_req_tx
-            .send((keys, points))
-            .expect("Cannot send data to calculate interval rtree!");
     }
 }
 
-// the serde here is required for gloo-worker
-#[cfg_attr(target_arch = "wasm32", derive(Serialize, Deserialize))]
 #[derive(Clone)]
 pub struct TEntrySpatialEntry {
     /// The reference to the trip
@@ -614,15 +512,12 @@ pub struct TEntrySpatialEntry {
     pub points: EcoVec<LonLat>,
 }
 
-#[cfg_attr(target_arch = "wasm32", derive(Serialize, Deserialize))]
 #[derive(Clone, Copy)]
 pub struct StationSpatialEntry {
     pub key: StationKey,
     pub point: LonLat,
 }
 
-/// Should be trivial to clone this
-#[cfg_attr(target_arch = "wasm32", derive(Serialize, Deserialize))]
 #[derive(Clone)]
 pub struct IntervalSpatialEntry {
     pub key: IntervalKey,

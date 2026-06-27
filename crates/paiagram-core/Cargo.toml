@@ -21,8 +21,6 @@ ehttp = { version = "0.6.0", features = ["json", "native-async"] }
 either.workspace = true
 encoding_rs = "0.8.35"
 eros.workspace = true
-# slotmap.workspace = true
-fastrand = "2.4.1"
 gtfs-structures = { version = "0.46.1", default-features = false }
 itertools.workspace = true
 moonshine-core = "0.5.1"
@@ -43,7 +41,4 @@ smallvec.workspace = true
 strsim = "0.11.1"
 urlencoding.workspace = true
 visgraph = "0.1.0"
-
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-fastrand = { version = "2.4.1", features = ["js"] }
-gloo-worker.workspace = true
+web-time.workspace = true
