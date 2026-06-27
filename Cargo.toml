@@ -17,20 +17,6 @@ keywords = ["diagram", "scheduler", "timetabling", "web"]
 categories = ["visualization"]
 
 [workspace.dependencies]
-# ECS and states
-bevy = {
-  version = "0.18.0",
-  default-features = false,
-  features = [
-    "bevy_color",
-    "bevy_log",
-    "bevy_scene",  # TO BE REMOVED
-    "multi_threaded",
-    "reflect_auto_register",  # TO BE REMOVED
-    "serialize",  # TO BE REMOVED
-    "std",
-  ]
-}
 # WGSL data communication
 bytemuck = { version = "1.23.2", features = ["extern_crate_alloc"] }
 chrono = "0.4.44"
@@ -86,6 +72,9 @@ vec1 = "1.12.1"
 wasm-bindgen = "=0.2.122"
 wasm-bindgen-futures = "0.4"
 web-time = "1.1.0"
+futures-lite = "2.6.1"
+async-executor = "1.14.0"
+log = "0.4.33"
 
 [patch.crates-io]
 epaint_default_fonts = { path = "crates/epaint_default_fonts" }

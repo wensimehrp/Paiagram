@@ -1,9 +1,8 @@
 use std::collections::HashSet;
 
-use bevy::ecs::system::{In, InMut, InRef, Local};
 use egui::{Mesh, Painter, Rect, Shape, Stroke, Ui, Widget, pos2};
 use egui_i18n::tr;
-use paiagram_core::graph::{lon_lat_to_xy, xy_to_lon_lat};
+use paiagram_core::{Wgs84LonLat, XyPos};
 use serde::{Deserialize, Serialize};
 use walkers::sources::{Attribution, OpenStreetMap, TileSource};
 use walkers::{HttpTiles, Tile, TileId, Tiles, mercator};
@@ -179,104 +178,123 @@ impl TileSource for EsriWorldImagery {
     }
 }
 
-pub(crate) fn draw_underlay(
-    (InMut(painter), InRef(navi), InMut(ui), In(new_type)): (
-        InMut<Painter>,
-        InRef<super::GraphNavigation>,
-        InMut<Ui>,
-        In<Option<UnderlayTileType>>,
-    ),
-    mut visited: Local<HashSet<TileId>>,
-    mut stack: Local<Vec<TileId>>,
-    mut tiles: Local<Option<Option<HttpTiles>>>,
-) -> Option<Attribution> {
-    draw_world_grid(
-        &painter,
-        navi.visible_rect(),
-        navi.offset_x() as f32,
-        navi.offset_y() as f32,
-        navi.zoom_x(),
-    );
+pub(super) struct UnderlayPainter {
+    visited: HashSet<TileId>,
+    stack: Vec<TileId>,
+    tiles: Option<Option<HttpTiles>>,
+    tile_type: Option<UnderlayTileType>,
+    changed: bool,
+}
 
-    let tiles = tiles.get_or_insert(None);
-    let ctx = ui.ctx().clone();
-
-    match new_type {
-        None => {}
-        Some(UnderlayTileType::None) => *tiles = None,
-        Some(UnderlayTileType::OpenStreetMap) => *tiles = Some(HttpTiles::new(OpenStreetMap, ctx)),
-        Some(UnderlayTileType::ChiriinChizu(v)) => {
-            *tiles = Some(HttpTiles::new(ChiriinChizu(v), ctx))
-        }
-        Some(UnderlayTileType::AutoNavi) => *tiles = Some(HttpTiles::new(AutoNavi, ctx)),
-        Some(UnderlayTileType::EsriWorldImagery) => {
-            *tiles = Some(HttpTiles::new(EsriWorldImagery, ctx))
+impl UnderlayPainter {
+    pub fn update_tile_type(&mut self, new_type: Option<UnderlayTileType>) {
+        if new_type != self.tile_type {
+            self.tile_type = new_type;
+            self.changed = true;
         }
     }
-
-    let Some(tiles) = tiles else {
-        return None;
-    };
-
-    let graph_zoom = navi.zoom_x() as f64;
-    let tile_zoom = graph_zoom_to_tile_zoom(graph_zoom);
-
-    let view = navi.visible_rect();
-
-    let center_screen = view.center();
-    let (center_x, center_y) = navi.screen_pos_to_xy(center_screen);
-    let (center_lon, center_lat) = xy_to_lon_lat(center_x, center_y);
-    let map_center = walkers::lon_lat(center_lon, center_lat);
-    let map_center_projected = mercator::project(map_center, tile_zoom);
-
-    visited.clear();
-    stack.clear();
-    stack.push(root_tile_id(
-        map_center_projected.x(),
-        map_center_projected.y(),
-        tile_zoom,
-        tiles.tile_size(),
-    ));
-    let corrected_tile_size = corrected_tile_size(tiles.tile_size(), tile_zoom);
-    let clip = painter.clip_rect();
-
-    while let Some(tile_id) = stack.pop() {
-        if !visited.insert(tile_id) {
-            // already contains tile_id
-            continue;
-        }
-
-        let tile_rect = tile_rect(
-            tile_id,
-            corrected_tile_size,
-            map_center_projected.x(),
-            map_center_projected.y(),
-            clip,
+    pub fn draw_underlay(
+        &mut self,
+        painter: &mut Painter,
+        navi: &super::GraphNavigation,
+        ui: &mut Ui,
+    ) -> Option<Attribution> {
+        draw_world_grid(
+            &painter,
+            navi.visible_rect(),
+            navi.offset_x() as f32,
+            navi.offset_y() as f32,
+            navi.zoom_x(),
         );
 
-        if !clip.intersects(tile_rect) {
-            continue;
+        let tiles = self.tiles.get_or_insert(None);
+        let ctx = ui.ctx().clone();
+
+        if self.changed {
+            match self.tile_type {
+                None => {}
+                Some(UnderlayTileType::None) => *tiles = None,
+                Some(UnderlayTileType::OpenStreetMap) => {
+                    *tiles = Some(HttpTiles::new(OpenStreetMap, ctx))
+                }
+                Some(UnderlayTileType::ChiriinChizu(v)) => {
+                    *tiles = Some(HttpTiles::new(ChiriinChizu(v), ctx))
+                }
+                Some(UnderlayTileType::AutoNavi) => *tiles = Some(HttpTiles::new(AutoNavi, ctx)),
+                Some(UnderlayTileType::EsriWorldImagery) => {
+                    *tiles = Some(HttpTiles::new(EsriWorldImagery, ctx))
+                }
+            }
+            self.changed = false;
         }
 
-        if let Some(tile_piece) = tiles.at(tile_id) {
-            draw_tile_piece(&painter, tile_piece, tile_rect);
-        }
+        let Some(tiles) = tiles else {
+            return None;
+        };
 
-        for next in [
-            tile_id.north(),
-            tile_id.east(),
-            tile_id.south(),
-            tile_id.west(),
-        ]
-        .into_iter()
-        .flatten()
-        {
-            if !visited.contains(&next) {
-                stack.push(next);
+        let graph_zoom = navi.zoom_x() as f64;
+        let tile_zoom = graph_zoom_to_tile_zoom(graph_zoom);
+
+        let view = navi.visible_rect();
+
+        let center_screen = view.center();
+        let (center_x, center_y) = navi.screen_pos_to_xy(center_screen);
+        let Wgs84LonLat {
+            lon: center_lon,
+            lat: center_lat,
+        } = XyPos::new(center_x, center_y).into();
+        let map_center = walkers::lon_lat(center_lon, center_lat);
+        let map_center_projected = mercator::project(map_center, tile_zoom);
+
+        self.visited.clear();
+        self.stack.clear();
+        self.stack.push(root_tile_id(
+            map_center_projected.x(),
+            map_center_projected.y(),
+            tile_zoom,
+            tiles.tile_size(),
+        ));
+        let corrected_tile_size = corrected_tile_size(tiles.tile_size(), tile_zoom);
+        let clip = painter.clip_rect();
+
+        while let Some(tile_id) = self.stack.pop() {
+            if !self.visited.insert(tile_id) {
+                // already contains tile_id
+                continue;
+            }
+
+            let tile_rect = tile_rect(
+                tile_id,
+                corrected_tile_size,
+                map_center_projected.x(),
+                map_center_projected.y(),
+                clip,
+            );
+
+            if !clip.intersects(tile_rect) {
+                continue;
+            }
+
+            if let Some(tile_piece) = tiles.at(tile_id) {
+                draw_tile_piece(&painter, tile_piece, tile_rect);
+            }
+
+            for next in [
+                tile_id.north(),
+                tile_id.east(),
+                tile_id.south(),
+                tile_id.west(),
+            ]
+            .into_iter()
+            .flatten()
+            {
+                if !self.visited.contains(&next) {
+                    self.stack.push(next);
+                }
             }
         }
+        Some(tiles.attribution())
     }
-    Some(tiles.attribution())
 }
 
 fn draw_world_grid(painter: &Painter, viewport: Rect, offset_x: f32, offset_y: f32, zoom: f32) {
@@ -329,8 +347,8 @@ fn draw_world_grid(painter: &Painter, viewport: Rect, offset_x: f32, offset_y: f
 
 fn graph_zoom_to_tile_zoom(graph_zoom: f64) -> f64 {
     const TILE_SIZE: f64 = 256.0;
-    let (x0, _) = lon_lat_to_xy(-180.0, 0.0);
-    let (x1, _) = lon_lat_to_xy(180.0, 0.0);
+    let XyPos { x: x0, y: _ } = Wgs84LonLat::new(-180.0, 0.0).into();
+    let XyPos { x: x1, y: _ } = Wgs84LonLat::new(180.0, 0.0).into();
     let world_meters = (x1 - x0).abs();
     (graph_zoom * world_meters / TILE_SIZE)
         .log2()

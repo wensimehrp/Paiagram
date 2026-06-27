@@ -1,3 +1,3 @@
-# Paiagram-UI
+# Paiagram
 
 UI components for Paiagram.

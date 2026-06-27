@@ -4,3 +4,4 @@ pub mod speed;
 pub mod time;
 
 pub use coordinates::*;
+pub use distance::*;

@@ -1,42 +1,45 @@
 use std::io::Write;
+use std::thread;
 
-use bevy::tasks::IoTaskPool;
-use num_format::{Locale, ToFormattedString};
+use futures_lite::future::block_on;
+use log::{error, info};
+
+// TODO: make this return a task that indicates the progress
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn write_file<F>(filename: String, produce_data: F)
 where
-    F: FnOnce(&mut dyn Write) -> std::io::Result<()> + Send + 'static,
+    F: FnOnce(&mut dyn std::io::Write) -> std::io::Result<()> + Send + 'static,
 {
-    IoTaskPool::get()
-        .spawn(async move {
-            let file = rfd::AsyncFileDialog::new()
+    thread::spawn(|| {
+        let file = block_on(async move {
+            rfd::AsyncFileDialog::new()
                 .set_file_name(&filename)
                 .save_file()
-                .await;
-            let Some(file) = file else { return };
-            let mut buf_writer = match std::fs::File::create(file.path()) {
-                Ok(w) => std::io::BufWriter::new(w),
-                Err(e) => {
-                    bevy::log::error!(?e);
-                    return;
-                }
-            };
-            if let Err(e) = produce_data(&mut buf_writer) {
-                bevy::log::error!(?e, "Failed while producing file contents");
+                .await
+        });
+        let Some(file) = file else { return };
+        let mut buf_writer = match std::fs::File::create(file.path()) {
+            Ok(w) => std::io::BufWriter::new(w),
+            Err(e) => {
+                error!("{e}");
                 return;
             }
-            if let Err(e) = buf_writer.flush() {
-                bevy::log::error!(?e, "Failed to flush output");
-                return;
-            }
-            bevy::log::info!("File saved to {:?}", file.path());
-            let size = std::fs::metadata(file.path())
-                .map(|m| m.len() as usize)
-                .unwrap_or_default();
-            bevy::log::info!("Filesize: {:?}", size.to_formatted_string(&Locale::en));
-        })
-        .detach();
+        };
+        if let Err(e) = produce_data(&mut buf_writer) {
+            error!("Failed while producing file contents: {e}");
+            return;
+        }
+        if let Err(e) = buf_writer.flush() {
+            error!("Failed to flush output: {e}");
+            return;
+        }
+        info!("File saved to {:?}", file.path());
+        let size = std::fs::metadata(file.path())
+            .map(|m| m.len() as usize)
+            .unwrap_or_default();
+        info!("Filesize: {size}");
+    });
 }
 
 // save_file() is not supported on wasm targets

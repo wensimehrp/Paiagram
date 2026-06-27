@@ -12,7 +12,6 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-bevy.workspace = true
 derive_more = { version = "2.1.0", features = ["full"] }
 ecow.workspace = true
 egui.workspace = true

@@ -1,9 +1,8 @@
 use std::borrow::Cow;
 
-use bevy::ecs::entity::MapEntities;
-use bevy::ecs::world::World;
 use egui::{Id, Key, NumExt, Response, Ui, Vec2, WidgetText, emath, vec2};
 use egui_i18n::tr;
+use paiagram_core::Source;
 
 pub(crate) mod classes;
 pub(crate) mod diagram;
@@ -203,27 +202,28 @@ pub(crate) trait Navigatable {
     fn post_navigation(&mut self, _response: &Response) {}
 }
 
-pub(crate) trait Tab: MapEntities {
+/// Good qualities a tab must have :-)
+pub(crate) trait Tab {
     /// The internal name of the tab used for identification. This must be a
     /// static string. The actual displayed name could be different based on
     /// e.g. the localization or other contents.
     const NAME: &'static str;
     /// The main display of the tab.
-    fn main_display(&mut self, world: &mut World, ui: &mut Ui);
+    fn main_display(&mut self, source: &mut Source, ui: &mut Ui);
     /// The edit display
-    fn edit_display(&mut self, _world: &mut World, ui: &mut Ui) {
+    fn edit_display(&mut self, _source: &mut Source, ui: &mut Ui) {
         ui.label(self.title());
         ui.label(tr!("side-panel-edit-fallback-1"));
         ui.label(tr!("side-panel-edit-fallback-2"));
     }
     /// The display display
-    fn display_display(&mut self, _world: &mut World, ui: &mut Ui) {
+    fn display_display(&mut self, _source: &mut Source, ui: &mut Ui) {
         ui.label(self.title());
         ui.label(tr!("side-panel-details-fallback-1"));
         ui.label(tr!("side-panel-details-fallback-2"));
     }
     /// The export display
-    fn export_display(&mut self, _world: &mut World, ui: &mut Ui) {
+    fn export_display(&mut self, _source: &mut Source, ui: &mut Ui) {
         ui.label(self.title());
         ui.label(tr!("side-panel-export-fallback-1"));
         ui.label(tr!("side-panel-export-fallback-2"));
@@ -231,7 +231,7 @@ pub(crate) trait Tab: MapEntities {
     /// The title of the tab
     fn title(&self) -> WidgetText;
     /// What to do with the tab button
-    fn on_tab_button(&self, _world: &mut World, _response: &Response) {}
+    fn on_tab_button(&self, _source: &mut Source, _response: &Response) {}
     /// The id of the tab
     fn id(&self) -> Id {
         Id::new(Self::NAME)

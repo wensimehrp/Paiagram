@@ -12,13 +12,14 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-bevy.workspace = true
 cbor4ii = { version = "1.2.2", features = ["serde", "serde1", "use_std"] }
 lz4_flex.workspace = true
 num-format.workspace = true
 rfd.workspace = true
 ron.workspace = true
 serde.workspace = true
+futures-lite.workspace = true
+log.workspace = true
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen.workspace = true

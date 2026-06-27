@@ -12,7 +12,6 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-bevy.workspace = true
 bytemuck.workspace = true
 chrono.workspace = true
 clap.workspace = true

@@ -1,9 +1,7 @@
 //! Definitions for the user interface.
 
-mod actions;
 mod command_palette;
 mod export_typst_diagram;
-mod save;
 mod tabs;
 mod widgets;
 
@@ -11,9 +9,6 @@ mod widgets;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 
-use bevy::ecs::entity::MapEntities;
-use bevy::ecs::reflect::ReflectMapEntities;
-use bevy::prelude::*;
 use chrono::{Local, Timelike};
 use egui::{
     Color32, Context, Frame, Key, KeyboardShortcut, Modifiers, OpenUrl, Panel, Response, RichText,
@@ -24,13 +19,8 @@ use egui_tiles::{
     Behavior, ContainerKind, SimplificationOptions, Tile, TileId, Tiles, Tree, UiResponse,
 };
 use paiagram_core::colors::{DisplayedColor, PredefinedColor};
-use paiagram_core::graph::NodeCoor;
-use paiagram_core::import::{DownloadFile, LoadGTFS, LoadLlt, LoadOuDia, LoadQETRC};
-use paiagram_core::route::Route;
-use paiagram_core::settings::{ProjectSettings, UserPreferences};
-use paiagram_core::trip::Trip;
 use paiagram_core::units::time::{Tick, TimetableTime};
-use paiagram_rw::read::CallbackFn;
+use paiagram_core::{LonLat, Source, StationKey, TripKey};
 use serde::{Deserialize, Serialize};
 use tabs::Tab;
 use tabs::all_tabs::*;
@@ -43,38 +33,15 @@ use wasm_bindgen::prelude::*;
 use crate::tabs::text::TextMessage;
 use crate::widgets::TimeDragValue;
 pub struct UiPlugin;
-impl Plugin for UiPlugin {
-    fn build(&self, app: &mut App) {
-        app.init_resource::<MainUiState>()
-            .init_resource::<AdditionalUiState>()
-            .init_resource::<SelectedItems>()
-            .init_resource::<FrameTimeHistory>()
-            .init_resource::<GlobalTimer>()
-            .init_resource::<UiModal>()
-            .init_resource::<command_palette::CommandPalette>()
-            .add_plugins((
-                // bevy_inspector_egui::DefaultInspectorConfigPlugin,
-                actions::ActionsPlugin,
-            ))
-            .add_message::<OpenOrFocus>()
-            .add_message::<ModifySelectedItems>()
-            .add_systems(
-                Update,
-                (
-                    open_or_focus_tab.run_if(on_message::<OpenOrFocus>),
-                    save::apply_loaded_scene
-                        .run_if(resource_exists::<paiagram_rw::save::LoadedScene>),
-                    update_timer,
-                    update_selected_items,
-                ),
-            );
-    }
+
+pub struct App {
+    source: Source,
 }
 
 #[derive(Clone, Debug)]
 pub(crate) struct TripSelection {
-    pub(crate) trip: Entity,
-    pub(crate) entries: Vec1<Entity>,
+    pub(crate) trip: TripKey,
+    // pub(crate) entries: Vec1<Entity>,
 }
 
 impl PartialEq for TripSelection {
@@ -84,44 +51,42 @@ impl PartialEq for TripSelection {
 }
 
 #[derive(Clone, Copy, PartialEq, Hash, Debug, Eq, PartialOrd, Ord)]
-pub(crate) struct IntervalSelection {
-    pub(crate) source: Entity,
-    pub(crate) target: Entity,
+pub(crate) struct StationPairSelection {
+    pub(crate) source: StationKey,
+    pub(crate) target: StationKey,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct StationSelection {
-    pub(crate) station: Entity,
+    pub(crate) station: StationKey,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub(crate) struct ExtendingRouteSelection {
-    pub(crate) prev_station: Entity,
+    pub(crate) prev_station: StationKey,
 }
 
 // Extending or creating a new trip
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub(crate) struct ExtendingTripSelection {
     // The current focused trip
-    pub(crate) trip: Entity,
+    pub(crate) trip: TripKey,
     // previous position on the canvas
     pub(crate) previous_pos: Option<(TimetableTime, usize)>,
     pub(crate) last_time: Option<TimetableTime>,
-    pub(crate) current_entry: Option<Entity>,
 }
 
 #[derive(Clone, PartialEq, Debug)]
 pub(crate) struct CoordinateSelection {
-    pub(crate) coor: NodeCoor,
+    pub(crate) coor: LonLat,
     pub(crate) name_candidate: String,
 }
 
-#[derive(Resource, Clone, PartialEq, Debug)]
-#[non_exhaustive]
+#[derive(Clone, PartialEq, Debug)]
 pub(crate) enum SelectedItems {
     None,
     Trips(Vec1<TripSelection>),
-    Intervals(Vec1<IntervalSelection>),
+    StationPairs(Vec1<StationPairSelection>),
     Stations(Vec1<StationSelection>),
     ExtendingRoute(ExtendingRouteSelection),
     ExtendingTrip(ExtendingTripSelection),
@@ -135,111 +100,12 @@ pub(crate) enum ModifySelectedItems {
     Clear,
 }
 
-fn update_selected_items(
-    mut msg: MessageReader<ModifySelectedItems>,
-    mut selected_items: ResMut<SelectedItems>,
-) {
-    for msg in msg.read() {
-        match msg {
-            ModifySelectedItems::Toggle(it) => selected_items.toggle_selection(it.clone()),
-            ModifySelectedItems::SetSingle(it) => selected_items.set_single_selection(it.clone()),
-            ModifySelectedItems::Clear => selected_items.set_single_selection(SelectedItem::None),
-        }
-    }
-}
-
-impl SelectedItems {
-    fn toggle_entries<T: Ord + Clone>(
-        entries: &mut Vec1<T>,
-        incoming: impl Iterator<Item = T>,
-    ) -> bool {
-        // 1. Combine and Sort
-        entries.extend(incoming);
-        entries.sort_unstable();
-
-        let mut result = Vec::new();
-        let mut i = 0;
-        let data = entries.as_vec(); // Access inner vec
-
-        // We look for contiguous groups. If a group has an odd length, we keep 1.
-        // If it's even, we keep 0.
-        while i < data.len() {
-            let mut j = i + 1;
-            while j < data.len() && data[j] == data[i] {
-                j += 1;
-            }
-
-            if (j - i) % 2 != 0 {
-                result.push(data[i].clone());
-            }
-            i = j;
-        }
-
-        if result.is_empty() {
-            true
-        } else {
-            *entries = Vec1::try_from_vec(result).unwrap();
-            false
-        }
-    }
-
-    pub(crate) fn toggle_selection(&mut self, item: SelectedItem) {
-        let mut should_reset = false;
-
-        match (item, &mut *self) {
-            (SelectedItem::None, _) => return,
-            (SelectedItem::Trip(sel), Self::Trips(it)) => {
-                it.sort_unstable_by_key(|t| t.trip);
-
-                match it.binary_search_by_key(&sel.trip, |t| t.trip) {
-                    // Trip exists, toggle the internal entries
-                    Ok(idx) => {
-                        if Self::toggle_entries(&mut it[idx].entries, sel.entries.into_iter()) {
-                            if it.len() == 1 {
-                                should_reset = true;
-                            } else {
-                                it.remove(idx);
-                            }
-                        }
-                    }
-                    Err(idx) => {
-                        it.insert(idx, sel);
-                    }
-                }
-            }
-
-            (SelectedItem::Interval(sel), Self::Intervals(it)) => {
-                should_reset = Self::toggle_entries(it, std::iter::once(sel));
-            }
-
-            (SelectedItem::Station(sel), Self::Stations(it)) => {
-                should_reset = Self::toggle_entries(it, std::iter::once(sel));
-            }
-            _ => {}
-        }
-
-        if should_reset {
-            *self = SelectedItems::None;
-        }
-    }
-
-    pub(crate) fn set_single_selection(&mut self, item: SelectedItem) {
-        match item {
-            SelectedItem::None => *self = Self::None,
-            SelectedItem::Trip(it) => *self = Self::Trips(vec1![it]),
-            SelectedItem::Interval(it) => *self = Self::Intervals(vec1![it]),
-            SelectedItem::Station(it) => *self = Self::Stations(vec1![it]),
-            SelectedItem::Coordinate(coor) => *self = Self::Coordinate(coor),
-        }
-    }
-}
-
 #[derive(Clone)]
 #[non_exhaustive]
 pub(crate) enum SelectedItem {
     None,
     Trip(TripSelection),
-    Interval(IntervalSelection),
+    StationPair(StationPairSelection),
     Station(StationSelection),
     Coordinate(CoordinateSelection),
 }
@@ -256,36 +122,6 @@ impl Default for SelectedItem {
     }
 }
 
-enum Modals {
-    OpenUrl(String),
-}
-
-impl Modals {
-    fn id(&self) -> egui::Id {
-        match self {
-            Self::OpenUrl(_) => "openurl".into(),
-        }
-    }
-    fn display(&mut self, ui: &mut egui::Ui, world: &mut World) {
-        match self {
-            Self::OpenUrl(buf) => {
-                ui.heading(tr!("menu-import-url-heading"));
-                ui.label(tr!("menu-import-url-desc"));
-                ui.strong(tr!("menu-url-label"));
-                ui.text_edit_singleline(buf);
-                if ui.button(tr!("menu-download-and-import")).clicked() {
-                    world.trigger(DownloadFile { url: buf.clone() });
-                    ui.close();
-                }
-            }
-        }
-    }
-}
-
-#[derive(Resource, Deref, DerefMut, Default)]
-struct UiModal(Option<Modals>);
-
-#[derive(Resource)]
 struct FrameTimeHistory {
     values: [f32; Self::CAPACITY],
     next_index: usize,
@@ -322,8 +158,6 @@ impl Default for FrameTimeHistory {
     }
 }
 
-#[derive(Resource, Reflect)]
-#[reflect(Resource)]
 pub(crate) struct GlobalTimer {
     value: AtomicI64,
     locker: AtomicU64,
@@ -332,18 +166,21 @@ pub(crate) struct GlobalTimer {
     sync_to_real_time: bool,
 }
 
-fn update_timer(mut timer: ResMut<GlobalTimer>, time: Res<Time<Real>>) {
-    if !timer.is_locked() && timer.sync_to_real_time {
-        let now = Local::now();
-        let seconds = now.num_seconds_from_midnight() as f64;
-        let rest = now.nanosecond() as f64 / 1_000_000_000 as f64;
-        timer.animation_speed = 1.0;
-        timer.animation_playing = true;
-        timer.write_seconds(seconds + rest);
-    } else if timer.animation_playing && !timer.is_locked() {
-        let mut seconds = timer.read_seconds();
-        seconds += timer.animation_speed * time.delta_secs_f64();
-        timer.write_seconds(seconds);
+impl GlobalTimer {
+    fn update(&mut self) {
+        if !self.is_locked() && self.sync_to_real_time {
+            let now = Local::now();
+            let seconds = now.num_seconds_from_midnight() as f64;
+            let rest = now.nanosecond() as f64 / 1_000_000_000 as f64;
+            self.animation_speed = 1.0;
+            self.animation_playing = true;
+            self.write_seconds(seconds + rest);
+        } else if self.animation_playing && !self.is_locked() {
+            // TODO: fix timer
+            let mut seconds = self.read_seconds();
+            seconds += self.animation_speed * 0.0; // time.delta_secs_f64();
+            self.write_seconds(seconds);
+        }
     }
 }
 
@@ -466,16 +303,8 @@ pub(crate) enum MainTab {
     Station(StationTab),
 }
 
-impl MapEntities for MainTab {
-    fn map_entities<E: EntityMapper>(&mut self, entity_mapper: &mut E) {
-        for_all_tabs!(self, t, t.map_entities(entity_mapper))
-    }
-}
-
-#[derive(Reflect, Resource, Serialize, Deserialize, Clone, Deref, DerefMut)]
-#[reflect(opaque, Resource, Serialize, Deserialize, MapEntities)]
+#[derive(Serialize, Deserialize, Clone)]
 pub(crate) struct MainUiState {
-    #[deref]
     tree: Tree<MainTab>,
     maximized: Option<TileId>,
 }
@@ -516,22 +345,6 @@ impl Default for MainUiState {
         }
     }
 }
-
-impl MapEntities for MainUiState {
-    fn map_entities<E: EntityMapper>(&mut self, entity_mapper: &mut E) {
-        for pane in self
-            .tree
-            .tiles
-            .iter_mut()
-            .filter_map(|(_, p)| if let Tile::Pane(p) = p { Some(p) } else { None })
-        {
-            pane.map_entities(entity_mapper);
-        }
-    }
-}
-
-#[derive(Message)]
-struct OpenOrFocus(MainTab);
 
 fn open_or_focus_tab(
     mut messages: MessageReader<OpenOrFocus>,

@@ -3,20 +3,12 @@
 //! the types.
 
 pub mod colors;
-pub mod entry;
 pub mod export;
 pub mod graph;
-pub mod i18n;
 pub mod import;
-pub mod interval;
 pub mod problems;
-pub mod route;
 pub mod script;
-pub mod settings;
-pub mod station;
-pub mod trip;
 pub mod units;
-pub mod vehicle;
 
 use std::num::NonZeroU32;
 use std::sync::Arc;
@@ -29,7 +21,6 @@ use nohash_hasher::BuildNoHashHasher;
 use petgraph::graphmap::DiGraphMap;
 use rstar::{AABB, RTree, RTreeObject};
 use serde::{Deserialize, Serialize};
-pub use trip::class;
 pub use units::*;
 
 pub trait Key: Clone + Copy {
@@ -59,6 +50,9 @@ macro_rules! make_type {
         paste::paste! {
             #[derive(Serialize, Deserialize, Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
             pub struct [<$struct_name Key>](std::num::NonZeroU64);
+
+            pub type [<$struct_name KeyHashMap>]<T> = nohash_hasher::IntMap<TripKey, T>;
+            pub type [<$struct_name KeyHasher>] = BuildNoHashHasher<[<$struct_name Key>]>;
 
             impl nohash_hasher::IsEnabled for [<$struct_name Key>] {}
 
@@ -237,6 +231,15 @@ make_type!(
     cached { }
 );
 
+impl IntervalCollection {
+    pub fn length(&self, handle: IntervalHandle) -> Distance {
+        if let Some(d) = self.get_length(handle) {
+            return Distance(d.get() as i32);
+        };
+        todo!()
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
 pub struct TEntry {
     fd1: u32,
@@ -265,7 +268,7 @@ pub struct WorldSnapshot {
     pub classes: ClassCollection,
     pub routes: RouteCollection,
     vehicle_trip_matrix: Arc<VehicleTripMatrix>,
-    graph: Arc<DiGraphMap<StationKey, IntervalKey, BuildNoHashHasher<StationKey>>>,
+    graph: Arc<DiGraphMap<StationKey, IntervalKey, StationKeyHasher>>,
 }
 
 impl WorldSnapshot {
@@ -662,8 +665,8 @@ impl RhaiScriptWorld {
 // I might consider using a dynamic container in the future
 #[derive(Serialize, Deserialize, Default, Clone, PartialEq, Debug)]
 struct VehicleTripMatrix {
-    trip_to_veh: nohash_hasher::IntMap<TripKey, EcoVec<VehicleKey>>,
-    veh_to_trip: nohash_hasher::IntMap<VehicleKey, EcoVec<TripKey>>,
+    trip_to_veh: TripKeyHashMap<EcoVec<VehicleKey>>,
+    veh_to_trip: VehicleKeyHashMap<EcoVec<TripKey>>,
 }
 
 pub trait ToEcoStringView {

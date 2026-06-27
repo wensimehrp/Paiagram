@@ -1,9 +1,39 @@
 use serde::{Deserialize, Serialize};
 
+use crate::Distance;
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Wgs84LonLat {
     pub lon: f64,
     pub lat: f64,
+}
+
+impl Wgs84LonLat {
+    pub fn new(lon: f64, lat: f64) -> Self {
+        Self {
+            lon: lon.clamp(-180.0, 180.0),
+            lat: lat.clamp(-90.0, 90.0),
+        }
+    }
+    pub fn distance_to_meters(self, other: Self) -> f64 {
+        // Convert degrees to radians
+        let self_lat_rad = self.lat.to_radians();
+        let self_lon_rad = self.lon.to_radians();
+        let other_lat_rad = other.lat.to_radians();
+        let other_lon_rad = other.lon.to_radians();
+
+        // Differences in coordinates
+        let delta_lat = other_lat_rad - self_lat_rad;
+        let delta_lon = other_lon_rad - self_lon_rad;
+
+        // Haversine formula
+        let a = (delta_lat / 2.0).sin().powi(2)
+            + self_lat_rad.cos() * other_lat_rad.cos() * (delta_lon / 2.0).sin().powi(2);
+
+        let c = 2.0 * a.sqrt().atan2((1.0 - a).sqrt());
+
+        XyPos::EARTH_RADIUS_METERS * c
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -23,6 +53,9 @@ pub struct XyPos {
 }
 
 impl XyPos {
+    pub fn new(x, y) -> Self {
+        Self { x, y }
+    }
     // EPSG:3857
     /// The constant defined in EPSG:3857
     const EARTH_RADIUS_METERS: f64 = 6_378_137.0;
@@ -69,5 +102,20 @@ impl From<XyPos> for Wgs84LonLat {
             - std::f64::consts::FRAC_PI_2)
             .to_degrees();
         Self { lon, lat }
+    }
+}
+
+impl std::fmt::Display for Wgs84LonLat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let lat_dir = if self.lat < 0.0 { 'S' } else { 'N' };
+        let lon_dir = if self.lon < 0.0 { 'W' } else { 'E' };
+        write!(
+            f,
+            "{:.4}°{}, {:.4}°{}",
+            self.lat.abs(),
+            lat_dir,
+            self.lon.abs(),
+            lon_dir
+        )
     }
 }

@@ -6,6 +6,7 @@ use bevy::ecs::system::RunSystemOnce;
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use clap::Parser;
+use paiagram::App;
 use paiagram_core::settings::UserPreferences;
 use paiagram_core::trip::class;
 use paiagram_core::{entry, graph, i18n, import, problems, route, settings, station, trip};
@@ -13,9 +14,7 @@ use paiagram_rw::read::ReadPlugin;
 use paiagram_rw::save::SavePlugin;
 use serde::Deserialize;
 
-struct PaiagramApp {
-    bevy_app: App,
-}
+struct PaiagramApp(App);
 
 impl PaiagramApp {
     fn new(cc: &eframe::CreationContext) -> Self {

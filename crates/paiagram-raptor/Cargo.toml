@@ -12,6 +12,5 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-bevy.workspace = true
 paiagram-core = { path = "../paiagram-core" }
 raptor = "0.2.0"
