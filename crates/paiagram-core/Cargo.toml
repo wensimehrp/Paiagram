@@ -42,3 +42,6 @@ strsim = "0.11.1"
 urlencoding.workspace = true
 visgraph = "0.1.0"
 web-time.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+fastrand = { version = "2.4.1", features = ["js"] }

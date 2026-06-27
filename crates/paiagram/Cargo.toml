@@ -24,6 +24,7 @@ egui_table = "0.8.0"
 egui_tiles = "0.15.0"
 either.workspace = true
 eros.workspace = true
+git-version.workspace = true
 ib-matcher.workspace = true
 itertools.workspace = true
 itoa.workspace = true

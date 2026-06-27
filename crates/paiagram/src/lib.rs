@@ -1040,6 +1040,13 @@ pub fn show_ui(ui: &mut Ui, world: &mut World, cpu_time: Option<f32>) {
                     });
                     let mut aus = world.resource_mut::<AdditionalUiState>();
                     ui.checkbox(&mut aus.expanded, "");
+                    const GIT_REV_SHORT: &str = git_version::git_version!(fallback = "unknown");
+                    const GH_LINK: &str = git_version::git_version!(
+                        args = ["--always", "--abbrev=40"],
+                        prefix = "https://github.com/wensimehrp/Paiagram/commit/",
+                        fallback = "https://github.com/wensimehrp/Paiagram/"
+                    );
+                    ui.hyperlink_to(GIT_REV_SHORT, GH_LINK);
                 });
             })
         });

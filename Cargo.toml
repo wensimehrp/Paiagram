@@ -63,6 +63,7 @@ egui = {
 egui-i18n = { version = "0.2.0", features = ["fluent"] }
 either = "1.15.0"
 eros = "0.5.0"
+git-version = "0.3.9"
 gloo-worker = "0.6.0"
 ib-matcher = { version = "0.4.3", features = ["pinyin", "romaji"] }
 itertools = "0.14.0"
