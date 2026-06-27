@@ -56,7 +56,6 @@ impl PaiagramApp {
             trip::TripPlugin,
             station::StationPlugin,
             settings::SettingsPlugin,
-            problems::ProblemsPlugin,
             class::ClassPlugin,
             ReadPlugin,
             SavePlugin,

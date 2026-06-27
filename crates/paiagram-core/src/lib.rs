@@ -9,7 +9,6 @@ pub mod graph;
 pub mod i18n;
 pub mod import;
 pub mod interval;
-pub mod plugin;
 pub mod problems;
 pub mod route;
 pub mod script;
@@ -31,13 +30,17 @@ use petgraph::graphmap::DiGraphMap;
 use rstar::{AABB, RTree, RTreeObject};
 use serde::{Deserialize, Serialize};
 pub use trip::class;
+pub use units::*;
 
 pub trait Key: Clone + Copy {
+    /// Return the key in bits
     fn to_bits(self) -> u64;
-    fn creation_time(self) -> web_time::SystemTime {
+    /// Return the creation time of the key
+    fn creation_time(self) -> std::time::SystemTime {
         let ms = self.to_bits() >> 16;
-        web_time::SystemTime::UNIX_EPOCH + web_time::Duration::from_millis(ms)
+        std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_millis(ms)
     }
+    /// Return the generation
     fn generation(self) -> u16 {
         self.to_bits() as u16
     }
@@ -45,13 +48,17 @@ pub trait Key: Clone + Copy {
 
 macro_rules! make_type {
     (
-        $struct_vis:vis struct $struct_name:ident {
-            $($field_vis:vis $field_name:ident: $field_type:ty,)*
+        $struct_name:ident,
+        data {
+            $($field_name:ident: $field_type:ty,)*
+        }
+        cached {
+
         }
     ) => {
         paste::paste! {
             #[derive(Serialize, Deserialize, Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
-            $struct_vis struct [<$struct_name Key>](std::num::NonZeroU64);
+            pub struct [<$struct_name Key>](std::num::NonZeroU64);
 
             impl nohash_hasher::IsEnabled for [<$struct_name Key>] {}
 
@@ -67,9 +74,12 @@ macro_rules! make_type {
                     let timestamp_48 = now_ms & 0xFFFF_FFFF_FFFF;
                     let counter_16 = [<$struct_name:snake:upper _COUNTER>]
                         .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                    let raw_id = (timestamp_48 << 16) | (counter_16 as u64);
+                    let mut raw_id = (timestamp_48 << 16) | (counter_16 as u64);
                     // I hope nobody would use this app and generate a key
                     // at exactly Jan 1, 1970 UTC+0...
+                    if raw_id == 0 {
+                        raw_id = 1;
+                    }
                     Self(std::num::NonZeroU64::new(raw_id).unwrap())
                 }
             }
@@ -81,11 +91,11 @@ macro_rules! make_type {
             }
 
             #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
-            $struct_vis struct [<$struct_name Handle>](pub usize);
+            pub struct [<$struct_name Handle>](pub usize);
 
             // View stays raw data, as it's just used for passing data in/out
             #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-            $struct_vis struct [<$struct_name View>] {
+            pub struct [<$struct_name View>] {
                 $(
                     pub $field_name: $field_type,
                 )*
@@ -93,11 +103,11 @@ macro_rules! make_type {
 
             // The Struct wraps the entire collections in Arc
             #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
-            $struct_vis struct [<$struct_name Collection>] {
+            pub struct [<$struct_name Collection>] {
                 registry: std::sync::Arc<nohash_hasher::IntMap<[<$struct_name Key>], [<$struct_name Handle>]>>,
                 keys: std::sync::Arc<Vec<[<$struct_name Key>]>>,
             $(
-                $field_vis $field_name: std::sync::Arc<Vec<$field_type>>,
+                $field_name: std::sync::Arc<Vec<$field_type>>,
             )*
             }
 
@@ -174,46 +184,57 @@ macro_rules! make_type {
 }
 
 make_type!(
-    pub struct Trip {
+    Trip,
+    data {
         name: EcoString,
         entries: EcoVec<TEntry>,
         class: Option<ClassKey>,
     }
+    cached { }
 );
 
 make_type!(
-    pub struct Vehicle {
+    Vehicle,
+    data {
         name: EcoString,
     }
+    cached { }
 );
 
 make_type!(
-    pub struct Station {
+    Station,
+    data {
         name: EcoString,
         pos: LonLat,
     }
+    cached { }
 );
 
 make_type!(
-    pub struct Class {
+    Class,
+    data {
         name: EcoString,
         style: StrokeStyle,
     }
+    cached { }
 );
 
 make_type!(
-    pub struct Route {
+    Route,
+    data {
         name: EcoString,
         stations: EcoVec<StationKey>,
     }
+    cached { }
 );
 
 make_type!(
-    pub struct Interval {
+    Interval,
+    data {
         nodes: EcoVec<LonLat>,
         length: Option<NonZeroU32>,
-        stations: (StationKey, StationKey), // Cache
     }
+    cached { }
 );
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
@@ -231,12 +252,6 @@ const _: [u8; 16] = [0; size_of::<TEntry>()];
 pub struct StrokeStyle {
     color: Color32,
     width: u8,
-}
-
-#[derive(Clone, Copy, Default, Debug, Serialize, Deserialize, PartialEq)]
-pub struct LonLat {
-    lon: i32,
-    lat: i32,
 }
 
 // future idea: scripting via rhai
