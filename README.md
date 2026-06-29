@@ -7,7 +7,7 @@
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/WenSimEHRP/Paiagram)
 
 <div align="center">
-    ![](./paiagram.svg)
+  <img src="./paiagram.svg">
 </div>
 
 ---
