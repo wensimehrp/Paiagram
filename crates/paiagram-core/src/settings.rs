@@ -1,18 +1,15 @@
 //! User preferences and project settings.
 
-use bevy::prelude::*;
-
-use crate::i18n::Language;
 use crate::units::time::Duration;
 
-#[derive(Default, Reflect, Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Default, Copy, Clone, Debug, PartialEq, Eq)]
 pub enum AntialiasingMode {
     #[default]
     On,
     Off,
 }
 
-#[derive(Reflect, Copy, Clone, Debug, PartialEq, Eq, Default)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Default)]
 pub enum LevelOfDetailMode {
     #[default]
     Off,

@@ -1,14 +1,8 @@
 //! Definitions for how to export the current diagram to another format, e.g., an image.
 
-use bevy::prelude::*;
-
 pub mod graphviz;
-pub mod oudia;
-// pub mod typst_timetable;
+// pub mod oudia;
 
-// TODO: plugins
-// TODO: make it so that wasm extensions can use this interface
-// TODO: wasm interface should additionally support requesting fonts
 /// How to export the current world to another format.
 pub trait ExportObject {
     /// Export contents to a `Vec<u8>` buffer, with optional parameters
@@ -26,6 +20,5 @@ pub trait ExportObject {
     fn filename(&self) -> impl AsRef<str> {
         "exported_file"
     }
-    /// The extension name with the dot
     fn extension(&self) -> impl AsRef<str>;
 }

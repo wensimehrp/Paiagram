@@ -1,16 +1,11 @@
 //! The color definitions.
 
-use bevy::color::Srgba;
-use bevy::color::palettes::tailwind::*;
-use bevy::prelude::*;
 use egui::Color32;
 use egui::color_picker::{Alpha, color_picker_color32, show_color_at};
-use egui_i18n::tr;
 use serde::{Deserialize, Serialize};
 
 /// A color displayed in the application. This is used for stations, intervals, and trip classes.
-#[derive(Reflect, Debug, Clone, Copy, Serialize, Deserialize)]
-#[reflect(opaque, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum DisplayedColor {
     /// A predefined colour
     Predefined(PredefinedColor),
@@ -71,7 +66,7 @@ fn color_button(ui: &mut egui::Ui, color: Color32, open: bool) -> egui::Response
 impl egui::Widget for &mut DisplayedColor {
     fn ui(self, ui: &mut egui::Ui) -> egui::Response {
         let is_dark = ui.visuals().dark_mode;
-        let button_res = color_button(ui, self.get(is_dark), false);
+        let button_res = color_button(ui, self.into_color32(is_dark), false);
 
         let current_predefined = match *self {
             DisplayedColor::Predefined(p) => Some(p),
@@ -88,7 +83,7 @@ impl egui::Widget for &mut DisplayedColor {
                         ui.horizontal_wrapped(|ui| {
                             ui.style_mut().spacing.item_spacing = egui::Vec2::splat(4.0);
                             for predefined in PredefinedColor::ALL {
-                                let color = predefined.get(is_dark);
+                                let color = predefined.into_color32(is_dark);
                                 let is_selected = current_predefined == Some(predefined);
                                 let button = egui::Button::new("")
                                     .fill(color)
@@ -110,7 +105,7 @@ impl egui::Widget for &mut DisplayedColor {
                         ui.label("Custom");
                         let mut custom_color = match *self {
                             DisplayedColor::Custom(c) => c,
-                            DisplayedColor::Predefined(p) => p.get(is_dark),
+                            DisplayedColor::Predefined(p) => p.into_color32(is_dark),
                         };
                         if color_picker_color32(ui, &mut custom_color, Alpha::Opaque) {
                             *self = DisplayedColor::Custom(custom_color);
@@ -124,9 +119,9 @@ impl egui::Widget for &mut DisplayedColor {
 
 impl DisplayedColor {
     /// get the color as [`egui::Color32`]
-    pub fn get(self, is_dark: bool) -> Color32 {
+    pub fn into_color32(self, is_dark: bool) -> Color32 {
         match self {
-            Self::Predefined(p) => p.get(is_dark),
+            Self::Predefined(p) => p.into_color32(is_dark),
             Self::Custom(c) => c,
         }
     }
@@ -190,95 +185,56 @@ impl PredefinedColor {
         Self::ALL[i % Self::ALL.len()]
     }
 
-    /// The (translated) name of the colour
-    #[rustfmt::skip]
-    pub fn name(self) -> impl AsRef<str> {
-        match self {
-            Self::Red       => tr!("colour-red"),
-            Self::Orange    => tr!("colour-orange"),
-            Self::Amber     => tr!("colour-amber"),
-            Self::Yellow    => tr!("colour-yellow"),
-            Self::Lime      => tr!("colour-lime"),
-            Self::Green     => tr!("colour-green"),
-            Self::Emerald   => tr!("colour-emerald"),
-            Self::Teal      => tr!("colour-teal"),
-            Self::Cyan      => tr!("colour-cyan"),
-            Self::Sky       => tr!("colour-sky"),
-            Self::Blue      => tr!("colour-blue"),
-            Self::Indigo    => tr!("colour-indigo"),
-            Self::Violet    => tr!("colour-violet"),
-            Self::Purple    => tr!("colour-purple"),
-            Self::Fuchsia   => tr!("colour-fuchsia"),
-            Self::Pink      => tr!("colour-pink"),
-            Self::Rose      => tr!("colour-rose"),
-            Self::Slate     => tr!("colour-slate"),
-            Self::Gray      => tr!("colour-gray"),
-            Self::Zinc      => tr!("colour-zinc"),
-            Self::Neutral   => tr!("colour-neutral"),
-            Self::Stone     => tr!("colour-stone"),
-        }
-    }
-
     /// Get the color given the current UI theme. Returns the lighter 400 varation if the theme is
     /// dark, and returns the (usually) darker 700 variation if the theme is light.
-    pub const fn get(self, is_dark: bool) -> Color32 {
+    pub const fn into_color32(self, is_dark: bool) -> Color32 {
         #[rustfmt::skip]
         let c = match (self, is_dark) {
-            (Self::Red, true)       => RED_400,
-            (Self::Red, false)      => RED_700,
-            (Self::Orange, true)    => ORANGE_400,
-            (Self::Orange, false)   => ORANGE_700,
-            (Self::Amber, true)     => AMBER_400,
-            (Self::Amber, false)    => AMBER_700,
-            (Self::Yellow, true)    => YELLOW_400,
-            (Self::Yellow, false)   => YELLOW_700,
-            (Self::Lime, true)      => LIME_400,
-            (Self::Lime, false)     => LIME_700,
-            (Self::Green, true)     => GREEN_400,
-            (Self::Green, false)    => GREEN_700,
-            (Self::Emerald, true)   => EMERALD_400,
-            (Self::Emerald, false)  => EMERALD_700,
-            (Self::Teal, true)      => TEAL_400,
-            (Self::Teal, false)     => TEAL_700,
-            (Self::Cyan, true)      => CYAN_400,
-            (Self::Cyan, false)     => CYAN_700,
-            (Self::Sky, true)       => SKY_400,
-            (Self::Sky, false)      => SKY_700,
-            (Self::Blue, true)      => BLUE_400,
-            (Self::Blue, false)     => BLUE_700,
-            (Self::Indigo, true)    => INDIGO_400,
-            (Self::Indigo, false)   => INDIGO_700,
-            (Self::Violet, true)    => VIOLET_400,
-            (Self::Violet, false)   => VIOLET_700,
-            (Self::Purple, true)    => PURPLE_400,
-            (Self::Purple, false)   => PURPLE_700,
-            (Self::Fuchsia, true)   => FUCHSIA_400,
-            (Self::Fuchsia, false)  => FUCHSIA_700,
-            (Self::Pink, true)      => PINK_400,
-            (Self::Pink, false)     => PINK_700,
-            (Self::Rose, true)      => ROSE_400,
-            (Self::Rose, false)     => ROSE_700,
-            (Self::Slate, true)     => SLATE_400,
-            (Self::Slate, false)    => SLATE_700,
-            (Self::Gray, true)      => GRAY_400,
-            (Self::Gray, false)     => GRAY_700,
-            (Self::Zinc, true)      => ZINC_400,
-            (Self::Zinc, false)     => ZINC_700,
-            (Self::Neutral, true)   => NEUTRAL_400,
-            (Self::Neutral, false)  => NEUTRAL_700,
-            (Self::Stone, true)     => STONE_400,
-            (Self::Stone, false)    => STONE_700,
+            (Self::Red, true)       => todo!(), // RED_400,
+            (Self::Red, false)      => todo!(), // RED_700,
+            (Self::Orange, true)    => todo!(), // ORANGE_400,
+            (Self::Orange, false)   => todo!(), // ORANGE_700,
+            (Self::Amber, true)     => todo!(), // AMBER_400,
+            (Self::Amber, false)    => todo!(), // AMBER_700,
+            (Self::Yellow, true)    => todo!(), // YELLOW_400,
+            (Self::Yellow, false)   => todo!(), // YELLOW_700,
+            (Self::Lime, true)      => todo!(), // LIME_400,
+            (Self::Lime, false)     => todo!(), // LIME_700,
+            (Self::Green, true)     => todo!(), // GREEN_400,
+            (Self::Green, false)    => todo!(), // GREEN_700,
+            (Self::Emerald, true)   => todo!(), // EMERALD_400,
+            (Self::Emerald, false)  => todo!(), // EMERALD_700,
+            (Self::Teal, true)      => todo!(), // TEAL_400,
+            (Self::Teal, false)     => todo!(), // TEAL_700,
+            (Self::Cyan, true)      => todo!(), // CYAN_400,
+            (Self::Cyan, false)     => todo!(), // CYAN_700,
+            (Self::Sky, true)       => todo!(), // SKY_400,
+            (Self::Sky, false)      => todo!(), // SKY_700,
+            (Self::Blue, true)      => todo!(), // BLUE_400,
+            (Self::Blue, false)     => todo!(), // BLUE_700,
+            (Self::Indigo, true)    => todo!(), // INDIGO_400,
+            (Self::Indigo, false)   => todo!(), // INDIGO_700,
+            (Self::Violet, true)    => todo!(), // VIOLET_400,
+            (Self::Violet, false)   => todo!(), // VIOLET_700,
+            (Self::Purple, true)    => todo!(), // PURPLE_400,
+            (Self::Purple, false)   => todo!(), // PURPLE_700,
+            (Self::Fuchsia, true)   => todo!(), // FUCHSIA_400,
+            (Self::Fuchsia, false)  => todo!(), // FUCHSIA_700,
+            (Self::Pink, true)      => todo!(), // PINK_400,
+            (Self::Pink, false)     => todo!(), // PINK_700,
+            (Self::Rose, true)      => todo!(), // ROSE_400,
+            (Self::Rose, false)     => todo!(), // ROSE_700,
+            (Self::Slate, true)     => todo!(), // SLATE_400,
+            (Self::Slate, false)    => todo!(), // SLATE_700,
+            (Self::Gray, true)      => todo!(), // GRAY_400,
+            (Self::Gray, false)     => todo!(), // GRAY_700,
+            (Self::Zinc, true)      => todo!(), // ZINC_400,
+            (Self::Zinc, false)     => todo!(), // ZINC_700,
+            (Self::Neutral, true)   => todo!(), // NEUTRAL_400,
+            (Self::Neutral, false)  => todo!(), // NEUTRAL_700,
+            (Self::Stone, true)     => todo!(), // STONE_400,
+            (Self::Stone, false)    => todo!(), // STONE_700,
         };
-        translate_srgba_to_color32(c)
+        c
     }
-}
-
-/// Translate a bevy [`Srgba`] to egui [`Color32`]
-pub const fn translate_srgba_to_color32(c: Srgba) -> Color32 {
-    Color32::from_rgba_unmultiplied_const(
-        (c.red * 256.0) as u8,
-        (c.green * 256.0) as u8,
-        (c.blue * 256.0) as u8,
-        (c.alpha * 256.0) as u8,
-    )
 }

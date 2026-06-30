@@ -1,13 +1,10 @@
 use std::ops;
 
-use bevy::prelude::Reflect;
 use egui::emath;
 use serde::{Deserialize, Serialize};
 
 /// A tick. Each tick is 10ms
-#[derive(
-    Reflect, Debug, Deserialize, Serialize, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord,
-)]
+#[derive(Debug, Deserialize, Serialize, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Tick(pub i64);
 
 impl Tick {
@@ -65,9 +62,7 @@ impl Into<f64> for Tick {
 }
 
 /// The timetable timepoint in seconds from midnight
-#[derive(
-    Reflect, Debug, Deserialize, Serialize, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord,
-)]
+#[derive(Debug, Deserialize, Serialize, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TimetableTime(pub i32);
 
 impl TimetableTime {
@@ -293,9 +288,7 @@ impl ops::SubAssign<Duration> for TimetableTime {
 }
 
 /// A duration in seconds.
-#[derive(
-    Reflect, Debug, Default, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord,
-)]
+#[derive(Debug, Default, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Duration(pub i32);
 
 impl Duration {

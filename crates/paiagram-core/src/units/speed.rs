@@ -1,13 +1,12 @@
 use std::ops;
 
-use bevy::prelude::Reflect;
 use derive_more::{Add, AddAssign, Sub, SubAssign};
 
 use super::distance::Distance;
 use super::time::Duration;
 
 /// The speed represented in m/s
-#[derive(Reflect, Debug, Clone, Copy, Add, AddAssign, Sub, SubAssign)]
+#[derive(Debug, Clone, Copy, Add, AddAssign, Sub, SubAssign)]
 pub struct Velocity(pub f32);
 
 impl std::fmt::Display for Velocity {

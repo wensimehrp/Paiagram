@@ -1,17 +1,9 @@
 use std::borrow::Cow;
 
-use bevy::ecs::entity::EntityHashMap;
-use bevy::prelude::*;
 use either::Either;
 use encoding_rs::SHIFT_JIS;
 use paiagram_oudia::{SerializeToOud, Structure, pair, structure};
 use smallvec::{SmallVec, smallvec};
-
-use crate::class::ClassQuery;
-use crate::entry::{EntryQuery, EntryQueryItem, TravelMode};
-use crate::route::{Route, RouteByDirectionTrips};
-use crate::station::{ParentStationOrStation, Station};
-use crate::trip::{TripQuery, TripQueryItem};
 
 fn make_disp_prop() -> Structure<'static> {
     structure!("DispProp" =>
