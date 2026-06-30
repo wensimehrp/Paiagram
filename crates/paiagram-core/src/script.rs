@@ -7,7 +7,7 @@ use ecow::{EcoString, EcoVec};
 use rhai::{Dynamic, Engine, EvalAltResult, ImmutableString};
 
 use super::{Command, TripView, WorldSnapshot};
-use crate::TEntry;
+use crate::{TEntry, TripSchedule};
 
 #[derive(Default, Clone)]
 struct ScriptWorldInner {
@@ -128,7 +128,7 @@ generate_rhai_world_module!(
             key: key,
             view: TripView {
                 name: EcoString::from(name.as_str()),
-                entries: EcoVec::new(), // TODO: fix this
+                schedule: TripSchedule::new(EcoVec::new()), // TODO: fix this
                 class: extract_class(class)?,
             }
         }

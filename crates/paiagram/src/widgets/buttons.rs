@@ -1,4 +1,3 @@
-use bevy::math::ops::sqrt;
 use egui::{Color32, Painter, Pos2, Shape, Stroke};
 
 pub(crate) fn circle_button_shape(
@@ -18,7 +17,7 @@ pub(crate) fn triangle_button_shape(
     stroke: Stroke,
     fill_color: Color32,
 ) {
-    let dx = base / 4.0 * sqrt(3.0);
+    let dx = base / 4.0 * 3.0.sqrt();
     let a = Pos2 {
         x: center.x - dx,
         y: center.y - base / 2.0,
@@ -62,7 +61,7 @@ pub(crate) fn dash_button_shape(
     fill_color: Color32,
 ) {
     let a = Pos2 {
-        x: center.x - base / 2.0 - base / 2.0 / sqrt(3.0),
+        x: center.x - base / 2.0 - base / 2.0 / 3.0.sqrt(),
         y: center.y - base / 2.0,
     };
     let b = Pos2 {

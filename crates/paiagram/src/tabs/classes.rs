@@ -1,11 +1,10 @@
-use egui::{Button, Layout, Panel, ScrollArea, Ui, WidgetText, vec2};
+use egui::{Ui, WidgetText};
 use egui_i18n::tr;
 use paiagram_core::{ClassKey, Source, TripKey};
 use serde::{Deserialize, Serialize};
 
 use super::Tab;
-use crate::OpenOrFocus;
-use crate::tabs::trip::TripTab;
+use crate::App;
 
 #[derive(Default, PartialEq, Clone, Serialize, Deserialize)]
 pub(crate) struct ClassesTab {
@@ -20,7 +19,7 @@ impl Tab for ClassesTab {
     fn title(&self) -> WidgetText {
         tr!("tab-classes").into()
     }
-    fn main_display(&mut self, source: &mut Source, ui: &mut Ui) {
+    fn main_display(&mut self, app: &mut App, ui: &mut Ui) {
         ui.label("Remaking...");
     }
 }

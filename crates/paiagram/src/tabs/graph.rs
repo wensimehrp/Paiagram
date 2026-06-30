@@ -1,22 +1,11 @@
 use std::sync::Arc;
 
-use bevy::ecs::entity::MapEntities;
-use bevy::prelude::*;
 use egui::{
     Align2, Color32, CornerRadius, CursorIcon, FontId, Id, Margin, Painter, Popup,
     PopupCloseBehavior, Pos2, Rect, Sense, Stroke, Ui, Vec2, WidgetText,
 };
 use egui_i18n::tr;
 use paiagram_core::colors::PredefinedColor;
-use paiagram_core::graph::{
-    AddIntervalPair, Graph, GraphIntervalSpatialIndex, GraphSpatialIndex, Node, NodeCoor,
-};
-use paiagram_core::interval::IntervalQuery;
-use paiagram_core::route::Route;
-use paiagram_core::settings::ProjectSettings;
-use paiagram_core::station::{CreateNewStation, StationNamePending, StationQuery};
-use paiagram_core::trip::class::{Class, DisplayedStroke};
-use paiagram_core::trip::{Trip, TripClass, TripSpatialIndex};
 use paiagram_core::units::distance::Distance;
 use serde::{Deserialize, Serialize};
 use walkers::sources::Attribution;
@@ -24,8 +13,8 @@ use walkers::sources::Attribution;
 use crate::tabs::Navigatable;
 use crate::tabs::graph::gpu_draw::ShapeInstance;
 use crate::{
-    CoordinateSelection, GlobalTimer, IntervalSelection, ModifySelectedItems, SelectedItem,
-    SelectedItems, StationSelection, TripSelection,
+    App, CoordinateSelection, GlobalTimer, ModifySelectedItems, SelectedItem, SelectedItems,
+    StationPairSelection, StationSelection, TripSelection,
 };
 
 mod gpu_draw;
@@ -37,8 +26,8 @@ enum GraphState<'a> {
     Idle,
     /// User is selecting some trips
     SelectingTrips(&'a [TripSelection]),
-    /// User is selecting some intervals
-    SelectingIntervals(&'a [IntervalSelection]),
+    /// User is selecting a station pair
+    SelectingStationPair(&'a [StationPairSelection]),
     /// User is selecting some stations
     SelectingStations(&'a [StationSelection]),
     /// User has only selected one station
@@ -67,7 +56,7 @@ impl<'a> From<&'a mut SelectedItems> for GraphState<'a> {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, MapEntities)]
+#[derive(Serialize, Deserialize, Clone)]
 pub(crate) struct GraphTab {
     navi: GraphNavigation,
     underlay_tile_type: underlay::UnderlayTileType,
@@ -79,8 +68,6 @@ pub(crate) struct GraphTab {
     osm_area_name: String,
     #[serde(skip, default)]
     gpu_state: Arc<egui::mutex::Mutex<gpu_draw::GpuGraphRendererState>>,
-    #[serde(skip, default)]
-    highlight_station_intervals: Vec<Entity>,
 }
 
 fn default_arrange_iterations() -> u32 {
@@ -160,97 +147,12 @@ impl super::Tab for GraphTab {
     fn title(&self) -> WidgetText {
         tr!("tab-graph").into()
     }
-    fn main_display(&mut self, world: &mut World, ui: &mut egui::Ui) {
+    fn main_display(&mut self, app: &mut App, ui: &mut egui::Ui) {
         egui::Frame::canvas(ui.style())
             .inner_margin(Margin::ZERO)
             .outer_margin(Margin::ZERO)
             .stroke(Stroke::NONE)
-            .show(ui, |ui| display(self, world, ui));
-    }
-    fn edit_display(&mut self, world: &mut World, ui: &mut egui::Ui) {
-        self.underlay_tile_change = ui
-            .add(&mut self.underlay_tile_type)
-            .changed()
-            .then_some(self.underlay_tile_type);
-        ui.add(
-            egui::Slider::new(&mut self.arrange_iterations, 100..=10000)
-                .text(tr!("tab-graph-auto-arrange-iterations")),
-        );
-        if ui.button(tr!("tab-graph-auto-arrange")).clicked() {
-            world
-                .run_system_cached_with(
-                    paiagram_core::graph::arrange::auto_arrange_graph,
-                    (ui.ctx().clone(), self.arrange_iterations),
-                )
-                .unwrap();
-        }
-        ui.separator();
-        ui.horizontal(|ui| {
-            ui.label(tr!("tab-graph-osm-area-name"));
-            ui.text_edit_singleline(&mut self.osm_area_name);
-        });
-        if ui.button(tr!("tab-graph-arrange-via-osm")).clicked() {
-            let area_name = if self.osm_area_name.is_empty() {
-                None
-            } else {
-                Some(self.osm_area_name.clone())
-            };
-            world
-                .run_system_cached_with(
-                    paiagram_core::graph::arrange::arrange_via_osm,
-                    (ui.ctx().clone(), area_name),
-                )
-                .unwrap();
-        }
-        if let Some(task) = world.get_resource::<paiagram_core::graph::arrange::GraphLayoutTask>() {
-            let (finished, total, queued_retry) = task.progress();
-            let mode = match task.kind {
-                paiagram_core::graph::arrange::GraphLayoutKind::ForceDirected => {
-                    tr!("tab-graph-arrange-mode-force")
-                }
-                paiagram_core::graph::arrange::GraphLayoutKind::OSM => {
-                    tr!("tab-graph-arrange-mode-osm")
-                }
-            };
-            ui.label(tr!(
-                "tab-graph-arrange-progress",
-                {
-                    mode: mode,
-                    finished: finished,
-                    total: total,
-                    queued_retry: queued_retry
-                }
-            ));
-            if total > 0 {
-                ui.add(egui::ProgressBar::new(finished as f32 / total as f32));
-            }
-        }
-        ui.separator();
-        let selected_sample = world.resource_mut::<SelectedItems>();
-        match selected_sample.clone() {
-            SelectedItems::None
-            | SelectedItems::Intervals(_)
-            | SelectedItems::ExtendingTrip(_)
-            | SelectedItems::Coordinate { .. } => {}
-            SelectedItems::Trips(trips) => {
-                // world
-                //     .run_system_cached_with(crate::display_entry_info, (ui,
-                // entries.as_slice()))     .unwrap();
-            }
-            SelectedItems::Stations(stations) => {
-                world
-                    .run_system_cached_with(
-                        display_station_info,
-                        (
-                            ui,
-                            stations.as_slice(),
-                            &mut self.highlight_station_intervals,
-                        ),
-                    )
-                    .unwrap();
-            }
-            SelectedItems::ExtendingRoute(r) => {}
-        }
+            .show(ui, |ui| display(self, app, ui));
     }
 }
 

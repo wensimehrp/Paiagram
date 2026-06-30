@@ -1,15 +1,13 @@
 use std::sync::LazyLock;
 
-use bevy::prelude::*;
 use egui::{Context, Key, NumExt, Ui};
 use egui_i18n::tr;
 use ib_matcher::matcher::{IbMatcher, PinyinMatchConfig, RomajiMatchConfig};
 use ib_matcher::pinyin::PinyinNotation;
-use paiagram_core::route::Route;
-use paiagram_core::station::Station;
-use paiagram_core::trip::Trip;
+use paiagram_core::{RouteKey, StationKey, TripKey};
 
-use super::{MainTab, OpenOrFocus};
+use super::MainTab;
+use crate::App;
 use crate::tabs::all_tabs::*;
 
 // TODO: make this based on settings
@@ -26,7 +24,7 @@ static PINYIN_MATCH_DATA: LazyLock<PinyinMatchConfig> = std::sync::LazyLock::new
 static ROMAJI_MATCH_DATA: LazyLock<RomajiMatchConfig> =
     std::sync::LazyLock::new(|| RomajiMatchConfig::builder().build());
 
-#[derive(Resource, Default)]
+#[derive(Default)]
 pub(crate) struct CommandPalette {
     visible: bool,
     query: String,
@@ -34,9 +32,9 @@ pub(crate) struct CommandPalette {
 }
 
 enum MatchedType {
-    Route(Entity),
-    Station(Entity),
-    Trip(Entity),
+    Route(RouteKey),
+    Station(StationKey),
+    Trip(TripKey),
     Tab(fn() -> MainTab),
 }
 
@@ -44,7 +42,7 @@ impl CommandPalette {
     pub(crate) fn toggle(&mut self) {
         self.visible ^= true;
     }
-    pub(crate) fn show(&mut self, ctx: &Context, world: &mut World) {
+    pub(crate) fn show(&mut self, ctx: &Context, app: &mut App) {
         self.visible &= !ctx.input_mut(|i| i.key_pressed(Key::Escape));
         if !self.visible {
             self.query.clear();
@@ -68,11 +66,11 @@ impl CommandPalette {
                     inner_margin: 2.0.into(),
                     ..Default::default()
                 }
-                .show(ui, |ui| self.window_content_ui(ui, world));
+                .show(ui, |ui| self.window_content_ui(ui, App));
             });
     }
 
-    fn window_content_ui(&mut self, ui: &mut Ui, world: &mut World) {
+    fn window_content_ui(&mut self, ui: &mut Ui, app: &mut App) {
         // query a bunch of stuff from the ECS, then throw them in
         let enter_pressed = ui.input_mut(|i| i.consume_key(Default::default(), Key::Enter));
         let text_response = ui.add(

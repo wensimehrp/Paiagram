@@ -23,6 +23,8 @@ use rstar::{AABB, RTree, RTreeObject};
 use serde::{Deserialize, Serialize};
 pub use units::*;
 
+use crate::units::time::TimetableTime;
+
 pub trait Key: Clone + Copy {
     /// Return the key in bits
     fn to_bits(self) -> u64;
@@ -106,6 +108,10 @@ macro_rules! make_type {
             }
 
             impl [<$struct_name Collection>] {
+                pub fn len(&self) -> usize {
+                    self.registry.len()
+                }
+
                 pub fn get_handle(&self, key: [<$struct_name Key>]) -> Option<[<$struct_name Handle>]> {
                     self.registry.get(&key).cloned()
                 }
@@ -165,7 +171,7 @@ macro_rules! make_type {
                         &self.$field_name[handle.0]
                     }
 
-                    pub fn [<get_ $field_name _mut>](
+                    fn [<get_ $field_name _mut>](
                         &mut self, handle: [<$struct_name Handle>]
                     ) -> &mut $field_type {
                         let vec_mut = std::sync::Arc::make_mut(&mut self.$field_name);
@@ -177,11 +183,29 @@ macro_rules! make_type {
     };
 }
 
+#[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
+pub struct TripSchedule {
+    entries: EcoVec<TEntry>,
+}
+
+impl TripSchedule {
+    pub fn new(entries: EcoVec<TEntry>) -> Self {
+        Self { entries }
+    }
+}
+
+impl TripSchedule {
+    pub fn estimates(&self) -> impl Iterator<Item = Option<(TimetableTime, TimetableTime)>> {
+        for entry in &self.entries {}
+        [].into_iter()
+    }
+}
+
 make_type!(
     Trip,
     data {
         name: EcoString,
-        entries: EcoVec<TEntry>,
+        schedule: TripSchedule,
         class: Option<ClassKey>,
     }
     cached { }
@@ -239,16 +263,6 @@ impl IntervalCollection {
         todo!()
     }
 }
-
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
-pub struct TEntry {
-    fd1: u32,
-    fd2: u32,
-    stn: Option<StationKey>,
-}
-
-// Assert the size
-const _: [u8; 16] = [0; size_of::<TEntry>()];
 
 /// The style of a stroke
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
@@ -354,6 +368,19 @@ pub struct Source {
     snap: WorldSnapshot,
     rtrees: GraphCacheWorld,
     rhai_script_world: RhaiScriptWorld,
+}
+
+impl std::ops::Deref for Source {
+    type Target = WorldSnapshot;
+    fn deref(&self) -> &Self::Target {
+        &self.snap
+    }
+}
+
+impl std::ops::DerefMut for Source {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.snap
+    }
 }
 
 impl Source {

@@ -22,14 +22,13 @@ encoding_rs = "0.8.35"
 eros.workspace = true
 gtfs-structures = { version = "0.46.1", default-features = false }
 itertools.workspace = true
-moonshine-core = "0.5.1"
 nohash-hasher = "0.2.0"
 paiagram-oudia = {
   git = "https://github.com/wensimehrp/paiagram-oudia",
   branch = "main"
 }
 paiagram-rw = { path = "../paiagram-rw" }
-paste = "1.0.15"
+paste.workspace = true
 petgraph.workspace = true
 rhai.workspace = true
 rstar = "0.12.2"

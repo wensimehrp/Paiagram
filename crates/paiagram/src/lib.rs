@@ -1,7 +1,8 @@
 //! Definitions for the user interface.
 
-mod command_palette;
-mod export_typst_diagram;
+// mod command_palette;
+// mod export_typst_diagram;
+mod settings;
 mod tabs;
 mod widgets;
 
@@ -36,6 +37,19 @@ pub struct UiPlugin;
 
 pub struct App {
     source: Source,
+}
+
+impl std::ops::Deref for App {
+    type Target = Source;
+    fn deref(&self) -> &Self::Target {
+        &self.source
+    }
+}
+
+impl std::ops::DerefMut for App {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.source
+    }
 }
 
 #[derive(Clone, Debug)]

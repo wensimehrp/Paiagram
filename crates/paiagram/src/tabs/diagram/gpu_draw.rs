@@ -4,23 +4,22 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use bevy::ecs::entity::EntityHashMap;
-use bevy::prelude::Entity;
 use bytemuck::{Pod, Zeroable, bytes_of, cast_slice};
 use eframe::egui_wgpu::{self, wgpu};
 use eframe::wgpu::include_wgsl;
 use egui::Rect;
 use egui::mutex::Mutex;
 use egui_wgpu::CallbackTrait;
-use paiagram_core::settings::{AntialiasingMode, LevelOfDetailMode};
-use paiagram_core::trip::TripClass;
+use paiagram_core::ClassKeyHashMap;
 use paiagram_core::units::time::TimetableTime;
 use wgpu::{BufferBindingType, BufferDescriptor, BufferUsages, ShaderStages};
+
+use crate::settings::{AntialiasingMode, LevelOfDetailMode};
 
 pub(crate) struct GpuTripRendererState {
     entries: Vec<(Box<[Entry]>, usize, TimetableTime)>,
     styles: Vec<u32>,
-    class_style_index: EntityHashMap<u16>,
+    class_style_index: ClassKeyHashMap<u16>,
     data_tick_min: i32,
     data_tick_max: i32,
     entries_dirty: bool,
@@ -188,7 +187,7 @@ impl Default for GpuTripRendererState {
         Self {
             entries: Vec::new(),
             styles: vec![pack_style(4, [0, 0, 0])],
-            class_style_index: EntityHashMap::new(),
+            class_style_index: ClassKeyHashMap::new(),
             data_tick_min: 0,
             data_tick_max: 0,
             visible_secs_min: TimetableTime::ZERO,

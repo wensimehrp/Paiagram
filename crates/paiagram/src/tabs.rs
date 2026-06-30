@@ -2,31 +2,36 @@ use std::borrow::Cow;
 
 use egui::{Id, Key, NumExt, Response, Ui, Vec2, WidgetText, emath, vec2};
 use egui_i18n::tr;
-use paiagram_core::Source;
 
-pub(crate) mod classes;
-pub(crate) mod diagram;
-pub(crate) mod graph;
-pub(crate) mod priority_graph;
-pub(crate) mod route_timetable;
-pub(crate) mod settings;
-pub(crate) mod start;
-pub(crate) mod station;
-pub(crate) mod text;
-pub(crate) mod trip;
+use crate::App;
 
-pub(crate) mod all_tabs {
-    pub(crate) use super::classes::ClassesTab;
-    pub(crate) use super::diagram::DiagramTab;
-    pub(crate) use super::graph::GraphTab;
-    pub(crate) use super::priority_graph::PriorityGraphTab;
-    pub(crate) use super::route_timetable::RouteTimetableTab;
-    pub(crate) use super::settings::SettingsTab;
-    pub(crate) use super::start::StartTab;
-    pub(crate) use super::station::StationTab;
-    pub(crate) use super::text::TextTab;
-    pub(crate) use super::trip::TripTab;
+macro_rules! define_tabs {
+    ($(
+        $name:ident;
+    )*) => {
+        $(
+            pub(crate) mod $name;
+        )*
+        pub(crate) mod all_tabs {
+            paste::paste! {
+                $(
+                    pub(crate) use super::$name::[<$name:camel Tab>];
+                )*
+            }
+        }
+    };
 }
+
+define_tabs!(
+    classes;
+    diagram;
+    graph;
+    route_timetable;
+    settings;
+    start;
+    station;
+    trip;
+);
 
 fn handle_keyboard_navigation(ui: &Ui) -> Vec2 {
     const PAN_SPEED: f32 = 500.0;
@@ -209,21 +214,21 @@ pub(crate) trait Tab {
     /// e.g. the localization or other contents.
     const NAME: &'static str;
     /// The main display of the tab.
-    fn main_display(&mut self, source: &mut Source, ui: &mut Ui);
+    fn main_display(&mut self, app: &mut App, ui: &mut Ui);
     /// The edit display
-    fn edit_display(&mut self, _source: &mut Source, ui: &mut Ui) {
+    fn edit_display(&mut self, _app: &mut App, ui: &mut Ui) {
         ui.label(self.title());
         ui.label(tr!("side-panel-edit-fallback-1"));
         ui.label(tr!("side-panel-edit-fallback-2"));
     }
     /// The display display
-    fn display_display(&mut self, _source: &mut Source, ui: &mut Ui) {
+    fn display_display(&mut self, _app: &mut App, ui: &mut Ui) {
         ui.label(self.title());
         ui.label(tr!("side-panel-details-fallback-1"));
         ui.label(tr!("side-panel-details-fallback-2"));
     }
     /// The export display
-    fn export_display(&mut self, _source: &mut Source, ui: &mut Ui) {
+    fn export_display(&mut self, _app: &mut App, ui: &mut Ui) {
         ui.label(self.title());
         ui.label(tr!("side-panel-export-fallback-1"));
         ui.label(tr!("side-panel-export-fallback-2"));
@@ -231,7 +236,7 @@ pub(crate) trait Tab {
     /// The title of the tab
     fn title(&self) -> WidgetText;
     /// What to do with the tab button
-    fn on_tab_button(&self, _source: &mut Source, _response: &Response) {}
+    fn on_tab_button(&self, _app: &mut App, _response: &Response) {}
     /// The id of the tab
     fn id(&self) -> Id {
         Id::new(Self::NAME)

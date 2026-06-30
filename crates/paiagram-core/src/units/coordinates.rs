@@ -53,7 +53,7 @@ pub struct XyPos {
 }
 
 impl XyPos {
-    pub fn new(x, y) -> Self {
+    pub fn new(x: f64, y: f64) -> Self {
         Self { x, y }
     }
     // EPSG:3857

@@ -1,7 +1,5 @@
 use std::sync::Arc;
 
-use bevy::ecs::entity::{EntityHashMap, MapEntities};
-use bevy::prelude::*;
 use egui::emath::Numeric;
 use egui::{
     Align2, Button, Color32, FontId, Id, Margin, NumExt, Painter, Pos2, Rect, RectAlign, Sense,
@@ -9,18 +7,9 @@ use egui::{
 };
 use egui_i18n::tr;
 use itertools::Itertools;
-use paiagram_core::entry::{
-    AdjustEntryMode, EntryBundle, EntryEstimate, EntryMode, EntryModeAdjustment, EntryQuery,
-    TravelMode,
-};
 use paiagram_core::export::ExportObject;
-use paiagram_core::route::Route;
-use paiagram_core::settings::{LevelOfDetailMode, ProjectSettings, UserPreferences};
-use paiagram_core::station::Station;
-use paiagram_core::trip::class::DisplayedStroke;
-use paiagram_core::trip::routing::AddEntryToTrip;
-use paiagram_core::trip::{TripBundle, TripClass, TripQuery};
 use paiagram_core::units::time::{Duration, Tick, TimetableTime};
+use paiagram_core::{RouteHandle, RouteKey, StationKey, TripKey, TripKeyHashMap};
 use paiagram_raptor::Journey;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
@@ -32,8 +21,8 @@ use crate::widgets::indicators::display_time_indicator_indicator_horizontal;
 use crate::widgets::timetable_popup::{POPUP_WIDTH, arrival_popup, departure_popup};
 use crate::widgets::{TimeDragValue, buttons};
 use crate::{
-    ExtendingTripSelection, GlobalTimer, IntervalSelection, ModifySelectedItems, OpenOrFocus,
-    SelectedItem, SelectedItems, StationSelection, TripSelection,
+    App, ExtendingTripSelection, GlobalTimer, ModifySelectedItems, SelectedItem, SelectedItems,
+    StationPairSelection, StationSelection, TripSelection,
 };
 mod draw_lines;
 mod gpu_draw;
@@ -64,17 +53,17 @@ pub(crate) enum CanvasState<'a> {
     /// User is selecting some trips
     SelectingTrips(&'a [TripSelection]),
     /// User is selecting some intervals
-    SelectingIntervals(&'a [IntervalSelection]),
+    SelectingStationPairs(&'a [StationPairSelection]),
     /// User is selecting some stations
     SelectingStations(&'a [StationSelection]),
     /// User is extending a trip
     ExtendingTrip(&'a mut ExtendingTripSelection),
 }
 
-type TripCache = EntityHashMap<SmallVec<[Vec1<TripPoint>; 1]>>;
+type TripCache = TripKeyHashMap<SmallVec<[Vec1<TripPoint>; 1]>>;
 
 /// The diagram tab.
-#[derive(Serialize, Deserialize, Clone, MapEntities)]
+#[derive(Serialize, Deserialize, Clone)]
 pub(crate) struct DiagramTab {
     /// The navigation info
     navi: DiagramTabNavigation,
@@ -82,8 +71,7 @@ pub(crate) struct DiagramTab {
     #[serde(skip, default)]
     last_secondary_click_position: Option<(Tick, f64)>,
     /// The route's entity
-    #[entities]
-    route_entity: Entity,
+    route: RouteKey,
     /// Whether to use the [`GlobalTimer`]
     use_global_timer: bool,
     #[serde(skip, default)]
@@ -99,9 +87,9 @@ pub(crate) struct DiagramTab {
 #[derive(Clone, Default)]
 pub(crate) struct RaptorParams {
     departure_time: TimetableTime,
-    start_stop: Option<Entity>,
-    end_stop: Option<Entity>,
-    result: Vec<Journey<Entity, Entity>>,
+    start_stop: Option<StationKey>,
+    end_stop: Option<StationKey>,
+    result: Vec<Journey<TripKey, StationKey>>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -138,11 +126,11 @@ impl PartialEq for DiagramTab {
 }
 
 impl DiagramTab {
-    pub(crate) fn new(route_entity: Entity) -> Self {
+    pub(crate) fn new(route: RouteKey) -> Self {
         Self {
             navi: DiagramTabNavigation::default(),
             last_secondary_click_position: None,
-            route_entity,
+            route,
             use_global_timer: false,
             cached_trips: None,
             raptor_params: RaptorParams::default(),
@@ -229,7 +217,6 @@ impl Navigatable for DiagramTabNavigation {
 pub(crate) struct TripPoint {
     arr: TimetableTime,
     dep: TimetableTime,
-    entry: Entity,
     station_index: usize,
 }
 
@@ -244,186 +231,20 @@ impl Tab for DiagramTab {
     fn scroll_bars(&self) -> [bool; 2] {
         [false; 2]
     }
-    fn export_display(&mut self, world: &mut World, ui: &mut Ui) {
-        use paiagram_core::export::oudia::OuDia;
-
-        use crate::export_typst_diagram::{TypstDiagram, TypstModule};
-        ui.strong(tr!("tab-diagram-save-typst-module"));
-        ui.label(tr!("tab-diagram-save-typst-module-desc"));
-        if ui.button(tr!("export")).clicked() {
-            TypstModule.export_to_file();
-        }
-        ui.strong(tr!("tab-diagram-export-json-data"));
-        ui.label(tr!("tab-diagram-export-json-data"));
-        if ui.button(tr!("export")).clicked() {
-            TypstDiagram {
-                route_entity: self.route_entity,
-                world,
-            }
-            .export_to_file();
-        }
-        if ui.button(tr!("diagram-export-oudia")).clicked() {
-            OuDia {
-                route_entity: self.route_entity,
-                world,
-            }
-            .export_to_file();
-        }
-    }
-    fn edit_display(&mut self, world: &mut World, ui: &mut Ui) {
-        ui.checkbox(&mut self.use_global_timer, tr!("diagram-use-global-timer"));
-        let selected = world.resource::<SelectedItems>().clone();
-        match selected {
-            SelectedItems::None | SelectedItems::Coordinate { .. } => {
-                ui.strong(tr!("menu-new-trip"));
-                ui.label(tr!("diagram-create-new-trip-scratch"));
-                if ui.button(tr!("diagram-create-new-trip")).clicked() {
-                    let default_class = world
-                        .resource::<paiagram_core::class::ClassResource>()
-                        .default_class;
-                    let new_trip = world
-                        .commands()
-                        .spawn(TripBundle::new(
-                            "New Trip",
-                            TripClass(default_class),
-                            Vec::new(),
-                        ))
-                        .id();
-                    *world.resource_mut::<SelectedItems>() =
-                        SelectedItems::ExtendingTrip(ExtendingTripSelection {
-                            trip: new_trip,
-                            previous_pos: None,
-                            current_entry: None,
-                            last_time: None,
-                        })
-                }
-            }
-            SelectedItems::ExtendingTrip(ExtendingTripSelection {
-                trip,
-                previous_pos: _,
-                current_entry: _,
-                last_time: _,
-            }) => {
-                let mut name = world.get_mut::<Name>(trip).unwrap();
-                name.mutate(|n| {
-                    ui.text_edit_singleline(n);
-                });
-                if ui.button(tr!("diagram-complete")).clicked() {
-                    *world.resource_mut::<SelectedItems>() = SelectedItems::None
-                }
-            }
-            SelectedItems::Trips(_selected_trips) => {}
-            SelectedItems::Intervals(_) => {}
-            SelectedItems::Stations(_) => {}
-            SelectedItems::ExtendingRoute(_) => {}
-        }
-        ui.separator();
-    }
-    fn display_display(&mut self, world: &mut World, ui: &mut Ui) {
-        ui.label(tr!("diagram-find-route-between"));
-        ui.add(
-            egui::Slider::new(
-                &mut self.raptor_params.departure_time,
-                TimetableTime(0)..=TimetableTime(86400),
-            )
-            .custom_formatter(|val, _| TimetableTime::from_f64(val).to_string())
-            .custom_parser(|s| TimetableTime::from_str(s).map(TimetableTime::to_f64)),
-        );
-        // station selection
-        // TODO: support both select from canvas and select from station list
-        // TODO: make this a modal instead of this list thingy
-        fn select_name(
-            (InMut(ui), InMut(sel)): (InMut<Ui>, InMut<Option<Entity>>),
-            stations: Query<(Entity, &Name), With<Station>>,
-        ) {
-            let res = ui.button(
-                sel.and_then(|sel| stations.get(sel).ok())
-                    .map_or("None", |(_, n)| n.as_str()),
-            );
-            egui::Popup::menu(&res).show(|ui| {
-                egui::scroll_area::ScrollArea::vertical().show(ui, |ui| {
-                    for (entity, station_name) in stations.iter() {
-                        if ui.button(station_name.as_str()).clicked() {
-                            *sel = Some(entity)
-                        }
-                    }
-                })
-            });
-        }
-        world
-            .run_system_cached_with(select_name, (ui, &mut self.raptor_params.start_stop))
-            .unwrap();
-        world
-            .run_system_cached_with(select_name, (ui, &mut self.raptor_params.end_stop))
-            .unwrap();
-        if ui
-            .add_enabled(
-                self.raptor_params.start_stop.is_some() && self.raptor_params.end_stop.is_some(),
-                egui::Button::new("Find"),
-            )
-            .clicked()
-            && let Some(start) = self.raptor_params.start_stop
-            && let Some(end) = self.raptor_params.end_stop
-        {
-            self.raptor_params.result = world
-                .run_system_cached_with(
-                    paiagram_raptor::make_query_data,
-                    (self.raptor_params.departure_time.0 as usize, start, end),
-                )
-                .unwrap();
-        }
-        // TODO: highlight the trips on the canvas instead of displaying them here
-        fn display_journey(
-            (InMut(ui), InRef(journeys)): (InMut<Ui>, InRef<[Journey<Entity, Entity>]>),
-            name_q: Query<&Name>,
-        ) {
-            for (idx, Journey { plan, arrival }) in journeys.iter().enumerate() {
-                egui::Grid::new(("journey grid", idx))
-                    .num_columns(2)
-                    .striped(true)
-                    .show(ui, |ui| {
-                        ui.label(tr!("diagram-arrival-time"));
-                        ui.label(TimetableTime(*arrival as i32).to_string());
-                        ui.end_row();
-                        for (route, stop) in plan.iter().copied() {
-                            let stop_n = name_q.get(stop).map_or("No Name", Name::as_str);
-                            let route_n = name_q.get(route).map_or("No Name", Name::as_str);
-                            ui.label(stop_n);
-                            ui.label(route_n);
-                            ui.end_row();
-                        }
-                    });
-                ui.separator();
-            }
-        }
-
-        world
-            .run_system_cached_with(display_journey, (ui, self.raptor_params.result.as_slice()))
-            .unwrap();
-    }
-    fn main_display(&mut self, world: &mut World, ui: &mut egui::Ui) {
-        world.resource_scope(|world, mut selected: Mut<SelectedItems>| {
-            egui::Frame::canvas(ui.style())
-                .inner_margin(Margin::ZERO)
-                .outer_margin(Margin::ZERO)
-                .stroke(Stroke::NONE)
-                .show(ui, |ui| {
-                    main_display(self, world, ui, selected.to_canvas_state())
-                });
-        });
+    fn main_display(&mut self, app: &mut App, ui: &mut egui::Ui) {
+        let Some(handle) = app.routes.get_handle(self.route) else {
+            ui.label("No route?");
+            return;
+        };
+        egui::Frame::canvas(ui.style())
+            .inner_margin(Margin::ZERO)
+            .outer_margin(Margin::ZERO)
+            .stroke(Stroke::NONE)
+            .show(ui, |ui| main_display(self, app, ui, handle));
     }
 }
 
-fn main_display(
-    tab: &mut DiagramTab,
-    world: &mut World,
-    ui: &mut egui::Ui,
-    canvas_state: CanvasState,
-) {
-    let route = world
-        .get::<Route>(tab.route_entity)
-        .expect("Entity should have a route");
-
+fn main_display(tab: &mut DiagramTab, world: &mut App, ui: &mut egui::Ui, handle: RouteHandle) {
     // Setup the response and the painter
     let (response, mut painter) =
         ui.allocate_painter(ui.available_size_before_wrap(), Sense::click_and_drag());

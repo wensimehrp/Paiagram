@@ -2,6 +2,7 @@
 /target
 result
 *.json
+!manifest.json
 *.oud2
 *.oud
 *.kdl

@@ -2,9 +2,6 @@
 
 use std::path::PathBuf;
 
-use bevy::ecs::system::RunSystemOnce;
-use bevy::log::LogPlugin;
-use bevy::prelude::*;
 use clap::Parser;
 use paiagram::App;
 use paiagram_core::settings::UserPreferences;

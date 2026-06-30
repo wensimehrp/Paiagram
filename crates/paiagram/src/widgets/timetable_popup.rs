@@ -1,22 +1,14 @@
-use bevy::prelude::*;
 use egui::{RectAlign, Response, Ui, Vec2, vec2};
-use paiagram_core::entry::{
-    AdjustEntryMode, EntryEstimate, EntryMode, EntryModeAdjustment, EntryQueryItem, TravelMode,
-};
-use paiagram_core::trip::TripQueryItem;
+use paiagram_core::TripHandle;
 use paiagram_core::units::time::{Duration, TimetableTime};
 
 use super::{DurationDragValue, TimeDragValue};
+use crate::App;
 
 pub(crate) const POPUP_WIDTH: f32 = 130.0;
 pub(crate) const BUTTON_SIZE: Vec2 = vec2(70.0, 18.0);
 
-pub(crate) fn departure_popup(
-    response: &Response,
-    entry: &EntryQueryItem,
-    alignment: RectAlign,
-    commands: &mut Commands,
-) {
+pub(crate) fn departure_popup(app: &mut App, response: &Response, alignment: RectAlign) {
     egui::Popup::menu(&response)
         .align(alignment)
         .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
@@ -25,14 +17,14 @@ pub(crate) fn departure_popup(
 
 pub(crate) fn shift_at_value(
     t: TimetableTime,
-    trip_entity: Entity,
+    trip_handle: TripHandle,
     ui: &mut Ui,
-    commands: &mut Commands,
     button_size: Vec2,
     is_arrival: bool,
 ) -> Response {
     let mut new_t = t;
     let res = ui.add_sized(button_size, TimeDragValue(&mut new_t));
+    // TODO
     if res.changed() {
         commands.trigger(AdjustEntryMode {
             entity: trip_entity,
