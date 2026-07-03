@@ -8,11 +8,12 @@ pub mod graph;
 pub mod import;
 pub mod problems;
 pub mod script;
+pub mod trip;
 pub mod units;
 
 use std::num::NonZeroU32;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU16};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU16};
 use std::sync::mpsc::{Receiver, Sender, channel};
 
 use ecow::{EcoString, EcoVec};
@@ -23,7 +24,10 @@ use rstar::{AABB, RTree, RTreeObject};
 use serde::{Deserialize, Serialize};
 pub use units::*;
 
-use crate::units::time::TimetableTime;
+use crate::trip::{TEntry, TripSchedule};
+
+pub const MAX_CLIENTS: u8 = 10;
+pub static CLIENT_ORDER: AtomicU8 = AtomicU8::new(0);
 
 pub trait Key: Clone + Copy {
     /// Return the key in bits
@@ -87,13 +91,25 @@ macro_rules! make_type {
             }
 
             #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
-            pub struct [<$struct_name Handle>](pub usize);
+            struct [<$struct_name Handle>](usize);
 
             // View stays raw data, as it's just used for passing data in/out
             #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
             pub struct [<$struct_name View>] {
                 $(
                     pub $field_name: $field_type,
+                )*
+            }
+
+            pub struct [<$struct_name Borrow>]<'a> {
+                $(
+                    pub $field_name: &'a $field_type,
+                )*
+            }
+
+            pub struct [<$struct_name BorrowMut>]<'a> {
+                $(
+                    pub $field_name: &'a mut $field_type,
                 )*
             }
 
@@ -112,7 +128,7 @@ macro_rules! make_type {
                     self.registry.len()
                 }
 
-                pub fn get_handle(&self, key: [<$struct_name Key>]) -> Option<[<$struct_name Handle>]> {
+                fn get_handle(&self, key: [<$struct_name Key>]) -> Option<[<$struct_name Handle>]> {
                     self.registry.get(&key).cloned()
                 }
 
@@ -164,41 +180,43 @@ macro_rules! make_type {
                     old_view
                 }
 
-                $(
-                    pub fn [<get_ $field_name>](
-                        &self, handle: [<$struct_name Handle>]
-                    ) -> &$field_type {
-                        &self.$field_name[handle.0]
-                    }
+                pub fn query<R>(
+                    &self,
+                    key: [<$struct_name Key>],
+                    f: impl FnOnce([<$struct_name Borrow>]) -> R
+                ) -> Option<R> {
+                    let handle = self.get_handle(key)?;
+                    let idx = handle.0;
 
-                    fn [<get_ $field_name _mut>](
-                        &mut self, handle: [<$struct_name Handle>]
-                    ) -> &mut $field_type {
-                        let vec_mut = std::sync::Arc::make_mut(&mut self.$field_name);
-                        &mut vec_mut[handle.0]
-                    }
-                )*
+                    let borrow = [<$struct_name Borrow>] {
+                        $( $field_name: &self.$field_name[idx], )*
+                    };
+
+                    Some(f(borrow))
+                }
+
+                /// Write access via a named-field struct
+                fn update<R>(
+                    &mut self,
+                    key: [<$struct_name Key>],
+                    f: impl FnOnce([<$struct_name BorrowMut>]) -> R
+                ) -> Option<R> {
+                    let handle = self.get_handle(key)?;
+                    let idx = handle.0;
+
+                    $(
+                        let [<$field_name _mut>] = std::sync::Arc::make_mut(&mut self.$field_name);
+                    )*
+
+                    let borrow_mut = [<$struct_name BorrowMut>] {
+                        $( $field_name: &mut [<$field_name _mut>][idx], )*
+                    };
+
+                    Some(f(borrow_mut))
+                }
             }
         }
     };
-}
-
-#[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
-pub struct TripSchedule {
-    entries: EcoVec<TEntry>,
-}
-
-impl TripSchedule {
-    pub fn new(entries: EcoVec<TEntry>) -> Self {
-        Self { entries }
-    }
-}
-
-impl TripSchedule {
-    pub fn estimates(&self) -> impl Iterator<Item = Option<(TimetableTime, TimetableTime)>> {
-        for entry in &self.entries {}
-        [].into_iter()
-    }
 }
 
 make_type!(
@@ -255,9 +273,9 @@ make_type!(
     cached { }
 );
 
-impl IntervalCollection {
-    pub fn length(&self, handle: IntervalHandle) -> Distance {
-        if let Some(d) = self.get_length(handle) {
+impl<'a> IntervalBorrow<'a> {
+    pub fn length(&self) -> Distance {
+        if let Some(d) = self.length {
             return Distance(d.get() as i32);
         };
         todo!()
@@ -271,6 +289,8 @@ pub struct StrokeStyle {
     width: u8,
 }
 
+pub type WorldGraph = DiGraphMap<StationKey, IntervalKey, StationKeyHasher>;
+
 // future idea: scripting via rhai
 /// The world stores much of the content using SoA.
 #[derive(Serialize, Deserialize, Default, Clone, Debug)]
@@ -282,7 +302,7 @@ pub struct WorldSnapshot {
     pub classes: ClassCollection,
     pub routes: RouteCollection,
     vehicle_trip_matrix: Arc<VehicleTripMatrix>,
-    graph: Arc<DiGraphMap<StationKey, IntervalKey, StationKeyHasher>>,
+    graph: Arc<WorldGraph>,
 }
 
 impl WorldSnapshot {
@@ -298,9 +318,8 @@ impl WorldSnapshot {
             Command::RenameTrip {
                 key,
                 name: mut new_name,
-            } => self.trips.get_handle(key).map(|handle| {
-                let old_name = self.trips.get_name_mut(handle);
-                std::mem::swap(old_name, &mut new_name);
+            } => self.trips.update(key, |view| {
+                std::mem::swap(view.name, &mut new_name);
                 Command::RenameTrip {
                     key,
                     name: new_name,
@@ -309,9 +328,8 @@ impl WorldSnapshot {
             Command::ChangeTripClass {
                 key,
                 class: mut new_class,
-            } => self.trips.get_handle(key).map(|handle| {
-                let old_class = self.trips.get_class_mut(handle);
-                std::mem::swap(old_class, &mut new_class);
+            } => self.trips.update(key, |view| {
+                std::mem::swap(view.class, &mut new_class);
                 Command::ChangeTripClass {
                     key,
                     class: new_class,

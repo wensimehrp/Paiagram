@@ -16,10 +16,10 @@ impl WorldSnapshot {
             source,
             |node| node == target,
             |(_, _, interval_key)| {
-                let Some(handle) = self.intervals.get_handle(*interval_key) else {
+                let Some(length) = self.intervals.query(*interval_key, |view| view.length()) else {
                     return i32::MAX;
                 };
-                self.intervals.length(handle).0
+                length.0
             },
             |_| 0,
         )
