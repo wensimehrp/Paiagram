@@ -3751,7 +3751,6 @@ dependencies = [
  "derive_more",
  "ecow",
  "egui",
- "egui-i18n",
  "ehttp",
  "either",
  "encoding_rs",
