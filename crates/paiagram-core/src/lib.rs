@@ -43,6 +43,21 @@ pub trait Key: Clone + Copy {
     }
 }
 
+pub(crate) struct BorrowMutField<'a, T: Clone> {
+    borrow: &'a mut Arc<Vec<T>>,
+    idx: usize,
+}
+
+impl<'a, T: Clone> BorrowMutField<'a, T> {
+    fn get(&self) -> &T {
+        &self.borrow[self.idx]
+    }
+    fn get_mut(&mut self) -> &mut T {
+        let m = Arc::make_mut(&mut self.borrow);
+        &mut m[self.idx]
+    }
+}
+
 macro_rules! make_type {
     (
         $struct_name:ident,
@@ -107,9 +122,9 @@ macro_rules! make_type {
                 )*
             }
 
-            pub struct [<$struct_name BorrowMut>]<'a> {
+            pub(crate) struct [<$struct_name BorrowMut>]<'a> {
                 $(
-                    pub $field_name: &'a mut $field_type,
+                    pub $field_name: BorrowMutField<'a, $field_type>,
                 )*
             }
 
@@ -204,12 +219,11 @@ macro_rules! make_type {
                     let handle = self.get_handle(key)?;
                     let idx = handle.0;
 
-                    $(
-                        let [<$field_name _mut>] = std::sync::Arc::make_mut(&mut self.$field_name);
-                    )*
-
                     let borrow_mut = [<$struct_name BorrowMut>] {
-                        $( $field_name: &mut [<$field_name _mut>][idx], )*
+                        $( $field_name: BorrowMutField {
+                            borrow: &mut self.[<$field_name>],
+                            idx
+                        }, )*
                     };
 
                     Some(f(borrow_mut))
@@ -318,8 +332,8 @@ impl WorldSnapshot {
             Command::RenameTrip {
                 key,
                 name: mut new_name,
-            } => self.trips.update(key, |view| {
-                std::mem::swap(view.name, &mut new_name);
+            } => self.trips.update(key, |mut view| {
+                std::mem::swap(view.name.get_mut(), &mut new_name);
                 Command::RenameTrip {
                     key,
                     name: new_name,
@@ -328,8 +342,8 @@ impl WorldSnapshot {
             Command::ChangeTripClass {
                 key,
                 class: mut new_class,
-            } => self.trips.update(key, |view| {
-                std::mem::swap(view.class, &mut new_class);
+            } => self.trips.update(key, |mut view| {
+                std::mem::swap(view.class.get_mut(), &mut new_class);
                 Command::ChangeTripClass {
                     key,
                     class: new_class,
