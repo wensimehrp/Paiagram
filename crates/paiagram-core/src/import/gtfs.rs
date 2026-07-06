@@ -1,10 +1,18 @@
+use std::collections::HashMap;
 use std::io::Cursor;
+use std::num::NonZeroU32;
 
-use moonshine_core::kind::Instance;
+use ecow::{EcoString, EcoVec};
+use egui::Color32;
 
 use crate::colors::{DisplayedColor, PredefinedColor};
 use crate::units::distance::Distance;
 use crate::units::time::TimetableTime;
+use crate::{
+    ClassKey, ClassView, Command, IntervalKey, IntervalView, LonLat, RouteKey, RouteView,
+    StationKey, StationView, StrokeStyle, TripKey, TripView, VehicleKey, VehicleView,
+};
+use crate::trip::{TEntry, TravelMode, TripSchedule};
 
 fn haversine_km(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
     let r_km = 6371.0_f64;
@@ -40,7 +48,7 @@ fn class_name(route: Option<&gtfs_structures::Route>, route_id: &str) -> String 
 
 fn class_color(route: Option<&gtfs_structures::Route>) -> DisplayedColor {
     if let Some(rgb) = route.and_then(|r| r.color) {
-        return DisplayedColor::Custom(egui::Color32::from_rgb(rgb.r, rgb.g, rgb.b));
+        return DisplayedColor::Custom(Color32::from_rgb(rgb.r, rgb.g, rgb.b));
     }
     DisplayedColor::Predefined(PredefinedColor::Neutral)
 }
@@ -49,128 +57,126 @@ fn stop_display_name(stop: &gtfs_structures::Stop) -> String {
     stop.name.clone().unwrap_or_else(|| stop.id.clone())
 }
 
-pub fn load_gtfs_static(
-    data: On<super::LoadGTFS>,
-    mut commands: Commands,
-    mut graph: ResMut<Graph>,
-) {
-    info!("Loading GTFS static data...");
-    let reader = Cursor::new(data.content.as_slice());
-    let Ok(gtfs) = gtfs_structures::Gtfs::from_reader(reader) else {
-        warn!("Failed to parse GTFS zip");
-        return;
-    };
+/// Load GTFS static data and return a list of Commands that reconstruct
+/// the timetable in a WorldSnapshot.
+pub fn load_gtfs_static(data: &[u8]) -> Result<Vec<Command>, String> {
+    log::info!("Loading GTFS static data...");
+    let reader = Cursor::new(data);
+    let gtfs = gtfs_structures::Gtfs::from_reader(reader)
+        .map_err(|e| format!("Failed to parse GTFS zip: {e}"))?;
 
-    let mut station_entities: HashMap<String, Entity> = HashMap::new();
-    let mut platform_entities: HashMap<String, Entity> = HashMap::new();
-    let mut class_map: HashMap<String, Instance<Class>> = HashMap::new();
-    let mut route_built: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut block_to_trips: HashMap<String, Vec<Entity>> = HashMap::new();
+    let mut commands: Vec<Command> = Vec::new();
+    let mut station_map: HashMap<String, StationKey> = HashMap::new();
+    let mut class_map: HashMap<String, ClassKey> = HashMap::new();
+    let mut route_built: HashMap<String, RouteKey> = HashMap::new();
+    let mut block_to_trips: HashMap<String, Vec<TripKey>> = HashMap::new();
 
-    let mut ensure_station =
-        |station_id: &str, station_name: &str, graph: &mut Graph, commands: &mut Commands| {
-            if let Some(&entity) = station_entities.get(station_id) {
-                return entity;
+    macro_rules! ensure_station {
+        ($id:expr, $name:expr) => {{
+            let id = $id;
+            let name = $name;
+            if let Some(&sk) = station_map.get(id) {
+                sk
+            } else {
+                let sk = StationKey::new();
+                commands.push(Command::AddStation {
+                    key: sk,
+                    name: EcoString::from(name),
+                    pos: LonLat { lon: 0, lat: 0 },
+                });
+                station_map.insert(id.to_string(), sk);
+                sk
             }
-            let entity = commands
-                .spawn((Station::default(), Name::new(station_name.to_string())))
-                .id();
-            graph.add_node(entity);
-            station_entities.insert(station_id.to_string(), entity);
-            entity
-        };
+        }};
+    }
 
-    let mut ensure_platform = |platform_id: &str,
-                               platform_name: &str,
-                               parent_station: Entity,
-                               commands: &mut Commands| {
-        if let Some(&entity) = platform_entities.get(platform_id) {
-            return entity;
+    // First pass: ensure all stations exist
+    for trip in gtfs.trips.values() {
+        if trip.stop_times.is_empty() {
+            continue;
         }
-        let entity = commands
-            .spawn((
-                Platform::default(),
-                Name::new(platform_name.to_string()),
-                ChildOf(parent_station),
-            ))
-            .id();
-        platform_entities.insert(platform_id.to_string(), entity);
-        entity
-    };
+        for stop_time in &trip.stop_times {
+            let stop = &stop_time.stop;
+            let stop_name = stop_display_name(stop);
+            if let Some(parent_id) = &stop.parent_station {
+                let parent_stop = gtfs.stops.get(parent_id);
+                let parent_name = parent_stop
+                    .map(|s| stop_display_name(s.as_ref()))
+                    .unwrap_or_else(|| parent_id.clone());
+                ensure_station!(parent_id, &parent_name);
+            }
+            ensure_station!(&stop.id, &stop_name);
+        }
+    }
 
+    // Process each trip and collect route/class/vehicle data
     for trip in gtfs.trips.values() {
         if trip.stop_times.is_empty() {
             continue;
         }
 
         let route = gtfs.routes.get(&trip.route_id);
-        let class_name = class_name(route, &trip.route_id);
-        let trip_class =
-            super::make_class(&class_name, &mut class_map, &mut commands, || ClassBundle {
-                class: Class::default(),
-                name: Name::new(class_name.clone()),
-                stroke: DisplayedStroke {
-                    color: class_color(route),
-                    width: 1.0,
+        let c_name = class_name(route, &trip.route_id);
+
+        // Ensure class exists
+        let class_key = if let Some(&ck) = class_map.get(&c_name) {
+            ck
+        } else {
+            let ck = ClassKey::new();
+            let color = class_color(route);
+            let style = StrokeStyle {
+                color: color.into_color32(false),
+                width: 1,
+            };
+            commands.push(Command::AddClass {
+                key: ck,
+                view: ClassView {
+                    name: EcoString::from(c_name.clone()),
+                    style,
                 },
             });
+            class_map.insert(c_name.clone(), ck);
+            ck
+        };
 
-        let mut stops_for_trip: Vec<(Entity, Option<f64>, Option<f64>, Option<f32>)> =
+        // Collect stations for this trip and build route if needed
+        let mut stops_for_trip: Vec<(StationKey, Option<f64>, Option<f64>, Option<f32>)> =
             Vec::with_capacity(trip.stop_times.len());
+
         for stop_time in &trip.stop_times {
             let stop = &stop_time.stop;
-            let stop_name = stop_display_name(stop);
-
-            let (station_entity, platform_entity) =
-                if let Some(parent_station_id) = &stop.parent_station {
-                    let parent_stop = gtfs.stops.get(parent_station_id);
-                    let parent_name = parent_stop
-                        .map(|stop| stop_display_name(stop.as_ref()))
-                        .unwrap_or_else(|| parent_station_id.clone());
-                    let station_entity =
-                        ensure_station(parent_station_id, &parent_name, &mut graph, &mut commands);
-                    let platform_entity =
-                        ensure_platform(&stop.id, &stop_name, station_entity, &mut commands);
-                    (station_entity, platform_entity)
-                } else {
-                    let station_entity =
-                        ensure_station(&stop.id, &stop_name, &mut graph, &mut commands);
-                    (station_entity, station_entity)
-                };
-
-            if let (Some(lat), Some(lon)) = (stop.latitude, stop.longitude) {
-                commands.entity(platform_entity).insert(Node {
-                    coor: NodeCoor::new(lon, lat),
-                });
-                if platform_entity != station_entity {
-                    commands.entity(station_entity).insert(Node {
-                        coor: NodeCoor::new(lon, lat),
-                    });
-                }
-            }
+            let station_key = if let Some(parent_id) = &stop.parent_station {
+                let parent_stop = gtfs.stops.get(parent_id);
+                let parent_name = parent_stop
+                    .map(|s| stop_display_name(s.as_ref()))
+                    .unwrap_or_else(|| parent_id.clone());
+                ensure_station!(parent_id, &parent_name)
+            } else {
+                ensure_station!(&stop.id, &stop_display_name(stop))
+            };
 
             stops_for_trip.push((
-                station_entity,
+                station_key,
                 stop.latitude,
                 stop.longitude,
                 stop_time.shape_dist_traveled,
             ));
         }
 
-        if !route_built.contains(&trip.route_id) {
-            let mut route_stops: Vec<Entity> = Vec::new();
-            let mut lengths: Vec<f32> = Vec::new();
-            let mut prev_station: Option<Entity> = None;
+        // Build route if not yet built for this route_id
+        if !route_built.contains_key(&trip.route_id) {
+            let mut route_stations: Vec<StationKey> = Vec::new();
+            let mut prev_station: Option<StationKey> = None;
             let mut prev_shape_dist: Option<f32> = None;
             let mut prev_lat_lon: Option<(f64, f64)> = None;
 
-            for (stop, lat, lon, shape_dist) in &stops_for_trip {
-                let curr_station = *stop;
-                if prev_station == Some(curr_station) {
+            for (sk, lat, lon, shape_dist) in &stops_for_trip {
+                let curr = *sk;
+                if prev_station == Some(curr) {
                     continue;
                 }
 
-                route_stops.push(curr_station);
+                route_stations.push(curr);
                 if let Some(prev) = prev_station {
                     let mut km = match (shape_dist, prev_shape_dist) {
                         (Some(curr), Some(prev)) => (*curr - prev).abs(),
@@ -185,65 +191,58 @@ pub fn load_gtfs_static(
                     if km <= f32::EPSILON {
                         km = 1.0;
                     }
-                    super::add_interval_pair(
-                        &mut graph,
-                        &mut commands,
-                        prev,
-                        curr_station,
-                        Distance::from_km(km),
-                    );
-                    lengths.push(km);
-                } else {
-                    lengths.push(0.0);
+                    let dist_m = (km * 1000.0).round() as u32;
+                    let ik = IntervalKey::new();
+                    commands.push(Command::AddInterval {
+                        key: ik,
+                        view: IntervalView {
+                            nodes: EcoVec::new(),
+                            length: NonZeroU32::new(dist_m.max(1)),
+                        },
+                        from: Some(prev),
+                        to: Some(curr),
+                    });
                 }
 
-                prev_station = Some(curr_station);
+                prev_station = Some(curr);
                 prev_shape_dist = *shape_dist;
                 prev_lat_lon = lat.zip(*lon);
             }
 
-            if route_stops.len() >= 2 {
-                commands.spawn((
-                    Name::new(route_name(route)),
-                    Route {
-                        stops: route_stops,
-                        lengths,
+            if route_stations.len() >= 2 {
+                let rk = RouteKey::new();
+                commands.push(Command::AddRoute {
+                    key: rk,
+                    view: RouteView {
+                        name: EcoString::from(route_name(route)),
+                        stations: route_stations.into_iter().collect::<EcoVec<_>>(),
                     },
-                ));
+                });
+                route_built.insert(trip.route_id.clone(), rk);
             }
-            route_built.insert(trip.route_id.clone());
         }
 
+        // Build trip entries
         let trip_name = trip
             .trip_short_name
             .as_ref()
             .or(trip.trip_headsign.as_ref())
             .map_or_else(|| trip.id.clone(), std::clone::Clone::clone);
 
-        let mut entry_payloads: Vec<(Entity, Option<TimetableTime>, TimetableTime)> =
-            Vec::with_capacity(trip.stop_times.len());
+        let mut entries: Vec<TEntry> = Vec::with_capacity(trip.stop_times.len());
         let mut previous_arrival: Option<TimetableTime> = None;
         for stop_time in &trip.stop_times {
             let stop = &stop_time.stop;
-            let stop_name = stop_display_name(stop);
-
-            let stop_entity = if let Some(parent_station_id) = &stop.parent_station {
-                let parent_stop = gtfs.stops.get(parent_station_id);
-                let parent_name = parent_stop
-                    .map(|stop| stop_display_name(stop.as_ref()))
-                    .unwrap_or_else(|| parent_station_id.clone());
-                let parent_station =
-                    ensure_station(parent_station_id, &parent_name, &mut graph, &mut commands);
-                ensure_platform(&stop.id, &stop_name, parent_station, &mut commands)
+            let station_key = if let Some(parent_id) = &stop.parent_station {
+                let parent_name = if let Some(parent_stop) = gtfs.stops.get(parent_id) {
+                    stop_display_name(parent_stop.as_ref())
+                } else {
+                    parent_id.clone()
+                };
+                ensure_station!(parent_id, &parent_name)
             } else {
-                ensure_station(&stop.id, &stop_name, &mut graph, &mut commands)
+                ensure_station!(&stop.id, &stop_display_name(stop))
             };
-
-            if let (Some(lat), Some(lon)) = (stop.latitude, stop.longitude) {
-                commands.entity(stop_entity).insert(Node {
-                    coor: NodeCoor::new(lon, lat),
-                });
-            }
 
             let arr = stop_time
                 .arrival_time
@@ -261,56 +260,70 @@ pub fn load_gtfs_static(
             if let Some(prev) = previous_arrival
                 && arrival < prev
             {
-                warn!("GTFS trip has non-monotonic time: trip_id={}", trip.id);
+                log::warn!("GTFS trip has non-monotonic time: trip_id={}", trip.id);
             }
             previous_arrival = Some(arrival);
 
-            let arr_mode = (departure != arrival).then_some(arrival);
-            entry_payloads.push((stop_entity, arr_mode, departure));
+            let arr_mode = if departure != arrival {
+                Some(TravelMode::At(arrival))
+            } else {
+                None
+            };
+            let dep_mode = TravelMode::At(departure);
+
+            let entry = match arr_mode {
+                Some(arr) if arr == dep_mode => TEntry::PinnedNonStop {
+                    stn: station_key,
+                    trk: 0,
+                    pass: dep_mode,
+                    id: 0,
+                },
+                Some(arr) => TEntry::Pinned {
+                    stn: station_key,
+                    trk: 0,
+                    arr,
+                    dep: dep_mode,
+                    id: 0,
+                },
+                None => TEntry::Derived(station_key),
+            };
+            entries.push(entry);
         }
 
-        let nominal_schedule: Vec<_> = entry_payloads
-            .into_iter()
-            .map(|(stop_entity, arr_mode, departure)| {
-                let arr_mode = arr_mode.map(TravelMode::At);
-                commands
-                    .spawn(EntryBundle::new(
-                        arr_mode,
-                        TravelMode::At(departure),
-                        stop_entity,
-                    ))
-                    .id()
-            })
-            .collect();
-
-        let trip_entity = commands
-            .spawn_empty()
-            .add_children(&nominal_schedule)
-            .insert(TripBundle::new(
-                &trip_name,
-                TripClass(trip_class.entity()),
-                nominal_schedule,
-            ))
-            .id();
+        let tk = TripKey::new();
+        commands.push(Command::AddTrip {
+            key: tk,
+            view: TripView {
+                name: EcoString::from(trip_name),
+                schedule: TripSchedule::new(entries.into_iter().collect::<EcoVec<_>>()),
+                class: Some(class_key),
+            },
+        });
 
         if let Some(block_id) = &trip.block_id {
             block_to_trips
                 .entry(block_id.clone())
                 .or_default()
-                .push(trip_entity);
+                .push(tk);
         }
     }
 
-    for (block_id, trips) in block_to_trips {
-        commands.spawn((
-            Name::new(format!("GTFS block {block_id}")),
-            Vehicle { trips },
-        ));
+    // Create vehicles for blocks
+    for (block_id, trip_keys) in block_to_trips {
+        let vk = VehicleKey::new();
+        commands.push(Command::AddVehicle {
+            key: vk,
+            name: EcoString::from(format!("GTFS block {block_id}")),
+        });
+        commands.push(Command::ChangeVehicleTrips {
+            key: vk,
+            trips: trip_keys.into_iter().collect::<EcoVec<_>>(),
+        });
     }
 
-    info!(
+    log::info!(
         "GTFS import completed: stations={}, classes={}, routes={}, vehicles={}",
-        station_entities.len(),
+        station_map.len(),
         class_map.len(),
         route_built.len(),
         gtfs.trips
@@ -320,4 +333,6 @@ pub fn load_gtfs_static(
             .collect::<std::collections::HashSet<_>>()
             .len()
     );
+
+    Ok(commands)
 }

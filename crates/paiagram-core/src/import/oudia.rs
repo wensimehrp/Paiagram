@@ -1,111 +1,107 @@
-use bevy::platform::collections::HashMap;
-use bevy::prelude::*;
+use std::collections::HashMap;
+
+use ecow::{EcoString, EcoVec};
 use itertools::Itertools;
-use moonshine_core::kind::*;
 use paiagram_oudia::{
     Direction, ServiceMode, Time as OuDiaTime, TimetableEntry as OuDiaTimetableEntry,
     parse_oud_to_ir, parse_oud2_to_ir,
 };
+use std::num::NonZeroU32;
 
-use crate::colors::DisplayedColor;
-use crate::entry::{EntryBundle, TravelMode};
-use crate::graph::Graph;
-use crate::import::OuDiaContentType;
-use crate::route::Route;
-use crate::station::Station as StationComponent;
-use crate::trip::class::{Class as ClassComponent, ClassBundle, DisplayedStroke};
-use crate::trip::{TripBundle, TripClass};
-use crate::units::distance::Distance;
 use crate::units::time::TimetableTime;
+use crate::{
+    ClassKey, ClassView, Command, IntervalKey, IntervalView, LonLat, RouteKey, RouteView,
+    StationKey, StrokeStyle, TripKey, TripView,
+};
+use crate::trip::{TEntry, TravelMode, TripSchedule};
 
-#[derive(Debug, Clone, Copy)]
-struct TimetableEntry {
-    service_mode: ServiceMode,
-    arrival_time: Option<TimetableTime>,
-    departure_time: Option<TimetableTime>,
+/// Result of parsing an OUD/OUD2 file: a list of commands that reconstruct the
+/// timetable in a WorldSnapshot.
+pub fn parse_oud(
+    content: &[u8],
+) -> Result<Vec<Command>, String> {
+    let root = parse_oud_to_ir(content).map_err(|e| format!("OUD parse error: {e:?}"))?;
+    Ok(build_commands_from_oud(root))
 }
 
-impl From<OuDiaTime> for TimetableTime {
-    fn from(value: OuDiaTime) -> Self {
-        Self(value.seconds())
-    }
+pub fn parse_oud2(
+    content: &str,
+) -> Result<Vec<Command>, String> {
+    let root = parse_oud2_to_ir(content).map_err(|e| format!("OUD2 parse error: {e:?}"))?;
+    Ok(build_commands_from_oud(root))
 }
 
-pub fn load_oud(msg: On<super::LoadOuDia>, mut commands: Commands, mut graph: ResMut<Graph>) {
-    info!("Loading OUD/OUD2 data...");
-    let root = match &msg.content {
-        OuDiaContentType::OuDiaSecond(s) => parse_oud2_to_ir(s),
-        OuDiaContentType::OuDia(d) => parse_oud_to_ir(d),
-    }
-    .expect("Failed to parse OUD/OUD2 data");
+fn build_commands_from_oud(root: paiagram_oudia::Root) -> Vec<Command> {
+    let mut commands = Vec::new();
+    let mut station_map: HashMap<String, StationKey> = HashMap::new();
+    let mut class_map: HashMap<String, ClassKey> = HashMap::new();
     let route = root.route;
-    let mut station_map: HashMap<String, Instance<StationComponent>> = HashMap::new();
-    let mut stations: Vec<Option<Instance<StationComponent>>> = vec![None; route.stations.len()];
-    // let mut break_flags: Vec<bool> = Vec::with_capacity(route.stations.len());
-    for (i, station) in route.stations.iter().enumerate() {
-        // a bit slower but standardized
-        let station_entity =
-            super::make_station(&station.name, &mut station_map, &mut graph, &mut commands);
-        stations[i] = Some(station_entity);
-        // TODO: restore interval breaking mechanism
-        // break_flags.push(station.break_interval);
+
+    // Create stations
+    for station in &route.stations {
+        let sk = StationKey::new();
+        station_map.insert(station.name.clone(), sk);
+        let pos = LonLat { lon: 0, lat: 0 }; // OUD doesn't provide coordinates
+        commands.push(Command::AddStation {
+            key: sk,
+            name: EcoString::from(station.name.as_str()),
+            pos,
+        });
     }
 
-    let station_instances: Vec<Instance<StationComponent>> =
-        stations.into_iter().map(|e| e.unwrap()).collect();
-    let class_instances: Vec<Entity> = route
-        .classes
-        .into_iter()
-        .map(|it| {
-            let [_, r, g, b] = it.diagram_line_color.0;
-            commands
-                .spawn(ClassBundle {
-                    class: ClassComponent::default(),
-                    name: Name::new(it.name),
-                    stroke: DisplayedStroke {
-                        color: DisplayedColor::Custom(egui::Color32::from_rgb(r, g, b)),
-                        width: 1.0,
-                    },
-                })
-                .id()
-        })
-        .collect();
+    // Create classes
+    for class_info in &route.classes {
+        let ck = ClassKey::new();
+        let [_, r, g, b] = class_info.diagram_line_color.0;
+        class_map.insert(class_info.name.clone(), ck);
+        commands.push(Command::AddClass {
+            key: ck,
+            view: ClassView {
+                name: EcoString::from(class_info.name.as_str()),
+                style: StrokeStyle {
+                    color: egui::Color32::from_rgb(r, g, b),
+                    width: 1,
+                },
+            },
+        });
+    }
 
+    // Create route
+    let station_keys: Vec<StationKey> = route
+        .stations
+        .iter()
+        .map(|s| station_map[&s.name])
+        .collect();
+    let rk = RouteKey::new();
+    commands.push(Command::AddRoute {
+        key: rk,
+        view: RouteView {
+            name: EcoString::from(route.name.as_str()),
+            stations: station_keys.clone().into_iter().collect::<EcoVec<_>>(),
+        },
+    });
+
+    // Create intervals between consecutive stations
     let travel_durations: Vec<Option<OuDiaTime>> = route.diagrams[0]
         .minimum_interval_durations(&route.stations)
         .collect();
-
-    commands.spawn((
-        Name::new(route.name),
-        Route {
-            stops: station_instances.iter().map(|e| e.entity()).collect(),
-            lengths: travel_durations
-                .iter()
-                .map(|t| match t {
-                    // TODO: write a proper constant
-                    Some(t) => t.seconds() as f32 / 60.0 * 2.0,
-                    None => 1.0 * 2.0,
-                })
-                .collect(),
-        },
-    ));
-
-    for i in 0..station_instances.len().saturating_sub(1) {
-        // if break_flags[i] {
-        //     continue;
-        // }
-        super::add_interval_pair(
-            &mut graph,
-            &mut commands,
-            station_instances[i].entity(),
-            station_instances[i + 1].entity(),
-            travel_durations[i].map_or(Distance::from_m(1000), |it| {
-                Distance::from_m(it.seconds() / 60 * 1000)
-            }),
-        );
+    for i in 0..station_keys.len().saturating_sub(1) {
+        let dist = travel_durations[i].map_or(1000, |t| (t.seconds() / 60 * 1000).max(1));
+        let ik = IntervalKey::new();
+        let from = station_keys[i];
+        let to = station_keys[i + 1];
+        commands.push(Command::AddInterval {
+            key: ik,
+            view: IntervalView {
+                nodes: EcoVec::new(),
+                length: NonZeroU32::new(dist as u32),
+            },
+            from: Some(from),
+            to: Some(to),
+        });
     }
 
-    // TODO: find a method to support multiple diagrams
+    // Create trips for each diagram
     for diagram in route.diagrams.into_iter().take(1) {
         for trip in diagram.trips {
             let times: Vec<TimetableEntry> = trip
@@ -114,7 +110,9 @@ pub fn load_oud(msg: On<super::LoadOuDia>, mut commands: Commands, mut graph: Re
                 .map(convert_timetable_entry)
                 .collect();
 
-            let trip_class = class_instances[trip.class_index];
+            let class_key = class_map.get(
+                &route.classes[trip.class_index].name,
+            ).copied();
 
             let mut times_chunked: Vec<_> = times
                 .into_iter()
@@ -125,12 +123,12 @@ pub fn load_oud(msg: On<super::LoadOuDia>, mut commands: Commands, mut graph: Re
                     }
                     let station_index = match trip.direction {
                         Direction::Down => i,
-                        Direction::Up => station_instances.len() - 1 - i,
+                        Direction::Up => station_keys.len() - 1 - i,
                     };
-                    let stop = station_instances[station_index];
-                    Some((stop, time))
+                    let stn = station_keys[station_index];
+                    Some((stn, time))
                 })
-                .chunk_by(|(s, _t)| *s)
+                .chunk_by(|(s, _)| *s)
                 .into_iter()
                 .map(|(s, mut g)| {
                     let (_, first_time) = g.next().unwrap();
@@ -144,45 +142,81 @@ pub fn load_oud(msg: On<super::LoadOuDia>, mut commands: Commands, mut graph: Re
                 })
                 .collect();
 
-            super::normalize_times(times_chunked.iter_mut().flat_map(|(_, g, _)| g).flatten());
+            // Normalize times
+            let mut all_times: Vec<&mut TimetableTime> = times_chunked
+                .iter_mut()
+                .flat_map(|(_, g, _)| g.iter_mut().filter_map(|t| t.as_mut()))
+                .collect();
+            normalize_times(&mut all_times);
 
-            let nominal_entries: Vec<_> = times_chunked
+            let entries: Vec<TEntry> = times_chunked
                 .into_iter()
-                .map(|(stop, [arrival_time, departure_time], passing_mode)| {
-                    // in this case, this would consume the iterator.
-                    let arrival_mode = if matches!(passing_mode, ServiceMode::Pass) {
-                        None
+                .map(|(stn, [arrival_time, departure_time], passing_mode)| {
+                    let arr = arrival_time.map(|t| TravelMode::At(t));
+                    let dep = departure_time.map_or(TravelMode::Flexible, |t| TravelMode::At(t));
+                    let is_pass = matches!(passing_mode, ServiceMode::Pass);
+                    let same_time = arr.map_or(false, |a| a == dep);
+                    if is_pass || same_time {
+                        // Non-stop entry
+                        TEntry::PinnedNonStop {
+                            stn,
+                            trk: 0,
+                            pass: dep,
+                            id: 0,
+                        }
+                    } else if let (Some(arr_mode), dep_mode) = (arr, dep) {
+                        TEntry::Pinned {
+                            stn,
+                            trk: 0,
+                            arr: arr_mode,
+                            dep: dep_mode,
+                            id: 0,
+                        }
                     } else {
-                        Some(arrival_time.map_or(TravelMode::Flexible, |t| TravelMode::At(t)))
-                    };
-                    let departure_mode =
-                        departure_time.map_or(TravelMode::Flexible, |t| TravelMode::At(t));
-                    commands
-                        .spawn(EntryBundle::new(
-                            arrival_mode,
-                            departure_mode,
-                            stop.entity(),
-                        ))
-                        .id()
+                        TEntry::Derived(stn)
+                    }
                 })
                 .collect();
 
-            commands
-                .spawn_empty()
-                .add_children(&nominal_entries)
-                .insert(TripBundle::new(
-                    &trip.name.unwrap_or("<??>".to_string()),
-                    TripClass(trip_class.entity()),
-                    nominal_entries,
-                ));
+            let tk = TripKey::new();
+            commands.push(Command::AddTrip {
+                key: tk,
+                view: TripView {
+                    name: EcoString::from(
+                        trip.name.as_deref().unwrap_or("<??>"),
+                    ),
+                    schedule: TripSchedule::new(entries.into_iter().collect::<EcoVec<_>>()),
+                    class: class_key,
+                },
+            });
         }
     }
+
+    commands
+}
+
+fn normalize_times(times: &mut [&mut TimetableTime]) {
+    let mut prev: Option<TimetableTime> = None;
+    for t in times.iter_mut() {
+        if let Some(prev_t) = prev {
+            while **t < prev_t {
+                **t = TimetableTime((*t).0 + 86400);
+            }
+        }
+        prev = Some(**t);
+    }
+}
+
+struct TimetableEntry {
+    service_mode: ServiceMode,
+    arrival_time: Option<TimetableTime>,
+    departure_time: Option<TimetableTime>,
 }
 
 fn convert_timetable_entry(entry: OuDiaTimetableEntry) -> TimetableEntry {
     TimetableEntry {
         service_mode: entry.service_mode,
-        arrival_time: entry.arrival_time.map(TimetableTime::from),
-        departure_time: entry.departure_time.map(TimetableTime::from),
+        arrival_time: entry.arrival_time.map(|t| TimetableTime(t.seconds())),
+        departure_time: entry.departure_time.map(|t| TimetableTime(t.seconds())),
     }
 }

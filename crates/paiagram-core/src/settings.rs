@@ -1,15 +1,17 @@
 //! User preferences and project settings.
 
+use serde::{Deserialize, Serialize};
+
 use crate::units::time::Duration;
 
-#[derive(Default, Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AntialiasingMode {
     #[default]
     On,
     Off,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Default)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum LevelOfDetailMode {
     #[default]
     Off,
@@ -27,23 +29,10 @@ impl LevelOfDetailMode {
     }
 }
 
-pub struct SettingsPlugin;
-impl Plugin for SettingsPlugin {
-    fn build(&self, app: &mut App) {
-        app.init_resource::<UserPreferences>()
-            .init_resource::<ProjectSettings>()
-            .add_systems(
-                Update,
-                sync_preferences.run_if(resource_changed::<UserPreferences>),
-            );
-    }
-}
-
-#[derive(Reflect, Resource)]
-#[reflect(Resource)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct UserPreferences {
-    pub lang: Language,
-    pub dark_mode: bool, // TODO: this should be handled by egui instead.
+    pub lang: String,
+    pub dark_mode: bool,
     pub developer_mode: bool,
     pub antialiasing_mode: AntialiasingMode,
     pub level_of_detail_mode: LevelOfDetailMode,
@@ -52,7 +41,7 @@ pub struct UserPreferences {
 impl Default for UserPreferences {
     fn default() -> Self {
         Self {
-            lang: Language::EnCA,
+            lang: "en-CA".to_string(),
             dark_mode: false,
             developer_mode: cfg!(debug_assertions),
             antialiasing_mode: AntialiasingMode::default(),
@@ -61,13 +50,7 @@ impl Default for UserPreferences {
     }
 }
 
-/// Only run when the preferences change
-fn sync_preferences(preferences: Res<UserPreferences>) {
-    egui_i18n::set_language(preferences.lang.identifier());
-}
-
-#[derive(Reflect, Resource)]
-#[reflect(Resource)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ProjectSettings {
     pub remarks: String,
     pub authors: Vec<String>,

@@ -1,5 +1,3 @@
-use petgraph::dot;
-
 use crate::WorldSnapshot;
 
 pub struct Graphviz<'a> {

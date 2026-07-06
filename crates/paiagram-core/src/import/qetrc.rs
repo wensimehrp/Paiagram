@@ -1,105 +1,73 @@
-use egui::Color32;
-use moonshine_core::kind::*;
-use serde::Deserialize;
-use serde_json;
+use std::collections::HashMap;
 
-use crate::colors::DisplayedColor;
-use crate::units::distance::Distance;
+use ecow::{EcoString, EcoVec};
+use serde::Deserialize;
+
+use crate::trip::{TEntry, TravelMode, TripSchedule};
 use crate::units::time::TimetableTime;
+use crate::{
+    ClassKey, ClassView, Command, IntervalKey, IntervalView, LonLat, RouteKey, RouteView,
+    StationKey, StationView, StrokeStyle, TripKey, TripView, VehicleKey,
+};
 
 /// The root structure of the qETRC JSON data
 #[derive(Deserialize)]
 struct Root {
-    // qetrc_release: u32,
-    // qetrc_version: String,
-    /// Trains in the original qETRC data. Each "train" corresponds to a
-    /// [`crate::trip::Trip`] in Paiagram.
     #[serde(rename = "trains")]
     services: Vec<Service>,
-    // qETRC has the line field and the lines array, both contains line data.
-    // pyETRC only has the `line` field, while qETRC uses both to support multiple lines.
-    // To keep compatibility with pyETRC, we keep the `line` field as is,
-    // The lines would be chained together later with std::iter::once and chain
-    /// A single [`Line`]
     line: Line,
-    /// Additional [`Line`]s. This field does not exist in pyETRC, only in
-    /// qETRC.
     lines: Option<Vec<Line>>,
-    /// Vehicles in the qETRC data.
-    /// They are named "circuits" in the original qETRC data. A "circuit" refers
-    /// to a train that runs a set of services in a given period, which
-    /// matches the concept of [`Vehicle`] in Paiagram.
     #[serde(rename = "circuits")]
     vehicles: Vec<Vehicle>,
     config: Option<Config>,
 }
 
-/// A line that is used as the foundation of connection in qETRC data
 #[derive(Deserialize)]
 struct Line {
-    /// The name of the line
     name: String,
-    /// [`Station`]s on the line.
     stations: Vec<QStation>,
 }
 
 #[derive(Deserialize)]
 struct QStation {
-    /// Station name
     #[serde(rename = "zhanming")]
     name: String,
-    /// Distance from the start of the line, in kilometers
     #[serde(rename = "licheng")]
     distance_km: f32,
 }
 
 #[derive(Deserialize)]
 struct Service {
-    /// Each service may have multiple service numbers.
-    /// In qETRC's case, the first service number is always the main one, and we
-    /// use that one in Paiagram.
     #[serde(rename = "checi")]
     service_number: Vec<String>,
     #[serde(rename = "type")]
     service_type: String,
-    /// The timetable entries of the service
     timetable: Vec<TimetableEntry>,
 }
 
 #[derive(Deserialize)]
 struct TimetableEntry {
-    /// Whether the train would stop and load/unload passengers or freight at
-    /// the station.
     #[serde(rename = "business")]
     would_stop: Option<bool>,
-    /// Arrival time in "HH:MM" format. "ddsj" in the original qETRC data refers
-    /// to "到达时间".
     #[serde(rename = "ddsj")]
     arrival: String,
-    /// Departure time in "HH:MM" format. "cfsj" in the original qETRC data
-    /// refers to "出发时间".
     #[serde(rename = "cfsj")]
     departure: String,
-    /// Station name
     #[serde(rename = "zhanming")]
     station_name: String,
 }
 
 #[derive(Deserialize)]
 struct Vehicle {
-    /// Vehicle model
     #[serde(rename = "model")]
     make: String,
-    /// Vehicle name
     name: String,
-    /// Services that the vehicle runs.
     #[serde(rename = "order")]
     services: Vec<VehicleServiceEntry>,
 }
 
 #[derive(Deserialize)]
 struct VehicleServiceEntry {
-    /// Service number of the service
     #[serde(rename = "checi")]
     service_number: String,
 }
@@ -110,139 +78,212 @@ struct Config {
     default_colors: HashMap<String, String>,
 }
 
-pub fn load_qetrc(event: On<super::LoadQETRC>, mut commands: Commands, mut graph: ResMut<Graph>) {
-    let root: Root = match serde_json::from_str(&event.content) {
-        Ok(r) => r,
-        // TODO: handle warning better
-        // TODO: add log page and warning banner
-        Err(e) => {
-            warn!("Failed to parse QETRC data: {e:?}");
-            return;
-        }
-    };
-    let lines_iter = std::iter::once(root.line).chain(root.lines.into_iter().flatten());
-    let mut station_map: HashMap<String, Instance<Station>> = HashMap::new();
-    let mut class_map: HashMap<String, Instance<Class>> = HashMap::new();
+/// Parse qETRC/pyETRC JSON timetable data into a list of commands.
+pub fn load_qetrc(content: &str) -> Result<Vec<Command>, String> {
+    let root: Root = serde_json::from_str(content).map_err(|e| format!("Failed to parse QETRC data: {e:?}"))?;
+    let mut commands = Vec::new();
+    let mut station_map: HashMap<String, StationKey> = HashMap::new();
+    let mut class_map: HashMap<String, ClassKey> = HashMap::new();
+    let mut trip_pool: HashMap<String, TripKey> = HashMap::new();
+
+    // Create classes from config colors
     if let Some(config) = root.config {
-        for (class, color) in config.default_colors {
-            // #RRGGBB
-            // 0123456
+        for (class_name, color_hex) in config.default_colors {
             let (r, g, b) = (
-                u8::from_str_radix(&color[1..=2], 16).unwrap(),
-                u8::from_str_radix(&color[3..=4], 16).unwrap(),
-                u8::from_str_radix(&color[5..=6], 16).unwrap(),
+                u8::from_str_radix(&color_hex[1..=2], 16).map_err(|e| format!("Invalid color hex: {e}"))?,
+                u8::from_str_radix(&color_hex[3..=4], 16).map_err(|e| format!("Invalid color hex: {e}"))?,
+                u8::from_str_radix(&color_hex[5..=6], 16).map_err(|e| format!("Invalid color hex: {e}"))?,
             );
-            super::make_class(&class, &mut class_map, &mut commands, || ClassBundle {
-                class: Class::default(),
-                name: Name::new(class.clone()),
-                stroke: DisplayedStroke {
-                    width: 1.0,
-                    color: DisplayedColor::Custom(Color32::from_rgb(r, g, b)),
+            let ck = ClassKey::new();
+            class_map.insert(class_name.clone(), ck);
+            commands.push(Command::AddClass {
+                key: ck,
+                view: ClassView {
+                    name: EcoString::from(class_name),
+                    style: StrokeStyle {
+                        color: egui::Color32::from_rgb(r, g, b),
+                        width: 1,
+                    },
                 },
             });
         }
     }
-    for line in lines_iter {
-        let mut entity_distances: Vec<(Instance<Station>, f32)> =
-            Vec::with_capacity(line.stations.len());
-        for station in line.stations {
-            let e = super::make_station(&station.name, &mut station_map, &mut graph, &mut commands);
-            entity_distances.push((e, station.distance_km));
-        }
-        for w in entity_distances.windows(2) {
-            let [(prev, prev_d), (this, this_d)] = w else {
-                unreachable!()
-            };
-            // TODO: handle one way stations and intervals
-            let length = Distance::from_km((this_d - prev_d).abs());
-            super::add_interval_pair(
-                &mut graph,
-                &mut commands,
-                prev.entity(),
-                this.entity(),
-                length,
-            );
-        }
-        let mut previous_distance_km = entity_distances.first().map_or(0.0, |(_, d)| *d);
-        for (_, distance_km) in entity_distances.iter_mut().skip(1) {
-            let current_distance_km = *distance_km;
-            *distance_km -= previous_distance_km;
-            previous_distance_km = current_distance_km;
-        }
-        // create a new displayed line
-        commands.spawn((
-            Name::new(line.name),
-            Route {
-                stops: entity_distances.iter().map(|(e, _)| e.entity()).collect(),
-                lengths: entity_distances.iter().copied().map(|(_, d)| d).collect(),
-            },
-        ));
+
+    // Helpers as macros to avoid closure borrow issues
+    macro_rules! ensure_station {
+        ($name:expr) => {{
+            let name = $name;
+            if let Some(&sk) = station_map.get(name) {
+                sk
+            } else {
+                let sk = StationKey::new();
+                commands.push(Command::AddStation {
+                    key: sk,
+                    name: EcoString::from(name),
+                    pos: LonLat { lon: 0, lat: 0 },
+                });
+                station_map.insert(name.to_string(), sk);
+                sk
+            }
+        }};
     }
-    let mut trip_pool: HashMap<String, Entity> = HashMap::with_capacity(root.services.len());
+
+    macro_rules! ensure_class {
+        ($name:expr) => {{
+            let name = $name;
+            if let Some(&ck) = class_map.get(name) {
+                ck
+            } else {
+                let ck = ClassKey::new();
+                commands.push(Command::AddClass {
+                    key: ck,
+                    view: ClassView {
+                        name: EcoString::from(name),
+                        style: StrokeStyle {
+                            color: egui::Color32::GRAY,
+                            width: 1,
+                        },
+                    },
+                });
+                class_map.insert(name.to_string(), ck);
+                ck
+            }
+        }};
+    }
+
+    // Process lines -> routes + intervals
+    let lines_iter = std::iter::once(root.line).chain(root.lines.into_iter().flatten());
+    for line in lines_iter {
+        let mut station_keys: Vec<(StationKey, f32)> = Vec::with_capacity(line.stations.len());
+        for s in &line.stations {
+            let sk = ensure_station!(&s.name);
+            station_keys.push((sk, s.distance_km));
+        }
+
+        // Create edges (intervals) between consecutive stations
+        for w in station_keys.windows(2) {
+            let [(prev, prev_d), (curr, curr_d)] = w else { unreachable!() };
+            let dist_m = ((curr_d - prev_d).abs() * 1000.0) as u32;
+            let ik = IntervalKey::new();
+            commands.push(Command::AddInterval {
+                key: ik,
+                view: IntervalView {
+                    nodes: EcoVec::new(),
+                    length: std::num::NonZeroU32::new(dist_m.max(1)),
+                },
+                from: Some(*prev),
+                to: Some(*curr),
+            });
+        }
+
+        // Create route
+        let rk = RouteKey::new();
+        let mut previous_km = station_keys.first().map_or(0.0, |(_, d)| *d);
+        let mut relative_lengths: Vec<f32> = Vec::with_capacity(station_keys.len());
+        relative_lengths.push(0.0);
+        for (_, d) in station_keys.iter().skip(1) {
+            let rel = *d - previous_km;
+            relative_lengths.push(rel);
+            previous_km = *d;
+        }
+        commands.push(Command::AddRoute {
+            key: rk,
+            view: RouteView {
+                name: EcoString::from(line.name),
+                stations: station_keys.iter().map(|(sk, _)| *sk).collect::<EcoVec<_>>(),
+            },
+        });
+    }
+
+    // Process services -> trips
     for service in root.services {
+        let class_key = ensure_class!(&service.service_type);
+
         let mut entries: Vec<_> = service
             .timetable
-            .into_iter()
+            .iter()
             .map(|e| {
-                (
-                    TimetableTime::from_str(&e.arrival).unwrap(),
-                    TimetableTime::from_str(&e.departure).unwrap(),
-                    super::make_station(
-                        &e.station_name,
-                        &mut station_map,
-                        &mut graph,
-                        &mut commands,
-                    ),
-                )
+                let arr = TimetableTime::from_str(&e.arrival).unwrap_or(TimetableTime(0));
+                let dep = TimetableTime::from_str(&e.departure).unwrap_or(TimetableTime(0));
+                let stn = ensure_station!(&e.station_name);
+                (arr, dep, stn)
             })
             .collect();
-        super::normalize_times(entries.iter_mut().flat_map(|(a, d, _)| [a, d]));
-        let trip_class =
-            super::make_class(&service.service_type, &mut class_map, &mut commands, || {
-                ClassBundle {
-                    class: Class::default(),
-                    name: Name::new(service.service_type.clone()),
-                    stroke: DisplayedStroke::from_seed(service.service_type.as_bytes()),
-                }
-            });
-        let nominal_entries: Vec<Entity> = entries
+
+        // Normalize times
+        normalize_times_flat(&mut entries);
+
+        let trip_entries: EcoVec<TEntry> = entries
             .into_iter()
-            .map(|(arr, dep, stop)| {
+            .map(|(arr, dep, stn)| {
                 if dep < arr {
-                    info!(?arr, ?dep, ?service.service_number)
+                    log::info!("Trip {:?} has dep={:?} < arr={:?}", service.service_number.first(), dep, arr);
                 }
-                debug_assert!(dep >= arr);
-                let arr = (dep != arr).then(|| TravelMode::At(arr));
-                let dep = TravelMode::At(dep);
-                commands
-                    .spawn(EntryBundle::new(arr, dep, stop.entity()))
-                    .id()
+                let arr_mode = if dep != arr {
+                    TravelMode::At(arr)
+                } else {
+                    TravelMode::Flexible
+                };
+                TEntry::Pinned {
+                    stn,
+                    trk: 0,
+                    arr: arr_mode,
+                    dep: TravelMode::At(dep),
+                    id: 0,
+                }
             })
             .collect();
-        let trip_entity = commands
-            .spawn_empty()
-            .add_children(&nominal_entries)
-            .insert(TripBundle::new(
-                &service.service_number[0],
-                TripClass(trip_class.entity()),
-                nominal_entries,
-            ))
-            .id();
-        trip_pool.insert(service.service_number[0].clone(), trip_entity);
+
+        let tk = TripKey::new();
+        let trip_name = service.service_number.first().cloned().unwrap_or_else(|| "<unnamed>".to_string());
+        trip_pool.insert(trip_name.clone(), tk);
+
+        commands.push(Command::AddTrip {
+            key: tk,
+            view: TripView {
+                name: EcoString::from(trip_name),
+                schedule: TripSchedule::new(trip_entries),
+                class: Some(class_key),
+            },
+        });
     }
+
+    // Process vehicles
     for vehicle in root.vehicles {
+        let vk = VehicleKey::new();
         let vehicle_name = format!("{} [{}]", vehicle.name, vehicle.make);
-        let mut v = crate::vehicle::Vehicle::default();
-        for number in vehicle.services.iter().map(|it| &it.service_number) {
-            let Some(&e) = trip_pool.get(number) else {
-                warn!(
-                    "Vehicle {} has trip {} but the trip isn't in pool",
-                    vehicle_name, number
-                );
-                continue;
-            };
-            v.trips.push(e);
+        commands.push(Command::AddVehicle {
+            key: vk,
+            name: EcoString::from(&vehicle_name),
+        });
+        let trip_keys: EcoVec<TripKey> = vehicle
+            .services
+            .iter()
+            .filter_map(|s| trip_pool.get(&s.service_number).copied())
+            .collect();
+        if trip_keys.is_empty() {
+            log::warn!("Vehicle {vehicle_name} has no matching trips in pool");
         }
-        commands.spawn((Name::new(vehicle_name), v));
+        commands.push(Command::ChangeVehicleTrips {
+            key: vk,
+            trips: trip_keys,
+        });
+    }
+
+    Ok(commands)
+}
+
+fn normalize_times_flat(entries: &mut [(TimetableTime, TimetableTime, StationKey)]) {
+    let mut prev: Option<TimetableTime> = None;
+    for (arr, dep, _) in entries.iter_mut() {
+        if let Some(p) = prev {
+            while *arr < p {
+                *arr = TimetableTime(arr.0 + 86400);
+            }
+            while *dep < *arr {
+                *dep = TimetableTime(dep.0 + 86400);
+            }
+        }
+        prev = Some(*dep);
     }
 }

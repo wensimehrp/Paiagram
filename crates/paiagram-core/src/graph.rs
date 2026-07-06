@@ -1,4 +1,7 @@
 //! Definitions for the graph.
+
+pub mod arrange;
+
 use super::{StationKey, WorldSnapshot};
 use crate::Distance;
 

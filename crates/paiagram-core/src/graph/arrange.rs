@@ -1,180 +1,10 @@
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
-use bevy::ecs::entity::EntityHashMap;
-use bevy::prelude::*;
-use bevy::tasks::futures_lite::future::poll_once;
-use bevy::tasks::{AsyncComputeTaskPool, Task, block_on};
-use petgraph::graph::NodeIndex;
+use petgraph::graphmap::DiGraphMap;
 use serde::Deserialize;
-use visgraph::layout::force_directed::force_directed_layout;
 
-use super::{Graph, Node, NodeCoor};
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum GraphLayoutKind {
-    ForceDirected,
-    OSM,
-}
-
-#[derive(Resource)]
-pub struct GraphLayoutTask {
-    pub task: Task<Vec<(Entity, NodeCoor)>>,
-    finished: Arc<AtomicUsize>,
-    queued_for_retry: Arc<AtomicUsize>,
-    pub total: usize,
-    pub kind: GraphLayoutKind,
-}
-
-impl GraphLayoutTask {
-    fn new(
-        task: Task<Vec<(Entity, NodeCoor)>>,
-        finished: Arc<AtomicUsize>,
-        queued_for_retry: Arc<AtomicUsize>,
-        total: usize,
-        kind: GraphLayoutKind,
-    ) -> Self {
-        Self {
-            task,
-            finished,
-            queued_for_retry,
-            total,
-            kind,
-        }
-    }
-
-    pub fn progress(&self) -> (usize, usize, usize) {
-        (
-            self.finished.load(Ordering::Relaxed),
-            self.total,
-            self.queued_for_retry.load(Ordering::Relaxed),
-        )
-    }
-}
-
-pub fn apply_graph_layout_task(
-    mut commands: Commands,
-    task: Option<ResMut<GraphLayoutTask>>,
-    mut nodes: Query<&mut Node>,
-) {
-    let Some(mut task) = task else {
-        return;
-    };
-    let Some(found) = block_on(poll_once(&mut task.task)) else {
-        return;
-    };
-    for (entity, coor) in found {
-        let Ok(mut node) = nodes.get_mut(entity) else {
-            continue;
-        };
-        node.coor = coor;
-    }
-    let (finished, total, queued_for_retry) = task.progress();
-    info!(
-        "Graph arrange completed: mode={:?}, mapped={finished}/{total}, retry_queued={queued_for_retry}",
-        task.kind
-    );
-    commands.remove_resource::<GraphLayoutTask>();
-}
-
-pub fn apply_force_directed_layout(
-    In(iterations): In<u32>,
-    graph_map: Res<Graph>,
-    mut nodes: Query<&mut Node>,
-) {
-    let graph: petgraph::Graph<_, _, _, usize> = graph_map.map.clone().into_graph();
-    let binding = &graph;
-    let entity_map: EntityHashMap<NodeIndex<usize>> = graph
-        .node_indices()
-        .map(|idx| (*graph.node_weight(idx).unwrap(), idx))
-        .collect();
-    let layout = force_directed_layout(&binding, iterations, 0.1);
-
-    for node_entity in graph_map.nodes() {
-        let Some(&idx) = entity_map.get(&node_entity) else {
-            continue;
-        };
-        let Ok(mut node) = nodes.get_mut(node_entity) else {
-            continue;
-        };
-        let (nx, ny) = layout(idx);
-        node.coor = NodeCoor::from_xy(nx as f64, ny as f64);
-    }
-}
-
-pub fn auto_arrange_graph(
-    (In(ctx), In(iterations)): (In<egui::Context>, In<u32>),
-    mut commands: Commands,
-    graph_map: Res<Graph>,
-) {
-    let graph: petgraph::Graph<_, _, _, usize> = graph_map.map.clone().into_graph();
-    let total = graph.node_count();
-    let finished = Arc::new(AtomicUsize::new(0));
-    let queued_for_retry = Arc::new(AtomicUsize::new(0));
-    let finished_in_task = Arc::clone(&finished);
-
-    info!(
-        "Starting force-directed arrange: nodes={}, iterations={}",
-        total, iterations
-    );
-
-    let task = AsyncComputeTaskPool::get().spawn(async move {
-        let binding = &graph;
-        let layout = force_directed_layout(&binding, iterations, 0.1);
-        let out: Vec<(Entity, NodeCoor)> = graph
-            .node_indices()
-            .map(|idx| {
-                let (x, y) = layout(idx);
-                (
-                    *graph.node_weight(idx).unwrap(),
-                    NodeCoor::from_xy(x as f64 * 10000.0, y as f64 * 10000.0),
-                )
-            })
-            .collect();
-        finished_in_task.store(total, Ordering::Relaxed);
-        ctx.request_repaint();
-        out
-    });
-
-    commands.insert_resource(GraphLayoutTask::new(
-        task,
-        finished,
-        queued_for_retry,
-        total,
-        GraphLayoutKind::ForceDirected,
-    ));
-}
-
-#[derive(Deserialize)]
-struct OSMResponse {
-    elements: Vec<OSMElement>,
-}
-
-#[derive(Deserialize)]
-struct OSMElement {
-    lat: Option<f64>,
-    lon: Option<f64>,
-    center: Option<OSMCenter>,
-    #[serde(default)]
-    tags: std::collections::HashMap<String, String>,
-}
-
-#[derive(Deserialize)]
-struct OSMCenter {
-    lat: f64,
-    lon: f64,
-}
-
-impl OSMElement {
-    fn coor(&self) -> Option<NodeCoor> {
-        match (self.lon, self.lat, self.center.as_ref()) {
-            (Some(lon), Some(lat), _) => Some(NodeCoor::new(lon, lat)),
-            (_, _, Some(center)) => Some(NodeCoor::new(center.lon, center.lat)),
-            _ => None,
-        }
-    }
-}
+use crate::units::coordinates::Wgs84LonLat;
+use crate::{IntervalKey, LonLat, StationKey};
 
 fn escape_overpass_regex(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
@@ -236,10 +66,43 @@ fn station_kind_weight(tags: &HashMap<String, String>) -> f64 {
         .max(station_weight)
 }
 
-fn best_name_match<'a>(elements: &'a [OSMElement], station_name: &str) -> Option<&'a OSMElement> {
+#[derive(Deserialize)]
+struct OSMResponse {
+    elements: Vec<OSMElement>,
+}
+
+#[derive(Deserialize)]
+struct OSMElement {
+    lat: Option<f64>,
+    lon: Option<f64>,
+    center: Option<OSMCenter>,
+    #[serde(default)]
+    tags: HashMap<String, String>,
+}
+
+#[derive(Deserialize)]
+struct OSMCenter {
+    lat: f64,
+    lon: f64,
+}
+
+impl OSMElement {
+    fn wgs84_coor(&self) -> Option<Wgs84LonLat> {
+        match (self.lon, self.lat, self.center.as_ref()) {
+            (Some(lon), Some(lat), _) => Some(Wgs84LonLat::new(lon, lat)),
+            (_, _, Some(center)) => Some(Wgs84LonLat::new(center.lon, center.lat)),
+            _ => None,
+        }
+    }
+}
+
+fn best_name_match<'a>(
+    elements: &'a [OSMElement],
+    station_name: &str,
+) -> Option<&'a OSMElement> {
     let mut best: Option<(&OSMElement, f64)> = None;
     for element in elements {
-        if element.coor().is_none() {
+        if element.wgs84_coor().is_none() {
             continue;
         }
         let base_weight = station_kind_weight(&element.tags);
@@ -271,38 +134,29 @@ fn best_name_match<'a>(elements: &'a [OSMElement], station_name: &str) -> Option
 }
 
 fn fill_unmatched_via_neighbors(
-    graph: &petgraph::Graph<Entity, Entity, petgraph::Directed, usize>,
-    known_positions: &mut HashMap<Entity, NodeCoor>,
-    all_stations: &[Entity],
+    graph: &DiGraphMap<StationKey, IntervalKey>,
+    known_positions: &mut HashMap<StationKey, LonLat>,
+    all_stations: &[StationKey],
 ) -> usize {
-    let entity_to_index: HashMap<Entity, NodeIndex<usize>> = graph
-        .node_indices()
-        .map(|idx| (*graph.node_weight(idx).unwrap(), idx))
-        .collect();
-
     let mut fallback_count = 0usize;
     for &station in all_stations {
         if known_positions.contains_key(&station) {
             continue;
         }
-        let Some(&start_idx) = entity_to_index.get(&station) else {
-            continue;
-        };
 
         let mut queue = VecDeque::new();
         let mut visited = HashSet::new();
         let mut found_neighbor_positions = Vec::new();
 
-        queue.push_back(start_idx);
-        visited.insert(start_idx);
+        queue.push_back(station);
+        visited.insert(station);
 
         while let Some(current) = queue.pop_front() {
-            for neighbor in graph.neighbors_undirected(current) {
+            for neighbor in graph.neighbors(current) {
                 if !visited.insert(neighbor) {
                     continue;
                 }
-                let neighbor_entity = *graph.node_weight(neighbor).unwrap();
-                if let Some(coor) = known_positions.get(&neighbor_entity) {
+                if let Some(coor) = known_positions.get(&neighbor) {
                     found_neighbor_positions.push(*coor);
                 } else {
                     queue.push_back(neighbor);
@@ -315,62 +169,63 @@ fn fill_unmatched_via_neighbors(
         }
 
         let count = found_neighbor_positions.len() as f64;
-        let avg_lon = found_neighbor_positions.iter().map(|p| p.lon).sum::<f64>() / count;
-        let avg_lat = found_neighbor_positions.iter().map(|p| p.lat).sum::<f64>() / count;
-        known_positions.insert(station, NodeCoor::new(avg_lon, avg_lat));
+        let avg_lon = found_neighbor_positions
+            .iter()
+            .map(|p| p.lon as f64)
+            .sum::<f64>()
+            / count;
+        let avg_lat = found_neighbor_positions
+            .iter()
+            .map(|p| p.lat as f64)
+            .sum::<f64>()
+            / count;
+        known_positions.insert(
+            station,
+            LonLat {
+                lon: avg_lon.round() as i32,
+                lat: avg_lat.round() as i32,
+            },
+        );
         fallback_count += 1;
     }
 
     fallback_count
 }
 
-pub fn arrange_via_osm(
-    (In(ctx), In(area_name)): (In<egui::Context>, In<Option<String>>),
-    mut commands: Commands,
-    graph_map: Res<Graph>,
-    station_names: Query<(Entity, &Name), With<crate::station::Station>>,
-) {
+/// Arrange stations via OSM Overpass API.
+///
+/// Returns a map from station key to its geographic coordinate on success.
+pub async fn arrange_via_osm(
+    stations: Vec<(StationKey, String)>,
+    graph: &DiGraphMap<StationKey, IntervalKey>,
+    area_name: Option<&str>,
+    ctx: Option<&egui::Context>,
+) -> HashMap<StationKey, LonLat> {
     const MAX_RETRY_COUNT: usize = 3;
     const OVERPASS_ENDPOINTS: [&str; 2] = [
         "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
         "https://overpass-api.de/api/interpreter",
     ];
-    let stations: Vec<(Entity, String)> = station_names
-        .iter()
-        .map(|(entity, name)| (entity, name.to_string()))
-        .collect();
     let total = stations.len();
-    let station_entities: Vec<Entity> = stations.iter().map(|(entity, _)| *entity).collect();
-    let graph: petgraph::Graph<_, _, _, usize> = graph_map.map.clone().into_graph();
+    let station_keys: Vec<StationKey> = stations.iter().map(|(key, _)| *key).collect();
 
-    info!(
+    log::info!(
         "Starting OSM arrange: stations={}, area={}",
         total,
-        area_name.as_deref().unwrap_or("<global>")
+        area_name.unwrap_or("<global>")
     );
 
-    let finished = Arc::new(AtomicUsize::new(0));
-    let queued_for_retry = Arc::new(AtomicUsize::new(0));
-    let finished_in_task = Arc::clone(&finished);
-    let queued_in_task = Arc::clone(&queued_for_retry);
-
-    let mut task_queue: VecDeque<(Vec<(Entity, String)>, usize)> = stations
-        .chunks(100)
-        .map(|chunk| (chunk.to_vec(), 0))
-        .collect();
-
-    let (area_def, area_filter) = match area_name.as_ref() {
+    let (area_def, area_filter) = match area_name {
         Some(area) => {
-            // Check if the input is a 2-letter ISO code (e.g., "CN", "US", "FR")
             if area.len() == 2 && area.chars().all(|c| c.is_ascii_alphabetic()) {
                 let country_code = area.to_uppercase();
-                info!(?country_code);
+                log::info!(target: "paiagram", "country_code: {country_code:?}");
                 (
                     format!(r#"area["ISO3166-1"="{country_code}"]->.searchArea;"#),
                     "(area.searchArea)",
                 )
             } else {
-                info!(?area);
+                log::info!(target: "paiagram", "area: {area:?}");
                 (
                     format!(r#"area[name="{}"]->.searchArea;"#, area),
                     "(area.searchArea)",
@@ -380,137 +235,131 @@ pub fn arrange_via_osm(
         None => (String::new(), ""),
     };
 
-    let task = AsyncComputeTaskPool::get().spawn(async move {
-        let mut known_positions: HashMap<Entity, NodeCoor> = HashMap::new();
+    let mut known_positions: HashMap<StationKey, LonLat> = HashMap::new();
+    let mut task_queue: VecDeque<(Vec<(StationKey, String)>, usize)> = stations
+        .chunks(100)
+        .map(|chunk| (chunk.to_vec(), 0))
+        .collect();
 
-        while let Some((chunk, retry_count)) = task_queue.pop_front() {
-            if retry_count >= MAX_RETRY_COUNT {
-                finished_in_task.fetch_add(chunk.len(), Ordering::Relaxed);
+    while let Some((chunk, retry_count)) = task_queue.pop_front() {
+        if retry_count >= MAX_RETRY_COUNT {
+            continue;
+        }
+
+        let names_regex = chunk
+            .iter()
+            .map(|(_, name)| escape_overpass_regex(name))
+            .collect::<Vec<_>>()
+            .join("|");
+
+        let query = format!(
+            r#"[out:json];{area_def}(node[~"^(railway|public_transport|station|subway|light_rail)$"~"^(station|halt|stop|tram_stop|subway_entrance|monorail_station|light_rail_station|narrow_gauge_station|funicular_station|preserved|disused_station|stop_position|platform|stop_area|subway|railway|tram|yes)$"][~"name(:.*)?"~"^({names_regex})$"]{area_filter};);out;"#,
+        );
+
+        let mut osm_data: Option<OSMResponse> = None;
+        for endpoint in OVERPASS_ENDPOINTS {
+            let request = ehttp::Request::post(
+                endpoint,
+                format!("data={}", urlencoding::encode(&query)).into_bytes(),
+            );
+
+            let response = match ehttp::fetch_async(request).await {
+                Ok(resp) => resp,
+                Err(e) => {
+                    log::warn!(
+                        "OSM request failed: endpoint={}, chunk(size={}), retry={}/{} ({:?})",
+                        endpoint,
+                        chunk.len(),
+                        retry_count + 1,
+                        MAX_RETRY_COUNT,
+                        e
+                    );
+                    continue;
+                }
+            };
+
+            if !response.ok {
+                let body_preview = response
+                    .text()
+                    .map(|t| t.chars().take(200).collect::<String>())
+                    .unwrap_or_else(|| "<non-utf8>".to_string());
+                log::warn!(
+                    "OSM bad response: endpoint={}, status={} {}, content_type={:?}, body_preview={:?}",
+                    endpoint,
+                    response.status,
+                    response.status_text,
+                    response.content_type(),
+                    body_preview
+                );
                 continue;
             }
 
-            let names_regex = chunk
-                .iter()
-                .map(|(_, name)| escape_overpass_regex(name))
-                .collect::<Vec<_>>()
-                .join("|");
-
-            let query = format!(
-                r#"[out:json];{area_def}(node[~"^(railway|public_transport|station|subway|light_rail)$"~"^(station|halt|stop|tram_stop|subway_entrance|monorail_station|light_rail_station|narrow_gauge_station|funicular_station|preserved|disused_station|stop_position|platform|stop_area|subway|railway|tram|yes)$"][~"name(:.*)?"~"^({names_regex})$"]{area_filter};);out;"#,
-            );
-
-            let mut osm_data: Option<OSMResponse> = None;
-            for endpoint in OVERPASS_ENDPOINTS {
-                let request = ehttp::Request::post(
-                    endpoint,
-                    format!("data={}", urlencoding::encode(&query)).into_bytes(),
-                );
-
-                let response = match ehttp::fetch_async(request).await {
-                    Ok(resp) => resp,
-                    Err(e) => {
-                        warn!(
-                            "OSM request failed: endpoint={}, chunk(size={}), retry={}/{} ({:?})",
-                            endpoint,
-                            chunk.len(),
-                            retry_count + 1,
-                            MAX_RETRY_COUNT,
-                            e
-                        );
-                        continue;
-                    }
-                };
-
-                if !response.ok {
+            match response.json() {
+                Ok(data) => {
+                    log::info!(
+                        "OSM chunk fetched: endpoint={}, chunk(size={}), retry={}/{}",
+                        endpoint,
+                        chunk.len(),
+                        retry_count,
+                        MAX_RETRY_COUNT
+                    );
+                    osm_data = Some(data);
+                    break;
+                }
+                Err(e) => {
                     let body_preview = response
                         .text()
                         .map(|t| t.chars().take(200).collect::<String>())
                         .unwrap_or_else(|| "<non-utf8>".to_string());
-                    warn!(
-                        "OSM bad response: endpoint={}, status={} {}, content_type={:?}, body_preview={:?}",
+                    log::warn!(
+                        "OSM response parse failed: endpoint={}, chunk(size={}), retry={}/{} ({:?}), content_type={:?}, body_preview={:?}",
                         endpoint,
-                        response.status,
-                        response.status_text,
+                        chunk.len(),
+                        retry_count + 1,
+                        MAX_RETRY_COUNT,
+                        e,
                         response.content_type(),
                         body_preview
                     );
-                    continue;
-                }
-
-                match response.json() {
-                    Ok(data) => {
-                        info!(
-                            "OSM chunk fetched: endpoint={}, chunk(size={}), retry={}/{}",
-                            endpoint,
-                            chunk.len(),
-                            retry_count,
-                            MAX_RETRY_COUNT
-                        );
-                        osm_data = Some(data);
-                        break;
-                    }
-                    Err(e) => {
-                        let body_preview = response
-                            .text()
-                            .map(|t| t.chars().take(200).collect::<String>())
-                            .unwrap_or_else(|| "<non-utf8>".to_string());
-                        warn!(
-                            "OSM response parse failed: endpoint={}, chunk(size={}), retry={}/{} ({:?}), content_type={:?}, body_preview={:?}",
-                            endpoint,
-                            chunk.len(),
-                            retry_count + 1,
-                            MAX_RETRY_COUNT,
-                            e,
-                            response.content_type(),
-                            body_preview
-                        );
-                    }
                 }
             }
-
-            let Some(osm_data) = osm_data else {
-                queued_in_task.fetch_add(chunk.len(), Ordering::Relaxed);
-                task_queue.push_back((chunk, retry_count + 1));
-                continue;
-            };
-
-            let chunk_size = chunk.len();
-            let mut matched_count = 0usize;
-            for (entity, name) in chunk {
-                if let Some(element) = best_name_match(&osm_data.elements, &name) {
-                    if let Some(coor) = element.coor() {
-                        known_positions.insert(entity, coor);
-                        matched_count += 1;
-                    }
-                }
-                finished_in_task.fetch_add(1, Ordering::Relaxed);
-            }
-            info!(
-                "OSM chunk processed: matched={}/{}, progress={}/{}",
-                matched_count,
-                chunk_size,
-                finished_in_task.load(Ordering::Relaxed),
-                total
-            );
-            ctx.request_repaint();
         }
 
-        let fallback_count = fill_unmatched_via_neighbors(&graph, &mut known_positions, &station_entities);
-        info!(
-            "OSM neighbour fallback applied: fallback_mapped={}, total_mapped={}/{}",
-            fallback_count,
+        let Some(osm_data) = osm_data else {
+            task_queue.push_back((chunk, retry_count + 1));
+            continue;
+        };
+
+        let chunk_size = chunk.len();
+        let mut matched_count = 0usize;
+        for (key, name) in chunk {
+            if let Some(element) = best_name_match(&osm_data.elements, &name) {
+                if let Some(wgs84) = element.wgs84_coor() {
+                    known_positions.insert(key, LonLat::from(wgs84));
+                    matched_count += 1;
+                }
+            }
+        }
+        log::info!(
+            "OSM chunk processed: matched={}/{}, progress={}/{}",
+            matched_count,
+            chunk_size,
             known_positions.len(),
             total
         );
+        if let Some(ctx) = ctx {
+            ctx.request_repaint();
+        }
+    }
 
-        known_positions.into_iter().collect()
-    });
+    let fallback_count =
+        fill_unmatched_via_neighbors(graph, &mut known_positions, &station_keys);
+    log::info!(
+        "OSM neighbour fallback applied: fallback_mapped={}, total_mapped={}/{}",
+        fallback_count,
+        known_positions.len(),
+        total
+    );
 
-    commands.insert_resource(GraphLayoutTask::new(
-        task,
-        finished,
-        queued_for_retry,
-        total,
-        GraphLayoutKind::OSM,
-    ));
+    known_positions
 }

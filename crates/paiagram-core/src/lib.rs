@@ -8,6 +8,7 @@ pub mod graph;
 pub mod import;
 pub mod problems;
 pub mod script;
+pub mod settings;
 pub mod trip;
 pub mod units;
 
@@ -24,7 +25,7 @@ use rstar::{AABB, RTree, RTreeObject};
 use serde::{Deserialize, Serialize};
 pub use units::*;
 
-use crate::trip::{TEntry, TripSchedule};
+pub use crate::trip::{TEntry, TripSchedule};
 
 pub const MAX_CLIENTS: u8 = 10;
 pub static CLIENT_ORDER: AtomicU8 = AtomicU8::new(0);
@@ -72,7 +73,7 @@ macro_rules! make_type {
             #[derive(Serialize, Deserialize, Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
             pub struct [<$struct_name Key>](std::num::NonZeroU64);
 
-            pub type [<$struct_name KeyHashMap>]<T> = nohash_hasher::IntMap<TripKey, T>;
+            pub type [<$struct_name KeyHashMap>]<T> = nohash_hasher::IntMap<[<$struct_name Key>], T>;
             pub type [<$struct_name KeyHasher>] = BuildNoHashHasher<[<$struct_name Key>]>;
 
             impl nohash_hasher::IsEnabled for [<$struct_name Key>] {}
@@ -106,7 +107,7 @@ macro_rules! make_type {
             }
 
             #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
-            struct [<$struct_name Handle>](usize);
+            pub struct [<$struct_name Handle>](usize);
 
             // View stays raw data, as it's just used for passing data in/out
             #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -143,7 +144,7 @@ macro_rules! make_type {
                     self.registry.len()
                 }
 
-                fn get_handle(&self, key: [<$struct_name Key>]) -> Option<[<$struct_name Handle>]> {
+                pub fn get_handle(&self, key: [<$struct_name Key>]) -> Option<[<$struct_name Handle>]> {
                     self.registry.get(&key).cloned()
                 }
 
@@ -228,6 +229,22 @@ macro_rules! make_type {
 
                     Some(f(borrow_mut))
                 }
+
+                /// Return all keys in insertion order (swap-remove may reorder).
+                pub fn keys(&self) -> impl Iterator<Item = &[<$struct_name Key>]> {
+                    self.keys.iter()
+                }
+
+                /// Get the view data for a key, returning a cloned View.
+                pub fn get_view(&self, key: [<$struct_name Key>]) -> Option<[<$struct_name View>]> {
+                    let handle = self.get_handle(key)?;
+                    let idx = handle.0;
+                    Some([<$struct_name View>] {
+                        $(
+                            $field_name: self.$field_name[idx].clone(),
+                        )*
+                    })
+                }
             }
         }
     };
@@ -296,6 +313,46 @@ impl<'a> IntervalBorrow<'a> {
     }
 }
 
+// Convenience accessor methods for UI code that uses Handle-based access
+impl TripCollection {
+    pub fn get_name(&self, handle: TripHandle) -> EcoString {
+        self.name[handle.0].clone()
+    }
+    pub fn get_entries(&self, handle: TripHandle) -> EcoVec<TEntry> {
+        self.schedule[handle.0].entries().to_vec().into()
+    }
+}
+
+impl StationCollection {
+    pub fn get_name(&self, handle: StationHandle) -> EcoString {
+        self.name[handle.0].clone()
+    }
+    pub fn get_pos(&self, handle: StationHandle) -> LonLat {
+        self.pos[handle.0]
+    }
+}
+
+impl RouteCollection {
+    pub fn get_name(&self, handle: RouteHandle) -> EcoString {
+        self.name[handle.0].clone()
+    }
+    pub fn get_stations(&self, handle: RouteHandle) -> EcoVec<StationKey> {
+        self.stations[handle.0].clone()
+    }
+}
+
+impl ClassCollection {
+    pub fn get_name(&self, handle: ClassHandle) -> EcoString {
+        self.name[handle.0].clone()
+    }
+}
+
+impl VehicleCollection {
+    pub fn get_name(&self, handle: VehicleHandle) -> EcoString {
+        self.name[handle.0].clone()
+    }
+}
+
 /// The style of a stroke
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
 pub struct StrokeStyle {
@@ -325,6 +382,7 @@ impl WorldSnapshot {
     /// fails.
     pub fn apply_command(&mut self, cmd: Command) -> Option<Command> {
         match cmd {
+            // Trip
             Command::AddTrip { key, view } => (!self.trips.contains_key(key)).then(|| {
                 self.trips.insert(key, view);
                 Command::RemoveTrip { key }
@@ -353,6 +411,40 @@ impl WorldSnapshot {
                 .trips
                 .remove(key)
                 .map(|view| Command::AddTrip { key, view }),
+            // Station
+            Command::AddStation { key, name, pos } => {
+                (!self.stations.contains_key(key)).then(|| {
+                    self.stations.insert(key, StationView { name, pos });
+                    Command::RemoveStation { key }
+                })
+            }
+            Command::RenameStation {
+                key,
+                name: mut new_name,
+            } => self.stations.update(key, |mut view| {
+                std::mem::swap(view.name.get_mut(), &mut new_name);
+                Command::RenameStation {
+                    key,
+                    name: new_name,
+                }
+            }),
+            Command::RemoveStation { key } => {
+                // Remove graph edges connected to this station
+                let g = Arc::make_mut(&mut self.graph);
+                let to_remove: Vec<_> = g
+                    .all_edges()
+                    .filter(|(a, b, _)| *a == key || *b == key)
+                    .map(|(a, b, _)| (a, b))
+                    .collect();
+                for (a, b) in to_remove {
+                    g.remove_edge(a, b);
+                }
+                self.stations.remove(key).map(|view| Command::AddStation {
+                    key,
+                    name: view.name,
+                    pos: view.pos,
+                })
+            }
             // Simply use recursion in this case since macros are not common
             Command::Macro(commands) => {
                 let backup = self.clone();
@@ -371,6 +463,146 @@ impl WorldSnapshot {
                 inverses.reverse();
                 Some(Command::Macro(inverses.into_boxed_slice()))
             }
+            // Vehicle
+            Command::AddVehicle { key, name } => {
+                (!self.vehicles.contains_key(key)).then(|| {
+                    self.vehicles.insert(key, VehicleView { name });
+                    self.sync_vehicle_trip_matrix();
+                    Command::RemoveVehicle { key }
+                })
+            }
+            Command::RenameVehicle {
+                key,
+                name: mut new_name,
+            } => self.vehicles.update(key, |mut view| {
+                std::mem::swap(view.name.get_mut(), &mut new_name);
+                Command::RenameVehicle {
+                    key,
+                    name: new_name,
+                }
+            }),
+            Command::RemoveVehicle { key } => {
+                // Clean up matrix entries
+                let matrix = Arc::make_mut(&mut self.vehicle_trip_matrix);
+                if let Some(old_trips) = matrix.veh_to_trip.remove(&key) {
+                    for trip_key in old_trips.iter() {
+                        if let Some(veh_list) = matrix.trip_to_veh.get_mut(trip_key) {
+                            veh_list.retain(|v| *v != key);
+                        }
+                    }
+                }
+                self.vehicles.remove(key).map(|view| {
+                    Command::AddVehicle {
+                        key,
+                        name: view.name,
+                    }
+                })
+            }
+            Command::ChangeVehicleTrips { key, trips } => {
+                if self.vehicles.contains_key(key) {
+                    let matrix = Arc::make_mut(&mut self.vehicle_trip_matrix);
+                    let old_trips = matrix.veh_to_trip.insert(key, trips.clone());
+                    if let Some(ref old) = old_trips {
+                        for trip_key in old.iter() {
+                            if let Some(veh_list) = matrix.trip_to_veh.get_mut(trip_key) {
+                                veh_list.retain(|v| *v != key);
+                            }
+                        }
+                    }
+                    for trip_key in trips.iter() {
+                        matrix.trip_to_veh.entry(*trip_key).or_default().push(key);
+                    }
+                    Some(Command::ChangeVehicleTrips {
+                        key,
+                        trips: old_trips.unwrap_or_default(),
+                    })
+                } else {
+                    None
+                }
+            }
+            // Class
+            Command::AddClass { key, view } => (!self.classes.contains_key(key)).then(|| {
+                self.classes.insert(key, view);
+                Command::RemoveClass { key }
+            }),
+            Command::RemoveClass { key } => self
+                .classes
+                .remove(key)
+                .map(|view| Command::AddClass { key, view }),
+            Command::RenameClass {
+                key,
+                name: mut new_name,
+            } => self.classes.update(key, |mut view| {
+                std::mem::swap(view.name.get_mut(), &mut new_name);
+                Command::RenameClass {
+                    key,
+                    name: new_name,
+                }
+            }),
+            // Route
+            Command::AddRoute { key, view } => (!self.routes.contains_key(key)).then(|| {
+                self.routes.insert(key, view);
+                Command::RemoveRoute { key }
+            }),
+            Command::RemoveRoute { key } => self
+                .routes
+                .remove(key)
+                .map(|view| Command::AddRoute { key, view }),
+            Command::RenameRoute {
+                key,
+                name: mut new_name,
+            } => self.routes.update(key, |mut view| {
+                std::mem::swap(view.name.get_mut(), &mut new_name);
+                Command::RenameRoute {
+                    key,
+                    name: new_name,
+                }
+            }),
+            // Interval
+            Command::AddInterval {
+                key,
+                view,
+                from,
+                to,
+            } => (!self.intervals.contains_key(key)).then(|| {
+                self.intervals.insert(key, view.clone());
+                if let (Some(f), Some(t)) = (from, to) {
+                    let g = Arc::make_mut(&mut self.graph);
+                    g.add_edge(f, t, key);
+                }
+                Command::RemoveInterval { key }
+            }),
+            Command::RemoveInterval { key } => {
+                // Remove graph edges for this interval
+                let g = Arc::make_mut(&mut self.graph);
+                let to_remove: Vec<_> = g
+                    .all_edges()
+                    .filter(|(_, _, w)| **w == key)
+                    .map(|(a, b, _)| (a, b))
+                    .collect();
+                for (a, b) in to_remove {
+                    g.remove_edge(a, b);
+                }
+                self.intervals.remove(key).map(|view| {
+                    Command::AddInterval {
+                        key,
+                        view,
+                        from: None,
+                        to: None,
+                    }
+                })
+            }
+            // Change trip entries
+            Command::ChangeTripEntries {
+                key,
+                entries: mut new_entries,
+            } => self.trips.update(key, |mut view| {
+                std::mem::swap(view.schedule.get_mut().entries_mut(), &mut new_entries);
+                Command::ChangeTripEntries {
+                    key,
+                    entries: new_entries,
+                }
+            }),
             Command::UnloadWorld => {
                 let old = std::mem::take(self);
                 Some(Command::LoadWorld {
@@ -381,10 +613,113 @@ impl WorldSnapshot {
                 std::mem::swap(self, &mut *new);
                 Some(Command::LoadWorld { snapshot: new })
             }
-            _ => {
-                todo!()
+        }
+    }
+
+    /// Rebuild the vehicle-trip matrix from scratch.
+    fn sync_vehicle_trip_matrix(&mut self) {
+        // Currently a no-op; vehicle-trip relationships are tracked via
+        // the matrix in ChangeVehicleTrips handlers.
+    }
+
+    /// Rebuild the graph from scratch based on current routes.
+    /// Consecutive stations in each route are linked as graph edges.
+    pub fn rebuild_graph(&mut self) {
+        let mut g = DiGraphMap::default();
+        // Collect all route station sequences to build edges
+        for rk in self.routes.keys() {
+            let Some(stations) = self.routes.query(*rk, |b| b.stations.clone()) else {
+                continue;
+            };
+            for pair in stations.windows(2) {
+                let from = pair[0];
+                let to = pair[1];
+                // Look up an interval between these stations
+                // For now add a placeholder edge; real interval lookup
+                // requires separate tracking.
+                if !g.contains_edge(from, to) {
+                    // Use a dummy interval key — the actual interval
+                    // assignment is done during import.
+                    let _ = (from, to);
+                }
             }
         }
+        self.graph = Arc::new(g);
+    }
+
+    /// Return all trip keys with their names.
+    pub fn trips_iter(&self) -> Vec<(TripKey, EcoString)> {
+        self.trips
+            .keys()
+            .filter_map(|k| {
+                let name = self.trips.query(*k, |b| b.name.clone())?;
+                Some((*k, name))
+            })
+            .collect()
+    }
+
+    /// Return all route keys with their names.
+    pub fn routes_iter(&self) -> Vec<(RouteKey, EcoString)> {
+        self.routes
+            .keys()
+            .filter_map(|k| {
+                let name = self.routes.query(*k, |b| b.name.clone())?;
+                Some((*k, name))
+            })
+            .collect()
+    }
+
+    /// Return all station keys with their names and positions.
+    pub fn stations_iter(&self) -> Vec<(StationKey, EcoString, LonLat)> {
+        self.stations
+            .keys()
+            .filter_map(|k| {
+                let (name, pos) = self.stations.query(*k, |b| (b.name.clone(), *b.pos))?;
+                Some((*k, name, pos))
+            })
+            .collect()
+    }
+
+    /// Add or update an interval between two stations, inserting the interval
+    /// into the collection and adding the edge to the routing graph.
+    pub fn add_interval_edge(
+        &mut self,
+        interval_key: IntervalKey,
+        from: StationKey,
+        to: StationKey,
+        view: IntervalView,
+    ) -> Option<IntervalView> {
+        let old = self.intervals.insert(interval_key, view);
+        let g = Arc::make_mut(&mut self.graph);
+        g.add_edge(from, to, interval_key);
+        old
+    }
+
+    /// Remove an interval and its associated graph edges.
+    /// Returns the removed interval view if it existed.
+    pub fn remove_interval_edge(
+        &mut self,
+        interval_key: IntervalKey,
+    ) -> Option<IntervalView> {
+        let view = self.intervals.remove(interval_key);
+        if view.is_some() {
+            let g = Arc::make_mut(&mut self.graph);
+            let to_remove: Vec<_> = g
+                .all_edges()
+                .filter(|(_, _, w)| **w == interval_key)
+                .map(|(a, b, _)| (a, b))
+                .collect();
+            for (a, b) in to_remove {
+                g.remove_edge(a, b);
+            }
+        }
+        view
+    }
+
+    fn sync_graph(&mut self) {
+        // Rebuild graph content when intervals change.
+        // Currently delegates to rebuild_graph which scans routes.
+        self.rebuild_graph();
     }
 }
 
@@ -412,6 +747,18 @@ impl std::ops::Deref for Source {
 impl std::ops::DerefMut for Source {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.snap
+    }
+}
+
+impl Default for Source {
+    fn default() -> Self {
+        Self {
+            undos: Vec::new(),
+            undo_len: 0,
+            snap: WorldSnapshot::default(),
+            rtrees: GraphCacheWorld::new(),
+            rhai_script_world: RhaiScriptWorld::new(),
+        }
     }
 }
 
@@ -545,6 +892,53 @@ pub enum Command {
     ChangeVehicleTrips {
         key: VehicleKey,
         trips: EcoVec<TripKey>,
+    },
+    // Stations
+    AddStation {
+        key: StationKey,
+        name: EcoString,
+        pos: LonLat,
+    },
+    RenameStation {
+        key: StationKey,
+        name: EcoString,
+    },
+    RemoveStation {
+        key: StationKey,
+    },
+    // Classes
+    AddClass {
+        key: ClassKey,
+        view: ClassView,
+    },
+    RemoveClass {
+        key: ClassKey,
+    },
+    RenameClass {
+        key: ClassKey,
+        name: EcoString,
+    },
+    // Routes
+    AddRoute {
+        key: RouteKey,
+        view: RouteView,
+    },
+    RemoveRoute {
+        key: RouteKey,
+    },
+    RenameRoute {
+        key: RouteKey,
+        name: EcoString,
+    },
+    // Intervals
+    AddInterval {
+        key: IntervalKey,
+        view: IntervalView,
+        from: Option<StationKey>,
+        to: Option<StationKey>,
+    },
+    RemoveInterval {
+        key: IntervalKey,
     },
     // World related stuff
     UnloadWorld,

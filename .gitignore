@@ -12,3 +12,4 @@ result
 *.zip
 wasm-out
 dist
+/.pi-subagents

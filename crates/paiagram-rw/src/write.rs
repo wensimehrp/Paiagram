@@ -67,20 +67,13 @@ extern "C" {
 #[cfg(target_arch = "wasm32")]
 pub fn write_file<F>(filename: String, produce_data: F)
 where
-    F: FnOnce(&mut dyn Write) -> std::io::Result<()> + 'static,
+    F: FnOnce(&mut dyn Write) + 'static,
 {
-    IoTaskPool::get()
-        .spawn(async move {
-            let mut data = Vec::new();
-            if let Err(e) = produce_data(&mut data) {
-                bevy::log::error!(?e, "Failed while producing file contents");
-                return;
-            }
-            download_file(&data, &filename);
-            bevy::log::info!(
-                "Filesize: {:?}",
-                data.len().to_formatted_string(&Locale::en)
-            );
-        })
-        .detach();
+    let mut data = Vec::new();
+    if let Err(e) = produce_data(&mut data) {
+        error!("Failed while producing file contents: {e}");
+        return;
+    }
+    download_file(&data, &filename);
+    info!("Filesize: {}", data.len());
 }
