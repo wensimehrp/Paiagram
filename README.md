@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="./paiagram.svg">
+  <img src="./assets/paiagram.svg">
 </div>
 
 # Paiagram

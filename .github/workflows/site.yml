@@ -1,0 +1,43 @@
+name: Build Website
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: wasm
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-deploy-site:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: DeterminateSystems/nix-installer-action@v20
+      - uses: DeterminateSystems/magic-nix-cache-action@v13
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Prepare Pages artifact
+        run: nix develop .#default --command just prep-wasm
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: main
+          path: ./dist
+
+      - name: Deploy
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          personal_token: ${{ secrets.PERSONAL_TOKEN }}
+          external_repository: WenSimEHRP/Paiagram-Archive
+          user_name: github-actions[bot]
+          user_email: 41898282+github-actions[bot]@users.noreply.github.com
+          publish_branch: main
+          publish_dir: ./dist
+          destination_dir: main
