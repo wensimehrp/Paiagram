@@ -1,23 +1,21 @@
-use bevy::prelude::*;
 use egui::{Color32, FontId, Painter, Pos2, Stroke, Visuals};
 use paiagram_core::units::time::{Tick, TimetableTime};
 
 use crate::tabs::Navigatable;
 use crate::tabs::diagram::DiagramTabNavigation;
 
+/// Draw horizontal station lines and labels.
 pub(crate) fn draw_station_lines(
     painter: &mut Painter,
     navi: &DiagramTabNavigation,
-    to_draw: impl Iterator<Item = (Entity, f32)>,
+    to_draw: impl Iterator<Item = (String, f32)>,
     visuals: &Visuals,
-    world: &World,
 ) {
-    // TODO: implement per-station stroke
     let stroke = Stroke {
         width: 0.6,
         color: visuals.window_stroke().color,
     };
-    for (station_entity, raw_height) in to_draw {
+    for (name, raw_height) in to_draw {
         let mut height = navi.logical_y_to_screen_y(raw_height as f64);
         stroke.round_center_to_pixel(painter.pixels_per_point(), &mut height);
         painter.hline(
@@ -26,10 +24,8 @@ pub(crate) fn draw_station_lines(
             stroke,
         );
         let layout = painter.layout_no_wrap(
-            world
-                .get::<Name>(station_entity)
-                .map_or("<Unknown>".to_string(), Name::to_string),
-            egui::FontId::proportional(13.0),
+            name,
+            FontId::proportional(13.0),
             visuals.text_color(),
         );
         let layout_pos = Pos2 {
@@ -69,7 +65,8 @@ pub(crate) fn draw_time_lines(painter: &mut Painter, navi: &DiagramTabNavigation
         .unwrap_or(0);
     let visible = &sizes[first_visible_position..];
     for (i, spacing) in visible.iter().enumerate().rev() {
-        let first = visible_ticks.start.0 - visible_ticks.start.0.rem_euclid(*spacing) - spacing;
+        let first =
+            visible_ticks.start.0 - visible_ticks.start.0.rem_euclid(*spacing) - spacing;
         let mut tick = first;
         let strength = (((*spacing as f64 / ticks_per_screen_unit * 1.5) - MIN_SCREEN_WIDTH)
             / (MAX_SCREEN_WIDTH - MIN_SCREEN_WIDTH))
@@ -77,13 +74,11 @@ pub(crate) fn draw_time_lines(painter: &mut Painter, navi: &DiagramTabNavigation
         if strength < 0.1 {
             continue;
         }
-        // TODO: make stroke depend on current theme
         let mut current_stroke = Stroke {
             width: 0.6,
             color: Color32::GRAY,
         };
         if strength.is_finite() {
-            // strange bug here
             current_stroke.color = current_stroke.color.gamma_multiply(strength as f32);
         }
         current_stroke.width = 0.5;

@@ -4,11 +4,7 @@ use std::path::PathBuf;
 
 use clap::Parser;
 use paiagram::App;
-use paiagram_core::settings::UserPreferences;
-use paiagram_core::trip::class;
-use paiagram_core::{entry, graph, i18n, import, problems, route, settings, station, trip};
-use paiagram_rw::read::ReadPlugin;
-use paiagram_rw::save::SavePlugin;
+use paiagram_core::{import, Source};
 use serde::Deserialize;
 
 struct PaiagramApp(App);
@@ -40,48 +36,31 @@ impl PaiagramApp {
                 data.insert_temp(egui::Id::new("wgpu_msaa_samples"), msaa_samples);
             });
         }
-        let mut app = App::new();
-        app.add_plugins(MinimalPlugins);
-        app.add_plugins(LogPlugin::default());
-        app.add_plugins((
-            paiagram::UiPlugin,
-            entry::EntryPlugin,
-            graph::GraphPlugin,
-            route::RoutePlugin,
-            import::ImportPlugin,
-            trip::TripPlugin,
-            station::StationPlugin,
-            settings::SettingsPlugin,
-            class::ClassPlugin,
-            ReadPlugin,
-            SavePlugin,
-            bevy::asset::AssetPlugin::default(), // TODO: remove
-            bevy::scene::ScenePlugin,
-        ));
-        info!("Initialized Bevy App.");
-        #[cfg(not(target_arch = "wasm32"))]
-        let args = Arguments::parse();
-        #[cfg(target_arch = "wasm32")]
-        let args = parse_web_arguments();
-        if let Err(e) = app.world_mut().run_system_once_with(handle_args, args) {
-            error!("Failed to web arguments: {:?}", e);
+
+        let args = if cfg!(target_arch = "wasm32") {
+            parse_web_arguments()
         } else {
-            info!("Arguments handled successfully.");
-        }
-        Self { bevy_app: app }
+            Arguments::parse()
+        };
+        paiagram::init_i18n(args.locale.as_deref());
+
+        let mut app = App::default();
+        handle_args(&mut app.source, &args);
+
+        Self(app)
     }
 }
 
-#[cfg(target_arch = "wasm32")]
 fn parse_web_arguments() -> Arguments {
+    #[cfg(target_arch = "wasm32")]
     if let Some(search) =
         eframe::web_sys::window().and_then(|window| window.location().search().ok())
     {
-        info!(?search, "Handling web args...");
+        log::info!(?search, "Handling web args...");
         let query = search.strip_prefix('?').unwrap_or(&search);
         match serde_html_form::from_str::<Arguments>(&query) {
             Ok(args) => return args,
-            Err(error) => error!("Failed to parse web args: {error}"),
+            Err(error) => log::error!("Failed to parse web args: {error}"),
         }
     }
 
@@ -92,18 +71,9 @@ impl eframe::App for PaiagramApp {
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
         egui::Rgba::TRANSPARENT.to_array()
     }
+
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
-        self.bevy_app.update();
-        // TODO: remove this
-        self.bevy_app
-            .world_mut()
-            .resource_mut::<UserPreferences>()
-            .dark_mode = match ui.system_theme() {
-            None => false,
-            Some(egui::Theme::Dark) => true,
-            Some(egui::Theme::Light) => false,
-        };
-        paiagram::show_ui(ui, self.bevy_app.world_mut(), frame.info().cpu_usage);
+        self.0.show_ui(ui, frame.info().cpu_usage);
     }
 }
 
@@ -124,17 +94,11 @@ struct Arguments {
     locale: Option<String>,
 }
 
-fn handle_args(
-    args: In<Arguments>,
-    mut commands: Commands,
-    mut languages: ResMut<UserPreferences>,
-) {
+fn handle_args(source: &mut Source, args: &Arguments) {
     for path in args.open.iter().flatten() {
         #[cfg(target_arch = "wasm32")]
         {
-            commands.trigger(import::DownloadFile {
-                url: path.to_string_lossy().into_owned(),
-            });
+            log::warn!("Opening files via CLI is not supported on web yet.");
             continue;
         }
 
@@ -143,28 +107,31 @@ fn handle_args(
             let content = match std::fs::read(path) {
                 Ok(c) => c,
                 Err(e) => {
-                    error!("Could not open {:?}: {:?}", path, e);
+                    log::error!("Could not open {:?}: {:?}", path, e);
                     continue;
                 }
             };
-            if let Err(e) = import::load_and_trigger(path, content, &mut commands) {
-                error!("Could not load {:?}: {:#?}", path, e);
-                continue;
+            match import::load_and_trigger(path, content) {
+                Ok(cmds) => {
+                    for cmd in Vec::from(cmds) {
+                        source.apply_command(cmd);
+                    }
+                }
+                Err(e) => {
+                    log::error!("Could not load {:?}: {:#?}", path, e);
+                    continue;
+                }
             }
         }
     }
     if let Some(locale) = args.locale.as_deref() {
-        if languages.lang.set(locale) {
-            info!("Successfully set language {}", locale);
-        } else {
-            error!("Unknown language identifier: {}", locale);
-        }
+        // TODO: set locale on UserPreferences
+        log::info!("Locale setting requested: {}", locale);
     }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result<()> {
-    i18n::init();
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("Drawer")
@@ -173,10 +140,10 @@ fn main() -> eframe::Result<()> {
         renderer: eframe::Renderer::Wgpu,
         wgpu_options: eframe::egui_wgpu::WgpuConfiguration {
             desired_maximum_frame_latency: Some(2),
-            ..default()
+            ..Default::default()
         },
         multisampling: 4,
-        ..default()
+        ..Default::default()
     };
     eframe::run_native(
         "Paiagram Drawer",
@@ -197,7 +164,6 @@ pub struct WebHandle {
 
 #[cfg(target_arch = "wasm32")]
 fn main() {
-    i18n::init();
     use eframe::wasm_bindgen::JsCast as _;
     use eframe::web_sys;
 

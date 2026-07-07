@@ -1,6 +1,7 @@
 use egui::{RectAlign, Response, Ui, Vec2, vec2};
-use paiagram_core::TripHandle;
+use paiagram_core::trip::{TEntry, TravelMode};
 use paiagram_core::units::time::{Duration, TimetableTime};
+use paiagram_core::TripKey;
 
 use super::{DurationDragValue, TimeDragValue};
 use crate::App;
@@ -8,196 +9,234 @@ use crate::App;
 pub(crate) const POPUP_WIDTH: f32 = 130.0;
 pub(crate) const BUTTON_SIZE: Vec2 = vec2(70.0, 18.0);
 
-pub(crate) fn departure_popup(app: &mut App, response: &Response, alignment: RectAlign) {
+pub(crate) fn departure_popup(
+    app: &mut App,
+    response: &Response,
+    trip_key: TripKey,
+    entry_idx: usize,
+    alignment: RectAlign,
+) {
     egui::Popup::menu(&response)
         .align(alignment)
         .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
-        .show(|ui| departure_popup_inner(ui, entry, commands));
+        .show(|ui| departure_popup_ui(app, ui, trip_key, entry_idx));
 }
 
-pub(crate) fn shift_at_value(
-    t: TimetableTime,
-    trip_handle: TripHandle,
-    ui: &mut Ui,
-    button_size: Vec2,
-    is_arrival: bool,
-) -> Response {
-    let mut new_t = t;
-    let res = ui.add_sized(button_size, TimeDragValue(&mut new_t));
-    // TODO
-    if res.changed() {
-        commands.trigger(AdjustEntryMode {
-            entity: trip_entity,
-            adj: if is_arrival {
-                EntryModeAdjustment::ShiftArrival(new_t - t)
-            } else {
-                EntryModeAdjustment::ShiftDeparture(new_t - t)
-            },
-        });
-    }
-    res
-}
-
-pub(crate) fn shift_for_value(
-    d: Duration,
-    trip_entity: Entity,
-    ui: &mut Ui,
-    commands: &mut Commands,
-    button_size: Vec2,
-    is_arrival: bool,
-) -> Response {
-    let mut new_d = d;
-    let res = ui.add_sized(button_size, DurationDragValue(&mut new_d));
-    if res.changed() {
-        commands.trigger(AdjustEntryMode {
-            entity: trip_entity,
-            adj: if is_arrival {
-                EntryModeAdjustment::ShiftArrival(new_d - d)
-            } else {
-                EntryModeAdjustment::ShiftDeparture(new_d - d)
-            },
-        });
-    }
-    res
-}
-
-pub(crate) fn departure_popup_inner(ui: &mut Ui, entry: &EntryQueryItem, commands: &mut Commands) {
+fn departure_popup_ui(app: &mut App, ui: &mut Ui, trip_key: TripKey, entry_idx: usize) {
     ui.set_width(POPUP_WIDTH);
-    // at
-    let mut adjustment = None;
-    let at_time = entry.estimate.map(|e| e.dep).unwrap_or_default();
-    let enable_at = !matches!(entry.mode.dep, TravelMode::At(_));
-    if enable_at {
-        if ui
-            .add(egui::Button::new("At").right_text(at_time.to_string()))
-            .clicked()
-        {
-            adjustment = Some(EntryModeAdjustment::SetDeparture(TravelMode::At(at_time)));
-        };
-    } else {
-        shift_at_value(at_time, entry.entity, ui, commands, BUTTON_SIZE, false);
-    }
-    // for
-    let for_dur = if let TravelMode::For(d) = entry.mode.dep {
-        Some(d)
-    } else if let Some(e) = entry.estimate {
-        Some(e.dep - e.arr)
-    } else {
-        None
-    }
-    .unwrap_or_default();
-    let enable_for = !matches!(entry.mode.dep, TravelMode::For(_));
-    if enable_for {
-        if ui
-            .add(egui::Button::new("For").right_text(for_dur.to_string()))
-            .clicked()
-        {
-            adjustment = Some(EntryModeAdjustment::SetDeparture(TravelMode::For(for_dur)));
-            ui.close();
-        }
-    } else {
-        shift_for_value(for_dur, entry.entity, ui, commands, BUTTON_SIZE, false);
-    }
-    // flexible
-    if ui
-        .add_enabled(
-            !matches!(entry.mode.dep, TravelMode::Flexible),
-            egui::Button::new("Flexible").right_text("〇"),
-        )
-        .clicked()
-    {
-        adjustment = Some(EntryModeAdjustment::SetDeparture(TravelMode::Flexible));
-    }
-    if let Some(adj) = adjustment {
-        commands.trigger(AdjustEntryMode {
-            entity: entry.entity,
-            adj,
+
+    let entries = get_trip_entries(app, trip_key);
+    let Some(entry) = entries.get(entry_idx).copied() else {
+        return;
+    };
+
+    let TEntry::Pinned { dep: old_dep, .. } = entry else {
+        return;
+    };
+
+    let mut new_mode = old_dep;
+    let changed = departure_mode_ui(ui, &old_dep, &mut new_mode);
+
+    if changed {
+        apply_entry_change(app, trip_key, entry_idx, |e| {
+            if let TEntry::Pinned { dep, .. } = e {
+                *dep = new_mode;
+            }
         });
     }
 }
 
 pub(crate) fn arrival_popup(
+    app: &mut App,
     response: &Response,
-    entry: &EntryQueryItem,
-    parent: &TripQueryItem,
-    entry_q: &Query<(&EntryMode, Option<&EntryEstimate>)>,
+    trip_key: TripKey,
+    entry_idx: usize,
     alignment: RectAlign,
-    commands: &mut Commands,
 ) {
     egui::Popup::menu(&response)
         .align(alignment)
         .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
-        .show(|ui| arrival_popup_inner(ui, entry, parent, entry_q, commands));
+        .show(|ui| arrival_popup_ui(app, ui, trip_key, entry_idx));
 }
 
-pub(crate) fn arrival_popup_inner(
-    ui: &mut Ui,
-    entry: &EntryQueryItem,
-    parent: &TripQueryItem,
-    entry_q: &Query<(&EntryMode, Option<&EntryEstimate>)>,
-    commands: &mut Commands,
-) {
+fn arrival_popup_ui(app: &mut App, ui: &mut Ui, trip_key: TripKey, entry_idx: usize) {
     ui.set_width(POPUP_WIDTH);
-    // at
-    let at_time = entry.estimate.map(|e| e.arr).unwrap_or_default();
-    let mut adjustment = None;
-    let enable_at = !matches!(entry.mode.arr, Some(TravelMode::At(_)));
-    if enable_at {
+
+    let entries = get_trip_entries(app, trip_key);
+    let Some(entry) = entries.get(entry_idx).copied() else {
+        return;
+    };
+
+    let TEntry::Pinned { arr: old_arr, .. } = entry else {
+        return;
+    };
+
+    let mut new_mode = old_arr;
+    let changed = arrival_mode_ui(ui, &old_arr, &mut new_mode);
+
+    if changed {
+        apply_entry_change(app, trip_key, entry_idx, |e| {
+            if let TEntry::Pinned { arr, .. } = e {
+                *arr = new_mode;
+            }
+        });
+    }
+}
+
+fn departure_mode_ui(ui: &mut Ui, current: &TravelMode, new_mode: &mut TravelMode) -> bool {
+    let at_time = extract_time(current);
+    let for_dur = extract_duration(current);
+    let mut changed = false;
+
+    // "At" mode
+    if !matches!(current, TravelMode::At(_)) {
         if ui
             .add(egui::Button::new("At").right_text(at_time.to_string()))
             .clicked()
         {
-            adjustment = Some(EntryModeAdjustment::SetArrival(Some(TravelMode::At(
-                at_time,
-            ))));
-        };
+            *new_mode = TravelMode::At(at_time);
+            changed = true;
+        }
     } else {
-        shift_at_value(at_time, entry.entity, ui, commands, BUTTON_SIZE, true);
+        let mut t = at_time;
+        let res = ui.add_sized(BUTTON_SIZE, TimeDragValue(&mut t));
+        if res.changed() {
+            *new_mode = TravelMode::At(t);
+            changed = true;
+        }
     }
-    // for
-    let for_dur = if let Some(TravelMode::For(d)) = entry.mode.arr {
-        Some(d)
-    } else {
-        entry.travel_duration(parent, entry_q)
-    }
-    .unwrap_or_default();
-    let enable_for = !matches!(entry.mode.arr, Some(TravelMode::For(_)));
-    if enable_for {
+
+    // "For" mode
+    if !matches!(current, TravelMode::For(_)) {
         if ui
             .add(egui::Button::new("For").right_text(for_dur.to_string()))
             .clicked()
         {
-            adjustment = Some(EntryModeAdjustment::SetArrival(Some(TravelMode::For(
-                for_dur,
-            ))));
-        };
+            *new_mode = TravelMode::For(for_dur);
+            changed = true;
+        }
     } else {
-        shift_for_value(for_dur, entry.entity, ui, commands, BUTTON_SIZE, true);
+        let mut d = for_dur;
+        let res = ui.add_sized(BUTTON_SIZE, DurationDragValue(&mut d));
+        if res.changed() {
+            *new_mode = TravelMode::For(d);
+            changed = true;
+        }
     }
+
+    // Flexible mode
+    if !matches!(current, TravelMode::Flexible) {
+        if ui
+            .add_enabled(true, egui::Button::new("Flexible").right_text("〇"))
+            .clicked()
+        {
+            *new_mode = TravelMode::Flexible;
+            changed = true;
+        }
+    }
+
+    changed
+}
+
+/// Build the UI for editing an arrival mode.
+/// Returns true if the mode was changed.
+fn arrival_mode_ui(ui: &mut Ui, current: &TravelMode, new_mode: &mut TravelMode) -> bool {
+    let at_time = extract_time(current);
+    let for_dur = extract_duration(current);
+    let mut changed = false;
+
+    // "At" mode
+    if !matches!(current, TravelMode::At(_)) {
+        if ui
+            .add(egui::Button::new("At").right_text(at_time.to_string()))
+            .clicked()
+        {
+            *new_mode = TravelMode::At(at_time);
+            changed = true;
+        }
+    } else {
+        let mut t = at_time;
+        let res = ui.add_sized(BUTTON_SIZE, TimeDragValue(&mut t));
+        if res.changed() {
+            *new_mode = TravelMode::At(t);
+            changed = true;
+        }
+    }
+
+    // "For" mode
+    if !matches!(current, TravelMode::For(_)) {
+        if ui
+            .add(egui::Button::new("For").right_text(for_dur.to_string()))
+            .clicked()
+        {
+            *new_mode = TravelMode::For(for_dur);
+            changed = true;
+        }
+    } else {
+        let mut d = for_dur;
+        let res = ui.add_sized(BUTTON_SIZE, DurationDragValue(&mut d));
+        if res.changed() {
+            *new_mode = TravelMode::For(d);
+            changed = true;
+        }
+    }
+
     // flexible
-    if ui
-        .add_enabled(
-            !matches!(entry.mode.arr, Some(TravelMode::Flexible)),
-            egui::Button::new("Flexible").right_text("〇"),
-        )
-        .clicked()
-    {
-        adjustment = Some(EntryModeAdjustment::SetArrival(Some(TravelMode::Flexible)));
+    if !matches!(current, TravelMode::Flexible) {
+        if ui
+            .add_enabled(true, egui::Button::new("Flexible").right_text("〇"))
+            .clicked()
+        {
+            *new_mode = TravelMode::Flexible;
+            changed = true;
+        }
     }
-    // non-stop
-    if ui
-        .add_enabled(
-            !matches!(entry.mode.arr, None),
-            egui::Button::new("Non-stop").right_text("↓"),
-        )
-        .clicked()
-    {
-        adjustment = Some(EntryModeAdjustment::SetArrival(None));
+
+    changed
+}
+
+/// Get the time from a TravelMode (defaults to 0 if not applicable).
+fn extract_time(mode: &TravelMode) -> TimetableTime {
+    match mode {
+        TravelMode::At(t) => *t,
+        TravelMode::For(_) => TimetableTime(0),
+        TravelMode::Flexible => TimetableTime(0),
     }
-    if let Some(adj) = adjustment {
-        commands.trigger(AdjustEntryMode {
-            entity: entry.entity,
-            adj,
+}
+
+/// Get the duration from a TravelMode (defaults to 0 if not applicable).
+fn extract_duration(mode: &TravelMode) -> Duration {
+    match mode {
+        TravelMode::For(d) => *d,
+        TravelMode::At(_) => Duration(0),
+        TravelMode::Flexible => Duration(0),
+    }
+}
+
+/// Get the entries for a trip.
+fn get_trip_entries(app: &App, trip_key: TripKey) -> Vec<TEntry> {
+    app.trips
+        .get_handle(trip_key)
+        .map(|handle| app.trips.get_entries(handle).to_vec())
+        .unwrap_or_default()
+}
+
+/// Apply a change to a specific entry in a trip via the command system.
+fn apply_entry_change(
+    app: &mut App,
+    trip_key: TripKey,
+    entry_idx: usize,
+    modify: impl FnOnce(&mut TEntry),
+) {
+    let Some(handle) = app.trips.get_handle(trip_key) else {
+        return;
+    };
+    let mut entries: Vec<TEntry> = app.trips.get_entries(handle).to_vec();
+    if let Some(entry) = entries.get_mut(entry_idx) {
+        modify(entry);
+        app.source.apply_command(paiagram_core::Command::ChangeTripEntries {
+            key: trip_key,
+            entries: entries.into(),
         });
     }
 }

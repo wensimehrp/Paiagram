@@ -187,6 +187,15 @@ pub(super) struct UnderlayPainter {
 }
 
 impl UnderlayPainter {
+    pub fn new() -> Self {
+        Self {
+            visited: HashSet::new(),
+            stack: Vec::new(),
+            tiles: None,
+            tile_type: None,
+            changed: false,
+        }
+    }
     pub fn update_tile_type(&mut self, new_type: Option<UnderlayTileType>) {
         if new_type != self.tile_type {
             self.tile_type = new_type;

@@ -1,13 +1,10 @@
-use egui::{Color32, RectAlign, Ui, Vec2, WidgetText, vec2};
+use egui::{Ui, WidgetText};
 use egui_i18n::tr;
 use paiagram_core::{TEntry, TripKey};
 use serde::{Deserialize, Serialize};
 
 use super::Tab;
 use crate::App;
-use crate::widgets::timetable_popup::{
-    arrival_popup, departure_popup, shift_at_value, shift_for_value,
-};
 
 #[derive(Serialize, Deserialize, Clone, PartialEq)]
 pub(crate) struct TripTab {
@@ -37,10 +34,10 @@ fn show_trip(tab: &mut TripTab, app: &mut App, ui: &mut Ui) {
     };
     let name = app.trips.get_name(handle);
     let schedule = app.trips.get_entries(handle);
-    ui.heading(name);
+    ui.heading(name.as_str());
     ui.label(schedule.len().to_string());
     egui::ScrollArea::vertical().show(ui, |ui| {
-        egui::Grid::new(ui.id().with("lskdfjlsdkjflkdsjf"))
+        egui::Grid::new(ui.id().with("trip_entries"))
             .num_columns(3)
             .striped(true)
             .show(ui, |ui| {
@@ -48,46 +45,97 @@ fn show_trip(tab: &mut TripTab, app: &mut App, ui: &mut Ui) {
                 ui.label(tr!("trip-table-arrival"));
                 ui.label(tr!("trip-table-departure"));
                 ui.end_row();
-                for entry in schedule {
-                    // row_ui(*entry, app, ui);
-                    ui.label("123");
+                for entry in &schedule {
+                    entry_row_ui(*entry, app, ui);
                     ui.end_row();
                 }
             });
     });
 }
 
-// fn row_ui(entry: TEntry, app: &mut App, ui: &mut Ui) {
-//     const BUTTON_SIZE: Vec2 = vec2(70.0, 18.0);
-//     let platform = platform_q.get(it.stop()).unwrap();
-//     let station = platform.station(&station_q);
+fn entry_row_ui(entry: TEntry, app: &mut App, ui: &mut Ui) {
+    match entry {
+        TEntry::Pinned { stn, arr, dep, .. } => {
+            // Station name
+            if let Some(stn_handle) = app.stations.get_handle(stn) {
+                ui.label(app.stations.get_name(stn_handle).as_str());
+            } else {
+                ui.label("???");
+            }
 
-//     // display station label
-//     ui.label(station.name.as_str());
+            // Arrival
+            match arr {
+                paiagram_core::trip::TravelMode::At(t) => {
+                    ui.label(t.to_string());
+                }
+                paiagram_core::trip::TravelMode::For(d) => {
+                    ui.label(d.to_string());
+                }
+                paiagram_core::trip::TravelMode::Flexible => {
+                    ui.label("〇");
+                }
+            }
 
-//     // Remove button background
-//     ui.visuals_mut().widgets.inactive.weak_bg_fill = Color32::TRANSPARENT;
-//     // display arrival button
-//     let arr_res = match it.mode.arr {
-//         None => ui.add_sized(BUTTON_SIZE, egui::Button::new("↓")),
-//         Some(TravelMode::Flexible) => ui.add_sized(BUTTON_SIZE, egui::Button::new("〇")),
-//         Some(TravelMode::At(t)) => shift_at_value(t, it.entity, ui, commands, BUTTON_SIZE, true),
-//         Some(TravelMode::For(d)) => shift_for_value(d, it.entity, ui, commands, BUTTON_SIZE,
-// true),     };
-//     arrival_popup(
-//         &arr_res,
-//         &it,
-//         &trip,
-//         &entry_mode_q,
-//         RectAlign::LEFT,
-//         &mut commands,
-//     );
-
-//     // display departure button
-//     let dep_res = match it.mode.dep {
-//         TravelMode::Flexible => ui.add_sized(BUTTON_SIZE, egui::Button::new("〇")),
-//         TravelMode::At(t) => shift_at_value(t, it.entity, ui, commands, BUTTON_SIZE, false),
-//         TravelMode::For(d) => shift_for_value(d, it.entity, ui, commands, BUTTON_SIZE, false),
-//     };
-//     departure_popup(&dep_res, &it, RectAlign::RIGHT, &mut commands);
-// }
+            // Departure
+            match dep {
+                paiagram_core::trip::TravelMode::At(t) => {
+                    ui.label(t.to_string());
+                }
+                paiagram_core::trip::TravelMode::For(d) => {
+                    ui.label(d.to_string());
+                }
+                paiagram_core::trip::TravelMode::Flexible => {
+                    ui.label("〇");
+                }
+            }
+        }
+        TEntry::PinnedNonStop { stn, pass, .. } => {
+            if let Some(stn_handle) = app.stations.get_handle(stn) {
+                ui.label(app.stations.get_name(stn_handle).as_str());
+            } else {
+                ui.label("???");
+            }
+            match pass {
+                paiagram_core::trip::TravelMode::At(t) => {
+                    ui.label(t.to_string());
+                }
+                paiagram_core::trip::TravelMode::For(d) => {
+                    ui.label(d.to_string());
+                }
+                paiagram_core::trip::TravelMode::Flexible => {
+                    ui.label("〇");
+                }
+            }
+            ui.label("");
+        }
+        TEntry::PinnedExternalNonStop { stn, pass, .. } => {
+            if let Some(stn_handle) = app.stations.get_handle(stn) {
+                ui.label(app.stations.get_name(stn_handle).as_str());
+            } else {
+                ui.label("???");
+            }
+            match pass {
+                paiagram_core::trip::TravelMode::At(t) => {
+                    ui.label(t.to_string());
+                }
+                paiagram_core::trip::TravelMode::For(d) => {
+                    ui.label(d.to_string());
+                }
+                paiagram_core::trip::TravelMode::Flexible => {
+                    ui.label("〇");
+                }
+            }
+            ui.label("");
+        }
+        TEntry::PinnedExternal { .. } => {
+            ui.label(tr!("trip-table-exit"));
+            ui.label("");
+            ui.label("");
+        }
+        TEntry::Derived(_) => {
+            ui.label("derived");
+            ui.label("");
+            ui.label("");
+        }
+    }
+}

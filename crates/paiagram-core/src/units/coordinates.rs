@@ -103,6 +103,13 @@ impl From<XyPos> for Wgs84LonLat {
     }
 }
 
+impl std::fmt::Display for LonLat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let wgs: Wgs84LonLat = (*self).into();
+        std::fmt::Display::fmt(&wgs, f)
+    }
+}
+
 impl std::fmt::Display for Wgs84LonLat {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let lat_dir = if self.lat < 0.0 { 'S' } else { 'N' };

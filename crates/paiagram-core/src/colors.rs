@@ -120,6 +120,11 @@ impl egui::Widget for &mut DisplayedColor {
 impl DisplayedColor {
     /// get the color as [`egui::Color32`]
     pub fn into_color32(self, is_dark: bool) -> Color32 {
+        self.get(is_dark)
+    }
+
+    /// get the color as [`egui::Color32`] (convenience alias)
+    pub fn get(self, is_dark: bool) -> Color32 {
         match self {
             Self::Predefined(p) => p.into_color32(is_dark),
             Self::Custom(c) => c,
@@ -188,6 +193,11 @@ impl PredefinedColor {
     /// Get the color given the current UI theme. Returns the lighter 400 varation if the theme is
     /// dark, and returns the (usually) darker 700 variation if the theme is light.
     pub const fn into_color32(self, is_dark: bool) -> Color32 {
+        self.get(is_dark)
+    }
+
+    /// Get the color given the current UI theme. (convenience alias)
+    pub const fn get(self, is_dark: bool) -> Color32 {
         match (self, is_dark) {
             (Self::Red, true)       => Color32::from_rgb(248, 113, 113),
             (Self::Red, false)      => Color32::from_rgb(190, 18, 60),

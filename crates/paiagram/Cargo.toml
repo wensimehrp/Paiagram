@@ -14,6 +14,7 @@ categories.workspace = true
 [dependencies]
 bytemuck.workspace = true
 chrono.workspace = true
+lz4_flex = "0.12.0"
 clap.workspace = true
 eframe.workspace = true
 egui.workspace = true
@@ -32,6 +33,10 @@ paiagram-core = { path = "../paiagram-core" }
 paiagram-raptor = { path = "../paiagram-raptor" }
 paiagram-rw = { path = "../paiagram-rw" }
 paste.workspace = true
+rfd.workspace = true
+futures-lite.workspace = true
+ron.workspace = true
+cbor4ii = { version = "1.2.2", features = ["serde", "serde1", "use_std"] }
 serde.workspace = true
 smallvec.workspace = true
 vec1.workspace = true

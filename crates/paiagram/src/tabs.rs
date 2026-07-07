@@ -26,10 +26,12 @@ define_tabs!(
     classes;
     diagram;
     graph;
+    priority_graph;
     route_timetable;
     settings;
     start;
     station;
+    text;
     trip;
 );
 

@@ -1,12 +1,2 @@
-//! The settings for the app
-
-pub(crate) enum AntialiasingMode {
-    On,
-    Off,
-}
-
-pub(crate) enum LevelOfDetailMode {
-    X1,
-    X2,
-    X4,
-}
+//! Settings module - re-exports from paiagram-core.
+pub use paiagram_core::settings::{AntialiasingMode, LevelOfDetailMode};

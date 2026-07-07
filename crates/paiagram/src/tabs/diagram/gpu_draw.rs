@@ -4,6 +4,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use paiagram_core::{ClassKey, TripKey};
+
 use bytemuck::{Pod, Zeroable, bytes_of, cast_slice};
 use eframe::egui_wgpu::{self, wgpu};
 use eframe::wgpu::include_wgsl;
@@ -187,7 +189,7 @@ impl Default for GpuTripRendererState {
         Self {
             entries: Vec::new(),
             styles: vec![pack_style(4, [0, 0, 0])],
-            class_style_index: ClassKeyHashMap::new(),
+            class_style_index: ClassKeyHashMap::default(),
             data_tick_min: 0,
             data_tick_max: 0,
             visible_secs_min: TimetableTime::ZERO,
@@ -205,7 +207,7 @@ impl Default for GpuTripRendererState {
 }
 
 pub(crate) fn upload_trip_strokes(
-    strokes: impl Iterator<Item = (Entity, f32, [u8; 3])>,
+    strokes: impl Iterator<Item = (ClassKey, f32, [u8; 3])>,
     state: &mut GpuTripRendererState,
 ) {
     for (class_entity, width, color_rgb) in strokes {
@@ -241,7 +243,7 @@ pub(crate) fn upload_trip_strokes(
 pub(crate) fn rewrite_trip_cache(
     cache: &super::TripCache,
     stations: impl Iterator<Item = f32>,
-    class_lookup: &bevy::prelude::Query<&TripClass>,
+    class_lookup: &dyn Fn(TripKey) -> Option<(ClassKey, f32, [u8; 3])>,
     state: &mut GpuTripRendererState,
 ) {
     const MAX_STATION_COUNT: usize = (u16::MAX as usize) + 1;
@@ -262,11 +264,8 @@ pub(crate) fn rewrite_trip_cache(
     }
 
     for (trip_entity, segments) in cache.iter() {
-        let style_index = class_lookup
-            .get(*trip_entity)
-            .ok()
-            .and_then(|class_entity| state.class_style_index.get(&class_entity.0))
-            .copied()
+        let style_index = class_lookup(*trip_entity)
+            .and_then(|(class_key, _, _)| state.class_style_index.get(&class_key).copied())
             .and_then(|index| u8::try_from(index).ok())
             .unwrap_or(DEFAULT_STYLE_INDEX);
         for (last, rest) in segments.iter().filter_map(|it| it.split_last()) {

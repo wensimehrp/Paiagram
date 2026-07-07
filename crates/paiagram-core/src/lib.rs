@@ -20,6 +20,7 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 use ecow::{EcoString, EcoVec};
 use egui::Color32;
 use nohash_hasher::BuildNoHashHasher;
+use std::collections::hash_map::RandomState;
 use petgraph::graphmap::DiGraphMap;
 use rstar::{AABB, RTree, RTreeObject};
 use serde::{Deserialize, Serialize};
@@ -356,11 +357,11 @@ impl VehicleCollection {
 /// The style of a stroke
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
 pub struct StrokeStyle {
-    color: Color32,
-    width: u8,
+    pub color: Color32,
+    pub width: u8,
 }
 
-pub type WorldGraph = DiGraphMap<StationKey, IntervalKey, StationKeyHasher>;
+pub type WorldGraph = DiGraphMap<StationKey, IntervalKey, RandomState>;
 
 // future idea: scripting via rhai
 /// The world stores much of the content using SoA.
@@ -693,6 +694,11 @@ impl WorldSnapshot {
         let g = Arc::make_mut(&mut self.graph);
         g.add_edge(from, to, interval_key);
         old
+    }
+
+    /// Check if an edge exists between two stations in the routing graph.
+    pub fn has_edge(&self, from: StationKey, to: StationKey) -> bool {
+        self.graph.contains_edge(from, to)
     }
 
     /// Remove an interval and its associated graph edges.
