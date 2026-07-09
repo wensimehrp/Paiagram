@@ -156,6 +156,8 @@ menu-sync-system-clock = Sync with system clock
 menu-maximized-view = Maximized view
 menu-undo = Undo
 menu-redo = Redo
+menu-mods = Mods
+menu-no-mods = (no mods)
 
 # Classes Tab
 tab-classes = Classes
@@ -193,6 +195,8 @@ settings-on = On
 settings-lod-mode = LOD Mode
 settings-lod-2x = 2×
 settings-lod-4x = 4×
+settings-mods = Mods
+settings-no-mods-found = No mods found in the mods directory.
 
 # Station Tab
 tab-station = Station

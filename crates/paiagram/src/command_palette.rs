@@ -4,14 +4,13 @@ use egui::{Context, Key, NumExt, Ui};
 use egui_i18n::tr;
 use ib_matcher::matcher::{IbMatcher, PinyinMatchConfig, RomajiMatchConfig};
 use ib_matcher::pinyin::PinyinNotation;
-use paiagram_core::{RouteKey, StationKey, TripKey};
+use paiagram_core::{RouteKey, StationKey, TripKey, Source};
 
-use super::MainTab;
-use crate::App;
-use crate::tabs::all_tabs::*;
+use super::tabs::all_tabs::*;
+use super::tabs::AppState;
+use crate::MainTab;
 
 // TODO: make this based on settings
-// TODO: make this a resource instead?
 static PINYIN_MATCH_DATA: LazyLock<PinyinMatchConfig> = std::sync::LazyLock::new(|| {
     PinyinMatchConfig::builder(
         PinyinNotation::Ascii
@@ -42,7 +41,8 @@ impl CommandPalette {
     pub(crate) fn toggle(&mut self) {
         self.visible ^= true;
     }
-    pub(crate) fn show(&mut self, ctx: &Context, app: &mut App) {
+
+    pub(crate) fn show(&mut self, ctx: &Context, app: &mut AppState) {
         self.visible &= !ctx.input_mut(|i| i.key_pressed(Key::Escape));
         if !self.visible {
             self.query.clear();
@@ -61,17 +61,15 @@ impl CommandPalette {
             .scroll(false)
             .title_bar(false)
             .show(ctx, |ui| {
-                // We need an extra egui frame here because we set clip_rect_margin to zero.
                 egui::Frame {
                     inner_margin: 2.0.into(),
                     ..Default::default()
                 }
-                .show(ui, |ui| self.window_content_ui(ui, App));
+                .show(ui, |ui| self.window_content_ui(ui, app));
             });
     }
 
-    fn window_content_ui(&mut self, ui: &mut Ui, app: &mut App) {
-        // query a bunch of stuff from the ECS, then throw them in
+    fn window_content_ui(&mut self, ui: &mut Ui, app: &mut AppState) {
         let enter_pressed = ui.input_mut(|i| i.consume_key(Default::default(), Key::Enter));
         let text_response = ui.add(
             egui::TextEdit::singleline(&mut self.query)
@@ -89,18 +87,7 @@ impl CommandPalette {
         let selected = egui::ScrollArea::vertical()
             .auto_shrink([false, true])
             .show(ui, |ui| {
-                world
-                    .run_system_cached_with(
-                        Self::alternatives_ui,
-                        (
-                            self,
-                            ui,
-                            enter_pressed,
-                            scroll_to_selected_alternative,
-                            text_response.changed(),
-                        ),
-                    )
-                    .unwrap()
+                self.alternatives_ui(ui, enter_pressed, scroll_to_selected_alternative, app)
             })
             .inner;
 
@@ -110,17 +97,11 @@ impl CommandPalette {
     }
 
     fn alternatives_ui(
-        (
-            InMut(panel),
-            InMut(ui),
-            In(enter_pressed),
-            In(mut scroll_to_selected_alternative),
-            In(query_changed),
-        ): (InMut<Self>, InMut<Ui>, In<bool>, In<bool>, In<bool>),
-        names: Query<(Entity, &Name, AnyOf<(&Trip, &Station, &Route)>)>,
-        mut matched: Local<Vec<(String, MatchedType)>>,
-        mut matcher: Local<Option<IbMatcher>>,
-        mut commands: Commands,
+        &mut self,
+        ui: &mut Ui,
+        enter_pressed: bool,
+        mut scroll_to_selected_alternative: bool,
+        app: &mut AppState,
     ) -> bool {
         scroll_to_selected_alternative |= ui.input(|i| i.key_pressed(Key::ArrowUp));
         scroll_to_selected_alternative |= ui.input(|i| i.key_pressed(Key::ArrowDown));
@@ -131,19 +112,19 @@ impl CommandPalette {
         let mut selected_and_determined = false;
 
         let build_matcher = || {
-            IbMatcher::builder(panel.query.as_str())
+            IbMatcher::builder(self.query.as_str())
                 .pinyin(PINYIN_MATCH_DATA.shallow_clone())
                 .romaji(ROMAJI_MATCH_DATA.shallow_clone())
                 .analyze(true)
                 .build()
         };
 
-        let matcher = matcher.get_or_insert_with(build_matcher);
+        let mut matcher = build_matcher();
+        let query_changed = self.query.is_empty() || !matcher.is_match("");
 
+        // Build alternatives list
+        let mut matched: Vec<(String, MatchedType)> = Vec::new();
         if query_changed {
-            *matcher = build_matcher();
-            matched.clear();
-            let mut match_string = String::new();
             let panel_info: [(String, fn() -> MainTab); 4] = [
                 (tr!("tab-start"), || MainTab::Start(StartTab::default())),
                 (tr!("tab-settings"), || MainTab::Settings(SettingsTab)),
@@ -153,29 +134,44 @@ impl CommandPalette {
                 (tr!("tab-graph"), || MainTab::Graph(GraphTab::default())),
             ];
             for (name, fn_ptr) in panel_info.into_iter() {
-                match_string.clear();
-                match_string.push_str(&name);
-                match_string.push_str(" (Tab)");
+                let match_string = format!("{} (Tab)", name);
                 if !matcher.is_match(match_string.as_str()) {
                     continue;
                 }
                 matched.push((name.to_string(), MatchedType::Tab(fn_ptr)));
             }
-            for (e, name, matched_type) in names {
-                match_string.clear();
-                let (matched_type, matched_str) = match matched_type {
-                    (Some(_), _, _) => (MatchedType::Trip(e), "trip"),
-                    (_, Some(_), _) => (MatchedType::Station(e), "station"),
-                    (_, _, Some(_)) => (MatchedType::Route(e), "route"),
-                    (None, None, None) => unreachable!(),
-                };
-                match_string.push_str(name.as_str());
-                match_string.push_str(" ");
-                match_string.push_str(matched_str);
+
+            // Collect trips
+            for (tk, name) in app.source.trips_iter() {
+                let match_string = format!("{} trip", name);
                 if !matcher.is_match(match_string.as_str()) {
                     continue;
                 }
-                matched.push((name.to_string(), matched_type));
+                matched.push((name.to_string(), MatchedType::Trip(tk)));
+                if matched.len() >= 100 {
+                    break;
+                }
+            }
+
+            // Collect stations
+            for (sk, name, _) in app.source.stations_iter() {
+                let match_string = format!("{} station", name);
+                if !matcher.is_match(match_string.as_str()) {
+                    continue;
+                }
+                matched.push((name.to_string(), MatchedType::Station(sk)));
+                if matched.len() >= 100 {
+                    break;
+                }
+            }
+
+            // Collect routes
+            for (rk, name) in app.source.routes_iter() {
+                let match_string = format!("{} route", name);
+                if !matcher.is_match(match_string.as_str()) {
+                    continue;
+                }
+                matched.push((name.to_string(), MatchedType::Route(rk)));
                 if matched.len() >= 100 {
                     break;
                 }
@@ -183,7 +179,7 @@ impl CommandPalette {
         }
 
         for (i, (name, matched_type)) in matched.iter().enumerate() {
-            let selected = i == panel.selected_alternative;
+            let selected = i == self.selected_alternative;
             let response = ui.add_sized(
                 egui::vec2(ui.available_width(), item_height),
                 egui::Button::new(name).right_text(match matched_type {
@@ -204,12 +200,23 @@ impl CommandPalette {
                 );
 
                 if enter_pressed {
-                    commands.write_message(OpenOrFocus(match matched_type {
-                        MatchedType::Route(e) => MainTab::Diagram(DiagramTab::new(*e)),
-                        MatchedType::Station(e) => MainTab::Station(StationTab::new(*e)),
-                        MatchedType::Trip(e) => MainTab::Trip(TripTab::new(*e)),
-                        MatchedType::Tab(f) => f(),
-                    }));
+                    match matched_type {
+                        MatchedType::Route(rk) => {
+                            // Open diagram tab for route
+                            // TODO: need a way to get/create diagram tab from route key
+                        }
+                        MatchedType::Station(sk) => {
+                            app.main_ui.push_to_focused_leaf(MainTab::Station(
+                                StationTab::new(*sk),
+                            ));
+                        }
+                        MatchedType::Trip(tk) => {
+                            app.main_ui.push_to_focused_leaf(MainTab::Trip(TripTab::new(*tk)));
+                        }
+                        MatchedType::Tab(f) => {
+                            app.main_ui.push_to_focused_leaf(f());
+                        }
+                    }
                     selected_and_determined |= true;
                 }
 
@@ -224,14 +231,14 @@ impl CommandPalette {
             ui.weak("Nothing matched...");
         }
 
-        panel.selected_alternative = panel.selected_alternative.saturating_sub(
-            ui.input_mut(|i| i.count_and_consume_key(Default::default(), Key::ArrowUp)),
-        );
-        panel.selected_alternative = panel.selected_alternative.saturating_add(
-            ui.input_mut(|i| i.count_and_consume_key(Default::default(), Key::ArrowDown)),
-        );
+        self.selected_alternative = self
+            .selected_alternative
+            .saturating_sub(ui.input_mut(|i| i.count_and_consume_key(Default::default(), Key::ArrowUp)));
+        self.selected_alternative = self
+            .selected_alternative
+            .saturating_add(ui.input_mut(|i| i.count_and_consume_key(Default::default(), Key::ArrowDown)));
 
-        panel.selected_alternative = panel
+        self.selected_alternative = self
             .selected_alternative
             .clamp(0, num_alternatives.saturating_sub(1));
 

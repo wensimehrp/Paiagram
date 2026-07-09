@@ -3,16 +3,20 @@
 use std::path::PathBuf;
 
 use clap::Parser;
-use paiagram::App;
-use paiagram_core::{import, Source};
+use paiagram_core::i18n;
+use paiagram_core::import;
+use paiagram_core::Command;
+use paiagram_core::settings::UserPreferences;
 use serde::Deserialize;
 
-struct PaiagramApp(App);
+use paiagram::PaiagramApp;
 
-impl PaiagramApp {
+struct EframeApp {
+    app: PaiagramApp,
+}
+
+impl EframeApp {
     fn new(cc: &eframe::CreationContext) -> Self {
-        // Modifications to the defualt style
-        // TODO: define own styles
         cc.egui_ctx.global_style_mut(|style| {
             style.spacing.window_margin = egui::Margin::same(2);
             style.interaction.selectable_labels = false;
@@ -28,56 +32,50 @@ impl PaiagramApp {
                     egui::Id::new("wgpu_target_format"),
                     render_state.target_format,
                 );
-                let msaa_samples = if cfg!(target_arch = "wasm32") {
-                    1_u32
-                } else {
-                    4_u32
-                };
+                let msaa_samples = if cfg!(target_arch = "wasm32") { 1_u32 } else { 4_u32 };
                 data.insert_temp(egui::Id::new("wgpu_msaa_samples"), msaa_samples);
             });
         }
+        let mut app = PaiagramApp::new();
 
-        let args = if cfg!(target_arch = "wasm32") {
-            parse_web_arguments()
-        } else {
-            Arguments::parse()
-        };
-        paiagram::init_i18n(args.locale.as_deref());
-
-        let mut app = App::default();
-        handle_args(&mut app.source, &args);
-
-        Self(app)
+        #[cfg(not(target_arch = "wasm32"))]
+        let args = Arguments::parse();
+        #[cfg(target_arch = "wasm32")]
+        let args = parse_web_arguments();
+        handle_args(args, &mut app);
+        Self { app }
     }
 }
 
+#[cfg(target_arch = "wasm32")]
 fn parse_web_arguments() -> Arguments {
-    #[cfg(target_arch = "wasm32")]
     if let Some(search) =
         eframe::web_sys::window().and_then(|window| window.location().search().ok())
     {
-        log::info!(?search, "Handling web args...");
+        log::info!("Handling web args... {search:?}");
         let query = search.strip_prefix('?').unwrap_or(&search);
         match serde_html_form::from_str::<Arguments>(&query) {
             Ok(args) => return args,
             Err(error) => log::error!("Failed to parse web args: {error}"),
         }
     }
-
     Arguments::default()
 }
 
-impl eframe::App for PaiagramApp {
+impl eframe::App for EframeApp {
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
         egui::Rgba::TRANSPARENT.to_array()
     }
-
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
-        self.0.show_ui(ui, frame.info().cpu_usage);
+        self.app.state.preferences.dark_mode = match ui.system_theme() {
+            None => false,
+            Some(egui::Theme::Dark) => true,
+            Some(egui::Theme::Light) => false,
+        };
+        paiagram::show_ui(ui, &mut self.app.state, frame.info().cpu_usage);
     }
 }
 
-/// Arguments for the application.
 #[derive(Parser, Default, Deserialize)]
 #[command(version, about, long_about = None)]
 struct Arguments {
@@ -94,44 +92,35 @@ struct Arguments {
     locale: Option<String>,
 }
 
-fn handle_args(source: &mut Source, args: &Arguments) {
+fn handle_args(args: Arguments, app: &mut PaiagramApp) {
     for path in args.open.iter().flatten() {
-        #[cfg(target_arch = "wasm32")]
-        {
-            log::warn!("Opening files via CLI is not supported on web yet.");
-            continue;
-        }
-
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            let content = match std::fs::read(path) {
-                Ok(c) => c,
-                Err(e) => {
-                    log::error!("Could not open {:?}: {:?}", path, e);
-                    continue;
-                }
-            };
-            match import::load_and_trigger(path, content) {
-                Ok(cmds) => {
-                    for cmd in Vec::from(cmds) {
-                        source.apply_command(cmd);
-                    }
-                }
-                Err(e) => {
-                    log::error!("Could not load {:?}: {:#?}", path, e);
-                    continue;
+        let content = match std::fs::read(path) {
+            Ok(c) => c,
+            Err(e) => {
+                log::error!("Could not open {:?}: {:?}", path, e);
+                continue;
+            }
+        };
+        match import::load_and_trigger(path, content) {
+            Ok(cmds) => {
+                for cmd in cmds.to_vec() {
+                    let _ = app.state.source.apply_command(cmd);
                 }
             }
+            Err(e) => log::error!("Could not load {:?}: {:#?}", path, e),
         }
     }
     if let Some(locale) = args.locale.as_deref() {
-        // TODO: set locale on UserPreferences
-        log::info!("Locale setting requested: {}", locale);
+        if app.state.preferences.lang != locale {
+            app.state.preferences.lang = locale.to_string();
+        }
     }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result<()> {
+    i18n::init();
+
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("Drawer")
@@ -140,15 +129,15 @@ fn main() -> eframe::Result<()> {
         renderer: eframe::Renderer::Wgpu,
         wgpu_options: eframe::egui_wgpu::WgpuConfiguration {
             desired_maximum_frame_latency: Some(2),
-            ..Default::default()
+            ..eframe::egui_wgpu::WgpuConfiguration::default()
         },
         multisampling: 4,
-        ..Default::default()
+        ..eframe::NativeOptions::default()
     };
     eframe::run_native(
         "Paiagram Drawer",
         native_options,
-        Box::new(|cc| Ok(Box::new(PaiagramApp::new(cc)))),
+        Box::new(|cc| Ok(Box::new(EframeApp::new(cc)))),
     )
 }
 
@@ -164,17 +153,16 @@ pub struct WebHandle {
 
 #[cfg(target_arch = "wasm32")]
 fn main() {
+    i18n::init();
     use eframe::wasm_bindgen::JsCast as _;
     use eframe::web_sys;
 
     let web_options = eframe::WebOptions::default();
-
     wasm_bindgen_futures::spawn_local(async {
         let document = web_sys::window()
             .expect("No window")
             .document()
             .expect("No document");
-
         let canvas = if let Some(canvas) = document.get_element_by_id("paiagram_canvas") {
             canvas
                 .dyn_into::<web_sys::HtmlCanvasElement>()
@@ -184,44 +172,32 @@ fn main() {
                 .create_element("canvas")
                 .expect("Failed to create canvas element");
             canvas.set_id("paiagram_canvas");
-
-            canvas
-                .set_attribute("style", "display: block; width: 100%; height: 100%;")
-                .ok();
-
+            canvas.set_attribute("style", "display: block; width: 100%; height: 100%;").ok();
             let body = document.body().expect("Failed to get document body");
             body.set_attribute(
                 "style",
                 "margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;",
-            )
-            .ok();
-
+            ).ok();
             let html = document.document_element().expect("No document element");
             html.set_attribute(
                 "style",
                 "margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;",
-            )
-            .ok();
-
+            ).ok();
             body.append_child(&canvas).expect("Failed to append canvas");
             canvas
                 .dyn_into::<web_sys::HtmlCanvasElement>()
                 .expect("Failed to cast canvas")
         };
-
         let start_result = eframe::WebRunner::new()
             .start(
                 canvas,
                 web_options,
-                Box::new(|cc| Ok(Box::new(PaiagramApp::new(cc)))),
+                Box::new(|cc| Ok(Box::new(EframeApp::new(cc)))),
             )
             .await;
-
         if let Some(loading_text) = document.get_element_by_id("loading_text") {
             match start_result {
-                Ok(_) => {
-                    loading_text.remove();
-                }
+                Ok(_) => { loading_text.remove(); }
                 Err(e) => {
                     loading_text.set_inner_html(
                         "<p> The app has crashed. See the developer console for details. </p>",

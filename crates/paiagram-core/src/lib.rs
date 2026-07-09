@@ -5,6 +5,7 @@
 pub mod colors;
 pub mod export;
 pub mod graph;
+pub mod i18n;
 pub mod import;
 pub mod problems;
 pub mod script;
@@ -374,7 +375,7 @@ pub struct WorldSnapshot {
     pub classes: ClassCollection,
     pub routes: RouteCollection,
     vehicle_trip_matrix: Arc<VehicleTripMatrix>,
-    graph: Arc<WorldGraph>,
+    pub graph: Arc<WorldGraph>,
 }
 
 impl WorldSnapshot {

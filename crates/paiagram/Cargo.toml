@@ -1,6 +1,7 @@
 [package]
 name = "paiagram"
 version.workspace = true
+authors = ["Paiagram Contributors"]
 edition.workspace = true
 description.workspace = true
 documentation.workspace = true
@@ -11,11 +12,19 @@ license.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+[lib]
+doctest = false
+test = false
+
+[[bin]]
+name = "paiagram"
+path = "src/main.rs"
+
 [dependencies]
 bytemuck.workspace = true
 chrono.workspace = true
-lz4_flex = "0.12.0"
 clap.workspace = true
+ecow.workspace = true
 eframe.workspace = true
 egui.workspace = true
 egui_commonmark = "0.23.0"
@@ -24,19 +33,15 @@ egui_table = "0.8.0"
 egui_tiles = "0.15.0"
 either.workspace = true
 eros.workspace = true
-git-version.workspace = true
 ib-matcher.workspace = true
 itertools.workspace = true
 itoa.workspace = true
 log.workspace = true
+cbor4ii = { version = "1.2.2", features = ["serde", "serde1", "use_std"] }
 paiagram-core = { path = "../paiagram-core" }
 paiagram-raptor = { path = "../paiagram-raptor" }
 paiagram-rw = { path = "../paiagram-rw" }
-paste.workspace = true
-rfd.workspace = true
-futures-lite.workspace = true
 ron.workspace = true
-cbor4ii = { version = "1.2.2", features = ["serde", "serde1", "use_std"] }
 serde.workspace = true
 smallvec.workspace = true
 vec1.workspace = true

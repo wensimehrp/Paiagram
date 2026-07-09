@@ -1,7 +1,7 @@
 //! Definitions for how to export the current diagram to another format, e.g., an image.
 
 pub mod graphviz;
-// pub mod oudia;
+pub mod oudia;
 
 /// How to export the current world to another format.
 pub trait ExportObject {

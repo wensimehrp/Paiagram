@@ -1,17 +1,17 @@
 use egui::Ui;
 use egui_i18n::tr;
+use paiagram_core::i18n::Language;
 use paiagram_core::settings::{AntialiasingMode, LevelOfDetailMode};
 use serde::{Deserialize, Serialize};
 
-use super::Tab;
-use crate::App;
+use super::{AppState, Tab};
 
 #[derive(Serialize, Deserialize, Clone, Default, PartialEq)]
 pub(crate) struct SettingsTab;
 
 impl Tab for SettingsTab {
     const NAME: &'static str = "Settings";
-    fn main_display(&mut self, app: &mut App, ui: &mut Ui) {
+    fn main_display(&mut self, app: &mut AppState, ui: &mut Ui) {
         ui.heading(tr!("settings-preferences"));
         egui::Grid::new("settings grid 1").show(ui, |ui| {
             ui.label(tr!("settings-dark-mode"));
@@ -19,18 +19,22 @@ impl Tab for SettingsTab {
             ui.end_row();
 
             ui.label(tr!("settings-language"));
-            let lang_id = app.preferences.lang.clone();
+            ui.label(tr!("settings-language"));
+            let prev_lang = app.preferences.lang.clone();
             egui::ComboBox::new("language", "")
-                .selected_text(&lang_id)
+                .selected_text(app.preferences.lang.clone())
                 .show_ui(ui, |ui| {
-                    let langs = ["en-CA", "zh-Hans", "ja-JP"];
-                    for &l in &langs {
-                        if ui.selectable_label(lang_id == l, l).clicked() {
-                            app.preferences.lang = l.to_string();
-                            egui_i18n::set_language(l);
+                    for lang in Language::ALL {
+                        let id = lang.identifier().to_string();
+                        let mut selected = app.preferences.lang == id;
+                        if ui.selectable_value(&mut selected, true, lang.name()).clicked() {
+                            app.preferences.lang = id.clone();
                         }
                     }
                 });
+            if app.preferences.lang != prev_lang {
+                egui_i18n::set_language(&app.preferences.lang);
+            }
             ui.end_row();
 
             ui.label(tr!("settings-developer-mode"));

@@ -4,6 +4,10 @@ use either::Either;
 use encoding_rs::SHIFT_JIS;
 use paiagram_oudia::{SerializeToOud, Structure, pair, structure};
 use smallvec::{SmallVec, smallvec};
+use ecow::{EcoString, EcoVec};
+
+use crate::{Key, RouteKey, StationKey, TripKey, WorldSnapshot};
+use crate::trip::{TEntry, TravelMode};
 
 fn make_disp_prop() -> Structure<'static> {
     structure!("DispProp" =>
@@ -29,9 +33,18 @@ fn make_disp_prop() -> Structure<'static> {
     )
 }
 
+/// Pre-computed data for exporting a route.
+pub struct RouteExportData {
+    pub route_key: RouteKey,
+    pub route_name: EcoString,
+    pub stations: EcoVec<StationKey>,
+    pub downward_trips: Vec<TripKey>,
+    pub upward_trips: Vec<TripKey>,
+}
+
 pub struct OuDia<'a> {
-    pub route_entity: Entity,
-    pub world: &'a mut World,
+    pub data: &'a RouteExportData,
+    pub world: &'a WorldSnapshot,
 }
 
 impl<'a> super::ExportObject for OuDia<'a> {
@@ -41,24 +54,11 @@ impl<'a> super::ExportObject for OuDia<'a> {
     fn export_to_buffer(&mut self, buffer: &mut Vec<u8>) {
         let mut route_buf = vec![pair!(
             "Rosenmei" =>
-            self.world
-                .get::<Name>(self.route_entity)
-                .unwrap()
-                .to_string()
+            self.data.route_name.to_string()
         )];
-        self.world
-            .run_system_cached_with(make_stations, (self.route_entity, &mut route_buf))
-            .unwrap();
-        let class_map = self
-            .world
-            .run_system_cached_with(make_classes, &mut route_buf)
-            .unwrap();
-        self.world
-            .run_system_cached_with(
-                make_diagram,
-                (&mut route_buf, self.route_entity, &class_map),
-            )
-            .unwrap();
+        make_stations(&self.data.stations, self.world, &mut route_buf);
+        let class_map = make_classes(self.world, &mut route_buf);
+        make_diagram(self.data, self.world, &class_map, &mut route_buf);
         route_buf.extend_from_slice(&[
             pair!("KitenJikoku" => "200"),
             pair!("DiagramDgrYZahyouKyoriDefault" => "60"),
@@ -88,20 +88,19 @@ fn split_first_middle_last<T>(slice: &[T]) -> Option<(&T, &[T], &T)> {
 }
 
 fn make_stations(
-    (In(route_entity), InMut(buf)): (In<Entity>, InMut<Vec<Structure<'static>>>),
-    route_q: Query<&Route>,
-    station_name_q: Query<&Name, With<Station>>,
+    stops: &[StationKey],
+    world: &WorldSnapshot,
+    buf: &mut Vec<Structure<'static>>,
 ) {
-    let route = route_q.get(route_entity).unwrap();
-    let Some((first, rest, last)) = split_first_middle_last(&route.stops) else {
+    let Some((first, rest, last)) = split_first_middle_last(stops) else {
         return;
     };
-    let make_station = |e: Entity, departure_display: &'static str| -> Structure<'static> {
-        let name = station_name_q.get(e).unwrap().to_string();
+    let make_station = |sk: StationKey, departure_display: &'static str| -> Structure<'static> {
+        let name = world.stations.query(sk, |b| b.name.clone()).unwrap_or_default();
         structure!("Eki" =>
-            pair!("Ekimei"           => name),              // 駅名
-            pair!("Ekijikokukeisiki" => departure_display), // 駅時刻形式
-            pair!("Ekikibo"          => "Ekikibo_Ippan"),   // 駅規模
+            pair!("Ekimei"           => name.to_string()),
+            pair!("Ekijikokukeisiki" => departure_display),
+            pair!("Ekikibo"          => "Ekikibo_Ippan"),
         )
     };
 
@@ -109,7 +108,7 @@ fn make_stations(
     let mid_iter = rest
         .iter()
         .copied()
-        .map(|e| make_station(e, "Jikokukeisiki_Hatsu"));
+        .map(|sk| make_station(sk, "Jikokukeisiki_Hatsu"));
     let last_iter = std::iter::once(make_station(*last, "Jikokukeisiki_KudariChaku"));
     buf.extend(first_iter);
     buf.extend(mid_iter);
@@ -117,180 +116,175 @@ fn make_stations(
 }
 
 fn make_classes(
-    InMut(buf): InMut<Vec<Structure<'static>>>,
-    class_q: Query<ClassQuery>,
-) -> EntityHashMap<usize> {
-    let mut class_map = EntityHashMap::<usize>::new();
-    let iter = class_q.iter().map(|it| {
-        // ARGB
-        let len = class_map.len();
-        class_map.insert(it.entity, len);
-        let color = it.stroke.color.get(true);
-        let color_string = format!(
-            "00{:02X}{:02X}{:02X}",
-            // color.a(),
-            color.b(),
-            color.g(),
-            color.r(),
-        );
-        structure!("Ressyasyubetsu" =>
-            pair!("Syubetsumei"         => it.name.to_string()),
-            pair!("Ryakusyou"           => it.name.to_string()),
-            pair!("JikokuhyouMojiColor" => color_string.clone()),
-            pair!("JikokuhyouFontIndex" => "0"),
-            pair!("DiagramSenColor"     => color_string),
-            pair!("DiagramSenStyle"     => "SenStyle_Jissen"),
-            pair!("StopMarkDrawType"    => "EStopMarkDrawType_DrawOnStop"),
-        )
-    });
-    buf.extend(iter);
+    world: &WorldSnapshot,
+    buf: &mut Vec<Structure<'static>>,
+) -> std::collections::HashMap<usize, usize> {
+    let mut class_map: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
+    for (i, ck) in world.classes.keys().enumerate() {
+        class_map.insert(ck.to_bits() as usize, i);
+        let view = world.classes.get_view(*ck);
+        if let Some(view) = view {
+            let (r, g, b, _) = (view.style.color.r(), view.style.color.g(), view.style.color.b(), view.style.color.a());
+            let color_string = format!(
+                "00{:02X}{:02X}{:02X}",
+                b, g, r,
+            );
+            buf.push(structure!("Ressyasyubetsu" =>
+                pair!("Syubetsumei"         => view.name.to_string()),
+                pair!("Ryakusyou"           => view.name.to_string()),
+                pair!("JikokuhyouMojiColor" => color_string.clone()),
+                pair!("JikokuhyouFontIndex" => "0"),
+                pair!("DiagramSenColor"     => color_string),
+                pair!("DiagramSenStyle"     => "SenStyle_Jissen"),
+                pair!("StopMarkDrawType"    => "EStopMarkDrawType_DrawOnStop"),
+            ));
+        }
+    }
     class_map
 }
 
 fn make_diagram(
-    (InMut(buf), In(route_entity), InRef(class_map)): (
-        InMut<Vec<Structure<'static>>>,
-        In<Entity>,
-        InRef<EntityHashMap<usize>>,
-    ),
-    route_q: Query<(&Route, &RouteByDirectionTrips)>,
-    entry_q: Query<EntryQuery>,
-    trip_q: Query<TripQuery>,
-    parent_station_or_station: Query<ParentStationOrStation>,
+    data: &RouteExportData,
+    world: &WorldSnapshot,
+    class_map: &std::collections::HashMap<usize, usize>,
+    buf: &mut Vec<Structure<'static>>,
 ) {
-    // downward: Nobori, Upward: Kudari
-    let (route, RouteByDirectionTrips { downward, upward }) = route_q.get(route_entity).unwrap();
     let mut dia_buf = Vec::new();
     dia_buf.push(pair!("DiaName" => "Paiagram Exported"));
     dia_buf.push(make_trainset_by_direction(
         true,
-        trip_q.iter_many(downward.as_slice()),
-        route.stops.as_slice(),
+        &data.downward_trips,
+        &data.stations,
         class_map,
-        &entry_q,
-        &parent_station_or_station,
+        world,
     ));
     dia_buf.push(make_trainset_by_direction(
         false,
-        trip_q.iter_many(upward.as_slice()),
-        route.stops.as_slice(),
+        &data.upward_trips,
+        &data.stations,
         class_map,
-        &entry_q,
-        &parent_station_or_station,
+        world,
     ));
     buf.push(structure!("Dia" => ..dia_buf));
 }
 
-fn make_trainset_by_direction<'a>(
+fn make_trainset_by_direction(
     downwards: bool,
-    trips_iter: impl Iterator<Item = TripQueryItem<'a, 'a>>,
-    stops: &[Entity],
-    class_map: &EntityHashMap<usize>,
-    entry_q: &Query<EntryQuery>,
-    parent_station_or_station: &Query<ParentStationOrStation>,
+    trip_keys: &[TripKey],
+    stops: &[StationKey],
+    class_map: &std::collections::HashMap<usize, usize>,
+    world: &WorldSnapshot,
 ) -> Structure<'static> {
-    let format_time = |it: EntryQueryItem| -> String {
-        match (it.mode.arr, it.mode.dep) {
-            // arr at
-            (Some(TravelMode::At(at)), TravelMode::At(dt)) => {
-                let (ah, am, ..) = at.to_hmsd();
-                let (dh, dm, ..) = dt.to_hmsd();
-                format!("{};{}{:02}/{}{:02}", STOP, ah, am, dh, dm)
+    let format_entry = |entry: &TEntry, stn: StationKey| -> String {
+        match entry {
+            TEntry::Derived(s) if *s == stn => STOP.to_string(),
+            TEntry::Pinned { stn: s, arr, dep, .. } if *s == stn => {
+                format_pinned_time(*arr, *dep)
             }
-            (Some(TravelMode::At(at)), TravelMode::For(d)) => {
-                let (ah, am, ..) = at.to_hmsd();
-                let (dh, dm, ..) = (at + d).to_hmsd();
-                format!("{};{}{:02}/{}{:02}", STOP, ah, am, dh, dm)
+            TEntry::PinnedNonStop { stn: s, pass, .. } if *s == stn => {
+                format_pass_time(*pass)
             }
-            (Some(TravelMode::At(at)), TravelMode::Flexible) => {
-                let (ah, am, ..) = at.to_hmsd();
-                format!("{};{}{:02}/", STOP, ah, am)
+            TEntry::PinnedExternalNonStop { stn: s, pass, .. } if *s == stn => {
+                format_pass_time(*pass)
             }
-            // arr for
-            (Some(TravelMode::For(_)), TravelMode::At(dt)) => {
-                let (dh, dm, ..) = dt.to_hmsd();
-                let Some(e) = it.estimate else {
-                    return format!("{};{}{:02}", STOP, dh, dm);
-                };
-                let (ah, am, ..) = e.arr.to_hmsd();
-                format!("{};{}{:02}/{}{:02}", STOP, ah, am, dh, dm)
-            }
-            (Some(TravelMode::For(_)), TravelMode::For(_)) => {
-                let Some(e) = it.estimate else {
-                    return STOP.to_string();
-                };
-                let (ah, am, ..) = e.arr.to_hmsd();
-                let (dh, dm, ..) = e.dep.to_hmsd();
-                format!("{};{}{:02}/{}{:02}", STOP, ah, am, dh, dm)
-            }
-            (Some(TravelMode::For(_)), TravelMode::Flexible) => {
-                let Some(e) = it.estimate else {
-                    return STOP.to_string();
-                };
-                let (ah, am, ..) = e.arr.to_hmsd();
-                format!("{};{}{:02}/", STOP, ah, am)
-            }
-            // arr flexible
-            (Some(TravelMode::Flexible), TravelMode::At(t)) => {
-                let (dh, dm, ..) = t.to_hmsd();
-                format!("{};{}{:02}", STOP, dh, dm)
-            }
-            (Some(TravelMode::Flexible), TravelMode::For(_)) => {
-                let Some(e) = it.estimate else {
-                    return STOP.to_string();
-                };
-                let (ah, am, ..) = e.arr.to_hmsd();
-                let (dh, dm, ..) = e.dep.to_hmsd();
-                format!("{};{}{:02}/{}{:02}", STOP, ah, am, dh, dm)
-            }
-            (Some(TravelMode::Flexible), TravelMode::Flexible) => STOP.to_string(),
-            // arr none
-            (None, TravelMode::At(t)) => {
-                let (h, m, ..) = t.to_hmsd();
-                format!("{};{}{:02}", BYPASS, h, m)
-            }
-            // TODO: switch to if let guard
-            (None, TravelMode::For(_)) => {
-                let Some(e) = it.estimate else {
-                    return BYPASS.to_string();
-                };
-                let (h, m, ..) = e.dep.to_hmsd();
-                format!("{};{}{:02}", BYPASS, h, m)
-            }
-            (None, TravelMode::Flexible) => BYPASS.to_string(),
+            _ => BYPASS.to_string(),
         }
     };
+
     let magic_word = if downwards { "Kudari" } else { "Nobori" };
     let mut trips = Vec::new();
     const STOP: &str = "1";
     const BYPASS: &str = "2";
     const NO_OPERATION: &str = "";
-    for it in trips_iter {
-        let a = class_map.get(&it.class.entity());
+
+    for tk in trip_keys {
+        let view = world.trips.get_view(*tk);
+        if view.is_none() { continue; }
+        let view = view.unwrap();
+
+        // Find class index via class_map
+        let class_idx = view.class
+            .map(|ck| class_map.get(&(ck.to_bits() as usize)).copied().unwrap_or(0))
+            .unwrap_or(0);
+
         let mut v: SmallVec<[Cow<'static, str>; 1]> = smallvec![NO_OPERATION.into(); stops.len()];
-        let schedule_it = entry_q.iter_many(it.schedule.iter());
+        let entries = view.schedule.entries();
         let mut next_abs_idx = 0;
-        let mut stations = if downwards {
-            Either::Left(stops.iter())
+        let mut stations_iter: Box<dyn Iterator<Item = &StationKey>> = if downwards {
+            Box::new(stops.iter())
         } else {
-            Either::Right(stops.iter().rev())
+            Box::new(stops.iter().rev())
         };
-        for it in schedule_it {
-            let station_entity = parent_station_or_station.get(it.stop()).unwrap().parent();
-            // we reuse the same iterator here
-            // the pointer would advance every time we use the .position() method
-            if let Some(found_pos) = stations.position(|it| *it == station_entity) {
-                let abs_idx = next_abs_idx + found_pos;
-                v[abs_idx] = format_time(it).into();
-                next_abs_idx = abs_idx + 1;
+
+        for entry in entries {
+            let station_key = match entry {
+                TEntry::Derived(s) => *s,
+                TEntry::Pinned { stn: s, .. } => *s,
+                TEntry::PinnedNonStop { stn: s, .. } => *s,
+                TEntry::PinnedExternalNonStop { stn: s, .. } => *s,
+                TEntry::PinnedExternal { .. } => continue,
+            };
+
+            // Advance the stations iterator
+            while let Some(stn) = stations_iter.next() {
+                if *stn == station_key {
+                    let abs_idx = next_abs_idx;
+                    v[abs_idx] = format_entry(entry, station_key).into();
+                    next_abs_idx = abs_idx + 1;
+                    break;
+                } else {
+                    // This station was skipped
+                    let abs_idx = next_abs_idx;
+                    v[abs_idx] = NO_OPERATION.into();
+                    next_abs_idx = abs_idx + 1;
+                }
             }
         }
+
         trips.push(structure!("Ressya" =>
             pair!("Houkou"       => magic_word),
-            pair!("Syubetsu"     => a.unwrap().to_string()),
-            pair!("Ressyabangou" => it.name.to_string()),
+            pair!("Syubetsu"     => class_idx.to_string()),
+            pair!("Ressyabangou" => view.name.to_string()),
             pair!("EkiJikoku"    => ..v)
         ));
     }
     structure!(magic_word => ..trips)
 }
+
+fn format_pinned_time(arr: TravelMode, dep: TravelMode) -> String {
+    match (arr, dep) {
+        (TravelMode::At(at), TravelMode::At(dt)) => {
+            let (ah, am, ..) = at.to_hmsd();
+            let (dh, dm, ..) = dt.to_hmsd();
+            format!("{};{}{:02}/{}{:02}", STOP, ah, am, dh, dm)
+        }
+        (TravelMode::At(at), TravelMode::For(d)) => {
+            let (ah, am, ..) = at.to_hmsd();
+            let (dh, dm, ..) = (at + d).to_hmsd();
+            format!("{};{}{:02}/{}{:02}", STOP, ah, am, dh, dm)
+        }
+        (TravelMode::At(at), TravelMode::Flexible) => {
+            let (ah, am, ..) = at.to_hmsd();
+            format!("{};{}{:02}/", STOP, ah, am)
+        }
+        (TravelMode::Flexible, TravelMode::At(dt)) => {
+            let (dh, dm, ..) = dt.to_hmsd();
+            format!("{};{}{:02}", STOP, dh, dm)
+        }
+        (TravelMode::Flexible, TravelMode::Flexible) => STOP.to_string(),
+        _ => BYPASS.to_string(),
+    }
+}
+
+fn format_pass_time(pass: TravelMode) -> String {
+    match pass {
+        TravelMode::At(t) => {
+            let (h, m, ..) = t.to_hmsd();
+            format!("{};{}{:02}", BYPASS, h, m)
+        }
+        _ => BYPASS.to_string(),
+    }
+}
+
+const STOP: &str = "1";
+const BYPASS: &str = "2";

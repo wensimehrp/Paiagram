@@ -17,7 +17,7 @@ pub(crate) fn triangle_button_shape(
     stroke: Stroke,
     fill_color: Color32,
 ) {
-    let dx = base / 4.0 * 3.0_f32.sqrt();
+    let dx = base / 4.0 * f32::sqrt(3.0);
     let a = Pos2 {
         x: center.x - dx,
         y: center.y - base / 2.0,
@@ -61,7 +61,7 @@ pub(crate) fn dash_button_shape(
     fill_color: Color32,
 ) {
     let a = Pos2 {
-        x: center.x - base / 2.0 - base / 2.0 / 3.0_f32.sqrt(),
+        x: center.x - base / 2.0 - base / 2.0 / f32::sqrt(3.0),
         y: center.y - base / 2.0,
     };
     let b = Pos2 {

@@ -1,69 +1,47 @@
-//! This tab displays a message
-//!
-//! The message could be the project's remarks or a customized message.
-//! Additionally, this tab supports displaying commonmark strings.
+use std::sync::Arc;
 
-use std::sync::LazyLock;
-
-use egui::mutex::Mutex;
-use egui::{Frame, ScrollArea, TextEdit, WidgetText};
-use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
-use egui_i18n::tr;
+use egui::Ui;
 use serde::{Deserialize, Serialize};
 
-use super::Tab;
-use crate::App;
+use super::{AppState, Tab};
 
-#[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Default, PartialEq)]
+pub(crate) struct TextMessage(pub(crate) String);
+
+#[derive(Serialize, Deserialize, Clone, PartialEq)]
 pub(crate) struct TextTab {
-    #[serde(skip, default)]
-    editing: bool,
+    message: Option<Arc<TextMessage>>,
+    // If message is None, show project remarks
+}
+
+impl TextTab {
+    pub(crate) fn new(message_id: Option<usize>) -> Self {
+        // message_id was Entity in old code; now we just pass a placeholder
+        Self { message: None }
+    }
 }
 
 impl Default for TextTab {
     fn default() -> Self {
-        Self { editing: false }
+        Self { message: None }
     }
 }
-
-impl PartialEq for TextTab {
-    fn eq(&self, other: &Self) -> bool {
-        self.editing == other.editing
-    }
-}
-
-static CACHE: LazyLock<Mutex<CommonMarkCache>> =
-    LazyLock::new(|| Mutex::new(CommonMarkCache::default()));
 
 impl Tab for TextTab {
-    const NAME: &'static str = "Text message";
-    fn title(&self) -> WidgetText {
-        tr!("tab-text").into()
+    const NAME: &'static str = "Text";
+    fn title(&self) -> egui::WidgetText {
+        "Text".into()
     }
-    fn edit_display(&mut self, _app: &mut App, ui: &mut egui::Ui) {
-        ui.label(tr!("text-markdown-hint"));
-        self.editing ^= ui
-            .button(if self.editing { "Finish edit" } else { "Edit" })
-            .clicked();
-    }
-    fn main_display(&mut self, app: &mut App, ui: &mut egui::Ui) {
-        let mut show = |buf: &mut String| {
-            egui::Frame::new().inner_margin(6.0).show(ui, |ui| {
-                ScrollArea::vertical().show(ui, |ui| {
-                    if self.editing {
-                        ui.add_sized(
-                            ui.available_size(),
-                            TextEdit::multiline(buf)
-                                .hint_text("Enter your message...")
-                                .frame(Frame::new()),
-                        );
-                    } else {
-                        let mut cache = CACHE.lock();
-                        CommonMarkViewer::new().show(ui, &mut cache, buf);
-                    }
-                })
-            });
-        };
-        show(&mut app.project_settings.remarks);
+    fn main_display(&mut self, app: &mut AppState, ui: &mut Ui) {
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            if self.message.is_some() {
+                // TODO: show the message
+                ui.label("Message placeholder");
+            } else {
+                // Show project remarks
+                ui.heading("Project Remarks");
+                ui.text_edit_multiline(&mut app.project_settings.remarks);
+            }
+        });
     }
 }

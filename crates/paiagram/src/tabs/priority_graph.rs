@@ -1,37 +1,42 @@
-use egui::{Align2, Margin, Painter, Pos2, Rect, Sense, Stroke, Vec2, Visuals, WidgetText, pos2};
+use core::f32;
+
+use egui::epaint::TextShape;
+use egui::{Align2, Margin, Painter, Pos2, Rect, Sense, Stroke, Vec2, WidgetText, pos2};
 use egui_i18n::tr;
 use paiagram_core::colors::DisplayedColor;
+use paiagram_core::trip::{TEntry, TravelMode};
 use paiagram_core::units::time::TimetableTime;
+use paiagram_core::{RouteKey, TripKey};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
-use crate::App;
-use super::Navigatable;
+use super::{AppState, Navigatable, Tab};
 
 #[derive(Serialize, Deserialize, Clone)]
 pub(crate) struct PriorityGraphTab {
-    route: paiagram_core::RouteKey,
+    route_key: RouteKey,
     navi: PriorityTabNavigation,
-    #[serde(skip, default)]
-    downward_priorities: Option<Vec<Vec<(paiagram_core::TripKey, TimetableTime)>>>,
-}
-
-impl PriorityGraphTab {
-    pub(crate) fn new(route: paiagram_core::RouteKey) -> Self {
-        Self {
-            route,
-            navi: PriorityTabNavigation::default(),
-            downward_priorities: None,
-        }
-    }
+    #[serde(skip)]
+    cached_lines: Option<Vec<Vec<(TripKey, TimetableTime)>>>,
 }
 
 impl PartialEq for PriorityGraphTab {
     fn eq(&self, other: &Self) -> bool {
-        self.route == other.route
+        self.route_key == other.route_key
     }
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+impl PriorityGraphTab {
+    pub(crate) fn new(rk: RouteKey) -> Self {
+        Self {
+            route_key: rk,
+            navi: PriorityTabNavigation::default(),
+            cached_lines: None,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq)]
 struct PriorityTabNavigation {
     x_offset: f64,
     y_offset: f64,
@@ -50,152 +55,109 @@ impl Default for PriorityTabNavigation {
     }
 }
 
-impl super::Navigatable for PriorityTabNavigation {
+impl Navigatable for PriorityTabNavigation {
     type XOffset = f64;
     type YOffset = f64;
-    fn allow_axis_zoom(&self) -> bool {
-        true
-    }
-    fn zoom_x(&self) -> f32 {
-        self.zoom.x
-    }
-    fn zoom_y(&self) -> f32 {
-        self.zoom.y
-    }
-    fn offset_x(&self) -> f64 {
-        self.x_offset
-    }
-    fn offset_y(&self) -> f64 {
-        self.y_offset
-    }
-    fn set_offset(&mut self, offset_x: f64, offset_y: f64) {
-        self.x_offset = offset_x;
-        self.y_offset = offset_y;
-    }
-    fn visible_rect(&self) -> egui::Rect {
-        self.visible_rect
-    }
-    fn set_zoom(&mut self, zoom_x: f32, zoom_y: f32) {
-        self.zoom.x = zoom_x;
-        self.zoom.y = zoom_y;
-    }
+    fn allow_axis_zoom(&self) -> bool { true }
+    fn zoom_x(&self) -> f32 { self.zoom.x }
+    fn zoom_y(&self) -> f32 { self.zoom.y }
+    fn offset_x(&self) -> f64 { self.x_offset }
+    fn offset_y(&self) -> f64 { self.y_offset }
+    fn set_offset(&mut self, offset_x: f64, offset_y: f64) { self.x_offset = offset_x; self.y_offset = offset_y; }
+    fn visible_rect(&self) -> egui::Rect { self.visible_rect }
+    fn set_zoom(&mut self, zoom_x: f32, zoom_y: f32) { self.zoom.x = zoom_x; self.zoom.y = zoom_y; }
 }
 
-impl super::Tab for PriorityGraphTab {
+impl Tab for PriorityGraphTab {
     const NAME: &'static str = "Priority Graph";
-    fn title(&self) -> WidgetText {
-        tr!("tab-priority-graph").into()
-    }
-    fn main_display(&mut self, app: &mut App, ui: &mut egui::Ui) {
-        calculate_priority(self, app);
+    fn title(&self) -> WidgetText { tr!("tab-priority-graph").into() }
+    fn main_display(&mut self, app: &mut AppState, ui: &mut egui::Ui) {
+        self.calculate_priority(app);
         egui::Frame::canvas(ui.style())
             .inner_margin(Margin::ZERO)
             .outer_margin(Margin::ZERO)
             .stroke(Stroke::NONE)
-            .show(ui, |ui| main_display(self, app, ui));
+            .show(ui, |ui| {
+                let (response, painter) =
+                    ui.allocate_painter(ui.available_size_before_wrap(), Sense::click_and_drag());
+                self.navi.visible_rect = response.rect;
+                self.navi.handle_navigation(ui, &response);
+                self.draw_lines(app, &painter, ui);
+            });
     }
 }
 
-fn calculate_priority(tab: &mut PriorityGraphTab, app: &mut App) {
-    let Some(route_handle) = app.routes.get_handle(tab.route) else {
-        return;
-    };
-    let route = app.routes.get_view(tab.route).unwrap();
-    if let Some(ref priorities) = tab.downward_priorities {
-        // Check if route changed (simplified: always recalc for now)
-    }
-    let priorities = tab.downward_priorities.get_or_insert_with(Vec::new);
-    priorities.clear();
+impl PriorityGraphTab {
+    fn calculate_priority(&mut self, app: &mut AppState) {
+        if self.cached_lines.is_some() { return; }
+        let route_view = app.source.routes.get_view(self.route_key);
+        let Some(ref route) = route_view else { return; };
 
-    let stops = &route.stations;
-    for stop in stops.iter().copied() {
-        let mut times = Vec::new();
-        // Find all trips that visit this station
-        for trip_key in app.trips.keys() {
-            if let Some(schedule) = app.trips.query(*trip_key, |b| b.schedule.clone()) {
-                for entry in schedule.entries() {
-                    if let paiagram_core::trip::TEntry::Pinned { stn, dep, .. } = entry {
-                        if *stn == stop {
-                            if let paiagram_core::trip::TravelMode::At(t) = dep {
-                                times.push((*trip_key, *t));
-                            }
-                        }
+        let mut maps: Vec<Vec<(TripKey, TimetableTime)>> = Vec::new();
+        for sk in route.stations.iter() {
+            let mut times: Vec<(TripKey, TimetableTime)> = Vec::new();
+            for tk in app.source.trips.keys() {
+                if let Some(view) = app.source.trips.get_view(*tk) {
+                    for entry in view.schedule.entries() {
+                        let entry_sk = match entry {
+                            TEntry::Derived(s) => *s,
+                            TEntry::Pinned { stn: s, .. } => *s,
+                            TEntry::PinnedNonStop { stn: s, .. } => *s,
+                            TEntry::PinnedExternalNonStop { stn: s, .. } => *s,
+                            TEntry::PinnedExternal { .. } => continue,
+                        };
+                        if entry_sk != *sk { continue; }
+                        let dep = match entry {
+                            TEntry::Pinned { dep: TravelMode::At(t), .. } => *t,
+                            TEntry::PinnedNonStop { pass: TravelMode::At(t), .. } => *t,
+                            _ => continue,
+                        };
+                        times.push((*tk, dep));
                     }
                 }
             }
+            times.sort_unstable_by_key(|(_, t)| *t);
+            maps.push(times);
         }
-        times.sort_unstable_by_key(|(_, t)| *t);
-        priorities.push(times);
+        self.cached_lines = Some(maps);
     }
-}
 
-const STATION_SPACING: f64 = 10.0;
+    fn draw_lines(&self, app: &AppState, painter: &egui::Painter, ui: &egui::Ui) {
+        // Draw station lines
+        let route_view = app.source.routes.get_view(self.route_key);
+        let Some(ref route) = route_view else { return; };
+        let stroke = Stroke { width: 0.6, color: ui.visuals().window_stroke().color };
+        let text_color = ui.visuals().text_color();
 
-fn main_display(tab: &mut PriorityGraphTab, app: &mut App, ui: &mut egui::Ui) {
-    let (response, mut painter) =
-        ui.allocate_painter(ui.available_size_before_wrap(), Sense::click_and_drag());
-    tab.navi.visible_rect = response.rect;
-    tab.navi.handle_navigation(ui, &response);
+        for (idx, sk) in route.stations.iter().enumerate() {
+            let pos = idx as f64 * 10.0;
+            let screen_x = self.navi.xy_to_screen_pos(pos, 0.0).x;
+            painter.vline(screen_x, self.navi.visible_rect.y_range(), stroke);
+            let name = app.source.stations.query(*sk, |b| b.name.clone())
+                .unwrap_or_default();
+            let galley = painter.layout_no_wrap(name.to_string(), egui::FontId::proportional(13.0), text_color);
+            let text_shape = TextShape::new(pos2(screen_x, self.navi.visible_rect.top()), galley, text_color)
+                .with_angle_and_anchor(f32::consts::FRAC_PI_4, Align2::LEFT_BOTTOM);
+            painter.add(text_shape);
+        }
 
-    draw_station_lines(&mut painter, tab, app, ui.visuals());
-    draw_priority_lines(&mut painter, tab);
-}
-
-fn draw_station_lines(
-    painter: &mut Painter,
-    tab: &PriorityGraphTab,
-    app: &App,
-    visuals: &Visuals,
-) {
-    let Some(route_handle) = app.routes.get_handle(tab.route) else {
-        return;
-    };
-    let route = app.routes.get_view(tab.route).unwrap();
-    let stroke = Stroke {
-        width: 0.6,
-        color: visuals.window_stroke().color,
-    };
-    let text_color = visuals.text_color();
-    for (idx, station_key) in route.stations.iter().copied().enumerate() {
-        let name = app
-            .stations
-            .get_view(station_key)
-            .map(|v| v.name.to_string())
-            .unwrap_or_else(|| "<Unknown>".to_string());
-        let pos = idx as f64 * STATION_SPACING;
-        let pos = tab.navi.xy_to_screen_pos(pos, 0.0).x;
-        painter.vline(pos, tab.navi.visible_rect.y_range(), stroke);
-        let galley = painter.layout_no_wrap(name, egui::FontId::proportional(13.0), text_color);
-        let text_shape = egui::epaint::TextShape::new(
-            pos2(pos, tab.navi.visible_rect.top()),
-            galley,
-            text_color,
-        )
-        .with_angle_and_anchor(std::f32::consts::FRAC_PI_4, Align2::LEFT_BOTTOM);
-        painter.add(text_shape);
-    }
-}
-
-fn draw_priority_lines(painter: &mut Painter, tab: &PriorityGraphTab) {
-    let stroke = Stroke {
-        width: 2.0,
-        color: DisplayedColor::Predefined(paiagram_core::colors::PredefinedColor::Amber).into_color32(false),
-    };
-    let mut line_map: std::collections::HashMap<paiagram_core::TripKey, Vec<Pos2>> =
-        std::collections::HashMap::new();
-    if let Some(ref maps) = tab.downward_priorities {
-        for (station_idx, map) in maps.iter().enumerate() {
-            let x = station_idx as f64 * STATION_SPACING;
-            for (priority, (trip_key, _)) in map.iter().enumerate() {
-                let pos = tab.navi.xy_to_screen_pos(x, priority as f64 * STATION_SPACING);
-                line_map
-                    .entry(*trip_key)
-                    .or_insert_with(Vec::new)
-                    .push(pos);
+        // Draw trip lines
+        let line_stroke = Stroke {
+            width: 2.0,
+            color: DisplayedColor::Predefined(paiagram_core::colors::PredefinedColor::Amber).get(false),
+        };
+        if let Some(ref maps) = self.cached_lines {
+            let mut line_map: HashMap<TripKey, Vec<Pos2>> = HashMap::new();
+            for (station_idx, map) in maps.iter().enumerate() {
+                let x = station_idx as f64 * 10.0;
+                for (priority, (tk, _)) in map.iter().enumerate() {
+                    let pos = self.navi.xy_to_screen_pos(x, priority as f64 * 10.0);
+                    line_map.entry(*tk).or_default().push(pos);
+                }
+            }
+            for (_, points) in line_map {
+                painter.line(points, line_stroke);
             }
         }
-    }
-    for points in line_map.values() {
-        painter.line(points.clone(), stroke);
     }
 }

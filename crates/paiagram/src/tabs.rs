@@ -2,55 +2,40 @@ use std::borrow::Cow;
 
 use egui::{Id, Key, NumExt, Response, Ui, Vec2, WidgetText, emath, vec2};
 use egui_i18n::tr;
+use paiagram_core::Source;
 
-use crate::App;
+pub(crate) mod classes;
+pub(crate) mod diagram;
+pub(crate) mod graph;
+pub(crate) mod priority_graph;
+pub(crate) mod route_timetable;
+pub(crate) mod settings;
+pub(crate) mod start;
+pub(crate) mod station;
+pub(crate) mod text;
+pub(crate) mod trip;
 
-macro_rules! define_tabs {
-    ($(
-        $name:ident;
-    )*) => {
-        $(
-            pub(crate) mod $name;
-        )*
-        pub(crate) mod all_tabs {
-            paste::paste! {
-                $(
-                    pub(crate) use super::$name::[<$name:camel Tab>];
-                )*
-            }
-        }
-    };
+pub(crate) mod all_tabs {
+    pub(crate) use super::classes::ClassesTab;
+    pub(crate) use super::diagram::DiagramTab;
+    pub(crate) use super::graph::GraphTab;
+    pub(crate) use super::priority_graph::PriorityGraphTab;
+    pub(crate) use super::route_timetable::RouteTimetableTab;
+    pub(crate) use super::settings::SettingsTab;
+    pub(crate) use super::start::StartTab;
+    pub(crate) use super::station::StationTab;
+    pub(crate) use super::text::TextTab;
+    pub(crate) use super::trip::TripTab;
 }
-
-define_tabs!(
-    classes;
-    diagram;
-    graph;
-    priority_graph;
-    route_timetable;
-    settings;
-    start;
-    station;
-    text;
-    trip;
-);
 
 fn handle_keyboard_navigation(ui: &Ui) -> Vec2 {
     const PAN_SPEED: f32 = 500.0;
     let key_pan_delta = ui.ctx().input(|input| {
         let mut delta = Vec2::ZERO;
-        if input.key_down(Key::ArrowUp) {
-            delta.y += PAN_SPEED;
-        }
-        if input.key_down(Key::ArrowDown) {
-            delta.y -= PAN_SPEED;
-        }
-        if input.key_down(Key::ArrowLeft) {
-            delta.x += PAN_SPEED;
-        }
-        if input.key_down(Key::ArrowRight) {
-            delta.x -= PAN_SPEED;
-        }
+        if input.key_down(Key::ArrowUp) { delta.y += PAN_SPEED; }
+        if input.key_down(Key::ArrowDown) { delta.y -= PAN_SPEED; }
+        if input.key_down(Key::ArrowLeft) { delta.x += PAN_SPEED; }
+        if input.key_down(Key::ArrowRight) { delta.x -= PAN_SPEED; }
         delta.x *= input.stable_dt;
         delta.y *= input.stable_dt;
         delta
@@ -63,16 +48,11 @@ fn handle_keyboard_navigation(ui: &Ui) -> Vec2 {
         let t = emath::exponential_smooth_factor(0.9, 0.3, dt);
         *smoothed_delta = emath::lerp(*smoothed_delta..=key_pan_delta, t);
         let diff = (*smoothed_delta - key_pan_delta).length();
-        if diff < 0.01 {
-            *smoothed_delta = key_pan_delta
-        } else {
-            requires_repaint = true
-        }
+        if diff < 0.01 { *smoothed_delta = key_pan_delta }
+        else { requires_repaint = true }
         *smoothed_delta
     });
-    if requires_repaint {
-        ui.ctx().request_repaint();
-    }
+    if requires_repaint { ui.ctx().request_repaint(); }
     smoothed_delta
 }
 
@@ -106,15 +86,10 @@ pub(crate) trait Navigatable {
         rect.top() + ((logical_y - self.offset_y()) / self.y_per_screen_unit_f64()) as f32
     }
     fn screen_pos_to_xy(&self, pos: egui::Pos2) -> (Self::XOffset, Self::YOffset) {
-        (
-            self.screen_x_to_logical_x(pos.x),
-            self.screen_y_to_logical_y(pos.y),
-        )
+        (self.screen_x_to_logical_x(pos.x), self.screen_y_to_logical_y(pos.y))
     }
     fn xy_to_screen_pos(&self, x: Self::XOffset, y: Self::YOffset) -> egui::Pos2 {
-        let screen_x = self.logical_x_to_screen_x(x);
-        let screen_y = self.logical_y_to_screen_y(y);
-        egui::Pos2::new(screen_x, screen_y)
+        egui::Pos2::new(self.logical_x_to_screen_x(x), self.logical_y_to_screen_y(y))
     }
     fn visible_rect(&self) -> egui::Rect;
     fn visible_x(&self) -> std::ops::Range<Self::XOffset> {
@@ -129,28 +104,18 @@ pub(crate) trait Navigatable {
         let end = start + height * self.y_per_screen_unit().into();
         start.into()..end.into()
     }
-    fn x_per_screen_unit_f64(&self) -> f64 {
-        1.0 / self.zoom_x().max(f32::EPSILON) as f64
-    }
-    fn y_per_screen_unit_f64(&self) -> f64 {
-        1.0 / self.zoom_y().max(f32::EPSILON) as f64
-    }
+    fn x_per_screen_unit_f64(&self) -> f64 { 1.0 / self.zoom_x().max(f32::EPSILON) as f64 }
+    fn y_per_screen_unit_f64(&self) -> f64 { 1.0 / self.zoom_y().max(f32::EPSILON) as f64 }
     fn x_per_screen_unit(&self) -> Self::XOffset {
         (1.0 / self.zoom_x().max(f32::EPSILON) as f64).into()
     }
     fn y_per_screen_unit(&self) -> Self::YOffset {
         (1.0 / self.zoom_y().max(f32::EPSILON) as f64).into()
     }
-    fn allow_axis_zoom(&self) -> bool {
-        false
-    }
-    /// Handles the navigation of the navigatable component.
-    /// Returns true if there are any user input
+    fn allow_axis_zoom(&self) -> bool { false }
     fn handle_navigation(&mut self, ui: &mut Ui, response: &Response) -> bool {
         let mut moved = response.dragged();
-        let started_pos = ui
-            .ctx()
-            .input(|i| i.pointer.press_origin().or(i.pointer.hover_pos()));
+        let started_pos = ui.ctx().input(|i| i.pointer.press_origin().or(i.pointer.hover_pos()));
         let zoom_delta = if self.allow_axis_zoom() {
             ui.input(|input| input.zoom_delta_2d())
         } else {
@@ -161,10 +126,7 @@ pub(crate) trait Navigatable {
             + ui.input(|input| input.smooth_scroll_delta());
         let zooming = (zoom_delta.x - 1.0).abs() > 0.001 || (zoom_delta.y - 1.0).abs() > 0.001;
 
-        if zooming
-            && ui.ui_contains_pointer()
-            && let Some(pos) = response.hover_pos()
-        {
+        if zooming && ui.ui_contains_pointer() && let Some(pos) = response.hover_pos() {
             moved |= zooming;
             let old_zoom_x = self.zoom_x();
             let old_zoom_y = self.zoom_y();
@@ -188,10 +150,7 @@ pub(crate) trait Navigatable {
             self.set_zoom(new_zoom_x, new_zoom_y);
             self.set_offset(new_offset_x, new_offset_y);
         }
-        // if ui.ui_contains_pointer() || ui.input(|r| r.any_touches()) {
-        if let Some(started_pos) = started_pos
-            && response.rect.contains(started_pos)
-        {
+        if let Some(started_pos) = started_pos && response.rect.contains(started_pos) {
             let ticks_per_screen_unit = 1.0 / self.zoom_x() as f64;
             let new_offset_x = self.offset_x() - ticks_per_screen_unit * pan_delta.x as f64;
             let new_offset_y = self.offset_y() - pan_delta.y as f64 / self.zoom_y() as f64;
@@ -199,60 +158,49 @@ pub(crate) trait Navigatable {
             moved |= pan_delta.y.abs() >= 0.01;
             self.set_offset(new_offset_x, new_offset_y);
         }
-
         self.post_navigation(response);
-        return moved;
+        moved
     }
-    fn clamp_zoom(&self, zoom_x: f32, zoom_y: f32) -> (f32, f32) {
-        (zoom_x, zoom_y)
-    }
+    fn clamp_zoom(&self, zoom_x: f32, zoom_y: f32) -> (f32, f32) { (zoom_x, zoom_y) }
     fn post_navigation(&mut self, _response: &Response) {}
 }
 
-/// Good qualities a tab must have :-)
+/// The application state that replaces Bevy ECS World.
+/// Holds the data source and all UI-visible state.
+pub struct AppState {
+    pub source: Source,
+    pub preferences: paiagram_core::settings::UserPreferences,
+    pub project_settings: paiagram_core::settings::ProjectSettings,
+    pub selected_items: super::SelectedItems,
+    pub timer: super::GlobalTimer,
+    pub main_ui: super::MainUiState,
+    pub additional_ui: super::AdditionalUiState,
+    pub modal: super::UiModal,
+    pub frame_time_history: super::FrameTimeHistory,
+}
+
 pub(crate) trait Tab {
-    /// The internal name of the tab used for identification. This must be a
-    /// static string. The actual displayed name could be different based on
-    /// e.g. the localization or other contents.
     const NAME: &'static str;
-    /// The main display of the tab.
-    fn main_display(&mut self, app: &mut App, ui: &mut Ui);
-    /// The edit display
-    fn edit_display(&mut self, _app: &mut App, ui: &mut Ui) {
+    fn main_display(&mut self, app: &mut AppState, ui: &mut Ui);
+    fn edit_display(&mut self, _app: &mut AppState, ui: &mut Ui) {
         ui.label(self.title());
         ui.label(tr!("side-panel-edit-fallback-1"));
         ui.label(tr!("side-panel-edit-fallback-2"));
     }
-    /// The display display
-    fn display_display(&mut self, _app: &mut App, ui: &mut Ui) {
+    fn display_display(&mut self, _app: &mut AppState, ui: &mut Ui) {
         ui.label(self.title());
         ui.label(tr!("side-panel-details-fallback-1"));
         ui.label(tr!("side-panel-details-fallback-2"));
     }
-    /// The export display
-    fn export_display(&mut self, _app: &mut App, ui: &mut Ui) {
+    fn export_display(&mut self, _app: &mut AppState, ui: &mut Ui) {
         ui.label(self.title());
         ui.label(tr!("side-panel-export-fallback-1"));
         ui.label(tr!("side-panel-export-fallback-2"));
     }
-    /// The title of the tab
     fn title(&self) -> WidgetText;
-    /// What to do with the tab button
-    fn on_tab_button(&self, _app: &mut App, _response: &Response) {}
-    /// The id of the tab
-    fn id(&self) -> Id {
-        Id::new(Self::NAME)
-    }
-    /// Whether if the tab allows scrolling
-    fn scroll_bars(&self) -> [bool; 2] {
-        [true; 2]
-    }
-    /// The frame of the tab
-    fn frame(&self) -> egui::Frame {
-        egui::Frame::default().inner_margin(egui::Margin::same(6))
-    }
-    /// The icon of the tab
-    fn icon(&self) -> Cow<'static, str> {
-        "🖳".into()
-    }
+    fn on_tab_button(&self, _app: &mut AppState, _response: &Response) {}
+    fn id(&self) -> Id { Id::new(Self::NAME) }
+    fn scroll_bars(&self) -> [bool; 2] { [true; 2] }
+    fn frame(&self) -> egui::Frame { egui::Frame::default().inner_margin(egui::Margin::same(6)) }
+    fn icon(&self) -> Cow<'static, str> { "🖳".into() }
 }
