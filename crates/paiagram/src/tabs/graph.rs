@@ -9,6 +9,7 @@ use egui::{
 use egui_i18n::tr;
 use paiagram_core::colors::PredefinedColor;
 use paiagram_core::{Command, IntervalKey, LonLat, StationKey};
+use paiagram_core::trip::{TEntry, TravelMode};
 use serde::{Deserialize, Serialize};
 
 use super::{AppState, Navigatable, Tab};
@@ -225,6 +226,88 @@ fn display(tab: &mut GraphTab, app: &mut AppState, ui: &mut egui::Ui) {
                     painter.line_segment([p0, p1], Stroke::new(0.5, color));
                 }
             }
+        }
+    }
+
+    // Draw trip positions at current time
+    let current_time = app.timer.read_seconds();
+    let repeat_time = app.project_settings.repeat_frequency.0 as f64;
+    let query_time = if repeat_time > 0.0 { current_time.rem_euclid(repeat_time) } else { current_time };
+
+    // Build station position map: StationKey -> (lon, lat)
+    let mut stn_pos: std::collections::HashMap<paiagram_core::StationKey, (f64, f64)> = std::collections::HashMap::new();
+    for sk in app.source.stations.keys() {
+        if let Some(v) = app.source.stations.get_view(*sk) {
+            stn_pos.insert(*sk, (v.pos.lon as f64, v.pos.lat as f64));
+        }
+    }
+
+    // For each trip, find the segment active at query_time
+    macro_rules! ttime_to_secs {
+        ($t:expr) => { $t.0 as f64 };
+    }
+    for tk in app.source.trips.keys() {
+        let Some(view) = app.source.trips.get_view(*tk) else { continue; };
+        let entries = view.schedule.entries();
+        for pair in entries.windows(2) {
+            let (stn_a, ta, stn_b, tb) = match (&pair[0], &pair[1]) {
+                (TEntry::Pinned { stn: s1, arr: TravelMode::At(a), .. },
+                 TEntry::Pinned { stn: s2, arr: TravelMode::At(b), .. }) => (*s1, *a, *s2, *b),
+                _ => continue,
+            };
+            let Some(&pa) = stn_pos.get(&stn_a) else { continue; };
+            let Some(&pb) = stn_pos.get(&stn_b) else { continue; };
+            let t1 = ttime_to_secs!(ta);
+            let t2 = ttime_to_secs!(tb);
+            if t2 <= t1 { continue; }
+            let q = query_time.rem_euclid(repeat_time.max(1.0));
+            if q < t1 || q > t2 { continue; }
+
+            // Interpolate position
+            let f = (q - t1) / (t2 - t1);
+            let pos_x = pa.0 + (pb.0 - pa.0) * f;
+            let pos_y = pa.1 + (pb.1 - pa.1) * f;
+            let screen_a = tab.navi.xy_to_screen_pos(pa.0, pa.1);
+            let screen_b = tab.navi.xy_to_screen_pos(pb.0, pb.1);
+            let screen_pos = tab.navi.xy_to_screen_pos(pos_x, pos_y);
+
+            // Get class color
+            let trip_color = view.class
+                .and_then(|ck| app.source.classes.get_view(ck))
+                .map(|cv| cv.style.color)
+                .unwrap_or(Color32::GRAY);
+
+            // Draw line segment
+            painter.line_segment([screen_a, screen_b], Stroke::new(2.0, trip_color));
+
+            // Stealth arrow (matching original GPU shader geometry, rendered in software)
+            let dir = (screen_b - screen_a).normalized();
+            let perp = egui::Vec2::new(-dir.y, dir.x);
+            let arrow_len = 14.0;
+            let stealth = 0.2;
+            let tip_x = arrow_len * (1.0 - stealth) * 0.5;
+            let left_x = -arrow_len * (1.0 + stealth) * 0.5;
+            let indent_x = -arrow_len * (1.0 - stealth) * 0.5;
+            let arrow_width = arrow_len * (12.0 / 14.0);
+            let half_w = arrow_width * 0.5;
+
+            // Two triangles forming a stealth arrowhead
+            let tip = screen_pos + dir * tip_x;
+            let left_w = screen_pos + dir * left_x + perp * half_w;
+            let indent = screen_pos + dir * indent_x;
+            let right_w = screen_pos + dir * left_x + perp * -half_w;
+            let white_uv = egui::epaint::WHITE_UV;
+            let mut mesh = egui::Mesh::default();
+            let idx = mesh.vertices.len() as u32;
+            for p in [tip, left_w, indent, right_w] {
+                mesh.vertices.push(egui::epaint::Vertex { pos: p, uv: white_uv, color: trip_color });
+            }
+            mesh.add_triangle(idx, idx + 1, idx + 2);
+            mesh.add_triangle(idx, idx + 2, idx + 3);
+            painter.add(egui::Shape::mesh(mesh));
+
+            painter.text(screen_pos + egui::Vec2::new(7.0, -7.0), Align2::LEFT_CENTER,
+                &view.name, FontId::proportional(13.0), trip_color);
         }
     }
 
