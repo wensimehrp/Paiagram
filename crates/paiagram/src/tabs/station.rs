@@ -146,7 +146,7 @@ fn display_time_grid(tab: &StationTab, app: &AppState, ui: &mut egui::Ui) {
                                 .color(entry.color)
                                 .font(egui::FontId::new(
                                     16.0,
-                                    egui::FontFamily::Name("dia_pro".into()),
+                                    egui::FontFamily::Proportional,
                                 )),
                         );
                         ui.small(entry.trip_name);

@@ -1039,9 +1039,6 @@ fn build_font_definitions(sarasa: Option<Vec<u8>>) -> egui::FontDefinitions {
             .unwrap()
             .insert(0, "my_font".to_owned());
     }
-    let mut dia_pro_family = vec!["dia_pro".to_owned()];
-    if has_sarasa { dia_pro_family.push("my_font".to_owned()); }
-    fonts.families.insert(egui::FontFamily::Name("dia_pro".into()), dia_pro_family);
     fonts
 }
 

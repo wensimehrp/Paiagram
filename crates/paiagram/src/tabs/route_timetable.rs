@@ -67,12 +67,12 @@ impl super::Tab for RouteTimetableTab {
             trip_keys: &route_trips,
             app,
         };
-        let dia_pro_style = egui::TextStyle::Name("dia_pro".into());
+        let number_style = egui::TextStyle::Name("number".into());
         ui.style_mut().text_styles.insert(
-            dia_pro_style.clone(),
-            egui::FontId::new(15.0, egui::FontFamily::Name("dia_pro".into())),
+            number_style.clone(),
+            egui::FontId::new(15.0, egui::FontFamily::Proportional),
         );
-        ui.style_mut().drag_value_text_style = dia_pro_style;
+        ui.style_mut().drag_value_text_style = number_style;
         ui.spacing_mut().interact_size = Vec2::ZERO;
         ui.spacing_mut().button_padding = Vec2::ZERO;
         ui.style_mut().visuals.button_frame = false;
@@ -152,7 +152,7 @@ impl TableDelegate for RouteTimetableDisplayer<'_> {
                 TEntry::PinnedExternal { .. } => false,
             };
             if !entry_sk { continue; }
-            let font = FontId::new(15.0, egui::FontFamily::Name("dia_pro".into()));
+            let font = FontId::new(15.0, egui::FontFamily::Proportional);
             let time_str = match entry {
                 TEntry::Pinned { arr: TravelMode::At(a), dep: TravelMode::At(d), .. } => {
                     format!("{}\n{}", a.to_oud2_str(false), d.to_oud2_str(false))
