@@ -10,6 +10,7 @@ use egui_i18n::tr;
 use paiagram_core::colors::PredefinedColor;
 use paiagram_core::{Command, IntervalKey, LonLat, StationKey};
 use paiagram_core::trip::{TEntry, TravelMode};
+use paiagram_core::units::time::TimetableTime;
 use serde::{Deserialize, Serialize};
 
 use super::{AppState, Navigatable, Tab};
@@ -231,69 +232,139 @@ fn display(tab: &mut GraphTab, app: &mut AppState, ui: &mut egui::Ui) {
         }
     }
 
-    // For each trip, find the segment active at query_time
-    macro_rules! ttime_to_secs {
-        ($t:expr) => { $t.0 as f64 };
+    // Helper to extract station + departure time from an entry (use dep as primary time)
+    fn get_entry_dep(entry: &TEntry) -> Option<(StationKey, TimetableTime)> {
+        match entry {
+            TEntry::Pinned { stn, dep: TravelMode::At(d), .. } => Some((*stn, *d)),
+            TEntry::Pinned { stn, arr: TravelMode::At(a), .. } => Some((*stn, *a)),
+            TEntry::PinnedNonStop { stn, pass: TravelMode::At(t), .. } => Some((*stn, *t)),
+            _ => None,
+        }
     }
+    // Helper to extract arrival time if available (for dwell checking)
+    fn get_entry_arr(entry: &TEntry) -> Option<TimetableTime> {
+        match entry {
+            TEntry::Pinned { arr: TravelMode::At(a), .. } => Some(*a),
+            TEntry::Pinned { arr: TravelMode::For(d), dep: TravelMode::At(t), .. } => Some(*t - *d),
+            _ => None,
+        }
+    }
+    fn to_f(t: TimetableTime) -> f64 { t.0 as f64 }
+    fn wrap_time(t: f64, rep: f64) -> f64 { let m = t % rep; if m < 0.0 { m + rep } else { m } }
+
+    let repeat = repeat_time.max(1.0);
+    let q = wrap_time(query_time, repeat);
     for tk in app.source.trips.keys() {
         let Some(view) = app.source.trips.get_view(*tk) else { continue; };
         let entries = view.schedule.entries();
-        for pair in entries.windows(2) {
-            let (stn_a, ta, stn_b, tb) = match (&pair[0], &pair[1]) {
-                (TEntry::Pinned { stn: s1, arr: TravelMode::At(a), .. },
-                 TEntry::Pinned { stn: s2, arr: TravelMode::At(b), .. }) => (*s1, *a, *s2, *b),
-                _ => continue,
+
+        // Build a list of (station_key, arr_time_sec, dep_time_sec) for each entry
+        struct Seg { stn: StationKey, arr: Option<f64>, dep: f64, pos: (f64, f64) }
+        let segs: Vec<Seg> = entries.iter().filter_map(|e| {
+            let stn = match e {
+                TEntry::Pinned { stn, .. } => *stn,
+                TEntry::PinnedNonStop { stn, .. } => *stn,
+                _ => return None,
             };
-            let Some(&pa) = stn_pos.get(&stn_a) else { continue; };
-            let Some(&pb) = stn_pos.get(&stn_b) else { continue; };
-            let t1 = ttime_to_secs!(ta);
-            let t2 = ttime_to_secs!(tb);
-            if t2 <= t1 { continue; }
-            let q = query_time.rem_euclid(repeat_time.max(1.0));
-            if q < t1 || q > t2 { continue; }
+            let pos = stn_pos.get(&stn).copied()?;
+            let dep = to_f(get_entry_dep(e)?.1);
+            let arr = get_entry_arr(e).map(to_f);
+            Some(Seg { stn, arr, dep, pos })
+        }).collect();
 
-            // Interpolate position
-            let f = (q - t1) / (t2 - t1);
-            let pos_x = pa.0 + (pb.0 - pa.0) * f;
-            let pos_y = pa.1 + (pb.1 - pa.1) * f;
-            let screen_a = tab.navi.xy_to_screen_pos(pa.0, pa.1);
-            let screen_b = tab.navi.xy_to_screen_pos(pb.0, pb.1);
-            let screen_pos = tab.navi.xy_to_screen_pos(pos_x, pos_y);
+        if segs.len() < 2 { continue; }
 
-            // Get class color
-            let trip_color = view.class
-                .and_then(|ck| app.source.classes.get_view(ck))
-                .map(|cv| cv.style.color)
-                .unwrap_or(Color32::GRAY);
+        // Try to find where the train is at time q:
+        for w in segs.windows(2) {
+            let a = &w[0];
+            let b = &w[1];
+            let dep_a = wrap_time(a.dep, repeat);
+            let arr_b = b.arr.map(|t| wrap_time(t, repeat));
+            let dep_b = wrap_time(b.dep, repeat);
+            // Travel segment end: use arrival at B if available and greater than dep_a, else use departure from B
+            let travel_end = arr_b.filter(|&t| t > dep_a).unwrap_or(dep_b);
 
-            // Stealth arrow only (track lines are rendered separately) (matching original GPU shader geometry, rendered in software)
-            let dir = (screen_b - screen_a).normalized();
-            let perp = egui::Vec2::new(-dir.y, dir.x);
-            let arrow_len = 14.0;
-            let stealth = 0.2;
-            let tip_x = arrow_len * (1.0 - stealth) * 0.5;
-            let left_x = -arrow_len * (1.0 + stealth) * 0.5;
-            let indent_x = -arrow_len * (1.0 - stealth) * 0.5;
-            let arrow_width = arrow_len * (12.0 / 14.0);
-            let half_w = arrow_width * 0.5;
-
-            // Two triangles forming a stealth arrowhead
-            let tip = screen_pos + dir * tip_x;
-            let left_w = screen_pos + dir * left_x + perp * half_w;
-            let indent = screen_pos + dir * indent_x;
-            let right_w = screen_pos + dir * left_x + perp * -half_w;
-            let white_uv = egui::epaint::WHITE_UV;
-            let mut mesh = egui::Mesh::default();
-            let idx = mesh.vertices.len() as u32;
-            for p in [tip, left_w, indent, right_w] {
-                mesh.vertices.push(egui::epaint::Vertex { pos: p, uv: white_uv, color: trip_color });
+            // Determine where the train is: dwelling at A, dwelling at B, or traveling
+            let mut found = false;
+            // Check if dwelling at station A: between arr_A and dep_A
+            if !found { if let Some(arr_a) = a.arr {
+                let arr_a_w = wrap_time(arr_a, repeat);
+                if (dep_a >= arr_a_w && q >= arr_a_w && q <= dep_a) ||
+                   (dep_a < arr_a_w && (q >= arr_a_w || q <= dep_a)) {
+                    let sp = tab.navi.xy_to_screen_pos(a.pos.0, a.pos.1);
+                    let trip_color = view.class
+                        .and_then(|ck| app.source.classes.get_view(ck))
+                        .map(|cv| cv.style.color)
+                        .unwrap_or(Color32::GRAY);
+                    painter.circle_filled(sp, 5.0, trip_color);
+                    painter.text(sp + egui::Vec2::new(7.0, -7.0), Align2::LEFT_CENTER,
+                        &view.name, FontId::proportional(13.0), trip_color);
+                    found = true;
+                }
+            }}
+            // Check if dwelling at station B: between arr_B and dep_B
+            if !found { if let Some(arr_b) = b.arr {
+                let arr_b_w = wrap_time(arr_b, repeat);
+                if (dep_b >= arr_b_w && q >= arr_b_w && q <= dep_b) ||
+                   (dep_b < arr_b_w && (q >= arr_b_w || q <= dep_b)) {
+                    let sp = tab.navi.xy_to_screen_pos(b.pos.0, b.pos.1);
+                    let trip_color = view.class
+                        .and_then(|ck| app.source.classes.get_view(ck))
+                        .map(|cv| cv.style.color)
+                        .unwrap_or(Color32::GRAY);
+                    painter.circle_filled(sp, 5.0, trip_color);
+                    painter.text(sp + egui::Vec2::new(7.0, -7.0), Align2::LEFT_CENTER,
+                        &view.name, FontId::proportional(13.0), trip_color);
+                    found = true;
+                }
+            }}
+            // Traveling between dep_A and arrival at B
+            if !found {
+                let (in_range, f) = if travel_end > dep_a {
+                    (q >= dep_a && q <= travel_end, (q - dep_a) / (travel_end - dep_a))
+                } else {
+                    let span = repeat - dep_a + travel_end;
+                    let q2 = if q >= dep_a { q } else { q + repeat };
+                    (q >= dep_a || q <= travel_end, (q2 - dep_a) / span)
+                };
+                if in_range {
+                    let pos_x = a.pos.0 + (b.pos.0 - a.pos.0) * f;
+                    let pos_y = a.pos.1 + (b.pos.1 - a.pos.1) * f;
+                    let screen_a = tab.navi.xy_to_screen_pos(a.pos.0, a.pos.1);
+                    let screen_b = tab.navi.xy_to_screen_pos(b.pos.0, b.pos.1);
+                    let screen_pos = tab.navi.xy_to_screen_pos(pos_x, pos_y);
+                    let trip_color = view.class
+                        .and_then(|ck| app.source.classes.get_view(ck))
+                        .map(|cv| cv.style.color)
+                        .unwrap_or(Color32::GRAY);
+                    // Draw stealth arrow
+                    let dir = (screen_b - screen_a).normalized();
+                    let perp = egui::Vec2::new(-dir.y, dir.x);
+                    let arrow_len = 14.0; let stealth = 0.2;
+                    let tip_x = arrow_len * (1.0 - stealth) * 0.5;
+                    let left_x = -arrow_len * (1.0 + stealth) * 0.5;
+                    let indent_x = -arrow_len * (1.0 - stealth) * 0.5;
+                    let arrow_width = arrow_len * (12.0 / 14.0);
+                    let half_w = arrow_width * 0.5;
+                    let tip = screen_pos + dir * tip_x;
+                    let left_w = screen_pos + dir * left_x + perp * half_w;
+                    let indent = screen_pos + dir * indent_x;
+                    let right_w = screen_pos + dir * left_x + perp * -half_w;
+                    let white_uv = egui::epaint::WHITE_UV;
+                    let mut mesh = egui::Mesh::default();
+                    let idx = mesh.vertices.len() as u32;
+                    for p in [tip, left_w, indent, right_w] {
+                        mesh.vertices.push(egui::epaint::Vertex { pos: p, uv: white_uv, color: trip_color });
+                    }
+                    mesh.add_triangle(idx, idx + 1, idx + 2);
+                    mesh.add_triangle(idx, idx + 2, idx + 3);
+                    painter.add(egui::Shape::mesh(mesh));
+                    painter.text(screen_pos + egui::Vec2::new(7.0, -7.0), Align2::LEFT_CENTER,
+                        &view.name, FontId::proportional(13.0), trip_color);
+                    found = true;
+                }
             }
-            mesh.add_triangle(idx, idx + 1, idx + 2);
-            mesh.add_triangle(idx, idx + 2, idx + 3);
-            painter.add(egui::Shape::mesh(mesh));
-
-            painter.text(screen_pos + egui::Vec2::new(7.0, -7.0), Align2::LEFT_CENTER,
-                &view.name, FontId::proportional(13.0), trip_color);
+            if !found { continue; }
         }
     }
 
