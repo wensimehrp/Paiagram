@@ -61,6 +61,8 @@ impl PaiagramApp {
                 modal: UiModal(None),
                 frame_time_history: FrameTimeHistory::default(),
                 pending_tabs: VecDeque::new(),
+                loaded_scene: None,
+                load_error: None,
             },
         }
     }
@@ -709,11 +711,23 @@ extern "C" {
 
 
 fn process_pending_tabs(app: &mut AppState) {
-    use egui_tiles::{Container, Tile, TileId, Tiles};
+    use egui_tiles::{Container, Tile};
+    // Handle loaded scene from file thread
+    if let Some(bytes) = crate::save::take_loaded_file() {
+        let result = crate::save::apply_loaded_scene(app, &bytes);
+        if let Err(e) = result {
+            app.load_error = Some(format!("Load failed: {}", e));
+        }
+    }
+    if let Some(bytes) = app.loaded_scene.take() {
+        let result = crate::save::apply_loaded_scene(app, &bytes);
+        if let Err(e) = result {
+            app.load_error = Some(format!("Load failed: {}", e));
+        }
+    }
     while let Some(op) = app.pending_tabs.pop_front() {
         match op {
             PendingTabOp::Open(tab) => {
-                // Check if tab already exists
                 if let Some(id) = app.main_ui.tree.tiles.find_pane(&tab) {
                     app.main_ui.tree.set_visible(id, true);
                     app.additional_ui.focused_id = Some(id);
@@ -729,7 +743,6 @@ fn process_pending_tabs(app: &mut AppState) {
                         continue;
                     }
                 }
-                // Fallback: create new tabs container
                 let tabs_id = app.main_ui.tree.tiles.insert_tab_tile(vec![new_id]);
                 app.main_ui.tree.root = Some(tabs_id);
                 app.additional_ui.focused_id = Some(new_id);
@@ -761,6 +774,21 @@ pub fn show_ui(ui: &mut Ui, app: &mut AppState, cpu_time: Option<f32>) {
             if r.should_close() {
                 app.modal.0 = None;
             }
+        }
+    }
+
+    // Show load error if any
+    if let Some(err) = &app.load_error {
+        let err_str = err.clone();
+        let r = egui::Modal::new(egui::Id::new("load_error")).show(ui.ctx(), |ui| {
+            ui.heading("Load Error");
+            ui.label(&err_str);
+            if ui.button("OK").clicked() {
+                app.load_error = None;
+            }
+        });
+        if r.should_close() {
+            app.load_error = None;
         }
     }
 
@@ -803,7 +831,7 @@ pub fn show_ui(ui: &mut Ui, app: &mut AppState, cpu_time: Option<f32>) {
                         save::save(app, "save.paia".to_string());
                     }
                     if ui.button("Read...").clicked() {
-                        // TODO: implement file reading
+                        save::spawn_load_thread();
                     }
                     if app.preferences.developer_mode {
                         if ui.button("Save RON...").clicked() {

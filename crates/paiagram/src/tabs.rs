@@ -178,6 +178,8 @@ pub struct AppState {
     pub modal: super::UiModal,
     pub frame_time_history: super::FrameTimeHistory,
     pub pending_tabs: std::collections::VecDeque<super::PendingTabOp>,
+    pub loaded_scene: Option<Vec<u8>>,
+    pub load_error: Option<String>,
 }
 
 pub(crate) trait Tab {

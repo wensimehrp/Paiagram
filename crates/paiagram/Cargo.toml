@@ -26,6 +26,7 @@ chrono.workspace = true
 clap.workspace = true
 ecow.workspace = true
 eframe.workspace = true
+futures-lite.workspace = true
 egui.workspace = true
 egui_commonmark = "0.23.0"
 egui-i18n.workspace = true
@@ -37,10 +38,12 @@ ib-matcher.workspace = true
 itertools.workspace = true
 itoa.workspace = true
 log.workspace = true
+lz4_flex.workspace = true
 cbor4ii = { version = "1.2.2", features = ["serde", "serde1", "use_std"] }
 paiagram-core = { path = "../paiagram-core" }
 paiagram-raptor = { path = "../paiagram-raptor" }
 paiagram-rw = { path = "../paiagram-rw" }
+rfd.workspace = true
 ron.workspace = true
 serde.workspace = true
 smallvec.workspace = true
