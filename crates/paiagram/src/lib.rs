@@ -34,10 +34,15 @@ use wasm_bindgen::prelude::*;
 
 pub use tabs::AppState;
 
-use crate::tabs::text::TextMessage;
 use crate::widgets::TimeDragValue;
 
 /// The truth of the application.
+#[derive(Clone, Serialize, Deserialize)]
+pub(crate) struct TextMessageData {
+    pub(crate) name: String,
+    pub(crate) content: String,
+}
+
 #[derive(Clone)]
 pub(crate) enum PendingTabOp {
     Open(MainTab),
@@ -63,6 +68,7 @@ impl PaiagramApp {
                 pending_tabs: VecDeque::new(),
                 loaded_scene: None,
                 load_error: None,
+                text_messages: Vec::new(),
             },
         }
     }
@@ -555,9 +561,25 @@ impl MainTabViewer {
         });
         ui.menu_button(tr!("menu-text"), |ui| {
             if ui.button(tr!("menu-new-text-message")).clicked() {
-                // TODO: implement text messages
+                let app = self.app();
+                let idx = app.text_messages.len();
+                app.text_messages.push(TextMessageData {
+                    name: format!("Message #{}", idx + 1),
+                    content: String::new(),
+                });
+                self.open_tab_or_close(ui, MainTab::Text(TextTab::new(Some(idx))));
+                return;
             }
             ui.separator();
+            {
+                let app = self.app();
+                for (idx, msg) in app.text_messages.iter().enumerate() {
+                    if ui.button(&msg.name).clicked() {
+                        self.open_tab_or_close(ui, MainTab::Text(TextTab::new(Some(idx))));
+                        return;
+                    }
+                }
+            }
             if ui.button(tr!("menu-project-remarks")).clicked() {
                 self.open_tab_or_close(ui, MainTab::Text(TextTab::new(None)));
             }

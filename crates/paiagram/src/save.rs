@@ -7,6 +7,7 @@ use std::sync::Mutex;
 use paiagram_core::{SaveFile, Source, WorldSnapshot};
 use serde::{Deserialize, Serialize};
 
+use crate::TextMessageData;
 use crate::MainUiState;
 use crate::tabs::AppState;
 
@@ -16,6 +17,7 @@ pub(crate) struct SaveData {
     pub(crate) world: SaveFile,
     pub(crate) main_ui: MainUiState,
     pub(crate) project_settings: paiagram_core::settings::ProjectSettings,
+    pub(crate) text_messages: Vec<TextMessageData>,
 }
 
 pub(crate) fn save(app: &AppState, filename: String) {
@@ -24,6 +26,7 @@ pub(crate) fn save(app: &AppState, filename: String) {
         world: SaveFile::V1 { world },
         main_ui: app.main_ui.clone(),
         project_settings: app.project_settings.clone(),
+        text_messages: app.text_messages.clone(),
     };
     paiagram_rw::save::serialize_compressed_cbor(data, filename);
 }
@@ -34,6 +37,7 @@ pub(crate) fn save_ron(app: &AppState, filename: String) {
         world: SaveFile::V1 { world },
         main_ui: app.main_ui.clone(),
         project_settings: app.project_settings.clone(),
+        text_messages: app.text_messages.clone(),
     };
     paiagram_rw::save::serialize_ron(data, filename);
 }
@@ -49,6 +53,7 @@ pub(crate) fn apply_loaded_scene(app: &mut AppState, bytes: &[u8]) -> Result<(),
     app.source = source;
     app.main_ui = data.main_ui;
     app.project_settings = data.project_settings;
+    app.text_messages = data.text_messages;
     Ok(())
 }
 
