@@ -399,20 +399,39 @@ pub(crate) struct MainUiState {
 impl MainUiState {
     pub(crate) fn push_to_focused_leaf(&mut self, new_pane: MainTab) -> TileId {
         let new_id = self.tree.tiles.insert_pane(new_pane);
-        let mut activated = false;
+
+        // Try to add it to the same Tabs container that is currently focused
+        // (using active_tiles which works because this is called BEFORE rendering)
+        if let Some(&active_id) = self.tree.active_tiles().last()
+            && let Some(parent_id) = self.tree.tiles.parent_of(active_id)
+            && let Some(Tile::Container(container)) = self.tree.tiles.get_mut(parent_id)
+            && container.kind() == ContainerKind::Tabs
+        {
+            container.add_child(new_id);
+            self.tree.make_active(|id, _| id == new_id);
+            return new_id;
+        }
+
+        // If root is a Tabs container, add directly
         if let Some(root_id) = self.tree.root {
             if let Some(Tile::Container(container)) = self.tree.tiles.get_mut(root_id) {
-                container.add_child(new_id);
-                if let egui_tiles::Container::Tabs(tabs) = container {
-                    tabs.active = Some(new_id);
-                    activated = true;
+                if container.kind() == ContainerKind::Tabs {
+                    container.add_child(new_id);
+                    self.tree.make_active(|id, _| id == new_id);
+                    return new_id;
                 }
             }
         }
-        if !activated {
-            let tabs_id = self.tree.tiles.insert_tab_tile(vec![new_id]);
-            self.tree.root = Some(tabs_id);
-        }
+
+        // Fallback: create a new top-level Tabs container
+        let old_root = self.tree.root;
+        let tabs_id = if let Some(old_root) = old_root {
+            self.tree.tiles.insert_tab_tile(vec![old_root, new_id])
+        } else {
+            self.tree.tiles.insert_tab_tile(vec![new_id])
+        };
+        self.tree.root = Some(tabs_id);
+        self.tree.make_active(|id, _| id == new_id);
         new_id
     }
 }
@@ -711,7 +730,6 @@ extern "C" {
 
 
 fn process_pending_tabs(app: &mut AppState) {
-    use egui_tiles::{Container, Tile};
     // Handle loaded scene from file thread
     if let Some(bytes) = crate::save::take_loaded_file() {
         let result = crate::save::apply_loaded_scene(app, &bytes);
@@ -729,22 +747,12 @@ fn process_pending_tabs(app: &mut AppState) {
         match op {
             PendingTabOp::Open(tab) => {
                 if let Some(id) = app.main_ui.tree.tiles.find_pane(&tab) {
+                    app.main_ui.tree.make_active(|id2, _| id2 == id);
                     app.main_ui.tree.set_visible(id, true);
                     app.additional_ui.focused_id = Some(id);
                     continue;
                 }
-                let new_id = app.main_ui.tree.tiles.insert_pane(tab);
-                let root_id = app.main_ui.tree.root;
-                if let Some(root_id) = root_id {
-                    if let Some(Tile::Container(Container::Tabs(tabs))) = app.main_ui.tree.tiles.get_mut(root_id) {
-                        tabs.children.push(new_id);
-                        tabs.active = Some(new_id);
-                        app.additional_ui.focused_id = Some(new_id);
-                        continue;
-                    }
-                }
-                let tabs_id = app.main_ui.tree.tiles.insert_tab_tile(vec![new_id]);
-                app.main_ui.tree.root = Some(tabs_id);
+                let new_id = app.main_ui.push_to_focused_leaf(tab);
                 app.additional_ui.focused_id = Some(new_id);
             }
         }
@@ -974,6 +982,7 @@ pub fn show_ui(ui: &mut Ui, app: &mut AppState, cpu_time: Option<f32>) {
     }
 
     // Central panel
+    let mut max_focus: Option<TileId> = None;
     egui::CentralPanel::default()
         .frame(Frame::default())
         .show_inside(ui, |ui| {
@@ -983,7 +992,7 @@ pub fn show_ui(ui: &mut Ui, app: &mut AppState, cpu_time: Option<f32>) {
                     drop(pane);
                     let mut tv = MainTabViewer {
                         app: app as *mut AppState,
-                        last_focused_id: std::ptr::null_mut(),
+                        last_focused_id: &mut max_focus as *mut Option<TileId>,
                         last_maximized_id: &mut maximized as *mut Option<TileId>,
                     };
                     Panel::top("maximized_top")

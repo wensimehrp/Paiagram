@@ -185,34 +185,21 @@ fn display(tab: &mut GraphTab, app: &mut AppState, ui: &mut egui::Ui) {
     let shift_pressed = ui.input(|r| r.modifiers.shift);
     let ctrl_pressed = ui.input(|r| r.modifiers.command);
 
-    // Collect visible stations
-    let margin_x = 12.0 / tab.navi.zoom_x().max(f32::EPSILON) as f64;
-    let margin_y = 12.0 / tab.navi.zoom_y().max(f32::EPSILON) as f64;
-    let visible_x = tab.navi.visible_x();
-    let visible_y = tab.navi.visible_y();
-    let min_x = visible_x.start - margin_x;
-    let max_x = visible_x.end + margin_x;
-    let min_y = visible_y.start - margin_y;
-    let max_y = visible_y.end + margin_y;
-
-    // Show station intervals
+    // Show station intervals (draw all, egui clips to viewport)
     for start_key in app.source.stations.keys() {
-        let start_view = app.source.stations.get_view(*start_key);
-        if start_view.is_none() { continue; }
-        let start_view = start_view.unwrap();
+        let Some(start_view) = app.source.stations.get_view(*start_key) else { continue; };
         let start_pos = tab.navi.xy_to_screen_pos(start_view.pos.lon as f64, start_view.pos.lat as f64);
-        if !response.rect.contains(start_pos) { continue; }
 
-        // Check for graph edges from this station
         let neighbors: Vec<StationKey> = (*app.source).graph.neighbors(*start_key).collect();
         for neighbor_key in neighbors {
-            let neighbor_view = app.source.stations.get_view(neighbor_key);
-            if neighbor_view.is_none() { continue; }
-            let neighbor_view = neighbor_view.unwrap();
+            let Some(neighbor_view) = app.source.stations.get_view(neighbor_key) else { continue; };
             let neighbor_pos = tab.navi.xy_to_screen_pos(neighbor_view.pos.lon as f64, neighbor_view.pos.lat as f64);
-            if !response.rect.contains(neighbor_pos) { continue; }
 
-            painter.line_segment([start_pos, neighbor_pos], Stroke::new(1.0, color));
+            let dir = (neighbor_pos - start_pos).normalized();
+            let perp = egui::Vec2::new(-dir.y, dir.x);
+            let gap = 2.0;
+            painter.line_segment([start_pos + perp * gap, neighbor_pos + perp * gap], Stroke::new(1.0, color));
+            painter.line_segment([start_pos - perp * gap, neighbor_pos - perp * gap], Stroke::new(1.0, color));
         }
     }
 
@@ -222,9 +209,11 @@ fn display(tab: &mut GraphTab, app: &mut AppState, ui: &mut egui::Ui) {
             for pair in view.nodes.windows(2) {
                 let p0 = tab.navi.xy_to_screen_pos(pair[0].lon as f64, pair[0].lat as f64);
                 let p1 = tab.navi.xy_to_screen_pos(pair[1].lon as f64, pair[1].lat as f64);
-                if response.rect.contains(p0) || response.rect.contains(p1) {
-                    painter.line_segment([p0, p1], Stroke::new(0.5, color));
-                }
+                let d = (p1 - p0).normalized();
+                let n = egui::Vec2::new(-d.y, d.x);
+                let gap = 1.5;
+                painter.line_segment([p0 + n * gap, p1 + n * gap], Stroke::new(0.5, color));
+                painter.line_segment([p0 - n * gap, p1 - n * gap], Stroke::new(0.5, color));
             }
         }
     }
@@ -277,10 +266,7 @@ fn display(tab: &mut GraphTab, app: &mut AppState, ui: &mut egui::Ui) {
                 .map(|cv| cv.style.color)
                 .unwrap_or(Color32::GRAY);
 
-            // Draw line segment
-            painter.line_segment([screen_a, screen_b], Stroke::new(2.0, trip_color));
-
-            // Stealth arrow (matching original GPU shader geometry, rendered in software)
+            // Stealth arrow only (track lines are rendered separately) (matching original GPU shader geometry, rendered in software)
             let dir = (screen_b - screen_a).normalized();
             let perp = egui::Vec2::new(-dir.y, dir.x);
             let arrow_len = 14.0;
