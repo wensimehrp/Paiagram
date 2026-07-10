@@ -19,6 +19,7 @@ use egui_i18n::tr;
 use egui_tiles::{
     Behavior, ContainerKind, SimplificationOptions, Tile, TileId, Tiles, Tree, UiResponse,
 };
+use std::collections::VecDeque;
 use paiagram_core::colors::{DisplayedColor, PredefinedColor};
 use paiagram_core::settings::{ProjectSettings, UserPreferences};
 use paiagram_core::trip::{TEntry, TripSchedule};
@@ -37,6 +38,11 @@ use crate::tabs::text::TextMessage;
 use crate::widgets::TimeDragValue;
 
 /// The truth of the application.
+#[derive(Clone)]
+pub(crate) enum PendingTabOp {
+    Open(MainTab),
+}
+
 pub struct PaiagramApp {
     pub state: AppState,
 }
@@ -54,6 +60,7 @@ impl PaiagramApp {
                 additional_ui: AdditionalUiState::default(),
                 modal: UiModal(None),
                 frame_time_history: FrameTimeHistory::default(),
+                pending_tabs: VecDeque::new(),
             },
         }
     }
@@ -390,40 +397,20 @@ pub(crate) struct MainUiState {
 impl MainUiState {
     pub(crate) fn push_to_focused_leaf(&mut self, new_pane: MainTab) -> TileId {
         let new_id = self.tree.tiles.insert_pane(new_pane);
-        
-        // Try to add to the focused tab's parent Tabs container
-        if let Some(&active_id) = self.tree.active_tiles().last() {
-            if let Some(parent_id) = self.tree.tiles.parent_of(active_id) {
-                if let Some(Tile::Container(container)) = self.tree.tiles.get_mut(parent_id) {
-                    if container.kind() == ContainerKind::Tabs {
-                        container.add_child(new_id);
-                        self.tree.make_active(|id, _| id == new_id);
-                        return new_id;
-                    }
-                }
-            }
-        }
-        
-        // If root is already a Tabs container, add to it directly
+        let mut activated = false;
         if let Some(root_id) = self.tree.root {
             if let Some(Tile::Container(container)) = self.tree.tiles.get_mut(root_id) {
-                if container.kind() == ContainerKind::Tabs {
-                    container.add_child(new_id);
-                    self.tree.make_active(|id, _| id == new_id);
-                    return new_id;
+                container.add_child(new_id);
+                if let egui_tiles::Container::Tabs(tabs) = container {
+                    tabs.active = Some(new_id);
+                    activated = true;
                 }
             }
         }
-        
-        // Fallback: create a new top-level Tabs container
-        let old_root = self.tree.root;
-        let tabs_id = if let Some(old_root) = old_root {
-            self.tree.tiles.insert_tab_tile(vec![old_root, new_id])
-        } else {
-            self.tree.tiles.insert_tab_tile(vec![new_id])
-        };
-        self.tree.root = Some(tabs_id);
-        self.tree.make_active(|id, _| id == new_id);
+        if !activated {
+            let tabs_id = self.tree.tiles.insert_tab_tile(vec![new_id]);
+            self.tree.root = Some(tabs_id);
+        }
         new_id
     }
 }
@@ -497,15 +484,7 @@ impl MainTabViewer {
         ];
         for (s, t) in tab_definitions {
             if ui.button(s).clicked() {
-                // Find or create the tab
-                let tile_id = if let Some(tile_id) = self.app().main_ui.tree.tiles.find_pane(&t) {
-                    self.app().main_ui.tree.make_active(|id, _| id == tile_id);
-                    self.app().main_ui.tree.set_visible(tile_id, true);
-                    tile_id
-                } else {
-                    self.app().main_ui.push_to_focused_leaf(t)
-                };
-                *self.last_focused() = Some(tile_id);
+                self.app().pending_tabs.push_back(PendingTabOp::Open(t));
                 ui.close();
             }
         }
@@ -565,14 +544,7 @@ impl MainTabViewer {
     }
 
     fn open_tab_or_close(&mut self, ui: &mut Ui, tab: MainTab) {
-        let tile_id = if let Some(tile_id) = self.app().main_ui.tree.tiles.find_pane(&tab) {
-            self.app().main_ui.tree.make_active(|id, _| id == tile_id);
-            self.app().main_ui.tree.set_visible(tile_id, true);
-            tile_id
-        } else {
-            self.app().main_ui.push_to_focused_leaf(tab)
-        };
-        *self.last_focused() = Some(tile_id);
+        self.app().pending_tabs.push_back(PendingTabOp::Open(tab));
         ui.close();
     }
 }
@@ -736,7 +708,38 @@ extern "C" {
 }
 
 
+fn process_pending_tabs(app: &mut AppState) {
+    use egui_tiles::{Container, Tile, TileId, Tiles};
+    while let Some(op) = app.pending_tabs.pop_front() {
+        match op {
+            PendingTabOp::Open(tab) => {
+                // Check if tab already exists
+                if let Some(id) = app.main_ui.tree.tiles.find_pane(&tab) {
+                    app.main_ui.tree.set_visible(id, true);
+                    app.additional_ui.focused_id = Some(id);
+                    continue;
+                }
+                let new_id = app.main_ui.tree.tiles.insert_pane(tab);
+                let root_id = app.main_ui.tree.root;
+                if let Some(root_id) = root_id {
+                    if let Some(Tile::Container(Container::Tabs(tabs))) = app.main_ui.tree.tiles.get_mut(root_id) {
+                        tabs.children.push(new_id);
+                        tabs.active = Some(new_id);
+                        app.additional_ui.focused_id = Some(new_id);
+                        continue;
+                    }
+                }
+                // Fallback: create new tabs container
+                let tabs_id = app.main_ui.tree.tiles.insert_tab_tile(vec![new_id]);
+                app.main_ui.tree.root = Some(tabs_id);
+                app.additional_ui.focused_id = Some(new_id);
+            }
+        }
+    }
+}
+
 pub fn show_ui(ui: &mut Ui, app: &mut AppState, cpu_time: Option<f32>) {
+    process_pending_tabs(app);
     // sync theme
     if app.preferences.dark_mode {
         ui.ctx().set_theme(egui::Theme::Dark);

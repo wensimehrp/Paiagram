@@ -201,20 +201,15 @@ impl CommandPalette {
 
                 if enter_pressed {
                     match matched_type {
-                        MatchedType::Route(rk) => {
-                            // Open diagram tab for route
-                            // TODO: need a way to get/create diagram tab from route key
-                        }
+                        MatchedType::Route(_rk) => {}
                         MatchedType::Station(sk) => {
-                            app.main_ui.push_to_focused_leaf(MainTab::Station(
-                                StationTab::new(*sk),
-                            ));
+                            app.pending_tabs.push_back(crate::PendingTabOp::Open(MainTab::Station(StationTab::new(*sk))));
                         }
                         MatchedType::Trip(tk) => {
-                            app.main_ui.push_to_focused_leaf(MainTab::Trip(TripTab::new(*tk)));
+                            app.pending_tabs.push_back(crate::PendingTabOp::Open(MainTab::Trip(TripTab::new(*tk))));
                         }
                         MatchedType::Tab(f) => {
-                            app.main_ui.push_to_focused_leaf(f());
+                            app.pending_tabs.push_back(crate::PendingTabOp::Open(f()));
                         }
                     }
                     selected_and_determined |= true;

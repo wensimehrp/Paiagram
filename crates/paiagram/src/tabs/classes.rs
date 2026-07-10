@@ -39,7 +39,7 @@ impl Tab for ClassesTab {
                             if !has_class { continue; }
                             let res = ui.button(name.as_str());
                             if res.clicked() {
-                                app.main_ui.push_to_focused_leaf(MainTab::Trip(TripTab::new(tk)));
+                                app.pending_tabs.push_back(crate::PendingTabOp::Open(MainTab::Trip(TripTab::new(tk))));
                             }
                         }
                     });

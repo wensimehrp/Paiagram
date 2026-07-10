@@ -177,6 +177,7 @@ pub struct AppState {
     pub additional_ui: super::AdditionalUiState,
     pub modal: super::UiModal,
     pub frame_time_history: super::FrameTimeHistory,
+    pub pending_tabs: std::collections::VecDeque<super::PendingTabOp>,
 }
 
 pub(crate) trait Tab {
