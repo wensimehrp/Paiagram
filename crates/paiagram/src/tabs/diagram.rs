@@ -1,17 +1,20 @@
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use egui::{
     Align2, Button, Color32, FontId, Id, Margin, Painter, Pos2, Rect, Sense, Stroke, Ui, Vec2,
     WidgetText,
 };
 use egui_i18n::tr;
-use paiagram_core::trip::{TEntry, TravelMode};
+use ecow::EcoVec;
+use paiagram_core::trip::{TEntry, TravelMode, TripSchedule};
 use paiagram_core::units::time::{Tick, TimetableTime};
-use paiagram_core::{RouteKey, TripKey};
+use paiagram_core::{Command, RouteKey, TripKey};
 use serde::{Deserialize, Serialize};
 
 use super::{AppState, Navigatable, Tab};
 use crate::widgets::TimeDragValue;
+use crate::ExtendingTripSelection;
 
 mod draw_lines;
 
@@ -129,10 +132,49 @@ impl Tab for DiagramTab {
                 main_display(self, app, ui)
             });
     }
-    fn edit_display(&mut self, _app: &mut AppState, ui: &mut Ui) {
+    fn edit_display(&mut self, app: &mut AppState, ui: &mut Ui) {
         ui.checkbox(&mut self.use_global_timer, tr!("diagram-use-global-timer"));
-        ui.label(tr!("side-panel-edit-fallback-1"));
-        ui.label(tr!("side-panel-edit-fallback-2"));
+        match app.selected_items.clone() {
+            crate::SelectedItems::None | crate::SelectedItems::Coordinate(_) => {
+                ui.strong(tr!("menu-new-trip"));
+                ui.label(tr!("diagram-create-new-trip-scratch"));
+                if ui.button(tr!("diagram-create-new-trip")).clicked() {
+                    let key = TripKey::new();
+                    app.source.apply_command(paiagram_core::Command::AddTrip {
+                        key,
+                        view: paiagram_core::TripView {
+                            name: "New Trip".into(),
+                            schedule: paiagram_core::TripSchedule::new(Default::default()),
+                            class: None,
+                        },
+                    });
+                    app.selected_items = crate::SelectedItems::ExtendingTrip(
+                        crate::ExtendingTripSelection {
+                            trip: key,
+                            previous_pos: None,
+                            current_entry: None,
+                            last_time: None,
+                        },
+                    );
+                }
+            }
+            crate::SelectedItems::ExtendingTrip(ref mut sel) => {
+                if let Some(view) = app.source.trips.get_view(sel.trip) {
+                    let mut name = view.name.to_string();
+                    ui.text_edit_singleline(&mut name);
+                    if name != view.name.as_str() {
+                        app.source.apply_command(paiagram_core::Command::RenameTrip {
+                            key: sel.trip,
+                            name: name.into(),
+                        });
+                    }
+                }
+                if ui.button(tr!("diagram-complete")).clicked() {
+                    app.selected_items = crate::SelectedItems::None;
+                }
+            }
+            _ => {}
+        }
     }
 }
 
@@ -178,6 +220,80 @@ fn main_display(tab: &mut DiagramTab, app: &mut AppState, ui: &mut egui::Ui) {
         }
     }
 
+    // Handle ExtendingTrip: mouse interaction to add entries
+    if let crate::SelectedItems::ExtendingTrip(ref mut sel) = app.selected_items {
+        if response.contains_pointer() {
+            if let Some(hover_pos) = ui.input(|r| r.pointer.hover_pos()) {
+                // Find closest station
+                let cand_y = tab.navi.screen_y_to_logical_y(hover_pos.y) as f32;
+                let idx = station_heights.partition_point(|(_, y)| *y < cand_y);
+                let (cand_stn, cand_h, cand_idx) = if idx == 0 {
+                    station_heights.first().map(|(e, h)| (*e, *h, 0)).unwrap()
+                } else if idx >= station_heights.len() {
+                    station_heights.last().map(|(e, h)| (*e, *h, station_heights.len() - 1)).unwrap()
+                } else {
+                    let (prev_e, prev_y) = station_heights[idx - 1];
+                    let (curr_e, curr_y) = station_heights[idx];
+                    if cand_y > (prev_y + curr_y) / 2.0 {
+                        (curr_e, curr_y, idx)
+                    } else {
+                        (prev_e, prev_y, idx - 1)
+                    }
+                };
+                let cand_t = tab.navi.screen_x_to_logical_x(hover_pos.x).to_timetable_time();
+                let screen_stn_y = tab.navi.logical_y_to_screen_y(cand_h as f64);
+                let display_pos = Pos2::new(hover_pos.x, screen_stn_y);
+
+                // Draw crosshair
+                let cross_stroke = Stroke::new(1.0, Color32::RED);
+                painter.hline(response.rect.x_range(), display_pos.y, cross_stroke);
+                painter.vline(display_pos.x, response.rect.y_range(), cross_stroke);
+
+                // Draw station name
+                let stn_name = app.source.stations.query(cand_stn, |b| b.name.clone()).unwrap_or_default();
+                painter.text(display_pos, Align2::RIGHT_BOTTOM, stn_name.as_str(), FontId::default(), ui.visuals().text_color());
+                painter.text(display_pos, Align2::RIGHT_TOP, cand_t.to_string(), FontId::default(), ui.visuals().text_color());
+
+                // Draw line from previous entry to current
+                if let Some((prev_tick, prev_idx)) = sel.previous_pos {
+                    if let Some((_, prev_h)) = station_heights.get(prev_idx).copied() {
+                        let prev_pos = tab.navi.xy_to_screen_pos(prev_tick, prev_h as f64);
+                        painter.line_segment([prev_pos, display_pos], cross_stroke);
+                        if prev_pos.distance(display_pos) > 50.0 {
+                            let mid = prev_pos.lerp(display_pos, 0.5);
+                            let prev_tt = prev_tick.to_timetable_time();
+                            painter.text(mid, Align2::CENTER_BOTTOM, (cand_t - prev_tt).to_string(), FontId::default(), ui.visuals().text_color());
+                        }
+                        painter.circle_filled(prev_pos, 3.0, Color32::RED);
+                    }
+                }
+
+                // On click: add entry
+                if response.clicked() {
+                    let click_tick = tab.navi.screen_x_to_logical_x(hover_pos.x);
+                    sel.previous_pos = Some((click_tick, cand_idx));
+                    sel.last_time = Some(cand_t);
+                    static ENTRY_ID: AtomicU32 = AtomicU32::new(1);
+                    let id = ENTRY_ID.fetch_add(1, Ordering::Relaxed);
+                    if let Some(view) = app.source.trips.get_view(sel.trip) {
+                        let mut entries: Vec<TEntry> = view.schedule.entries().to_vec();
+                        entries.push(TEntry::Pinned {
+                            stn: cand_stn,
+                            trk: 0,
+                            arr: TravelMode::At(cand_t),
+                            dep: TravelMode::At(cand_t),
+                            id,
+                        });
+                        app.source.apply_command(Command::ChangeTripEntries {
+                            key: sel.trip,
+                            entries: entries.into(),
+                        });
+                    }
+                }
+            }
+        }
+    }
+
     // Draw time indicator
     let ticks = app.timer.read_ticks();
     let mut time_indicator_x = tab.navi.logical_x_to_screen_x(ticks);
@@ -209,52 +325,42 @@ fn draw_trip_on_diagram(
 
     let station_map: std::collections::HashMap<paiagram_core::StationKey, f32> =
         station_heights.iter().copied().collect();
-
-    // Draw each entry segment
-    let entries = view.schedule.entries();
-    for (i, entry) in entries.iter().enumerate() {
-        let (sk, arr_time, dep_time) = match entry {
-            TEntry::Pinned { stn, arr: TravelMode::At(a), dep: TravelMode::At(d), .. } => (*stn, Some(*a), *d),
-            TEntry::Pinned { stn, dep: TravelMode::At(d), .. } => (*stn, None, *d),
-            TEntry::PinnedNonStop { stn, pass: TravelMode::At(t), .. } => (*stn, None, *t),
-            TEntry::Derived(s) => (*s, None, TimetableTime(0)),
-            _ => continue,
+    // Build list of (station_key, time, station_height) for all At entries
+    struct SegPt { stn: paiagram_core::StationKey, t: TimetableTime, y: f32 }
+    let points: Vec<SegPt> = view.schedule.entries().iter().filter_map(|entry| {
+        let (sk, t) = match entry {
+            TEntry::Pinned { stn, arr: TravelMode::At(a), .. } => (*stn, *a),
+            TEntry::PinnedNonStop { stn, pass: TravelMode::At(t), .. } => (*stn, *t),
+            _ => return None,
         };
+        let y = station_map.get(&sk).copied()?;
+        Some(SegPt { stn: sk, t, y })
+    }).collect();
 
-        let Some(&station_y) = station_map.get(&sk) else { continue; };
-
-        // Get times from next entry as well
-        let next_arr = entries.get(i + 1).and_then(|next| match next {
-            TEntry::Pinned { arr: TravelMode::At(a), .. } => Some(*a),
-            TEntry::Pinned { dep: TravelMode::At(d), .. } => Some(*d),
-            _ => None,
-        });
-
-        if let (Some(arr), Some(next_a)) = (arr_time, next_arr) {
-            let visible_x = navi.visible_x();
-            let norm_arr = Tick::from_timetable_time(arr).normalized_with(repeat_interval_ticks);
-            let norm_next = Tick::from_timetable_time(next_a).normalized_with(repeat_interval_ticks);
-            let y1 = navi.logical_y_to_screen_y(station_y as f64);
-
-            // Find next station
-            let next_station_y = station_heights.get(i + 1).map(|(_, y)| *y).unwrap_or(station_y);
-            let y2 = navi.logical_y_to_screen_y(next_station_y as f64);
-
-            let x1 = navi.logical_x_to_screen_x(norm_arr);
-            let x2 = navi.logical_x_to_screen_x(norm_next);
-
-            let mut c1 = Pos2::new(x1, y1);
-            let mut c2 = Pos2::new(x2, y2);
-            class_stroke.round_center_to_pixel(painter.pixels_per_point(), &mut c1.x);
-            class_stroke.round_center_to_pixel(painter.pixels_per_point(), &mut c1.y);
-            class_stroke.round_center_to_pixel(painter.pixels_per_point(), &mut c2.x);
-            class_stroke.round_center_to_pixel(painter.pixels_per_point(), &mut c2.y);
-            painter.line_segment([c1, c2], class_stroke);
-
-            // Draw departure handle
-            let dep_x = navi.logical_x_to_screen_x(norm_arr);
-            let dep_pos = Pos2::new(dep_x, y1);
-            painter.circle_filled(dep_pos, 3.0, class_stroke.color);
-        }
+    // Draw segments between consecutive points
+    for pair in points.windows(2) {
+        let a = &pair[0];
+        let b = &pair[1];
+        let ta = Tick::from_timetable_time(a.t).normalized_with(repeat_interval_ticks);
+        let tb = Tick::from_timetable_time(b.t).normalized_with(repeat_interval_ticks);
+        let ya = navi.logical_y_to_screen_y(a.y as f64);
+        let yb = navi.logical_y_to_screen_y(b.y as f64);
+        let xa = navi.logical_x_to_screen_x(ta);
+        let xb = navi.logical_x_to_screen_x(tb);
+        let mut c1 = Pos2::new(xa, ya);
+        let mut c2 = Pos2::new(xb, yb);
+        class_stroke.round_center_to_pixel(painter.pixels_per_point(), &mut c1.x);
+        class_stroke.round_center_to_pixel(painter.pixels_per_point(), &mut c1.y);
+        class_stroke.round_center_to_pixel(painter.pixels_per_point(), &mut c2.x);
+        class_stroke.round_center_to_pixel(painter.pixels_per_point(), &mut c2.y);
+        painter.line_segment([c1, c2], class_stroke);
+        painter.circle_filled(c1, 3.0, class_stroke.color);
+    }
+    // Draw handle for the last point
+    if let Some(last) = points.last() {
+        let t = Tick::from_timetable_time(last.t).normalized_with(repeat_interval_ticks);
+        let x = navi.logical_x_to_screen_x(t);
+        let y = navi.logical_y_to_screen_y(last.y as f64);
+        painter.circle_filled(Pos2::new(x, y), 3.0, class_stroke.color);
     }
 }

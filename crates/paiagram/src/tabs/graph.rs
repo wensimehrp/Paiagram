@@ -159,10 +159,7 @@ impl Tab for GraphTab {
                     });
                 }
             }
-            _ => {
-                ui.label(tr!("side-panel-edit-fallback-1"));
-                ui.label(tr!("side-panel-edit-fallback-2"));
-            }
+            _ => {}
         }
     }
 }

@@ -95,7 +95,7 @@ fn display_time_grid(tab: &StationTab, app: &AppState, ui: &mut egui::Ui) {
             // Find last station name
             let last_station_name = view.schedule.entries().last()
                 .and_then(|last| match last {
-                    paiagram_core::trip::TEntry::Derived(s) | 
+                    paiagram_core::trip::TEntry::Derived(s) |
                         paiagram_core::trip::TEntry::Pinned { stn: s, .. } |
                         paiagram_core::trip::TEntry::PinnedNonStop { stn: s, .. } |
                         paiagram_core::trip::TEntry::PinnedExternalNonStop { stn: s, .. } => {

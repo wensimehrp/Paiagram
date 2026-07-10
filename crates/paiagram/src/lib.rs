@@ -99,7 +99,7 @@ pub(crate) struct ExtendingRouteSelection {
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub(crate) struct ExtendingTripSelection {
     pub(crate) trip: TripKey,
-    pub(crate) previous_pos: Option<(TimetableTime, usize)>,
+    pub(crate) previous_pos: Option<(Tick, usize)>,
     pub(crate) last_time: Option<TimetableTime>,
     pub(crate) current_entry: Option<usize>,
 }
