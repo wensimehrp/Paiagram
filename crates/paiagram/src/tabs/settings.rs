@@ -19,7 +19,6 @@ impl Tab for SettingsTab {
             ui.end_row();
 
             ui.label(tr!("settings-language"));
-            ui.label(tr!("settings-language"));
             let prev_lang = app.preferences.lang.clone();
             egui::ComboBox::new("language", "")
                 .selected_text(app.preferences.lang.clone())

@@ -92,7 +92,7 @@ impl Tab for RouteTimetableTab {
         let number_style = egui::TextStyle::Name("number".into());
         ui.style_mut().text_styles.insert(
             number_style.clone(),
-            egui::FontId::new(15.0, egui::FontFamily::Proportional),
+            egui::FontId::new(15.0, egui::FontFamily::Name("dia_pro".into())),
         );
         ui.style_mut().drag_value_text_style = number_style;
         ui.style_mut().spacing.interact_size = Vec2::ZERO;
@@ -332,7 +332,7 @@ impl TableDelegate for RouteTimetableDisplayer<'_> {
 
         ui.vertical(|ui| {
             if display_mode.arrival {
-                let font = FontId::new(15.0, egui::FontFamily::Proportional);
+                let font = FontId::new(15.0, egui::FontFamily::Name("dia_pro".into()));
                 let res = ui.put(
                     Rect::from_min_size(
                         ui.max_rect().left_top(),
@@ -359,7 +359,7 @@ impl TableDelegate for RouteTimetableDisplayer<'_> {
                 egui::Popup::menu(&res).show(|ui| { ui.label("Hi!"); });
             }
             if display_mode.departure {
-                let font = FontId::new(15.0, egui::FontFamily::Proportional);
+                let font = FontId::new(15.0, egui::FontFamily::Name("dia_pro".into()));
                 let res = ui.put(
                     Rect::from_min_size(
                         if display_mode.arrival { ui.max_rect().left_center() } else { ui.max_rect().left_top() },

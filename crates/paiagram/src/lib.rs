@@ -1070,6 +1070,15 @@ fn build_font_definitions(sarasa: Option<Vec<u8>>) -> egui::FontDefinitions {
             .unwrap()
             .insert(0, "my_font".to_owned());
     }
+    // Load DiaPro font for timetable numbers
+    if let Some(dia_bytes) = load_dia_pro_local() {
+        fonts.font_data.insert(
+            "dia_pro".to_owned(),
+            std::sync::Arc::new(egui::FontData::from_owned(dia_bytes)),
+        );
+        let dia_family = vec!["dia_pro".to_owned()];
+        fonts.families.insert(egui::FontFamily::Name("dia_pro".into()), dia_family);
+    }
     fonts
 }
 
@@ -1077,10 +1086,25 @@ fn build_font_definitions(sarasa: Option<Vec<u8>>) -> egui::FontDefinitions {
 fn load_sarasa_local() -> Option<Vec<u8>> {
     let mut candidates = vec![
         PathBuf::from("assets/fonts/SarasaUiSC-Regular.ttf"),
-        PathBuf::from("crates/paiagram-ui/assets/fonts/SarasaUiSC-Regular.ttf"),
+        PathBuf::from("crates/paiagram/assets/fonts/SarasaUiSC-Regular.ttf"),
     ];
     if let Ok(exe) = std::env::current_exe() && let Some(parent) = exe.parent() {
         candidates.push(parent.join("assets/fonts/SarasaUiSC-Regular.ttf"));
+    }
+    for path in candidates {
+        if let Ok(bytes) = std::fs::read(&path) { return Some(bytes); }
+    }
+    None
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn load_dia_pro_local() -> Option<Vec<u8>> {
+    let mut candidates = vec![
+        PathBuf::from("assets/fonts/DiaPro-Regular.ttf"),
+        PathBuf::from("crates/paiagram/assets/fonts/DiaPro-Regular.ttf"),
+    ];
+    if let Ok(exe) = std::env::current_exe() && let Some(parent) = exe.parent() {
+        candidates.push(parent.join("assets/fonts/DiaPro-Regular.ttf"));
     }
     for path in candidates {
         if let Ok(bytes) = std::fs::read(&path) { return Some(bytes); }
