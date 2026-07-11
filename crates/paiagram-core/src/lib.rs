@@ -13,7 +13,7 @@ pub mod units;
 
 use std::num::NonZeroU32;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU16};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU16, AtomicU32};
 use std::sync::mpsc::{Receiver, Sender, channel};
 
 use ecow::{EcoString, EcoVec};
@@ -575,18 +575,56 @@ impl GraphCacheWorld {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy, Debug)]
+pub enum PredefinedTEntryIcon {
+    Bus,
+    Metro,
+    Train,
+    Tram,
+    Trolleybus,
+    Ferry,
+}
+
+impl PredefinedTEntryIcon {
+    fn get_icon(self) -> egui::ColorImage {
+        todo!()
+    }
+}
+
+enum TEntrySpatialEntryDisplayMode {
+    Stealth { angle: AtomicU8 },
+    Predefined(PredefinedTEntryIcon),
+    Custom { key: [u8; 2] },
+}
+
 pub struct TEntrySpatialEntry {
     /// The reference to the trip
     pub key: TripKey,
     /// baseline
-    pub t1: i32,
-    /// delta of t1
-    pub t2: i16,
-    /// delta of t1
-    pub t3: i16,
+    t1: i32,
+    /// departure time, in delta seconds
+    t2: i16,
+    /// arrival time of next station
+    t3: i32,
+    /// Calculated on the last frame
+    target_segment_offset: AtomicU16,
+    /// Calculated on the previous frame
+    display_mode: TEntrySpatialEntryDisplayMode,
+    alpha: AtomicU8,
     /// The interval's points
     pub points: EcoVec<LonLat>,
+}
+
+impl TEntrySpatialEntry {
+    pub fn get_pos_at(self, time: i32) -> XyPos {
+        todo!()
+    }
+}
+
+impl Clone for TEntrySpatialEntry {
+    fn clone(&self) -> Self {
+        todo!()
+    }
 }
 
 #[derive(Clone, Copy)]
