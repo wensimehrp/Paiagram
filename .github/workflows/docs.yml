@@ -29,7 +29,7 @@ jobs:
       - uses: DeterminateSystems/magic-nix-cache-action@v13
 
       - name: Compile docs
-        run: nix develop ./docs/template#default --command ./docs/book.typ ./dist --root .
+        run: nix develop ./docs/template#default --command ./docs/book.typ
 
       - name: Deploy
         uses: peaceiris/actions-gh-pages@v4

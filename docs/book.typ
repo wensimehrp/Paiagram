@@ -1,4 +1,4 @@
-#!/usr/bin/env -S typst compile --features bundle,html --format bundle
+#!/usr/bin/env -S sh -c 'typst c --features bundle,html --format bundle $0 ./dist --root .; pagefind --site ./dist --output-subdir docs/pagefind'
 // nix develop ./docs/template#default --command typst watch --features bundle,html --format bundle ./docs/book.typ ./dist --root .
 
 #import "template/lib.typ"
@@ -55,7 +55,7 @@
     chapter-path("export/paia"),
     chapter-path("export/oudia"),
     chapter-path("export/typst-diagram"),
-    lib.separator(),
+    divider(),
     chapter-path("misc/web"),
     lib.chapter("changelog", content: [
       #title[Changelog]
