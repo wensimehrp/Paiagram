@@ -15,6 +15,13 @@
   root: "docs/",
   authors: ("Jeremy Gao",),
   language: "en",
+  html-renderer: lib.new-hamber.html-renderer.with(
+    pagefind-enabled: true,
+    summary-image-renderer: lib.new-hamber.summary-image-renderer.with(
+      "Paiagram",
+      "https://paiagram.com",
+    ),
+  ),
   sidebar-image: html.img(
     src: "https://upload.wikimedia.org/wikipedia/commons/8/88/Thecanadiannearjasper.jpg",
   ),
