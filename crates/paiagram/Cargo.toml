@@ -1,0 +1,44 @@
+[package]
+name = "paiagram"
+version.workspace = true
+edition.workspace = true
+description.workspace = true
+documentation.workspace = true
+readme.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+bytemuck.workspace = true
+chrono.workspace = true
+clap.workspace = true
+eframe.workspace = true
+egui.workspace = true
+egui_commonmark = "0.23.0"
+egui-i18n.workspace = true
+egui_table = "0.8.0"
+egui_tiles = "0.15.0"
+either.workspace = true
+eros.workspace = true
+git-version.workspace = true
+ib-matcher.workspace = true
+itertools.workspace = true
+itoa.workspace = true
+log.workspace = true
+paiagram-core = { path = "../paiagram-core" }
+paiagram-raptor = { path = "../paiagram-raptor" }
+paiagram-rw = { path = "../paiagram-rw" }
+paste.workspace = true
+serde.workspace = true
+smallvec.workspace = true
+vec1.workspace = true
+walkers = { version = "0.53.0", features = ["mvt"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+js-sys.workspace = true
+serde_html_form = "0.4.0"
+wasm-bindgen.workspace = true
+wasm-bindgen-futures.workspace = true

@@ -1,8 +1,7 @@
-use bevy::prelude::Reflect;
 use derive_more::{Add, AddAssign, Sub, SubAssign};
 
 /// The length or distance represented in meters
-#[derive(Reflect, Debug, Clone, Copy, Add, AddAssign, Sub, SubAssign)]
+#[derive(Debug, Clone, Copy, Add, AddAssign, Sub, SubAssign)]
 pub struct Distance(pub i32);
 
 impl Distance {

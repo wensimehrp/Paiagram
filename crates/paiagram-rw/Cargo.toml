@@ -2,28 +2,24 @@
 name = "paiagram-rw"
 version.workspace = true
 edition.workspace = true
-license.workspace = true
-authors.workspace = true
 description.workspace = true
 documentation.workspace = true
 readme.workspace = true
-repository.workspace = true
 homepage.workspace = true
+repository.workspace = true
+license.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-bevy.workspace = true
-serde.workspace = true
-rfd.workspace = true
-lz4_flex.workspace = true
-ron.workspace = true
 cbor4ii = { version = "1.2.2", features = ["serde", "serde1", "use_std"] }
+lz4_flex.workspace = true
 num-format.workspace = true
+rfd.workspace = true
+ron.workspace = true
+serde.workspace = true
+futures-lite.workspace = true
+log.workspace = true
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen.workspace = true
-
-[lib]
-test = false
-doctest = false

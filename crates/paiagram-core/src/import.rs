@@ -2,81 +2,15 @@
 //! Handles foreign formats such as GTFS Static, qETRC/pyETRC, and OuDiaSecond.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
-use bevy::platform::collections::HashMap;
-use bevy::prelude::*;
-use bevy::tasks::futures_lite::future::poll_once;
-use bevy::tasks::{AsyncComputeTaskPool, Task, block_on};
-use eros::bail;
-use moonshine_core::kind::*;
-use paiagram_rw::save::{LoadCandidate, SaveData};
-
-use crate::graph::Graph;
-use crate::interval::Interval;
-use crate::station::Station;
-use crate::trip::class::{Class, ClassBundle};
-use crate::units::distance::Distance;
+use crate::Command;
 use crate::units::time::{Duration, TimetableTime};
 
-mod gtfs;
-mod llt;
-mod oudia;
-mod qetrc;
-
-pub struct ImportPlugin;
-impl Plugin for ImportPlugin {
-    fn build(&self, app: &mut App) {
-        app.add_observer(qetrc::load_qetrc)
-            .add_observer(oudia::load_oud)
-            .add_observer(gtfs::load_gtfs_static)
-            .add_observer(llt::load_llt)
-            .add_observer(download_file)
-            .add_systems(Update, pull_file);
-    }
-}
-
-#[derive(Event)]
-pub struct LoadQETRC {
-    pub content: String,
-}
-
-#[derive(Event)]
-pub struct LoadLlt {
-    pub content: String,
-}
-
-pub enum OuDiaContentType {
-    OuDiaSecond(String),
-    OuDia(Vec<u8>),
-}
-
-#[derive(Event)]
-pub struct LoadOuDia {
-    pub content: OuDiaContentType,
-}
-
-impl LoadOuDia {
-    pub fn original(data: Vec<u8>) -> Self {
-        Self {
-            content: OuDiaContentType::OuDia(data),
-        }
-    }
-    pub fn second(data: String) -> Self {
-        Self {
-            content: OuDiaContentType::OuDiaSecond(data),
-        }
-    }
-}
-
-#[derive(Event)]
-pub struct LoadGTFS {
-    pub content: Vec<u8>,
-}
-
-#[derive(Event)]
-pub struct DownloadFile {
-    pub url: String,
-}
+// mod gtfs;
+// mod llt;
+// mod oudia;
+// mod qetrc;
 
 fn normalize_times<'a>(mut time_iter: impl Iterator<Item = &'a mut TimetableTime> + 'a) {
     let Some(mut previous_time) = time_iter.next().copied() else {
@@ -90,113 +24,6 @@ fn normalize_times<'a>(mut time_iter: impl Iterator<Item = &'a mut TimetableTime
     }
 }
 
-pub(crate) fn make_station(
-    name: &str,
-    station_map: &mut HashMap<String, Instance<Station>>,
-    graph: &mut Graph,
-    commands: &mut Commands,
-) -> Instance<Station> {
-    if let Some(&entity) = station_map.get(name) {
-        return entity;
-    }
-    let station_entity = commands
-        .spawn(Name::new(name.to_string()))
-        .insert_instance(Station::default())
-        .into();
-    station_map.insert(name.to_string(), station_entity);
-    graph.add_node(station_entity.entity());
-    station_entity
-}
-
-pub(crate) fn make_class(
-    name: &str,
-    class_map: &mut HashMap<String, Instance<Class>>,
-    commands: &mut Commands,
-    mut make_class: impl FnMut() -> ClassBundle,
-) -> Instance<Class> {
-    if let Some(&entity) = class_map.get(name) {
-        return entity;
-    };
-    let class_bundle = make_class();
-    let class_entity = commands
-        .spawn((class_bundle.name, class_bundle.stroke))
-        .insert_instance(class_bundle.class)
-        .into();
-    class_map.insert(name.to_string(), class_entity);
-    class_entity
-}
-
-// TODO: remove this function
-pub(crate) fn add_interval_pair(
-    graph: &mut Graph,
-    commands: &mut Commands,
-    from: Entity,
-    to: Entity,
-    length: Distance,
-) {
-    if !graph.contains_edge(from, to) {
-        let e1: Instance<Interval> = commands.spawn_instance(Interval { length }).into();
-        graph.add_edge(from, to, e1.entity());
-    }
-    if !graph.contains_edge(to, from) {
-        let e2: Instance<Interval> = commands.spawn_instance(Interval { length }).into();
-        graph.add_edge(to, from, e2.entity());
-    }
-}
-
-#[derive(Component)]
-pub struct FileDownloadTask {
-    task: Option<Task<(Vec<u8>, String)>>,
-    url: String,
-}
-
-pub fn download_file(event: On<DownloadFile>, mut commands: Commands) {
-    commands.spawn(FileDownloadTask {
-        task: None,
-        url: event.url.clone(),
-    });
-}
-
-fn pull_file(mut commands: Commands, tasks: Populated<(Entity, &mut FileDownloadTask)>) {
-    for (task_entity, mut task) in tasks {
-        if task.task.is_none() {
-            let url = task.url.clone();
-            task.task = Some(AsyncComputeTaskPool::get().spawn(async move {
-                let response = ehttp::fetch_async(ehttp::Request::get(&url))
-                    .await
-                    .unwrap_or_else(|e| panic!("Failed to download file from {url}: {e:?}"));
-                if !response.ok {
-                    panic!(
-                        "Failed to download file from {url}: status={} {}",
-                        response.status, response.status_text
-                    );
-                }
-                (response.bytes, response.url)
-            }));
-            continue;
-        }
-
-        let Some(task_handle) = task.task.as_mut() else {
-            continue;
-        };
-        let Some((content, final_url)) = block_on(poll_once(task_handle)) else {
-            continue;
-        };
-
-        let path = infer_path_from_url(&final_url)
-            .or_else(|| infer_path_from_url(&task.url))
-            .unwrap_or_else(|| PathBuf::from(task.url.clone()));
-        if let Err(e) = load_and_trigger(&path, content, &mut commands) {
-            error!(
-                "Failed to load downloaded file from {} (resolved as {}): {e:#}",
-                task.url,
-                path.display(),
-            );
-        }
-        commands.entity(task_entity).despawn();
-    }
-}
-
 fn infer_path_from_url(url: &str) -> Option<PathBuf> {
     let no_query = url.split('?').next().unwrap_or(url);
     let no_fragment = no_query.split('#').next().unwrap_or(no_query);
@@ -207,35 +34,21 @@ fn infer_path_from_url(url: &str) -> Option<PathBuf> {
     Some(PathBuf::from(filename))
 }
 
-pub fn load_and_trigger(
-    path: &PathBuf,
-    content: Vec<u8>,
-    commands: &mut Commands,
-) -> eros::Result<()> {
-    match path.extension().and_then(|s| s.to_str()) {
-        Some("paia") => {
-            commands.insert_resource(LoadCandidate(SaveData::CompressedCbor(content)));
-        }
-        Some("pyetgr") | Some("json") => {
-            let content = String::from_utf8(content)?;
-            commands.trigger(LoadQETRC { content });
-        }
-        Some("oud2") => {
-            let content = String::from_utf8(content)?;
-            commands.trigger(LoadOuDia::second(content));
-        }
-        Some("zip") => {
-            commands.trigger(LoadGTFS { content });
-        }
-        Some("oud") => {
-            // oudia does not use utf-8
-            commands.trigger(LoadOuDia::original(content))
-        }
-        Some("ron") => {
-            commands.insert_resource(LoadCandidate(SaveData::Ron(content)));
-        }
-        Some(e) => bail!("Unexpected extension: {}", e),
-        None => bail!("Path does not have an extension"),
-    }
-    return Ok(());
+pub enum ImportContentType {
+    /// qETRC and pyETRC
+    Pyetgr(Arc<str>),
+    /// OuDia in Shift-JIS
+    OuDia(Arc<[u8]>),
+    /// OuDiaSecond in UTF8
+    OuDiaSecond(Arc<str>),
+    /// GTFS Zip
+    Gtfs(Arc<[u8]>),
+    /// Paiagram's .paia
+    PaiagramPaia(Arc<str>),
+    /// Paiagram's debug RON format
+    PaiagramRon(Arc<str>),
+}
+
+fn load_and_trigger(path: &PathBuf, content: Vec<u8>) -> eros::Result<Box<[Command]>> {
+    todo!()
 }

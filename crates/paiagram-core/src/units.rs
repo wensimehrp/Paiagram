@@ -1,3 +1,10 @@
+pub mod coordinates;
 pub mod distance;
 pub mod speed;
 pub mod time;
+
+pub use coordinates::*;
+pub use distance::*;
+
+/// CanvasLength in centimetres
+pub struct CanvasLength(f64);
