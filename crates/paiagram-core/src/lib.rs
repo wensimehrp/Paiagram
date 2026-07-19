@@ -12,12 +12,14 @@ pub mod trip;
 pub mod units;
 
 use std::num::NonZeroU32;
+use std::ops::RangeInclusive;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU16, AtomicU32};
 use std::sync::mpsc::{Receiver, Sender, channel};
 
 use ecow::{EcoString, EcoVec};
-use egui::Color32;
+use egui::emath::inverse_lerp;
+use egui::{Color32, remap};
 use nohash_hasher::BuildNoHashHasher;
 use petgraph::graphmap::DiGraphMap;
 use rstar::{AABB, RTree, RTreeObject};
@@ -573,6 +575,22 @@ impl GraphCacheWorld {
             interval_rtree: RTree::default(),
         }
     }
+    fn get_entries(
+        &self,
+        x_range: RangeInclusive<i32>,
+        y_range: RangeInclusive<i32>,
+        time: i32,
+        delta_time: f64,
+    ) -> impl Iterator<Item = &TEntrySpatialEntry> {
+        let time = time as i64;
+        let x_min = (*x_range.start()).min(*x_range.end()) as i64;
+        let x_max = (*x_range.start()).max(*x_range.end()) as i64;
+        let y_min = (*y_range.start()).min(*y_range.end()) as i64;
+        let y_max = (*y_range.start()).max(*y_range.end()) as i64;
+
+        let envelope = AABB::from_corners([x_min, y_min, time], [x_max, y_max, time]);
+        self.entry_rtree.locate_in_envelope_intersecting(&envelope)
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -591,12 +609,22 @@ impl PredefinedTEntryIcon {
     }
 }
 
-enum TEntrySpatialEntryDisplayMode {
-    Stealth { angle: AtomicU8 },
+#[derive(Clone)]
+enum TEntrySpatialEntryIcon {
+    Stealth,
     Predefined(PredefinedTEntryIcon),
     Custom { key: [u8; 2] },
 }
 
+#[derive(Clone, Copy)]
+pub enum TEntrySpatialEntryEnd {
+    Start,
+    Intermediate,
+    End([u8; 2]),
+    StartEnd([u8; 2]),
+}
+
+#[derive(Clone)]
 pub struct TEntrySpatialEntry {
     /// The reference to the trip
     pub key: TripKey,
@@ -606,24 +634,63 @@ pub struct TEntrySpatialEntry {
     t2: i16,
     /// arrival time of next station
     t3: i32,
-    /// Calculated on the last frame
-    target_segment_offset: AtomicU16,
     /// Calculated on the previous frame
-    display_mode: TEntrySpatialEntryDisplayMode,
-    alpha: AtomicU8,
-    /// The interval's points
-    pub points: EcoVec<LonLat>,
+    end: TEntrySpatialEntryEnd,
+    icon: TEntrySpatialEntryIcon,
+    /// The interval's points premapped to XY position
+    /// with progress stored as u32.
+    pub points: EcoVec<(u32, XyPos)>,
 }
 
 impl TEntrySpatialEntry {
-    pub fn get_pos_at(self, time: i32) -> XyPos {
-        todo!()
-    }
-}
+    pub fn get_pos_angle_alpha_at(self, time_secs: i32) -> Option<(XyPos, f64, u8)> {
+        if self.points.is_empty() {
+            return None;
+        };
+        if self.points.len() == 1 {
+            let (_, single_point) = self.points[0];
+            return Some((single_point, 0.0, 255));
+        }
+        let travel_secs_min = self.t1 as f64 + self.t2 as f64;
+        let travel_secs_max = self.t3 as f64;
+        let travel_range = travel_secs_min..=travel_secs_max;
+        let time_secs = (time_secs as f64).clamp(travel_secs_min, travel_secs_max);
+        let progress = inverse_lerp(travel_range, time_secs)?;
+        let progress_u32 = (progress * u32::MAX as f64) as u32;
 
-impl Clone for TEntrySpatialEntry {
-    fn clone(&self) -> Self {
-        todo!()
+        let idx = self.points.binary_search_by_key(&progress_u32, |it| it.0);
+        let idx = match idx {
+            Ok(i) => i,
+            Err(i) => i,
+        };
+
+        let idx = if idx >= self.points.len() - 1 {
+            self.points.len() - 2
+        } else {
+            idx
+        };
+
+        let [(prev_prog, prev), (curr_prog, curr)] = [self.points[idx], self.points[idx + 1]];
+        let pos = if prev_prog == curr_prog {
+            prev
+        } else {
+            let local_progress = (prev_prog as f64)..=(curr_prog as f64);
+            let current_x = progress_u32 as f64; // Aligns perfectly with local_progress domain
+
+            let x = remap(
+                current_x,
+                local_progress.clone(),
+                (prev.x as f64)..=(curr.x as f64),
+            );
+            let y = remap(current_x, local_progress, (prev.y as f64)..=(curr.y as f64));
+            XyPos {
+                x: x as i32,
+                y: y as i32,
+            }
+        };
+
+        let angle = ((curr.y - prev.y) as f64).atan2((curr.x - prev.x) as f64);
+        Some((pos, angle, 255))
     }
 }
 
@@ -642,13 +709,13 @@ pub struct IntervalSpatialEntry {
 impl RTreeObject for TEntrySpatialEntry {
     type Envelope = AABB<[i64; 3]>;
     fn envelope(&self) -> Self::Envelope {
-        let lon_min = self.points.iter().map(|p| p.lon).min().unwrap() as i64;
-        let lon_max = self.points.iter().map(|p| p.lon).max().unwrap() as i64;
-        let lat_min = self.points.iter().map(|p| p.lat).min().unwrap() as i64;
-        let lat_max = self.points.iter().map(|p| p.lat).max().unwrap() as i64;
+        let x_min = self.points.iter().map(|p| p.1.x).min().unwrap() as i64;
+        let x_max = self.points.iter().map(|p| p.1.x).max().unwrap() as i64;
+        let y_min = self.points.iter().map(|p| p.1.y).min().unwrap() as i64;
+        let y_max = self.points.iter().map(|p| p.1.y).max().unwrap() as i64;
         let tmin = self.t1 as i64;
         let tmax = tmin + self.t3 as i64;
-        AABB::from_corners([lon_min, lat_min, tmin], [lon_max, lat_max, tmax])
+        AABB::from_corners([x_min, y_min, tmin], [x_max, y_max, tmax])
     }
 }
 

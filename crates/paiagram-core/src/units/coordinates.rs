@@ -32,7 +32,7 @@ impl Wgs84LonLat {
 
         let c = 2.0 * a.sqrt().atan2((1.0 - a).sqrt());
 
-        XyPos::EARTH_RADIUS_METERS * c
+        XyPosF64::EARTH_RADIUS_METERS * c
     }
 }
 
@@ -48,11 +48,21 @@ impl LonLat {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct XyPos {
+    pub x: i32,
+    pub y: i32,
+}
+
+impl XyPos {
+    const CONVERSION_FACTOR_F64: f64 = 10_000_000.0;
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct XyPosF64 {
     pub x: f64,
     pub y: f64,
 }
 
-impl XyPos {
+impl XyPosF64 {
     pub fn new(x: f64, y: f64) -> Self {
         Self { x, y }
     }
@@ -82,7 +92,7 @@ impl From<LonLat> for Wgs84LonLat {
     }
 }
 
-impl From<Wgs84LonLat> for XyPos {
+impl From<Wgs84LonLat> for XyPosF64 {
     fn from(value: Wgs84LonLat) -> Self {
         let x = Self::EARTH_RADIUS_METERS * value.lon.to_radians();
         let lat = value
@@ -95,10 +105,28 @@ impl From<Wgs84LonLat> for XyPos {
     }
 }
 
-impl From<XyPos> for Wgs84LonLat {
+impl From<XyPosF64> for XyPos {
+    fn from(value: XyPosF64) -> Self {
+        let x = value.x * Self::CONVERSION_FACTOR_F64;
+        let x = x.round() as i32;
+        let y = value.y * Self::CONVERSION_FACTOR_F64;
+        let y = y.round() as i32;
+        Self { x, y }
+    }
+}
+
+impl From<XyPos> for XyPosF64 {
     fn from(value: XyPos) -> Self {
-        let lon = (value.x / XyPos::EARTH_RADIUS_METERS).to_degrees();
-        let lat = (2.0 * (-value.y / XyPos::EARTH_RADIUS_METERS).exp().atan()
+        let x = value.x as f64 / XyPos::CONVERSION_FACTOR_F64;
+        let y = value.y as f64 / XyPos::CONVERSION_FACTOR_F64;
+        Self { x, y }
+    }
+}
+
+impl From<XyPosF64> for Wgs84LonLat {
+    fn from(value: XyPosF64) -> Self {
+        let lon = (value.x / XyPosF64::EARTH_RADIUS_METERS).to_degrees();
+        let lat = (2.0 * (-value.y / XyPosF64::EARTH_RADIUS_METERS).exp().atan()
             - std::f64::consts::FRAC_PI_2)
             .to_degrees();
         Self { lon, lat }

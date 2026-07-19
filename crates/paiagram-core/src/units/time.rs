@@ -64,6 +64,7 @@ impl Into<f64> for Tick {
 /// The timetable timepoint in seconds from midnight
 #[derive(Debug, Deserialize, Serialize, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TimetableTime(pub i32);
+pub type TTime = TimetableTime;
 
 impl TimetableTime {
     pub const ZERO: Self = Self(0);

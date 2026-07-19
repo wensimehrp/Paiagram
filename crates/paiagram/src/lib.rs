@@ -2,6 +2,7 @@
 
 // mod command_palette;
 // mod export_typst_diagram;
+mod selection;
 mod settings;
 mod tabs;
 mod widgets;
