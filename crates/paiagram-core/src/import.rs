@@ -224,7 +224,7 @@ pub fn load_and_trigger(
             let content = String::from_utf8(content)?;
             commands.trigger(LoadOuDia::second(content));
         }
-        Some("zip") => {
+        Some("zip") | None if content.starts_with(b"PK\x03\x04") => {
             commands.trigger(LoadGTFS { content });
         }
         Some("oud") => {
