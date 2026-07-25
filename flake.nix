@@ -98,6 +98,7 @@
           with pkgs;
           mkShell {
             buildInputs = [
+              pkgs.typst
               rustToolchain
               pkg-config
               openssl # TODO: remove this

@@ -43,3 +43,6 @@ prep-wasm: rust-docs build-wasm
     # fix for input tools. See https://github.com/wasm-bindgen/wasm-bindgen/pull/5034 for details
     sed -i '/function passStringToWasm0/a\
         arg = arg ?? "";' dist/nightly/paiagram.js
+
+serve-site:
+    typst w --features bundle,html --format bundle ./dist.typ
