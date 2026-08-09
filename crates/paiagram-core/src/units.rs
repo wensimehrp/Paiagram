@@ -6,5 +6,5 @@ pub mod time;
 pub use coordinates::*;
 pub use distance::*;
 
-/// CanvasLength in centimetres
+/// CanvasLength in millimetres
 pub struct CanvasLength(f64);

@@ -3763,6 +3763,7 @@ dependencies = [
  "paiagram-rw",
  "paste",
  "petgraph",
+ "rayon",
  "rhai",
  "rstar",
  "rustc-hash 2.1.2",

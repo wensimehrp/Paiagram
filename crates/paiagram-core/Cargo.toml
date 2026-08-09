@@ -29,6 +29,7 @@ paiagram-oudia = {
 paiagram-rw = { path = "../paiagram-rw" }
 paste.workspace = true
 petgraph.workspace = true
+rayon.workspace = true
 rhai.workspace = true
 rstar = "0.12.2"
 rustc-hash.workspace = true

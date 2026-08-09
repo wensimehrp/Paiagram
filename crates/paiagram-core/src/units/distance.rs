@@ -1,6 +1,6 @@
 use derive_more::{Add, AddAssign, Sub, SubAssign};
 
-/// The length or distance represented in meters
+/// The length or distance represented in metres
 #[derive(Debug, Clone, Copy, Add, AddAssign, Sub, SubAssign)]
 pub struct Distance(pub i32);
 

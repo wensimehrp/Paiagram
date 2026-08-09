@@ -1,7 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-use crate::Distance;
-
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Wgs84LonLat {
     pub lon: f64,

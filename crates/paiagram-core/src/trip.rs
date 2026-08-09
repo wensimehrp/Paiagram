@@ -5,14 +5,14 @@ use std::cell::RefCell;
 use ecow::EcoVec;
 use serde::{Deserialize, Serialize};
 
-use crate::time::{Duration, TTime};
-use crate::{IntervalCollection, StationKey, WorldGraph};
+use crate::time::{TDuration, TTime};
+use crate::{IntervalCollection, PlatformKey, StationKey, WorldGraph};
 
 /// Travel mode. Travel mode defines how the vehicle travels.
 #[derive(Clone, Serialize, Deserialize, Copy, Debug, PartialEq)]
 pub enum TravelMode {
     At(TTime),
-    For(Duration),
+    For(TDuration),
     Flexible,
 }
 
@@ -30,25 +30,23 @@ pub struct TEntryId(u32);
 #[derive(Clone, Serialize, Deserialize, Copy, Debug, PartialEq)]
 pub enum TEntry {
     /// A derived state. this is calculated by the system.
-    Derived { stn: StationKey, id: TEntryId },
+    Derived { plt: PlatformKey, id: TEntryId },
     /// A pinned station. The trip must visit this station.
     /// This requires runtime checks to make sure that the start and end are valid.
     Pinned {
-        stn: StationKey,
-        trk: u16,
+        plt: PlatformKey,
         arr: TravelMode,
         dep: TravelMode,
-        id: TEntryId,
         external: bool,
+        id: TEntryId,
     },
     /// A pinned station. The trip must visit this station,
     /// but the vehicle does not stop at the station.
     PinnedNonStop {
-        stn: StationKey,
-        trk: u16,
+        plt: PlatformKey,
         pass: TravelMode,
-        id: TEntryId,
         external: bool,
+        id: TEntryId,
     },
 }
 
@@ -70,7 +68,7 @@ struct TEstimate {
 }
 
 impl TEstimate {
-    fn duration(self) -> Duration {
+    fn duration(self) -> TDuration {
         self.dep - self.arr
     }
 }
@@ -78,7 +76,7 @@ impl TEstimate {
 struct EstimateSketch {
     stn: StationKey,
     slot: usize,
-    dur: Duration,
+    dur: TDuration,
 }
 
 thread_local! {
@@ -88,10 +86,10 @@ thread_local! {
 
 enum StackElem {
     Ignored,
-    In(StationKey, Duration),
+    In(StationKey, TDuration),
     AtAt(StationKey, TTime, TTime),
-    ForAt(StationKey, Duration, TTime),
-    ForFor(StationKey, Duration, Duration),
+    ForAt(StationKey, TDuration, TTime),
+    ForFor(StationKey, TDuration, TDuration),
 }
 
 impl TripSchedule {
@@ -136,20 +134,20 @@ fn make_se(entry: TEntry) -> StackElem {
     use StackElem as Se;
     use TravelMode as Tm;
     match entry {
-        TEntry::Derived { stn, .. } => Se::In(stn, Duration::ZERO),
+        TEntry::Derived { plt, .. } => Se::In(plt, TDuration::ZERO),
         TEntry::Pinned { external, .. } if external => Se::Ignored,
         TEntry::PinnedNonStop { external, .. } if external => Se::Ignored,
-        TEntry::Pinned { stn, arr, dep, .. } => match (arr, dep) {
-            (Tm::At(at), Tm::At(dt)) => Se::AtAt(stn, at, dt),
-            (Tm::At(at), Tm::For(dd)) => Se::AtAt(stn, at, at + dd),
-            (Tm::At(at), Tm::Flexible) => Se::AtAt(stn, at, at),
-            (Tm::For(ad), Tm::At(dt)) => Se::ForAt(stn, ad, dt),
-            (Tm::For(ad), Tm::For(dd)) => Se::ForFor(stn, ad, dd),
-            (Tm::For(ad), Tm::Flexible) => Se::ForFor(stn, ad, Duration::ZERO),
-            (Tm::Flexible, Tm::At(dt)) => Se::AtAt(stn, dt, dt),
-            (Tm::Flexible, Tm::For(dd)) => Se::In(stn, dd),
-            (Tm::Flexible, Tm::Flexible) => Se::In(stn, Duration::ZERO),
+        TEntry::Pinned { plt, arr, dep, .. } => match (arr, dep) {
+            (Tm::At(at), Tm::At(dt)) => Se::AtAt(plt, at, dt),
+            (Tm::At(at), Tm::For(dd)) => Se::AtAt(plt, at, at + dd),
+            (Tm::At(at), Tm::Flexible) => Se::AtAt(plt, at, at),
+            (Tm::For(ad), Tm::At(dt)) => Se::ForAt(plt, ad, dt),
+            (Tm::For(ad), Tm::For(dd)) => Se::ForFor(plt, ad, dd),
+            (Tm::For(ad), Tm::Flexible) => Se::ForFor(plt, ad, TDuration::ZERO),
+            (Tm::Flexible, Tm::At(dt)) => Se::AtAt(plt, dt, dt),
+            (Tm::Flexible, Tm::For(dd)) => Se::In(plt, dd),
+            (Tm::Flexible, Tm::Flexible) => Se::In(plt, TDuration::ZERO),
         },
-        TEntry::PinnedNonStop { stn, .. } => Se::In(stn, Duration::ZERO),
+        TEntry::PinnedNonStop { stn, .. } => Se::In(stn, TDuration::ZERO),
     }
 }

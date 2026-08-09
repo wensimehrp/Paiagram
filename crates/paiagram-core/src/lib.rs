@@ -7,15 +7,14 @@ pub mod export;
 pub mod graph;
 pub mod import;
 pub mod problems;
-pub mod script;
+// pub mod script;
 pub mod trip;
 pub mod units;
 
 use std::num::NonZeroU32;
 use std::ops::RangeInclusive;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU16, AtomicU32};
-use std::sync::mpsc::{Receiver, Sender, channel};
+use std::sync::atomic::AtomicU16;
 
 use ecow::{EcoString, EcoVec};
 use egui::emath::inverse_lerp;
@@ -27,9 +26,6 @@ use serde::{Deserialize, Serialize};
 pub use units::*;
 
 use crate::trip::{TEntry, TripSchedule};
-
-pub const MAX_CLIENTS: u8 = 10;
-pub static CLIENT_ORDER: AtomicU8 = AtomicU8::new(0);
 
 pub trait Key: Clone + Copy {
     /// Return the key in bits
@@ -67,14 +63,14 @@ macro_rules! make_type {
             $($field_name:ident: $field_type:ty,)*
         }
         cached {
-
+            $($cache_name:ident: $cache_type:ty,)*
         }
     ) => {
         paste::paste! {
             #[derive(Serialize, Deserialize, Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
             pub struct [<$struct_name Key>](std::num::NonZeroU64);
 
-            pub type [<$struct_name KeyHashMap>]<T> = nohash_hasher::IntMap<TripKey, T>;
+            pub type [<$struct_name KeyHashMap>]<T> = nohash_hasher::IntMap<[<$struct_name Key>], T>;
             pub type [<$struct_name KeyHasher>] = BuildNoHashHasher<[<$struct_name Key>]>;
 
             impl nohash_hasher::IsEnabled for [<$struct_name Key>] {}
@@ -111,33 +107,37 @@ macro_rules! make_type {
             struct [<$struct_name Handle>](usize);
 
             // View stays raw data, as it's just used for passing data in/out
-            #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+            #[derive(Clone, Debug, PartialEq)]
             pub struct [<$struct_name View>] {
-                $(
-                    pub $field_name: $field_type,
-                )*
+                $( pub $field_name: $field_type, )*
+                $( pub $cache_name: $cache_type, )*
+            }
+
+            #[derive(Serialize, Deserialize, Clone, Debug)]
+            pub struct [<$struct_name Info>] {
+                $( pub $field_name: $field_type, )*
             }
 
             pub struct [<$struct_name Borrow>]<'a> {
-                $(
-                    pub $field_name: &'a $field_type,
-                )*
+                $( pub $field_name: &'a $field_type, )*
+                $( pub $cache_name: &'a $cache_type, )*
             }
 
             pub(crate) struct [<$struct_name BorrowMut>]<'a> {
-                $(
-                    pub $field_name: BorrowMutField<'a, $field_type>,
-                )*
+                $( pub $field_name: BorrowMutField<'a, $field_type>, )*
+                $( pub $cache_name: BorrowMutField<'a, $cache_type>, )*
             }
 
             // The Struct wraps the entire collections in Arc
             #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
             pub struct [<$struct_name Collection>] {
-                registry: std::sync::Arc<nohash_hasher::IntMap<[<$struct_name Key>], [<$struct_name Handle>]>>,
+                registry: std::sync::Arc<[<$struct_name KeyHashMap>]<[<$struct_name Handle>]>>,
                 keys: std::sync::Arc<Vec<[<$struct_name Key>]>>,
-            $(
-                $field_name: std::sync::Arc<Vec<$field_type>>,
-            )*
+                $( $field_name: std::sync::Arc<Vec<$field_type>>, )*
+                $(
+                    #[serde(skip)]
+                    $cache_name: std::sync::Arc<Vec<$cache_type>>,
+                )*
             }
 
             impl [<$struct_name Collection>] {
@@ -163,9 +163,10 @@ macro_rules! make_type {
                     let last_idx = keys_mut.len() - 1;
                     let last_key = keys_mut[last_idx];
 
-                    let ret = [<$struct_name View>] { $(
-                        $field_name: std::sync::Arc::make_mut(&mut self.$field_name).swap_remove(idx),
-                    )*};
+                    let ret = [<$struct_name View>] {
+                        $( $field_name: std::sync::Arc::make_mut(&mut self.$field_name).swap_remove(idx), )*
+                        $( $cache_name: std::sync::Arc::make_mut(&mut self.$cache_name).swap_remove(idx), )*
+                    };
 
                     keys_mut.swap_remove(idx);
 
@@ -176,7 +177,11 @@ macro_rules! make_type {
                     Some(ret)
                 }
 
-                pub fn insert(&mut self, key: [<$struct_name Key>], view: [<$struct_name View>]) -> Option<[<$struct_name View>]> {
+                pub fn insert(
+                    &mut self,
+                    key: [<$struct_name Key>],
+                    view: [<$struct_name View>]
+                ) -> Option<[<$struct_name View>]> {
                     let old_view = if self.registry.contains_key(&key) {
                         self.remove(key)
                     } else {
@@ -193,6 +198,9 @@ macro_rules! make_type {
                     $(
                         std::sync::Arc::make_mut(&mut self.$field_name).push(view.$field_name);
                     )*
+                    $(
+                        std::sync::Arc::make_mut(&mut self.$cache_name).push(view.$cache_name);
+                    )*
 
                     old_view
                 }
@@ -207,6 +215,7 @@ macro_rules! make_type {
 
                     let borrow = [<$struct_name Borrow>] {
                         $( $field_name: &self.$field_name[idx], )*
+                        $( $cache_name: &self.$cache_name[idx], )*
                     };
 
                     Some(f(borrow))
@@ -224,6 +233,10 @@ macro_rules! make_type {
                     let borrow_mut = [<$struct_name BorrowMut>] {
                         $( $field_name: BorrowMutField {
                             borrow: &mut self.[<$field_name>],
+                            idx
+                        }, )*
+                        $( $cache_name: BorrowMutField {
+                            borrow: &mut self.[<$cache_name>],
                             idx
                         }, )*
                     };
@@ -259,6 +272,18 @@ make_type!(
         name: EcoString,
         pos: LonLat,
     }
+    cached {
+        platforms: EcoVec<PlatformKey>,
+    }
+);
+
+make_type!(
+    Platform,
+    data {
+        name: EcoString,
+        parent: StationKey,
+        pos: LonLat,
+    }
     cached { }
 );
 
@@ -271,11 +296,17 @@ make_type!(
     cached { }
 );
 
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+enum StationRecord {
+    All(StationKey),
+    Some(EcoVec<PlatformKey>),
+}
+
 make_type!(
     Route,
     data {
         name: EcoString,
-        stations: EcoVec<StationKey>,
+        stations: EcoVec<StationRecord>,
     }
     cached { }
 );
@@ -285,6 +316,8 @@ make_type!(
     data {
         nodes: EcoVec<LonLat>,
         length: Option<NonZeroU32>,
+        inbound_default_platform: PlatformKey,
+        outbound_default_platform: PlatformKey,
     }
     cached { }
 );
@@ -305,7 +338,7 @@ pub struct StrokeStyle {
     width: u8,
 }
 
-pub type WorldGraph = DiGraphMap<StationKey, IntervalKey, StationKeyHasher>;
+pub type WorldGraph = DiGraphMap<PlatformKey, IntervalKey, PlatformKeyHasher>;
 
 // future idea: scripting via rhai
 /// The world stores much of the content using SoA.
@@ -317,6 +350,7 @@ pub struct WorldSnapshot {
     pub intervals: IntervalCollection,
     pub classes: ClassCollection,
     pub routes: RouteCollection,
+    pub platforms: PlatformCollection,
     vehicle_trip_matrix: Arc<VehicleTripMatrix>,
     graph: Arc<WorldGraph>,
 }
@@ -327,8 +361,20 @@ impl WorldSnapshot {
     /// fails.
     pub fn apply_command(&mut self, cmd: Command) -> Option<Command> {
         match cmd {
-            Command::AddTrip { key, view } => (!self.trips.contains_key(key)).then(|| {
-                self.trips.insert(key, view);
+            Command::AddTrip { key, info } => (!self.trips.contains_key(key)).then(|| {
+                let TripInfo {
+                    name,
+                    schedule,
+                    class,
+                } = info;
+                self.trips.insert(
+                    key,
+                    TripView {
+                        name,
+                        schedule,
+                        class,
+                    },
+                );
                 Command::RemoveTrip { key }
             }),
             Command::RenameTrip {
@@ -351,10 +397,20 @@ impl WorldSnapshot {
                     class: new_class,
                 }
             }),
-            Command::RemoveTrip { key } => self
-                .trips
-                .remove(key)
-                .map(|view| Command::AddTrip { key, view }),
+            Command::RemoveTrip { key } => self.trips.remove(key).map(
+                |TripView {
+                     name,
+                     schedule,
+                     class,
+                 }| Command::AddTrip {
+                    key,
+                    info: TripInfo {
+                        name,
+                        schedule,
+                        class,
+                    },
+                },
+            ),
             // Simply use recursion in this case since macros are not common
             Command::Macro(commands) => {
                 let backup = self.clone();
@@ -401,7 +457,7 @@ pub struct Source {
     undo_len: usize,
     snap: WorldSnapshot,
     rtrees: GraphCacheWorld,
-    rhai_script_world: RhaiScriptWorld,
+    // rhai_script_world: RhaiScriptWorld,
 }
 
 impl std::ops::Deref for Source {
@@ -497,7 +553,7 @@ impl TryFrom<SaveFile> for Source {
                 undo_len: 0,
                 snap: world,
                 rtrees: GraphCacheWorld::new(),
-                rhai_script_world: RhaiScriptWorld::new(),
+                // rhai_script_world: RhaiScriptWorld::new(),
             }),
         }
     }
@@ -509,13 +565,14 @@ impl From<Source> for SaveFile {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub enum Command {
-    // Trips
+    /// Add a new trip to the world
     AddTrip {
         key: TripKey,
-        view: TripView,
+        info: TripInfo,
     },
+    /// Rename a trip
     RenameTrip {
         key: TripKey,
         name: EcoString,
@@ -524,14 +581,15 @@ pub enum Command {
         key: TripKey,
         entries: EcoVec<TEntry>,
     },
+    /// Change the trip's class to another class
     ChangeTripClass {
         key: TripKey,
         class: Option<ClassKey>,
     },
+    /// Remove a trip from the collection
     RemoveTrip {
         key: TripKey,
     },
-    // Vehicles
     AddVehicle {
         key: VehicleKey,
         name: EcoString,
@@ -643,13 +701,13 @@ pub struct TEntrySpatialEntry {
 }
 
 impl TEntrySpatialEntry {
-    pub fn get_pos_angle_alpha_at(self, time_secs: i32) -> Option<(XyPos, f64, u8)> {
+    pub fn get_pos_angle_at(self, time_secs: i32) -> Option<(XyPos, f64)> {
         if self.points.is_empty() {
             return None;
         };
         if self.points.len() == 1 {
             let (_, single_point) = self.points[0];
-            return Some((single_point, 0.0, 255));
+            return Some((single_point, 0.0));
         }
         let travel_secs_min = self.t1 as f64 + self.t2 as f64;
         let travel_secs_max = self.t3 as f64;
@@ -690,7 +748,7 @@ impl TEntrySpatialEntry {
         };
 
         let angle = ((curr.y - prev.y) as f64).atan2((curr.x - prev.x) as f64);
-        Some((pos, angle, 255))
+        Some((pos, angle))
     }
 }
 
@@ -737,96 +795,6 @@ impl RTreeObject for IntervalSpatialEntry {
     }
 }
 
-#[derive(Clone)]
-enum ScriptResponse {
-    Output(Arc<str>),
-    Done(Result<Vec<Command>, String>),
-}
-
-#[derive(Clone)]
-pub enum ScriptPollResponse {
-    NotBusy,
-    Busy,
-    Output(Arc<str>),
-    Done(Result<Vec<Command>, String>),
-}
-
-struct RhaiScriptWorld {
-    script_req_tx: Sender<(WorldSnapshot, Arc<str>)>,
-    script_res_rx: Receiver<ScriptResponse>,
-    terminate_script: Arc<AtomicBool>,
-    busy: bool,
-}
-
-impl RhaiScriptWorld {
-    fn new() -> Self {
-        let (script_req_tx, script_req_rx) = channel();
-        let (script_res_tx, script_res_rx) = channel();
-
-        let terminate_script = Arc::new(AtomicBool::new(false));
-        let terminate_script_copy = terminate_script.clone();
-
-        std::thread::spawn(move || {
-            while let Ok((world, src)) = script_req_rx.recv() {
-                let iteration_terminate = terminate_script_copy.clone();
-
-                let print_tx = script_res_tx.clone();
-                let debug_tx = script_res_tx.clone();
-
-                let res = script::execute_rhai_script(
-                    world,
-                    src,
-                    move |s| {
-                        let _ = print_tx.send(ScriptResponse::Output(s.into()));
-                    },
-                    move |s, _, p| {
-                        let dbg_text = format!("{:?}: {}", p, s);
-                        let _ = debug_tx.send(ScriptResponse::Output(dbg_text.into()));
-                    },
-                    move |_c| {
-                        if iteration_terminate.load(std::sync::atomic::Ordering::Relaxed) {
-                            return Some(rhai::Dynamic::UNIT);
-                        }
-                        None
-                    },
-                );
-
-                let _ = script_res_tx.send(ScriptResponse::Done(res));
-            }
-        });
-
-        Self {
-            script_req_tx,
-            script_res_rx,
-            terminate_script,
-            busy: false,
-        }
-    }
-    fn poll(&mut self) -> ScriptPollResponse {
-        if !self.busy {
-            return ScriptPollResponse::NotBusy;
-        }
-        let Ok(res) = self.script_res_rx.try_recv() else {
-            return ScriptPollResponse::Busy;
-        };
-        match res {
-            ScriptResponse::Done(m) => {
-                self.busy = false;
-                ScriptPollResponse::Done(m)
-            }
-            ScriptResponse::Output(m) => ScriptPollResponse::Output(m),
-        }
-    }
-    fn start_execute(&mut self, snap: WorldSnapshot, src: Arc<str>) {
-        self.script_req_tx
-            .send((snap, src))
-            .expect("Script thread closed!");
-        self.busy = true;
-    }
-}
-
-// relatively slow to clone because SparseSecondaryMap is backed by a hashmap
-// I might consider using a dynamic container in the future
 #[derive(Serialize, Deserialize, Default, Clone, PartialEq, Debug)]
 struct VehicleTripMatrix {
     trip_to_veh: TripKeyHashMap<EcoVec<VehicleKey>>,

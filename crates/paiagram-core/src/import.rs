@@ -5,12 +5,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::Command;
-use crate::units::time::{Duration, TimetableTime};
-
-// mod gtfs;
-// mod llt;
-// mod oudia;
-// mod qetrc;
+use crate::time::TimetableDuration;
+use crate::units::time::{TDuration, TimetableTime};
 
 fn normalize_times<'a>(mut time_iter: impl Iterator<Item = &'a mut TimetableTime> + 'a) {
     let Some(mut previous_time) = time_iter.next().copied() else {
@@ -18,7 +14,7 @@ fn normalize_times<'a>(mut time_iter: impl Iterator<Item = &'a mut TimetableTime
     };
     for time in time_iter {
         while *time < previous_time {
-            *time += Duration(86400);
+            *time += TimetableDuration(86400);
         }
         previous_time = *time;
     }
@@ -34,21 +30,43 @@ fn infer_path_from_url(url: &str) -> Option<PathBuf> {
     Some(PathBuf::from(filename))
 }
 
-pub enum ImportContentType {
-    /// qETRC and pyETRC
-    Pyetgr(Arc<str>),
+#[derive(Clone, Copy)]
+pub enum ImportContent<'a> {
+    /// qETRC and pyETRC JSON
+    Pyetgr(&'a str),
     /// OuDia in Shift-JIS
-    OuDia(Arc<[u8]>),
+    OuDia(&'a [u8]),
     /// OuDiaSecond in UTF8
-    OuDiaSecond(Arc<str>),
+    OuDiaSecond(&'a str),
     /// GTFS Zip
-    Gtfs(Arc<[u8]>),
+    Gtfs(&'a [u8]),
     /// Paiagram's .paia
-    PaiagramPaia(Arc<str>),
+    PaiagramPaia(&'a [u8]),
     /// Paiagram's debug RON format
-    PaiagramRon(Arc<str>),
+    PaiagramRon(&'a str),
 }
 
-fn load_and_trigger(path: &PathBuf, content: Vec<u8>) -> eros::Result<Box<[Command]>> {
+impl<'a> ImportContent<'_> {
+    fn file_extensions(&self) -> &[&'static str] {
+        match self {
+            Self::Pyetgr(..) => &["json", "pyetgr"],
+            Self::OuDia(..) => &["oud"],
+            Self::OuDiaSecond(..) => &["oud2"],
+            Self::Gtfs(..) => &["zip"],
+            Self::PaiagramPaia(..) => &["paia"],
+            Self::PaiagramRon(..) => &["ron"],
+        }
+    }
+}
+
+fn read_from_file(import_content: ImportContent) -> Box<[Command]> {
+    match import_content {
+        ImportContent::Pyetgr(c) => todo!(),
+        ImportContent::OuDia(c) => todo!(),
+        ImportContent::OuDiaSecond(c) => todo!(),
+        ImportContent::Gtfs(c) => todo!(),
+        ImportContent::PaiagramPaia(c) => todo!(),
+        ImportContent::PaiagramRon(c) => todo!(),
+    }
     todo!()
 }

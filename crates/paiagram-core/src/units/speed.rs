@@ -3,7 +3,8 @@ use std::ops;
 use derive_more::{Add, AddAssign, Sub, SubAssign};
 
 use super::distance::Distance;
-use super::time::Duration;
+use super::time::TDuration;
+use crate::time::TimetableDuration;
 
 /// The speed represented in m/s
 #[derive(Debug, Clone, Copy, Add, AddAssign, Sub, SubAssign)]
@@ -41,26 +42,26 @@ impl ops::DivAssign<f32> for Velocity {
     }
 }
 
-impl ops::Mul<Duration> for Velocity {
+impl ops::Mul<TDuration> for Velocity {
     type Output = Distance;
-    fn mul(self, rhs: Duration) -> Self::Output {
+    fn mul(self, rhs: TDuration) -> Self::Output {
         Distance((self.0 * rhs.0 as f32).round() as i32)
     }
 }
 
 impl ops::Div<Velocity> for Distance {
-    type Output = Duration;
+    type Output = TDuration;
     fn div(self, rhs: Velocity) -> Self::Output {
         if rhs.0 == 0.0 {
-            return Duration(0);
+            return TimetableDuration(0);
         }
-        Duration((self.0 as f32 / rhs.0).round() as i32)
+        TimetableDuration((self.0 as f32 / rhs.0).round() as i32)
     }
 }
 
-impl ops::Div<Duration> for Distance {
+impl ops::Div<TDuration> for Distance {
     type Output = Velocity;
-    fn div(self, rhs: Duration) -> Self::Output {
+    fn div(self, rhs: TDuration) -> Self::Output {
         if rhs.0 == 0 {
             return Velocity(0.0);
         }

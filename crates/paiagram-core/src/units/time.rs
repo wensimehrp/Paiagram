@@ -69,8 +69,8 @@ pub type TTime = TimetableTime;
 impl TimetableTime {
     pub const ZERO: Self = Self(0);
     #[inline]
-    pub fn as_duration(self) -> Duration {
-        Duration(self.0)
+    pub fn as_t_duration(self) -> TimetableDuration {
+        TimetableDuration(self.0)
     }
     #[inline]
     pub fn to_ticks(self) -> Tick {
@@ -256,43 +256,44 @@ impl std::fmt::Display for TimetableTime {
 }
 
 impl ops::Sub<TimetableTime> for TimetableTime {
-    type Output = Duration;
+    type Output = TDuration;
     fn sub(self, rhs: TimetableTime) -> Self::Output {
-        Duration(self.0 - rhs.0)
+        TimetableDuration(self.0 - rhs.0)
     }
 }
 
-impl ops::Add<Duration> for TimetableTime {
+impl ops::Add<TDuration> for TimetableTime {
     type Output = TimetableTime;
-    fn add(self, rhs: Duration) -> Self::Output {
+    fn add(self, rhs: TDuration) -> Self::Output {
         TimetableTime(self.0 + rhs.0)
     }
 }
 
-impl ops::AddAssign<Duration> for TimetableTime {
-    fn add_assign(&mut self, rhs: Duration) {
+impl ops::AddAssign<TDuration> for TimetableTime {
+    fn add_assign(&mut self, rhs: TDuration) {
         self.0 += rhs.0
     }
 }
 
-impl ops::Sub<Duration> for TimetableTime {
+impl ops::Sub<TDuration> for TimetableTime {
     type Output = TimetableTime;
-    fn sub(self, rhs: Duration) -> Self::Output {
+    fn sub(self, rhs: TDuration) -> Self::Output {
         TimetableTime(self.0 - rhs.0)
     }
 }
 
-impl ops::SubAssign<Duration> for TimetableTime {
-    fn sub_assign(&mut self, rhs: Duration) {
+impl ops::SubAssign<TDuration> for TimetableTime {
+    fn sub_assign(&mut self, rhs: TDuration) {
         self.0 -= rhs.0;
     }
 }
 
 /// A duration in seconds.
 #[derive(Debug, Default, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Duration(pub i32);
+pub struct TimetableDuration(pub i32);
+pub type TDuration = TimetableDuration;
 
-impl Duration {
+impl TimetableDuration {
     pub const ZERO: Self = Self(0);
     pub const MAX: Self = Self(i32::MAX);
     #[inline]
@@ -310,7 +311,7 @@ impl Duration {
     }
 }
 
-impl emath::Numeric for Duration {
+impl emath::Numeric for TDuration {
     const INTEGRAL: bool = true;
     const MIN: Self = Self(i32::MIN);
     const MAX: Self = Self(i32::MAX);
@@ -324,9 +325,9 @@ impl emath::Numeric for Duration {
     }
 }
 
-impl std::iter::Sum for Duration {
+impl std::iter::Sum for TDuration {
     fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
-        let mut s = Duration::ZERO;
+        let mut s = TDuration::ZERO;
         for i in iter {
             s += i
         }
@@ -334,7 +335,7 @@ impl std::iter::Sum for Duration {
     }
 }
 
-impl Duration {
+impl TDuration {
     pub fn from_secs(s: i32) -> Self {
         Self(s)
     }
@@ -357,74 +358,74 @@ impl Duration {
     }
 }
 
-impl std::fmt::Display for Duration {
+impl std::fmt::Display for TDuration {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "→ {}", self.to_string_no_arrow())
     }
 }
 
-impl ops::Add<Duration> for Duration {
-    type Output = Duration;
-    fn add(self, rhs: Duration) -> Self::Output {
-        Duration(self.0 + rhs.0)
+impl ops::Add<TDuration> for TDuration {
+    type Output = TDuration;
+    fn add(self, rhs: TDuration) -> Self::Output {
+        TimetableDuration(self.0 + rhs.0)
     }
 }
 
-impl ops::AddAssign<Duration> for Duration {
-    fn add_assign(&mut self, rhs: Duration) {
+impl ops::AddAssign<TDuration> for TDuration {
+    fn add_assign(&mut self, rhs: TDuration) {
         self.0 += rhs.0;
     }
 }
 
-impl ops::Sub<Duration> for Duration {
-    type Output = Duration;
-    fn sub(self, rhs: Duration) -> Self::Output {
-        Duration(self.0 - rhs.0)
+impl ops::Sub<TDuration> for TDuration {
+    type Output = TDuration;
+    fn sub(self, rhs: TDuration) -> Self::Output {
+        TimetableDuration(self.0 - rhs.0)
     }
 }
 
-impl ops::SubAssign<Duration> for Duration {
-    fn sub_assign(&mut self, rhs: Duration) {
+impl ops::SubAssign<TDuration> for TDuration {
+    fn sub_assign(&mut self, rhs: TDuration) {
         self.0 -= rhs.0;
     }
 }
 
-impl ops::Add<TimetableTime> for Duration {
+impl ops::Add<TimetableTime> for TDuration {
     type Output = TimetableTime;
     fn add(self, rhs: TimetableTime) -> Self::Output {
         TimetableTime(self.0 + rhs.0)
     }
 }
 
-impl ops::Div<i32> for Duration {
-    type Output = Duration;
+impl ops::Div<i32> for TDuration {
+    type Output = TDuration;
     fn div(self, rhs: i32) -> Self::Output {
-        Duration(self.0 / rhs)
+        TimetableDuration(self.0 / rhs)
     }
 }
 
-impl ops::DivAssign<i32> for Duration {
+impl ops::DivAssign<i32> for TDuration {
     fn div_assign(&mut self, rhs: i32) {
         self.0 /= rhs;
     }
 }
 
-impl ops::Mul<i32> for Duration {
-    type Output = Duration;
+impl ops::Mul<i32> for TDuration {
+    type Output = TDuration;
     fn mul(self, rhs: i32) -> Self::Output {
-        Duration(self.0 * rhs)
+        TimetableDuration(self.0 * rhs)
     }
 }
 
-impl ops::MulAssign<i32> for Duration {
+impl ops::MulAssign<i32> for TDuration {
     fn mul_assign(&mut self, rhs: i32) {
         self.0 *= rhs;
     }
 }
 
-impl ops::Mul<Duration> for i32 {
-    type Output = Duration;
-    fn mul(self, rhs: Duration) -> Self::Output {
-        Duration(self * rhs.0)
+impl ops::Mul<TDuration> for i32 {
+    type Output = TDuration;
+    fn mul(self, rhs: TDuration) -> Self::Output {
+        TimetableDuration(self * rhs.0)
     }
 }
