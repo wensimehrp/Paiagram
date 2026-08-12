@@ -12,7 +12,7 @@ Please don't submit any unreviewed machine/LLM translations. I absolutely hate t
 
 We don't encourage or discourage the use of AI/LLM. In general, you may use it to do the following:
 
-- Improving your work.
+- Improve your work.
 - Write documentation.
 
 You may not use it to do the following:
