@@ -58,16 +58,20 @@ impl<'a, T: Clone> BorrowMutField<'a, T> {
 
 macro_rules! make_type {
     (
+        $(#[$struct_attr:meta])*
         $struct_name:ident,
-        data {
-            $($field_name:ident: $field_type:ty,)*
-        }
-        cached {
-            $($cache_name:ident: $cache_type:ty,)*
-        }
+        data { $(
+            $(#[$field_attr:meta])*
+            $field_name:ident: $field_type:ty,
+        )* }
+        cache { $(
+            $(#[$cache_attr:meta])*
+            $cache_name:ident: $cache_type:ty,
+        )* }
     ) => {
         paste::paste! {
             #[derive(Serialize, Deserialize, Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+            $(#[$struct_attr])*
             pub struct [<$struct_name Key>](std::num::NonZeroU64);
 
             pub type [<$struct_name KeyHashMap>]<T> = nohash_hasher::IntMap<[<$struct_name Key>], T>;
@@ -109,8 +113,14 @@ macro_rules! make_type {
             // View stays raw data, as it's just used for passing data in/out
             #[derive(Clone, Debug, PartialEq)]
             pub struct [<$struct_name View>] {
-                $( pub $field_name: $field_type, )*
-                $( pub $cache_name: $cache_type, )*
+                $(
+                    $(#[$field_attr])*
+                    pub $field_name: $field_type,
+                )*
+                $(
+                    $(#[$cache_attr])*
+                    pub $cache_name: $cache_type,
+                )*
             }
 
             #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -141,6 +151,7 @@ macro_rules! make_type {
             }
 
             impl [<$struct_name Collection>] {
+                /// How many elements of this type currently exist in the world
                 pub fn len(&self) -> usize {
                     self.registry.len()
                 }
@@ -154,6 +165,7 @@ macro_rules! make_type {
                     self.registry.contains_key(&key)
                 }
 
+                /// Remove an entry from the collection
                 pub fn remove(&mut self, key: [<$struct_name Key>]) -> Option<[<$struct_name View>]> {
                     let registry_mut = std::sync::Arc::make_mut(&mut self.registry);
                     let handle = registry_mut.remove(&key)?;
@@ -253,9 +265,9 @@ make_type!(
     data {
         name: EcoString,
         schedule: TripSchedule,
-        class: Option<ClassKey>,
+        service_class: Option<ServiceClassKey>,
     }
-    cached { }
+    cache { }
 );
 
 make_type!(
@@ -263,7 +275,7 @@ make_type!(
     data {
         name: EcoString,
     }
-    cached { }
+    cache { }
 );
 
 make_type!(
@@ -272,57 +284,116 @@ make_type!(
         name: EcoString,
         pos: LonLat,
     }
-    cached {
-        platforms: EcoVec<PlatformKey>,
+    cache {
+        nodes: EcoVec<NodeKey>,
     }
 );
 
+// better make some type-level guarantee that this
 make_type!(
-    Platform,
+    /// A node in the network. A node can be either of two types:
+    /// A _platform_, which represents a position where the vehicle can stop,
+    /// or pass, or a _switch_, which is a railway switch or traffic junction.
+    Node,
     data {
+        /// The name of the node, e.g. I, II, III and 1, 2, 3 for China Railway
         name: EcoString,
+        /// The parent station of the node
         parent: StationKey,
+        /// The position of the node
         pos: LonLat,
+        /// If the station is a platform
+        is_platform: bool,
     }
-    cached { }
+    cache { }
 );
 
-make_type!(
-    Class,
-    data {
-        name: EcoString,
-        style: StrokeStyle,
-    }
-    cached { }
-);
+struct NodeCache(NodeKeyHashMap<Vec<i32>>);
 
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
-enum StationRecord {
-    All(StationKey),
-    Some(EcoVec<PlatformKey>),
+impl NodeCache {
+    fn remove(&mut self, key: NodeKey) -> Option<Vec<i32>> {
+        self.0.remove(&key)
+    }
 }
 
 make_type!(
+    /// The service class of the vehicle
+    ServiceClass,
+    data {
+        /// The name of the service class
+        name: EcoString,
+        /// The stroke style displayed on the diagram.
+        style: StrokeStyle,
+    }
+    cache { }
+);
+
+/// What to include in this case
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+enum StationRecord {
+    All(StationKey),
+    Some(EcoVec<NodeKey>),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct IntervalProgress(u16);
+
+impl IntervalProgress {
+    fn is_start(self) -> bool {
+        self.0 == 0
+    }
+    fn is_end(self) -> bool {
+        self.0 == u16::MAX
+    }
+}
+
+make_type!(
+    /// A route. A route must be strictly linear, with the only exception being
+    /// the first station can also be the last station. A route contains multiple
+    /// entries, and each entry contains either all platforms in the station, or
+    /// a subset of platforms in the station.
     Route,
     data {
+        /// The name of the route
         name: EcoString,
-        stations: EcoVec<StationRecord>,
+        stations: EcoVec<(StationRecord, Distance)>,
     }
-    cached { }
+    cache {
+        /// The routes from one station to another forms a tree structure.
+        nodes: EcoVec<EcoVec<(NodeKey, IntervalProgress)>>,
+    }
 );
+
+/// The direction of the interval
+/// Some interval allows traversing forwards and backwards
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub enum IntervalDirection {
+    /// Bi-directional interval
+    /// For the sake of simplicity, if an interval is bi-directional,
+    /// the interval with a smaller key would have its node and length information disregarded.
+    TwoWay(IntervalKey),
+    /// One way interval
+    OneWay,
+}
 
 make_type!(
     Interval,
     data {
+        /// The nodes at and between the two nodes this interval connects.
+        /// This includes the starting and ending nodes.
+        /// Thus it must have at least two elements and it is safe to call
+        /// `.unwrap()` on `.first()` and `.last()`.
         nodes: EcoVec<LonLat>,
+        /// The length of the interval. If the length is None, then it is calculated from nodes.
         length: Option<NonZeroU32>,
-        inbound_default_platform: PlatformKey,
-        outbound_default_platform: PlatformKey,
+        /// The direction of the interval. See [`IntervalDirection`] for details.
+        direction: IntervalDirection,
     }
-    cached { }
+    cache { }
 );
 
 impl<'a> IntervalBorrow<'a> {
+    /// The length of the interval
     pub fn length(&self) -> Distance {
         if let Some(d) = self.length {
             return Distance(d.get() as i32);
@@ -338,7 +409,8 @@ pub struct StrokeStyle {
     width: u8,
 }
 
-pub type WorldGraph = DiGraphMap<PlatformKey, IntervalKey, PlatformKeyHasher>;
+/// The world graph describes the network.
+pub type WorldGraph = DiGraphMap<NodeKey, IntervalKey, NodeKeyHasher>;
 
 // future idea: scripting via rhai
 /// The world stores much of the content using SoA.
@@ -348,9 +420,9 @@ pub struct WorldSnapshot {
     pub vehicles: VehicleCollection,
     pub stations: StationCollection,
     pub intervals: IntervalCollection,
-    pub classes: ClassCollection,
+    pub service_classes: ServiceClassCollection,
     pub routes: RouteCollection,
-    pub platforms: PlatformCollection,
+    pub nodes: NodeCollection,
     vehicle_trip_matrix: Arc<VehicleTripMatrix>,
     graph: Arc<WorldGraph>,
 }
@@ -365,14 +437,14 @@ impl WorldSnapshot {
                 let TripInfo {
                     name,
                     schedule,
-                    class,
+                    service_class,
                 } = info;
                 self.trips.insert(
                     key,
                     TripView {
                         name,
                         schedule,
-                        class,
+                        service_class,
                     },
                 );
                 Command::RemoveTrip { key }
@@ -391,7 +463,7 @@ impl WorldSnapshot {
                 key,
                 class: mut new_class,
             } => self.trips.update(key, |mut view| {
-                std::mem::swap(view.class.get_mut(), &mut new_class);
+                std::mem::swap(view.service_class.get_mut(), &mut new_class);
                 Command::ChangeTripClass {
                     key,
                     class: new_class,
@@ -401,13 +473,13 @@ impl WorldSnapshot {
                 |TripView {
                      name,
                      schedule,
-                     class,
+                     service_class,
                  }| Command::AddTrip {
                     key,
                     info: TripInfo {
                         name,
                         schedule,
-                        class,
+                        service_class,
                     },
                 },
             ),
@@ -584,7 +656,7 @@ pub enum Command {
     /// Change the trip's class to another class
     ChangeTripClass {
         key: TripKey,
-        class: Option<ClassKey>,
+        class: Option<ServiceClassKey>,
     },
     /// Remove a trip from the collection
     RemoveTrip {
@@ -667,13 +739,6 @@ impl PredefinedTEntryIcon {
     }
 }
 
-#[derive(Clone)]
-enum TEntrySpatialEntryIcon {
-    Stealth,
-    Predefined(PredefinedTEntryIcon),
-    Custom { key: [u8; 2] },
-}
-
 #[derive(Clone, Copy)]
 pub enum TEntrySpatialEntryEnd {
     Start,
@@ -688,13 +753,10 @@ pub struct TEntrySpatialEntry {
     pub key: TripKey,
     /// baseline
     t1: i32,
-    /// departure time, in delta seconds
-    t2: i16,
+    /// departure time
+    t2: i32,
     /// arrival time of next station
     t3: i32,
-    /// Calculated on the previous frame
-    end: TEntrySpatialEntryEnd,
-    icon: TEntrySpatialEntryIcon,
     /// The interval's points premapped to XY position
     /// with progress stored as u32.
     pub points: EcoVec<(u32, XyPos)>,
@@ -799,16 +861,4 @@ impl RTreeObject for IntervalSpatialEntry {
 struct VehicleTripMatrix {
     trip_to_veh: TripKeyHashMap<EcoVec<VehicleKey>>,
     veh_to_trip: VehicleKeyHashMap<EcoVec<TripKey>>,
-}
-
-pub trait ToEcoStringView {
-    fn to_view(&mut self) -> EcoStringView<'_>;
-}
-
-pub struct EcoStringView<'a>(&'a mut EcoString);
-
-impl ToEcoStringView for EcoString {
-    fn to_view(&mut self) -> EcoStringView<'_> {
-        EcoStringView(self)
-    }
 }

@@ -1,7 +1,8 @@
 use derive_more::{Add, AddAssign, Sub, SubAssign};
+use serde::{Deserialize, Serialize};
 
 /// The length or distance represented in metres
-#[derive(Debug, Clone, Copy, Add, AddAssign, Sub, SubAssign)]
+#[derive(Debug, Clone, Copy, Add, AddAssign, Sub, SubAssign, Serialize, Deserialize, PartialEq)]
 pub struct Distance(pub i32);
 
 impl Distance {

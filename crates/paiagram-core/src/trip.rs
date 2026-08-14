@@ -6,7 +6,7 @@ use ecow::EcoVec;
 use serde::{Deserialize, Serialize};
 
 use crate::time::{TDuration, TTime};
-use crate::{IntervalCollection, PlatformKey, StationKey, WorldGraph};
+use crate::{IntervalCollection, NodeKey, StationKey, WorldGraph};
 
 /// Travel mode. Travel mode defines how the vehicle travels.
 #[derive(Clone, Serialize, Deserialize, Copy, Debug, PartialEq)]
@@ -30,11 +30,11 @@ pub struct TEntryId(u32);
 #[derive(Clone, Serialize, Deserialize, Copy, Debug, PartialEq)]
 pub enum TEntry {
     /// A derived state. this is calculated by the system.
-    Derived { plt: PlatformKey, id: TEntryId },
+    Derived { node: NodeKey, id: TEntryId },
     /// A pinned station. The trip must visit this station.
     /// This requires runtime checks to make sure that the start and end are valid.
     Pinned {
-        plt: PlatformKey,
+        node: NodeKey,
         arr: TravelMode,
         dep: TravelMode,
         external: bool,
@@ -43,7 +43,7 @@ pub enum TEntry {
     /// A pinned station. The trip must visit this station,
     /// but the vehicle does not stop at the station.
     PinnedNonStop {
-        plt: PlatformKey,
+        node: NodeKey,
         pass: TravelMode,
         external: bool,
         id: TEntryId,
@@ -74,11 +74,12 @@ impl TEstimate {
 }
 
 struct EstimateSketch {
-    stn: StationKey,
+    node: NodeKey,
     slot: usize,
     dur: TDuration,
 }
 
+// stupid design to avoid allocations...
 thread_local! {
     static ESTIMATE_BUFFER: RefCell<Vec<EstimateSketch>> = RefCell::new(Vec::with_capacity(100));
     static OUTPUT_BUFFER: RefCell<Vec<(Option<TEstimate>, TEntry)>> = RefCell::new(Vec::with_capacity(100));
@@ -86,10 +87,10 @@ thread_local! {
 
 enum StackElem {
     Ignored,
-    In(StationKey, TDuration),
-    AtAt(StationKey, TTime, TTime),
-    ForAt(StationKey, TDuration, TTime),
-    ForFor(StationKey, TDuration, TDuration),
+    In(NodeKey, TDuration),
+    AtAt(NodeKey, TTime, TTime),
+    ForAt(NodeKey, TDuration, TTime),
+    ForFor(NodeKey, TDuration, TDuration),
 }
 
 impl TripSchedule {
@@ -109,18 +110,18 @@ impl TripSchedule {
                         StackElem::Ignored => {
                             output_buf.push((None, *entry));
                         }
-                        StackElem::In(stn, dur) => {
+                        StackElem::In(node, dur) => {
                             let es = EstimateSketch {
-                                stn,
+                                node,
                                 slot: estimate_buf.len(),
                                 dur,
                             };
                             estimate_buf.push(es);
                         }
                         // unwind
-                        StackElem::AtAt(stn, at, dt) => {}
-                        StackElem::ForAt(stn, ad, dt) => {}
-                        StackElem::ForFor(stn, ad, dd) => {}
+                        StackElem::AtAt(node, at, dt) => {}
+                        StackElem::ForAt(node, ad, dt) => {}
+                        StackElem::ForFor(node, ad, dd) => {}
                     };
                 }
                 // finalize
@@ -134,20 +135,20 @@ fn make_se(entry: TEntry) -> StackElem {
     use StackElem as Se;
     use TravelMode as Tm;
     match entry {
-        TEntry::Derived { plt, .. } => Se::In(plt, TDuration::ZERO),
+        TEntry::Derived { node, .. } => Se::In(node, TDuration::ZERO),
         TEntry::Pinned { external, .. } if external => Se::Ignored,
         TEntry::PinnedNonStop { external, .. } if external => Se::Ignored,
-        TEntry::Pinned { plt, arr, dep, .. } => match (arr, dep) {
-            (Tm::At(at), Tm::At(dt)) => Se::AtAt(plt, at, dt),
-            (Tm::At(at), Tm::For(dd)) => Se::AtAt(plt, at, at + dd),
-            (Tm::At(at), Tm::Flexible) => Se::AtAt(plt, at, at),
-            (Tm::For(ad), Tm::At(dt)) => Se::ForAt(plt, ad, dt),
-            (Tm::For(ad), Tm::For(dd)) => Se::ForFor(plt, ad, dd),
-            (Tm::For(ad), Tm::Flexible) => Se::ForFor(plt, ad, TDuration::ZERO),
-            (Tm::Flexible, Tm::At(dt)) => Se::AtAt(plt, dt, dt),
-            (Tm::Flexible, Tm::For(dd)) => Se::In(plt, dd),
-            (Tm::Flexible, Tm::Flexible) => Se::In(plt, TDuration::ZERO),
+        TEntry::Pinned { node, arr, dep, .. } => match (arr, dep) {
+            (Tm::At(at), Tm::At(dt)) => Se::AtAt(node, at, dt),
+            (Tm::At(at), Tm::For(dd)) => Se::AtAt(node, at, at + dd),
+            (Tm::At(at), Tm::Flexible) => Se::AtAt(node, at, at),
+            (Tm::For(ad), Tm::At(dt)) => Se::ForAt(node, ad, dt),
+            (Tm::For(ad), Tm::For(dd)) => Se::ForFor(node, ad, dd),
+            (Tm::For(ad), Tm::Flexible) => Se::ForFor(node, ad, TDuration::ZERO),
+            (Tm::Flexible, Tm::At(dt)) => Se::AtAt(node, dt, dt),
+            (Tm::Flexible, Tm::For(dd)) => Se::In(node, dd),
+            (Tm::Flexible, Tm::Flexible) => Se::In(node, TDuration::ZERO),
         },
-        TEntry::PinnedNonStop { stn, .. } => Se::In(stn, TDuration::ZERO),
+        TEntry::PinnedNonStop { node, .. } => Se::In(node, TDuration::ZERO),
     }
 }
