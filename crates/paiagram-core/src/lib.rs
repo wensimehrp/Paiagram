@@ -354,9 +354,10 @@ make_type!(
     /// a subset of platforms in the station.
     Route,
     data {
-        /// The name of the route
+        /// The name of the route.
         name: EcoString,
-        stations: EcoVec<(StationRecord, Distance)>,
+        /// List of stations in the route.
+        stations: EcoVec<(StationRecord, Option<Distance>)>,
     }
     cache {
         /// The routes from one station to another forms a tree structure.
@@ -672,6 +673,26 @@ pub enum Command {
     },
     RemoveVehicle {
         key: VehicleKey,
+    },
+    // Stations
+    AddStation {
+        key: StationKey,
+        info: StationInfo,
+    },
+    // nodes
+    AddNode {
+        key: NodeKey,
+        info: NodeInfo,
+    },
+    // classes
+    AddServiceClass {
+        key: ServiceClassKey,
+        info: ServiceClassInfo,
+    },
+    // route
+    AddRoute {
+        key: RouteKey,
+        info: RouteInfo,
     },
     /// Hybrid
     ChangeVehicleTrips {

@@ -2,11 +2,12 @@
 //! Handles foreign formats such as GTFS Static, qETRC/pyETRC, and OuDiaSecond.
 
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use crate::Command;
 use crate::time::TimetableDuration;
-use crate::units::time::{TDuration, TimetableTime};
+use crate::units::time::TimetableTime;
+
+mod oudia;
 
 fn normalize_times<'a>(mut time_iter: impl Iterator<Item = &'a mut TimetableTime> + 'a) {
     let Some(mut previous_time) = time_iter.next().copied() else {
@@ -31,42 +32,44 @@ fn infer_path_from_url(url: &str) -> Option<PathBuf> {
 }
 
 #[derive(Clone, Copy)]
-pub enum ImportContent<'a> {
+pub enum ImportType {
     /// qETRC and pyETRC JSON
-    Pyetgr(&'a str),
+    Pyetgr,
     /// OuDia in Shift-JIS
-    OuDia(&'a [u8]),
+    OuDia,
     /// OuDiaSecond in UTF8
-    OuDiaSecond(&'a str),
+    OuDiaSecond,
     /// GTFS Zip
-    Gtfs(&'a [u8]),
+    Gtfs,
     /// Paiagram's .paia
-    PaiagramPaia(&'a [u8]),
+    PaiagramPaia,
     /// Paiagram's debug RON format
-    PaiagramRon(&'a str),
+    PaiagramRon,
 }
 
-impl<'a> ImportContent<'_> {
+impl ImportType {
     fn file_extensions(&self) -> &[&'static str] {
         match self {
-            Self::Pyetgr(..) => &["json", "pyetgr"],
-            Self::OuDia(..) => &["oud"],
-            Self::OuDiaSecond(..) => &["oud2"],
-            Self::Gtfs(..) => &["zip"],
-            Self::PaiagramPaia(..) => &["paia"],
-            Self::PaiagramRon(..) => &["ron"],
+            Self::Pyetgr => &["json", "pyetgr"],
+            Self::OuDia => &["oud"],
+            Self::OuDiaSecond => &["oud2"],
+            Self::Gtfs => &["zip"],
+            Self::PaiagramPaia => &["paia"],
+            Self::PaiagramRon => &["ron"],
         }
     }
 }
 
-fn read_from_file(import_content: ImportContent) -> Box<[Command]> {
+fn generate_commands(
+    stream: impl std::io::Read,
+    import_content: ImportType,
+) -> Result<Box<[Command]>, Box<dyn std::error::Error>> {
     match import_content {
-        ImportContent::Pyetgr(c) => todo!(),
-        ImportContent::OuDia(c) => todo!(),
-        ImportContent::OuDiaSecond(c) => todo!(),
-        ImportContent::Gtfs(c) => todo!(),
-        ImportContent::PaiagramPaia(c) => todo!(),
-        ImportContent::PaiagramRon(c) => todo!(),
+        ImportType::Pyetgr => todo!(),
+        ImportType::OuDia => oudia::load_oud(stream, true),
+        ImportType::OuDiaSecond => oudia::load_oud(stream, false),
+        ImportType::Gtfs => todo!(),
+        ImportType::PaiagramPaia => todo!(),
+        ImportType::PaiagramRon => todo!(),
     }
-    todo!()
 }
