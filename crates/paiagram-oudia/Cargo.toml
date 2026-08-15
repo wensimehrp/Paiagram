@@ -1,0 +1,24 @@
+[package]
+name = "paiagram-oudia"
+version.workspace = true
+edition.workspace = true
+description = "Utility for parsing .oud and .oud2 formats."
+repository.workspace = true
+license.workspace = true
+
+[package.metadata.docs.rs]
+rustdoc-args = ["--cfg", "docsrs"]
+all-features = true
+
+[dependencies]
+derive_more = { version = "2.1.1", features = ["full"] }
+encoding_rs.workspace = true
+pest = "2.8.6"
+pest_consume = "1.1.3"
+pest_derive = "2.8.6"
+serde = { version = "1.0.228", features = ["derive"], optional = true }
+smallvec.workspace = true
+thiserror = "2.0.18"
+
+[features]
+serde = ["dep:serde", "smallvec/serde"]

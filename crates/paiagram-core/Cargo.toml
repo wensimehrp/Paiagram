@@ -22,10 +22,7 @@ eros.workspace = true
 gtfs-structures = { version = "0.46.1", default-features = false }
 itertools.workspace = true
 nohash-hasher = "0.2.0"
-paiagram-oudia = {
-  git = "https://github.com/wensimehrp/paiagram-oudia",
-  branch = "main"
-}
+paiagram-oudia = { path = "../paiagram-oudia/" }
 paiagram-rw = { path = "../paiagram-rw" }
 paste.workspace = true
 petgraph.workspace = true
