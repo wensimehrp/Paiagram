@@ -432,7 +432,7 @@ impl Diagram {
         self.extrema_interval_durations::<false>(stations)
     }
 
-    fn rotations<'a>(&self, _stations: &[Station]) -> Vec<Rotation<'a>> {
+    pub fn rotations<'a>(&self, _stations: &[Station]) -> Vec<Rotation<'a>> {
         // struct Train<'a> {
         //     head: &'a str,
         //     rest: Vec<&'a str>,

@@ -12,9 +12,6 @@ The crate's goal is to provide a friendly interface for interacting with those
 formats. There crate also provides serialization support from AST to .oud/.oud2
 structure.
 
-There's also optional WebAssembly support. You can directly take the prepackaged
-artifact and use it in your web editor.
-
 # Getting Started
 
 To get started, simply use [`parse_oud2_to_ir`] for .oud2, or [`parse_oud_to_ir`]
@@ -27,8 +24,6 @@ pub use ast::{SerializeToOud, Structure, parse_to_ast};
 pub use ir::*;
 pub use time::Time;
 pub use timetable::{ServiceMode, TimetableEntry};
-#[cfg(feature = "wasm")]
-use wasm_bindgen::prelude::*;
 
 pub mod ast;
 pub mod ir;
@@ -117,20 +112,6 @@ pub fn parse_oud_to_ir(input: &[u8]) -> Result<Root, IrConversionError> {
     let (utf_8_input, _, _) = encoding_rs::SHIFT_JIS.decode(input);
     let v = parse_to_ast(&utf_8_input).map_err(IrConversionError::from)?;
     Root::try_from(v.as_slice())
-}
-
-#[cfg(feature = "wasm")]
-#[cfg_attr(docsrs, doc(cfg(feature = "wasm")))]
-#[wasm_bindgen]
-pub fn parse_oud2(input: &str) -> Result<Root, JsError> {
-    parse_oud2_to_ir(input).map_err(JsError::from)
-}
-
-#[cfg(feature = "wasm")]
-#[cfg_attr(docsrs, doc(cfg(feature = "wasm")))]
-#[wasm_bindgen]
-pub fn parse_oud(input: &[u8]) -> Result<Root, JsError> {
-    parse_oud_to_ir(input).map_err(JsError::from)
 }
 
 #[cfg(test)]
