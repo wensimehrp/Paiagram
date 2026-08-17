@@ -1,21 +1,25 @@
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use js_sys::Array;
-use leptos::prelude::*;
-use std::cmp::min;
-use wasm_bindgen::{JsCast, JsValue};
-use wasm_bindgen_futures::JsFuture;
-use web_sys::{DragEvent, Event, File, HtmlAnchorElement, HtmlInputElement};
-
 use paiagram_oudia::{Root, parse_to_ast};
+use wasm_bindgen::convert::FromWasmAbi;
+use wasm_bindgen::prelude::*;
+use wasm_bindgen_futures::JsFuture;
+use web_sys::{
+    Document, DragEvent, Event, EventTarget, File, HtmlAnchorElement, HtmlButtonElement,
+    HtmlInputElement, HtmlSelectElement, HtmlTextAreaElement,
+};
 
-const HIDE_THRESHOLD_CHARS: usize = 20_000;
-const PREVIEW_CHARS: usize = 1_000;
+const HIDE_THRESHOLD_BYTES: usize = 1_000;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy)]
 enum OutputFormat {
     AstDebug,
     Json,
     Yaml,
     Toml,
+    Ron,
 }
 
 impl OutputFormat {
@@ -24,16 +28,8 @@ impl OutputFormat {
             "json" => Self::Json,
             "yaml" => Self::Yaml,
             "toml" => Self::Toml,
+            "ron" => Self::Ron,
             _ => Self::AstDebug,
-        }
-    }
-
-    fn as_value(self) -> &'static str {
-        match self {
-            Self::AstDebug => "ast",
-            Self::Json => "json",
-            Self::Yaml => "yaml",
-            Self::Toml => "toml",
         }
     }
 
@@ -43,95 +39,109 @@ impl OutputFormat {
             Self::Json => "json",
             Self::Yaml => "yaml",
             Self::Toml => "toml",
+            Self::Ron => "ron",
         }
     }
 }
 
-fn char_len(text: &str) -> usize {
-    text.chars().count()
-}
-
-fn preview_text(text: &str) -> String {
-    let total = char_len(text);
-    if total <= HIDE_THRESHOLD_CHARS {
-        return text.to_string();
-    }
-
-    let visible_count = min(PREVIEW_CHARS, total);
-    let shown: String = text.chars().take(visible_count).collect();
-    let hidden = total.saturating_sub(visible_count);
-
-    format!("{shown}\n\n[... hidden {hidden} characters ...]")
-}
-
-fn convert(input: &str, format: OutputFormat) -> String {
+fn convert(input: &str, format: OutputFormat) -> Result<String, String> {
     if input.trim().is_empty() {
-        return String::new();
+        return Err("Error: input is empty".into());
     }
 
-    let ast = match parse_to_ast(input) {
-        Ok(ast) => ast,
-        Err(err) => return format!("Error parsing oud/oud2 input:\n{err}"),
+    let ast = parse_to_ast(input).map_err(|err| format!("Error parsing oud/oud2 input:\n{err}"))?;
+
+    if matches!(format, OutputFormat::AstDebug) {
+        return Ok(format!("{ast:#?}"));
+    }
+
+    let ir = Root::try_from(ast.as_slice()).map_err(|err| format!("Error parsing AST:\n{err}"))?;
+
+    let result = match format {
+        OutputFormat::AstDebug => unreachable!(),
+        OutputFormat::Json => serde_json::to_string_pretty(&ir).map_err(|e| e.to_string()),
+        OutputFormat::Yaml => serde_yaml::to_string(&ir).map_err(|e| e.to_string()),
+        OutputFormat::Toml => toml::to_string_pretty(&ir).map_err(|e| e.to_string()),
+        OutputFormat::Ron => ron::ser::to_string_pretty(&ir, ron::ser::PrettyConfig::new())
+            .map_err(|e| e.to_string()),
     };
-
-    match format {
-        OutputFormat::AstDebug => format!("{ast:#?}"),
-        OutputFormat::Json => {
-            let ir = match Root::try_from(ast.as_slice()) {
-                Ok(ir) => ir,
-                Err(err) => return format!("Error converting AST to IR:\n{err}"),
-            };
-            match serde_json::to_string_pretty(&ir) {
-                Ok(output) => output,
-                Err(err) => format!("Error serializing IR to JSON:\n{err}"),
-            }
-        }
-        OutputFormat::Yaml => {
-            let ir = match Root::try_from(ast.as_slice()) {
-                Ok(ir) => ir,
-                Err(err) => return format!("Error converting AST to IR:\n{err}"),
-            };
-            match serde_yaml::to_string(&ir) {
-                Ok(output) => output,
-                Err(err) => format!("Error serializing IR to YAML:\n{err}"),
-            }
-        }
-        OutputFormat::Toml => {
-            let ir = match Root::try_from(ast.as_slice()) {
-                Ok(ir) => ir,
-                Err(err) => return format!("Error converting AST to IR:\n{err}"),
-            };
-            match toml::to_string_pretty(&ir) {
-                Ok(output) => output,
-                Err(err) => format!("Error serializing IR to TOML:\n{err}"),
-            }
-        }
-    }
+    result.map_err(|err| {
+        format!(
+            "Error serializing IR to {}:\n{err}",
+            format.extension().to_ascii_uppercase()
+        )
+    })
 }
 
-fn load_file_into_input(file: File, set_input: WriteSignal<String>) {
-    let promise = file.text();
+/// Converts the stored input text and writes the result into the output pane.
+fn refresh_ui(
+    input: &HtmlTextAreaElement,
+    output: &HtmlTextAreaElement,
+    select: &HtmlSelectElement,
+    input_text: &RefCell<String>,
+) {
+    let text = input_text.borrow();
+    let format = OutputFormat::from_value(&select.value());
+    let converted = convert(&text, format).unwrap_or_else(|e| e);
 
-    leptos::task::spawn_local(async move {
-        if let Ok(js_value) = JsFuture::from(promise).await {
-            if let Some(text) = js_value.as_string() {
-                set_input.set(text);
-            }
+    input.set_value(&text[..text.floor_char_boundary(HIDE_THRESHOLD_BYTES)]);
+    output.set_value(&converted[..converted.floor_char_boundary(HIDE_THRESHOLD_BYTES)]);
+}
+
+fn load_file_into_input(
+    file: File,
+    input: &HtmlTextAreaElement,
+    output: &HtmlTextAreaElement,
+    select: &HtmlSelectElement,
+    input_text: &Rc<RefCell<String>>,
+) {
+    let promise = file.text();
+    wasm_bindgen_futures::spawn_local({
+        let input = input.clone();
+        let output = output.clone();
+        let select = select.clone();
+        let input_text = Rc::clone(input_text);
+        async move {
+            let Ok(js_value) = JsFuture::from(promise).await else {
+                return;
+            };
+            let Some(text) = js_value.as_string() else {
+                return;
+            };
+            input.set_value(&text);
+            *input_text.borrow_mut() = text;
+            refresh_ui(&input, &output, &select, &input_text);
         }
     });
 }
 
-fn download_text_file(filename: &str, contents: &str) -> Result<(), String> {
-    let Some(window) = web_sys::window() else {
-        return Err("Window is not available".to_string());
-    };
-    let Some(document) = window.document() else {
-        return Err("Document is not available".to_string());
-    };
+/// Looks up an element by id (see `index.html` / `index.typ` for the ids).
+fn element_by_id<E: JsCast>(document: &Document, id: &str) -> E {
+    document
+        .get_element_by_id(id)
+        .unwrap_or_else(|| panic!("element #{id} not found"))
+        .dyn_into::<E>()
+        .unwrap_or_else(|_| panic!("element #{id} has an unexpected type"))
+}
 
-    let parts = Array::new();
-    parts.push(&JsValue::from_str(contents));
-    let blob = web_sys::Blob::new_with_str_sequence(&parts)
+/// Adds an event listener and returns the closure that keeps it alive.
+fn listen<E, F>(element: &EventTarget, event: &str, f: F) -> Closure<dyn FnMut(E)>
+where
+    E: FromWasmAbi + 'static,
+    F: FnMut(E) + 'static,
+{
+    let closure = Closure::<dyn FnMut(E)>::wrap(Box::new(f) as Box<dyn FnMut(E)>);
+    element
+        .add_event_listener_with_callback(event, closure.as_ref().unchecked_ref())
+        .unwrap_or_else(|err| panic!("failed to add {event} listener: {err:?}"));
+    closure
+}
+
+fn download_string(filename: &str, content: &str) -> Result<(), String> {
+    let window = web_sys::window().expect("window is not available");
+    let document = window.document().expect("document is not available");
+
+    let blob = web_sys::Blob::new_with_str_sequence(&Array::of(&[JsValue::from_str(content)]))
         .map_err(|e| format!("Could not create blob: {e:?}"))?;
     let url = web_sys::Url::create_object_url_with_blob(&blob)
         .map_err(|e| format!("Could not create object URL: {e:?}"))?;
@@ -143,192 +153,134 @@ fn download_text_file(filename: &str, contents: &str) -> Result<(), String> {
         .map_err(|_| "Could not cast anchor element".to_string())?;
 
     anchor.set_href(&url);
-    anchor.set_download(filename);
+    anchor.set_download(&filename);
     anchor.click();
-
     let _ = web_sys::Url::revoke_object_url(&url);
     Ok(())
 }
 
-#[component]
-fn App() -> impl IntoView {
-    let (input, set_input) = signal(String::new());
-    let (format, set_format) = signal(OutputFormat::AstDebug);
+fn main() {
+    let window = web_sys::window().expect("window is not available");
+    let document = window.document().expect("document is not available");
 
-    let file_input_ref = NodeRef::<leptos::html::Input>::new();
+    let input: HtmlTextAreaElement = element_by_id(&document, "input-textarea");
+    let output: HtmlTextAreaElement = element_by_id(&document, "output-textarea");
+    let select: HtmlSelectElement = element_by_id(&document, "output-format-select");
+    let file_input: HtmlInputElement = element_by_id(&document, "file-upload");
+    let copy_button: HtmlButtonElement = element_by_id(&document, "copy-output");
+    let download_button: HtmlButtonElement = element_by_id(&document, "download-output");
 
-    let output = Memo::new(move |_| convert(&input.get(), format.get()));
+    let input_text = Rc::new(RefCell::new(String::new()));
 
-    let input_too_long = Memo::new(move |_| char_len(&input.get()) > HIDE_THRESHOLD_CHARS);
-    let output_too_long = Memo::new(move |_| char_len(&output.get()) > HIDE_THRESHOLD_CHARS);
+    let mut closures: Vec<Closure<dyn FnMut(Event)>> = Vec::new();
 
-    let visible_input = Memo::new(move |_| preview_text(&input.get()));
-    let visible_output = Memo::new(move |_| preview_text(&output.get()));
-    let has_conversion_error = Memo::new(move |_| output.get().starts_with("Error "));
+    closures.push(listen(&input, "input", {
+        let input = input.clone();
+        let output = output.clone();
+        let select = select.clone();
+        let input_text = input_text.clone();
+        move |_event: Event| {
+            *input_text.borrow_mut() = input.value();
+            refresh_ui(&input, &output, &select, &input_text);
+        }
+    }));
 
-    let open_file = {
-        let file_input_ref = file_input_ref.clone();
-        move |_| {
-            if let Some(input_element) = file_input_ref.get() {
-                input_element.set_value("");
-                input_element.click();
+    closures.push(listen(&select, "change", {
+        let input = input.clone();
+        let output = output.clone();
+        let select = select.clone();
+        let input_text = Rc::clone(&input_text);
+        move |_event: Event| refresh_ui(&input, &output, &select, &input_text)
+    }));
+
+    closures.push(listen(&file_input, "change", {
+        let input = input.clone();
+        let output = output.clone();
+        let select = select.clone();
+        let file_input = file_input.clone();
+        let input_text = Rc::clone(&input_text);
+        move |_event: Event| {
+            let Some(files) = file_input.files() else {
+                return;
+            };
+            let Some(file) = files.get(0) else {
+                return;
+            };
+            load_file_into_input(file, &input, &output, &select, &input_text);
+            // Allow picking the same file again later.
+            file_input.set_value("");
+        }
+    }));
+
+    closures.push(listen(&copy_button, "click", {
+        let select = select.clone();
+        let input_text = Rc::clone(&input_text);
+        move |_event: Event| {
+            let text = input_text.borrow();
+            let window = web_sys::window().expect("window is not available");
+            let contents = convert(&text, OutputFormat::from_value(&select.value()));
+            drop(text);
+            match contents {
+                Ok(res) => {
+                    let clipboard = window.navigator().clipboard();
+                    wasm_bindgen_futures::spawn_local(async move {
+                        let _ = JsFuture::from(clipboard.write_text(&res)).await;
+                    });
+                    let _ = window.alert_with_message("Result copied");
+                }
+                Err(e) => {
+                    let _ = window.alert_with_message(e.as_str());
+                }
             }
         }
-    };
+    }));
 
-    let on_file_input_change = move |ev: Event| {
-        let Some(target) = ev
-            .target()
-            .and_then(|t| t.dyn_into::<HtmlInputElement>().ok())
-        else {
-            return;
-        };
-
-        let Some(files) = target.files() else {
-            return;
-        };
-
-        let Some(file) = files.get(0) else {
-            return;
-        };
-
-        load_file_into_input(file, set_input);
-    };
-
-    let on_drop = move |ev: DragEvent| {
-        ev.prevent_default();
-
-        let Some(data_transfer) = ev.data_transfer() else {
-            return;
-        };
-
-        let Some(files) = data_transfer.files() else {
-            return;
-        };
-
-        let Some(file) = files.get(0) else {
-            return;
-        };
-
-        load_file_into_input(file, set_input);
-    };
-
-    let copy_output = move |_| {
-        let contents = output.get_untracked();
-        if contents.is_empty() {
-            return;
+    closures.push(listen(&download_button, "click", {
+        let select = select.clone();
+        let input_text = Rc::clone(&input_text);
+        move |_event: Event| {
+            let text = input_text.borrow();
+            let format = OutputFormat::from_value(&select.value());
+            let filename = format!("converted-output.{}", format.extension());
+            let contents = convert(&text, OutputFormat::from_value(&select.value()));
+            drop(text);
+            let contents = match contents {
+                Ok(res) => res,
+                Err(e) => {
+                    let _ = window.alert_with_message(e.as_str());
+                    return;
+                }
+            };
+            if let Err(e) = download_string(&filename, &contents) {
+                let _ = window.alert_with_message(&e);
+            }
         }
+    }));
 
-        let Some(window) = web_sys::window() else {
-            return;
-        };
+    let mut drag_closures: Vec<Closure<dyn FnMut(DragEvent)>> = Vec::new();
 
-        let clipboard = window.navigator().clipboard();
+    drag_closures.push(listen(&input, "dragover", |event: DragEvent| {
+        event.prevent_default();
+    }));
 
-        leptos::task::spawn_local(async move {
-            let _ = JsFuture::from(clipboard.write_text(&contents)).await;
-        });
-    };
-
-    let download_output = move |_| {
-        let contents = output.get_untracked();
-        if contents.is_empty() {
-            return;
+    drag_closures.push(listen(&input, "drop", {
+        let input = input.clone();
+        let output = output.clone();
+        let select = select.clone();
+        let input_text = Rc::clone(&input_text);
+        move |event: DragEvent| {
+            event.prevent_default();
+            let Some(file) = (|| event.data_transfer()?.files()?.get(0))() else {
+                return;
+            };
+            load_file_into_input(file, &input, &output, &select, &input_text);
         }
+    }));
 
-        let ext = format.get_untracked().extension();
-        let filename = format!("converted-output.{ext}");
-        let _ = download_text_file(&filename, &contents);
-    };
+    // Initial render (empty input, default format from the <select>).
+    refresh_ui(&input, &output, &select, &input_text);
 
-    view! {
-        <main class="app">
-            <input
-                node_ref=file_input_ref
-                class="visually-hidden"
-                type="file"
-                accept=".oud,.oud2"
-                on:change=on_file_input_change
-            />
-
-            <h1 class="app__title">
-                <a
-                    class="app__title-link"
-                    href="https://github.com/WenSimEHRP/Paiagram-oudia"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                >
-                    "OuDia(Second) Converter"
-                </a>
-            </h1>
-
-            <div class="toolbar">
-                <label class="toolbar__field">
-                    <span>"Output format"</span>
-                    <select
-                        on:change=move |ev| set_format.set(OutputFormat::from_value(&event_target_value(&ev)))
-                        prop:value=move || format.get().as_value()
-                    >
-                        <option value="ast">"AST debug print"</option>
-                        <option value="json">"JSON (IR)"</option>
-                        <option value="yaml">"YAML (IR)"</option>
-                        <option value="toml">"TOML (IR)"</option>
-                    </select>
-                </label>
-
-                <button type="button" on:click=open_file>"Open file"</button>
-                <button type="button" on:click=copy_output>"Copy output"</button>
-                <button type="button" on:click=download_output>"Download output"</button>
-            </div>
-
-            <section class="panes">
-                <div class="pane">
-                    <div class="pane__header">
-                        <span>"Input (raw oud/oud2 text)"</span>
-                        <Show when=move || input_too_long.get() fallback=|| ()>
-                            <span class="pane__hint">"Long input hidden"</span>
-                        </Show>
-                    </div>
-
-                    <textarea
-                        class="pane__textarea"
-                        class:drop-target=move || input_too_long.get()
-                        placeholder="Paste raw .oud/.oud2 content here, or drag a file here..."
-                        on:input=move |ev| set_input.set(event_target_value(&ev))
-                        on:dragover=move |ev| ev.prevent_default()
-                        on:drop=on_drop
-                        prop:value=move || visible_input.get()
-                        prop:readonly=move || input_too_long.get()
-                    />
-                </div>
-
-                <div class="pane">
-                    <div class="pane__header">
-                        <span>"Output"</span>
-                        <Show when=move || output_too_long.get() fallback=|| ()>
-                            <span class="pane__hint">"Long output hidden"</span>
-                        </Show>
-                    </div>
-
-                    <textarea
-                        class="pane__textarea output-readonly"
-                        class:error-state=move || has_conversion_error.get()
-                        readonly
-                        prop:value=move || visible_output.get()
-                    />
-                </div>
-            </section>
-
-            <footer class="footer">
-                <span>"© Jeremy Gao"</span>
-                <a href="https://github.com/WenSimEHRP/Paiagram-oudia" target="_blank" rel="noopener noreferrer">
-                    "GitHub"
-                </a>
-            </footer>
-        </main>
-    }
-}
-
-fn main() {
-    mount_to_body(App);
+    // The page is static, so the listeners live for the whole session.
+    std::mem::forget(closures);
+    std::mem::forget(drag_closures);
 }

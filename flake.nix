@@ -110,6 +110,8 @@
               cargo-shear
               cargo-expand
               gitui
+              typst
+              trunk
             ]
             ++ runtimeLibs
             ++ [

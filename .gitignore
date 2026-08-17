@@ -2,13 +2,15 @@
 /target
 result
 *.json
+# web manifest files
 !manifest.json
 *.oud2
 *.oud
-*.kdl
+# oud test cases
+!crates/paiagram-oudia/test/*.oud
+!crates/paiagram-oudia/test/*.oud2
 *.paia
 *.ron
 *.pyetgr
 *.zip
-wasm-out
 dist

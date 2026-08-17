@@ -25,9 +25,8 @@ exit 0
     ```.text
     link(rel: "icon", type: "image/svg+xml", href: "data:image/svg+xml;base64," + base64.encode(svg-icon))
     context { style(tailwind-css()) }
-    // <base data-trunk-public-url />
-    // <link data-trunk rel="css" href="style.css" />
-    // <link data-trunk rel="rust" />
+    elem("base", attrs: (data-trunk-public-url: ""))
+    elem("link", attrs: (data-trunk: "", rel: "rust", data-bin: "converter"))
   })
   show elem: update-elem
   body(class: "mx-auto max-w-5xl p-3 dark:bg-neutral-800 text-black dark:text-white", {
@@ -35,7 +34,7 @@ exit 0
     noscript[This page requires JavaScript to function!]
     section(
       class: {
-        "my-3 flex *:flex-1 gap-2 *:p-2 *:text-center *:border *:border-neutral-300 *:hover:bg-neutral-200"
+        "my-3 grid grid-cols-2 lg:grid-cols-4 gap-2 *:p-2 *:text-center *:border *:border-neutral-300 *:hover:bg-neutral-200"
         " *:dark:border-neutral-600 *:dark:hover:bg-neutral-600"
       },
       {
@@ -49,8 +48,8 @@ exit 0
         })
         elem("label", attrs: ("for": "file-upload"))[Load File]
         input(class: "hidden", type: "file", id: "file-upload", name: "File to convert", accept: ".oud,.oud2")
-        button[Copy Output]
-        button[Download Output]
+        button(id: "copy-output")[Copy Output]
+        button(id: "download-output")[Download Output]
       },
     )
     div(class: "grid grid-cols-1 md:grid-cols-[1fr_1fr] gap-2 my-3", {

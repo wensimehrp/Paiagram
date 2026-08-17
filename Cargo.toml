@@ -54,6 +54,7 @@ eros = "0.5.0"
 futures-lite = "2.6.1"
 git-version = "0.3.9"
 ib-matcher = { version = "0.4.3", features = ["pinyin", "romaji"] }
+indexmap = "2.14.0"
 itertools = "0.14.0"
 itoa = "1.0.18"
 jiff = "0.2.29"
@@ -96,6 +97,11 @@ strip = true
 lto = "fat"
 panic = "abort"
 codegen-units = 1
+
+# Profile for converter. For some reason the converter requires strip to be debuginfo
+[profile.converter]
+inherits = "wasm-release"
+strip = "debuginfo"
 
 # Optimize for size in the wasm-release profile to reduce load times and bandwidth usage on web.
 [profile.wasm-release]
