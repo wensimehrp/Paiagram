@@ -1,6 +1,8 @@
 //! Definitions for the graph.
+use petgraph::visit::EdgeRef;
+
 use super::{StationKey, WorldSnapshot};
-use crate::{Distance, IntervalDirection, NodeKey};
+use crate::{Distance, Interval, IntervalDirection, IntervalKey, NodeInfo, NodeKey};
 
 impl WorldSnapshot {
     /// Find a route between the source station and the target station.
@@ -27,19 +29,19 @@ impl WorldSnapshot {
             // la la land!
         }
         // petgraph::algo::astar(
-        //     &*self.graph,
+        //     self,
         //     source,
         //     |node| node == target,
-        //     |(_, _, interval_key)| {
-        //         let mut query_key = *interval_key;
+        //     |edge| {
+        //         let mut query_key = edge.id();
         //         // discard the info on the other key
         //         if let Some(IntervalDirection::TwoWay(other)) =
-        //             self.intervals.query(query_key, |view| *view.direction)
+        //             self.intervals.query(query_key, |interval| interval.direction)
         //         {
         //             query_key = std::cmp::min(other, query_key);
         //         }
-        //         let Some(length) = self.intervals.query(query_key, |view| view.length()) else {
-        //             return i32::MAX;
+        //         let Some(length) = self.intervals.query(query_key, |interval| interval.length())
+        // else {             return i32::MAX;
         //         };
         //         length.0
         //     },
@@ -58,18 +60,22 @@ impl WorldSnapshot {
         target: NodeKey,
     ) -> Option<(Distance, Vec<NodeKey>)> {
         petgraph::algo::astar(
-            &*self.graph,
+            self,
             source,
             |node| node == target,
-            |(_, _, interval_key)| {
-                let mut query_key = *interval_key;
+            |edge| {
+                let mut query_key = edge.id();
                 // discard the info on the other key
-                if let Some(IntervalDirection::TwoWay(other)) =
-                    self.intervals.query(query_key, |view| *view.direction)
+                if let Some(IntervalDirection::TwoWay(other)) = self
+                    .intervals
+                    .query(query_key, |interval| interval.direction)
                 {
                     query_key = std::cmp::min(other, query_key);
                 }
-                let Some(length) = self.intervals.query(query_key, |view| view.length()) else {
+                let Some(length) = self
+                    .intervals
+                    .query(query_key, |interval| interval.length())
+                else {
                     return i32::MAX;
                 };
                 length.0
@@ -97,5 +103,136 @@ impl WorldSnapshot {
         // }
         // Some((total_length, passes))
         todo!()
+    }
+}
+
+/// The outgoing-neighbour iterator backing `IntoNeighbors` and `IntoEdges`.
+fn node_neighbours<'a>(world: &'a WorldSnapshot, node: NodeKey) -> std::slice::Iter<'a, NodeKey> {
+    static EMPTY: [NodeKey; 0] = [];
+    world
+        .nodes
+        .query(node, |view| view.outgoing.iter())
+        .unwrap_or_else(|| EMPTY.iter())
+}
+
+/// A copyable reference to an outgoing edge.
+#[derive(Clone, Copy)]
+pub struct WorldEdgeRef {
+    key: IntervalKey,
+}
+
+impl petgraph::visit::EdgeRef for WorldEdgeRef {
+    type NodeId = NodeKey;
+    type EdgeId = IntervalKey;
+    type Weight = IntervalKey;
+
+    fn source(&self) -> Self::NodeId {
+        self.key.0
+    }
+
+    fn target(&self) -> Self::NodeId {
+        self.key.1
+    }
+
+    fn weight(&self) -> &Self::Weight {
+        &self.key
+    }
+
+    fn id(&self) -> Self::EdgeId {
+        self.key
+    }
+}
+
+pub struct WorldEdges<'a> {
+    source: NodeKey,
+    inner: std::slice::Iter<'a, NodeKey>,
+}
+
+impl<'a> Iterator for WorldEdges<'a> {
+    type Item = WorldEdgeRef;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next().map(|&target| WorldEdgeRef {
+            key: (self.source, target),
+        })
+    }
+}
+
+pub struct WorldNeighbors<'a> {
+    inner: std::slice::Iter<'a, NodeKey>,
+}
+
+impl<'a> Iterator for WorldNeighbors<'a> {
+    type Item = NodeKey;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next().copied()
+    }
+}
+
+pub struct WorldEdgeReferences<'a> {
+    inner: std::collections::hash_map::Keys<'a, IntervalKey, Interval>,
+}
+
+impl<'a> Iterator for WorldEdgeReferences<'a> {
+    type Item = WorldEdgeRef;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next().map(|&key| WorldEdgeRef { key })
+    }
+}
+
+impl petgraph::visit::GraphBase for WorldSnapshot {
+    type NodeId = NodeKey;
+    type EdgeId = IntervalKey;
+}
+
+impl petgraph::visit::Data for WorldSnapshot {
+    type NodeWeight = NodeInfo;
+    type EdgeWeight = IntervalKey;
+}
+
+impl<'a> petgraph::visit::IntoNeighbors for &'a WorldSnapshot {
+    type Neighbors = WorldNeighbors<'a>;
+
+    fn neighbors(self, node: Self::NodeId) -> Self::Neighbors {
+        WorldNeighbors {
+            inner: node_neighbours(self, node),
+        }
+    }
+}
+
+impl<'a> petgraph::visit::IntoEdgeReferences for &'a WorldSnapshot {
+    type EdgeRef = WorldEdgeRef;
+    type EdgeReferences = WorldEdgeReferences<'a>;
+
+    fn edge_references(self) -> Self::EdgeReferences {
+        WorldEdgeReferences {
+            inner: self.intervals.keys(),
+        }
+    }
+}
+
+impl<'a> petgraph::visit::IntoEdges for &'a WorldSnapshot {
+    type Edges = WorldEdges<'a>;
+
+    fn edges(self, node: Self::NodeId) -> Self::Edges {
+        WorldEdges {
+            source: node,
+            inner: node_neighbours(self, node),
+        }
+    }
+}
+
+impl petgraph::visit::Visitable for WorldSnapshot {
+    type Map = std::collections::HashSet<NodeKey>;
+
+    fn visit_map(&self) -> Self::Map {
+        std::collections::HashSet::with_capacity(self.nodes.len())
+    }
+
+    fn reset_map(&self, map: &mut Self::Map) {
+        map.clear();
+        map.reserve(self.nodes.len());
     }
 }

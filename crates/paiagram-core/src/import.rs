@@ -61,13 +61,21 @@ impl ImportType {
 }
 
 fn generate_commands(
-    stream: impl std::io::Read,
+    mut stream: impl std::io::Read,
     import_content: ImportType,
 ) -> Result<Box<[Command]>, Box<dyn std::error::Error>> {
     match import_content {
         ImportType::Pyetgr => todo!(),
-        ImportType::OuDia => oudia::load_oud(stream, true),
-        ImportType::OuDiaSecond => oudia::load_oud(stream, false),
+        ImportType::OuDia => {
+            let mut buf = Vec::new();
+            stream.read_to_end(&mut buf)?;
+            oudia::parse_oudia(oudia::OudFileType::OuDia(&buf))
+        }
+        ImportType::OuDiaSecond => {
+            let mut buf = String::new();
+            stream.read_to_string(&mut buf)?;
+            oudia::parse_oudia(oudia::OudFileType::OuDiaSecond(&buf))
+        }
         ImportType::Gtfs => todo!(),
         ImportType::PaiagramPaia => todo!(),
         ImportType::PaiagramRon => todo!(),

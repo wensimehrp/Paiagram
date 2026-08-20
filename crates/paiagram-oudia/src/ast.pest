@@ -6,4 +6,5 @@ kvpair       =  { key_ident ~ "=" ~ value }
 struct_ident =  { ASCII_ALPHANUMERIC+ }
 struct       =  { struct_ident ~ "." ~ NEWLINE ~ ((kvpair | struct) ~ NEWLINE)* ~ "." }
 wrapper      = _{ ((kvpair | struct) ~ NEWLINE)* ~ (kvpair | struct)? }
+// FEFF for BOM
 root         =  { SOI ~ "\u{feff}"? ~ wrapper }

@@ -1,10 +1,10 @@
 use egui::DragValue;
 use egui::emath::Numeric;
-use paiagram_core::units::time::{Duration, TimetableTime};
+use paiagram_core::units::time::{TDuration, TimetableTime};
 
 pub(crate) mod buttons;
 pub(crate) mod indicators;
-pub(crate) mod timetable_popup;
+// pub(crate) mod timetable_popup;
 
 /// [`DragValue`] for [`TimetableTime`].
 pub(crate) struct TimeDragValue<'a>(pub &'a mut TimetableTime);
@@ -54,7 +54,7 @@ impl<'a> egui::Widget for TimeDragValueOud<'a> {
 }
 
 /// [`DragValue`] for [`Duration`].
-pub(crate) struct DurationDragValue<'a>(pub &'a mut Duration);
+pub(crate) struct DurationDragValue<'a>(pub &'a mut TDuration);
 
 impl<'a> egui::Widget for DurationDragValue<'a> {
     fn ui(self, ui: &mut egui::Ui) -> egui::Response {
@@ -63,16 +63,16 @@ impl<'a> egui::Widget for DurationDragValue<'a> {
             DragValue::from_get_set(|v| {
                 if let Some(v) = v {
                     if shift_pressed {
-                        *self.0 = Duration::from_f64(v);
+                        *self.0 = TDuration::from_f64(v);
                     } else {
-                        *self.0 = Duration::from_hms(0, (v / 60.0).round() as i32, 0);
+                        *self.0 = TDuration::from_hms(0, (v / 60.0).round() as i32, 0);
                     }
                 }
                 self.0.to_f64()
             })
             .prefix("→ ")
-            .custom_formatter(|v, _| Duration::from_f64(v).to_string_no_arrow())
-            .custom_parser(|s| Duration::from_str(s).map(Duration::to_f64)),
+            .custom_formatter(|v, _| TDuration::from_f64(v).to_string_no_arrow())
+            .custom_parser(|s| TDuration::from_str(s).map(TDuration::to_f64)),
         )
     }
 }

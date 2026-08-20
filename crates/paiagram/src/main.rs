@@ -3,72 +3,24 @@
 use std::path::PathBuf;
 
 use clap::Parser;
-use paiagram::App;
-use paiagram_core::settings::UserPreferences;
-use paiagram_core::trip::class;
-use paiagram_core::{entry, graph, i18n, import, problems, route, settings, station, trip};
-use paiagram_rw::read::ReadPlugin;
-use paiagram_rw::save::SavePlugin;
+use paiagram::{App, MainUiState};
 use serde::Deserialize;
 
-struct PaiagramApp(App);
+struct PaiagramApp {
+    app: App,
+    mus: MainUiState,
+}
 
 impl PaiagramApp {
     fn new(cc: &eframe::CreationContext) -> Self {
-        // Modifications to the defualt style
-        // TODO: define own styles
         cc.egui_ctx.global_style_mut(|style| {
             style.spacing.window_margin = egui::Margin::same(2);
             style.interaction.selectable_labels = false;
         });
-        paiagram::apply_custom_fonts(&cc.egui_ctx);
-        if let Some(render_state) = cc.wgpu_render_state.as_ref() {
-            cc.egui_ctx.data_mut(|data| {
-                data.insert_temp(
-                    egui::Id::new("wgpu_adapter_info"),
-                    eframe::egui_wgpu::adapter_info_summary(&render_state.adapter.get_info()),
-                );
-                data.insert_temp(
-                    egui::Id::new("wgpu_target_format"),
-                    render_state.target_format,
-                );
-                let msaa_samples = if cfg!(target_arch = "wasm32") {
-                    1_u32
-                } else {
-                    4_u32
-                };
-                data.insert_temp(egui::Id::new("wgpu_msaa_samples"), msaa_samples);
-            });
+        Self {
+            app: App::new(),
+            mus: MainUiState::default(),
         }
-        let mut app = App::new();
-        app.add_plugins(MinimalPlugins);
-        app.add_plugins(LogPlugin::default());
-        app.add_plugins((
-            paiagram::UiPlugin,
-            entry::EntryPlugin,
-            graph::GraphPlugin,
-            route::RoutePlugin,
-            import::ImportPlugin,
-            trip::TripPlugin,
-            station::StationPlugin,
-            settings::SettingsPlugin,
-            class::ClassPlugin,
-            ReadPlugin,
-            SavePlugin,
-            bevy::asset::AssetPlugin::default(), // TODO: remove
-            bevy::scene::ScenePlugin,
-        ));
-        info!("Initialized Bevy App.");
-        #[cfg(not(target_arch = "wasm32"))]
-        let args = Arguments::parse();
-        #[cfg(target_arch = "wasm32")]
-        let args = parse_web_arguments();
-        if let Err(e) = app.world_mut().run_system_once_with(handle_args, args) {
-            error!("Failed to web arguments: {:?}", e);
-        } else {
-            info!("Arguments handled successfully.");
-        }
-        Self { bevy_app: app }
     }
 }
 
@@ -93,17 +45,7 @@ impl eframe::App for PaiagramApp {
         egui::Rgba::TRANSPARENT.to_array()
     }
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
-        self.bevy_app.update();
-        // TODO: remove this
-        self.bevy_app
-            .world_mut()
-            .resource_mut::<UserPreferences>()
-            .dark_mode = match ui.system_theme() {
-            None => false,
-            Some(egui::Theme::Dark) => true,
-            Some(egui::Theme::Light) => false,
-        };
-        paiagram::show_ui(ui, self.bevy_app.world_mut(), frame.info().cpu_usage);
+        paiagram::show_ui(ui, &mut self.app, &mut self.mus);
     }
 }
 
@@ -124,47 +66,8 @@ struct Arguments {
     locale: Option<String>,
 }
 
-fn handle_args(
-    args: In<Arguments>,
-    mut commands: Commands,
-    mut languages: ResMut<UserPreferences>,
-) {
-    for path in args.open.iter().flatten() {
-        #[cfg(target_arch = "wasm32")]
-        {
-            commands.trigger(import::DownloadFile {
-                url: path.to_string_lossy().into_owned(),
-            });
-            continue;
-        }
-
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            let content = match std::fs::read(path) {
-                Ok(c) => c,
-                Err(e) => {
-                    error!("Could not open {:?}: {:?}", path, e);
-                    continue;
-                }
-            };
-            if let Err(e) = import::load_and_trigger(path, content, &mut commands) {
-                error!("Could not load {:?}: {:#?}", path, e);
-                continue;
-            }
-        }
-    }
-    if let Some(locale) = args.locale.as_deref() {
-        if languages.lang.set(locale) {
-            info!("Successfully set language {}", locale);
-        } else {
-            error!("Unknown language identifier: {}", locale);
-        }
-    }
-}
-
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result<()> {
-    i18n::init();
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("Drawer")
@@ -173,10 +76,10 @@ fn main() -> eframe::Result<()> {
         renderer: eframe::Renderer::Wgpu,
         wgpu_options: eframe::egui_wgpu::WgpuConfiguration {
             desired_maximum_frame_latency: Some(2),
-            ..default()
+            ..Default::default()
         },
         multisampling: 4,
-        ..default()
+        ..Default::default()
     };
     eframe::run_native(
         "Paiagram Drawer",

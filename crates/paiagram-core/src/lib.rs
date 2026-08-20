@@ -8,21 +8,25 @@ pub mod graph;
 pub mod import;
 pub mod problems;
 // pub mod script;
+mod commands;
+mod make_type;
 pub mod trip;
 pub mod units;
-
 use std::num::NonZeroU32;
 use std::ops::RangeInclusive;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU16;
 
+pub use commands::Command;
 use ecow::{EcoString, EcoVec};
 use egui::emath::inverse_lerp;
 use egui::{Color32, remap};
+use make_type::make_type;
 use nohash_hasher::BuildNoHashHasher;
-use petgraph::graphmap::DiGraphMap;
 use rstar::{AABB, RTree, RTreeObject};
+use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
+use smallvec::SmallVec;
 pub use units::*;
 
 use crate::trip::{TEntry, TripSchedule};
@@ -56,216 +60,14 @@ impl<'a, T: Clone> BorrowMutField<'a, T> {
     }
 }
 
-macro_rules! make_type {
-    (
-        $(#[$struct_attr:meta])*
-        $struct_name:ident,
-        data { $(
-            $(#[$field_attr:meta])*
-            $field_name:ident: $field_type:ty,
-        )* }
-        cache { $(
-            $(#[$cache_attr:meta])*
-            $cache_name:ident: $cache_type:ty,
-        )* }
-    ) => {
-        paste::paste! {
-            #[derive(Serialize, Deserialize, Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
-            $(#[$struct_attr])*
-            pub struct [<$struct_name Key>](std::num::NonZeroU64);
-
-            pub type [<$struct_name KeyHashMap>]<T> = nohash_hasher::IntMap<[<$struct_name Key>], T>;
-            pub type [<$struct_name KeyHasher>] = BuildNoHashHasher<[<$struct_name Key>]>;
-
-            impl nohash_hasher::IsEnabled for [<$struct_name Key>] {}
-
-            static [<$struct_name:snake:upper _COUNTER>]: AtomicU16 = AtomicU16::new(0);
-
-            impl [<$struct_name Key>] {
-                pub fn new() -> Self {
-                    use web_time::SystemTime;
-                    let now_ms = SystemTime::now()
-                        .duration_since(SystemTime::UNIX_EPOCH)
-                        .unwrap()
-                        .as_millis() as u64;
-                    let timestamp_48 = now_ms & 0xFFFF_FFFF_FFFF;
-                    let counter_16 = [<$struct_name:snake:upper _COUNTER>]
-                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                    let mut raw_id = (timestamp_48 << 16) | (counter_16 as u64);
-                    // I hope nobody would use this app and generate a key
-                    // at exactly Jan 1, 1970 UTC+0...
-                    if raw_id == 0 {
-                        raw_id = 1;
-                    }
-                    Self(std::num::NonZeroU64::new(raw_id).unwrap())
-                }
-            }
-
-            impl Key for [<$struct_name Key>] {
-                fn to_bits(self) -> u64 {
-                    self.0.get()
-                }
-            }
-
-            #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
-            struct [<$struct_name Handle>](usize);
-
-            // View stays raw data, as it's just used for passing data in/out
-            #[derive(Clone, Debug, PartialEq)]
-            pub struct [<$struct_name View>] {
-                $(
-                    $(#[$field_attr])*
-                    pub $field_name: $field_type,
-                )*
-                $(
-                    $(#[$cache_attr])*
-                    pub $cache_name: $cache_type,
-                )*
-            }
-
-            #[derive(Serialize, Deserialize, Clone, Debug)]
-            pub struct [<$struct_name Info>] {
-                $( pub $field_name: $field_type, )*
-            }
-
-            pub struct [<$struct_name Borrow>]<'a> {
-                $( pub $field_name: &'a $field_type, )*
-                $( pub $cache_name: &'a $cache_type, )*
-            }
-
-            pub(crate) struct [<$struct_name BorrowMut>]<'a> {
-                $( pub $field_name: BorrowMutField<'a, $field_type>, )*
-                $( pub $cache_name: BorrowMutField<'a, $cache_type>, )*
-            }
-
-            // The Struct wraps the entire collections in Arc
-            #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
-            pub struct [<$struct_name Collection>] {
-                registry: std::sync::Arc<[<$struct_name KeyHashMap>]<[<$struct_name Handle>]>>,
-                keys: std::sync::Arc<Vec<[<$struct_name Key>]>>,
-                $( $field_name: std::sync::Arc<Vec<$field_type>>, )*
-                $(
-                    #[serde(skip)]
-                    $cache_name: std::sync::Arc<Vec<$cache_type>>,
-                )*
-            }
-
-            impl [<$struct_name Collection>] {
-                /// How many elements of this type currently exist in the world
-                pub fn len(&self) -> usize {
-                    self.registry.len()
-                }
-
-                fn get_handle(&self, key: [<$struct_name Key>]) -> Option<[<$struct_name Handle>]> {
-                    self.registry.get(&key).cloned()
-                }
-
-                /// Check if the current collection contains the key
-                pub fn contains_key(&self, key: [<$struct_name Key>]) -> bool {
-                    self.registry.contains_key(&key)
-                }
-
-                /// Remove an entry from the collection
-                pub fn remove(&mut self, key: [<$struct_name Key>]) -> Option<[<$struct_name View>]> {
-                    let registry_mut = std::sync::Arc::make_mut(&mut self.registry);
-                    let handle = registry_mut.remove(&key)?;
-                    let idx = handle.0;
-
-                    let keys_mut = std::sync::Arc::make_mut(&mut self.keys);
-                    let last_idx = keys_mut.len() - 1;
-                    let last_key = keys_mut[last_idx];
-
-                    let ret = [<$struct_name View>] {
-                        $( $field_name: std::sync::Arc::make_mut(&mut self.$field_name).swap_remove(idx), )*
-                        $( $cache_name: std::sync::Arc::make_mut(&mut self.$cache_name).swap_remove(idx), )*
-                    };
-
-                    keys_mut.swap_remove(idx);
-
-                    if idx != last_idx {
-                        registry_mut.insert(last_key, [<$struct_name Handle>](idx));
-                    }
-
-                    Some(ret)
-                }
-
-                pub fn insert(
-                    &mut self,
-                    key: [<$struct_name Key>],
-                    view: [<$struct_name View>]
-                ) -> Option<[<$struct_name View>]> {
-                    let old_view = if self.registry.contains_key(&key) {
-                        self.remove(key)
-                    } else {
-                        None
-                    };
-
-                    let registry_mut = std::sync::Arc::make_mut(&mut self.registry);
-                    let keys_mut = std::sync::Arc::make_mut(&mut self.keys);
-
-                    let idx = keys_mut.len();
-                    registry_mut.insert(key, [<$struct_name Handle>](idx));
-                    keys_mut.push(key);
-
-                    $(
-                        std::sync::Arc::make_mut(&mut self.$field_name).push(view.$field_name);
-                    )*
-                    $(
-                        std::sync::Arc::make_mut(&mut self.$cache_name).push(view.$cache_name);
-                    )*
-
-                    old_view
-                }
-
-                pub fn query<R>(
-                    &self,
-                    key: [<$struct_name Key>],
-                    f: impl FnOnce([<$struct_name Borrow>]) -> R
-                ) -> Option<R> {
-                    let handle = self.get_handle(key)?;
-                    let idx = handle.0;
-
-                    let borrow = [<$struct_name Borrow>] {
-                        $( $field_name: &self.$field_name[idx], )*
-                        $( $cache_name: &self.$cache_name[idx], )*
-                    };
-
-                    Some(f(borrow))
-                }
-
-                /// Write access via a named-field struct
-                fn update<R>(
-                    &mut self,
-                    key: [<$struct_name Key>],
-                    f: impl FnOnce([<$struct_name BorrowMut>]) -> R
-                ) -> Option<R> {
-                    let handle = self.get_handle(key)?;
-                    let idx = handle.0;
-
-                    let borrow_mut = [<$struct_name BorrowMut>] {
-                        $( $field_name: BorrowMutField {
-                            borrow: &mut self.[<$field_name>],
-                            idx
-                        }, )*
-                        $( $cache_name: BorrowMutField {
-                            borrow: &mut self.[<$cache_name>],
-                            idx
-                        }, )*
-                    };
-
-                    Some(f(borrow_mut))
-                }
-            }
-        }
-    };
-}
-
 make_type!(
     Trip,
     data {
         name: EcoString,
         schedule: TripSchedule,
         service_class: Option<ServiceClassKey>,
+        /// The vehicles that serve this trip. Most trips have a single vehicle.
+        vehicles: SmallVec<[VehicleKey; 1]>,
     }
     cache { }
 );
@@ -275,7 +77,10 @@ make_type!(
     data {
         name: EcoString,
     }
-    cache { }
+    cache {
+        /// The trips served by this vehicle.
+        trips: EcoVec<TripKey>,
+    }
 );
 
 make_type!(
@@ -288,6 +93,12 @@ make_type!(
         nodes: EcoVec<NodeKey>,
     }
 );
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum NeighbourDirection {
+    Incoming,
+    Outgoing,
+}
 
 // better make some type-level guarantee that this
 make_type!(
@@ -305,16 +116,13 @@ make_type!(
         /// If the station is a platform
         is_platform: bool,
     }
-    cache { }
-);
-
-struct NodeCache(NodeKeyHashMap<Vec<i32>>);
-
-impl NodeCache {
-    fn remove(&mut self, key: NodeKey) -> Option<Vec<i32>> {
-        self.0.remove(&key)
+    cache {
+        /// Outgoing neighbours of this node.
+        outgoing: SmallVec<[NodeKey; 1]>,
+        /// Incoming neighbours of this node.
+        incoming: SmallVec<[NodeKey; 1]>,
     }
-}
+);
 
 make_type!(
     /// The service class of the vehicle
@@ -365,8 +173,12 @@ make_type!(
     }
 );
 
-/// The direction of the interval
-/// Some interval allows traversing forwards and backwards
+/// The key of an interval. An interval is a directed edge, so the ordered pair of
+/// its endpoints uniquely identifies it. Parallel edges are not allowed.
+pub type IntervalKey = (NodeKey, NodeKey);
+
+/// The direction of the interval.
+/// Some intervals allow traversing forwards and backwards
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub enum IntervalDirection {
     /// Bi-directional interval
@@ -377,29 +189,79 @@ pub enum IntervalDirection {
     OneWay,
 }
 
-make_type!(
-    Interval,
-    data {
-        /// The nodes at and between the two nodes this interval connects.
-        /// This includes the starting and ending nodes.
-        /// Thus it must have at least two elements and it is safe to call
-        /// `.unwrap()` on `.first()` and `.last()`.
-        nodes: EcoVec<LonLat>,
-        /// The length of the interval. If the length is None, then it is calculated from nodes.
-        length: Option<NonZeroU32>,
-        /// The direction of the interval. See [`IntervalDirection`] for details.
-        direction: IntervalDirection,
-    }
-    cache { }
-);
+/// An interval is a directed edge between two nodes.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct Interval {
+    /// The nodes at and between the two nodes this interval connects.
+    /// This includes the starting and ending nodes.
+    /// Thus it must have at least two elements and it is safe to call
+    /// `.unwrap()` on `.first()` and `.last()`.
+    pub nodes: EcoVec<LonLat>,
+    /// The length of the interval. If the length is None, then it is calculated from nodes.
+    pub length: Option<NonZeroU32>,
+    /// The direction of the interval. See [`IntervalDirection`] for details.
+    pub direction: IntervalDirection,
+    /// trips passing this interval
+    #[serde(skip)]
+    pub trips: EcoVec<TripKey>,
+}
 
-impl<'a> IntervalBorrow<'a> {
+impl Interval {
     /// The length of the interval
     pub fn length(&self) -> Distance {
         if let Some(d) = self.length {
             return Distance(d.get() as i32);
         };
+        // TODO: compute the length from `self.nodes`.
         todo!()
+    }
+}
+
+/// Intervals are edges, keyed by the ordered pair of their endpoints.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct IntervalCollection {
+    map: FxHashMap<IntervalKey, Interval>,
+}
+
+impl IntervalCollection {
+    /// How many intervals currently exist in the world.
+    pub fn len(&self) -> usize {
+        self.map.len()
+    }
+
+    /// Check whether an interval exists between `(source, target)`.
+    pub fn contains_key(&self, key: IntervalKey) -> bool {
+        self.map.contains_key(&key)
+    }
+
+    /// Insert an interval, returning the replaced interval if the key already existed.
+    pub fn insert(&mut self, key: IntervalKey, interval: Interval) -> Option<Interval> {
+        self.map.insert(key, interval)
+    }
+
+    /// Remove an interval, returning it if it existed.
+    pub fn remove(&mut self, key: IntervalKey) -> Option<Interval> {
+        self.map.remove(&key)
+    }
+
+    /// Borrow an interval if it exists.
+    pub fn get(&self, key: IntervalKey) -> Option<&Interval> {
+        self.map.get(&key)
+    }
+
+    /// Read access to an interval.
+    pub fn query<R>(&self, key: IntervalKey, f: impl FnOnce(&Interval) -> R) -> Option<R> {
+        self.map.get(&key).map(f)
+    }
+
+    /// Iterate over all intervals and their keys.
+    pub fn iter(&self) -> std::collections::hash_map::Iter<'_, IntervalKey, Interval> {
+        self.map.iter()
+    }
+
+    /// Iterate over all interval keys.
+    pub fn keys(&self) -> std::collections::hash_map::Keys<'_, IntervalKey, Interval> {
+        self.map.keys()
     }
 }
 
@@ -409,9 +271,6 @@ pub struct StrokeStyle {
     color: Color32,
     width: u8,
 }
-
-/// The world graph describes the network.
-pub type WorldGraph = DiGraphMap<NodeKey, IntervalKey, NodeKeyHasher>;
 
 // future idea: scripting via rhai
 /// The world stores much of the content using SoA.
@@ -424,97 +283,63 @@ pub struct WorldSnapshot {
     pub service_classes: ServiceClassCollection,
     pub routes: RouteCollection,
     pub nodes: NodeCollection,
-    vehicle_trip_matrix: Arc<VehicleTripMatrix>,
-    graph: Arc<WorldGraph>,
 }
 
 impl WorldSnapshot {
-    /// Applies a command and returns its inverse. Could modify the world and return the inverse if
-    /// the application succeeds; doesn't modify the world and returns None if the application
-    /// fails.
-    pub fn apply_command(&mut self, cmd: Command) -> Option<Command> {
-        match cmd {
-            Command::AddTrip { key, info } => (!self.trips.contains_key(key)).then(|| {
-                let TripInfo {
-                    name,
-                    schedule,
-                    service_class,
-                } = info;
-                self.trips.insert(
-                    key,
-                    TripView {
-                        name,
-                        schedule,
-                        service_class,
-                    },
-                );
-                Command::RemoveTrip { key }
-            }),
-            Command::RenameTrip {
-                key,
-                name: mut new_name,
-            } => self.trips.update(key, |mut view| {
-                std::mem::swap(view.name.get_mut(), &mut new_name);
-                Command::RenameTrip {
-                    key,
-                    name: new_name,
-                }
-            }),
-            Command::ChangeTripClass {
-                key,
-                class: mut new_class,
-            } => self.trips.update(key, |mut view| {
-                std::mem::swap(view.service_class.get_mut(), &mut new_class);
-                Command::ChangeTripClass {
-                    key,
-                    class: new_class,
-                }
-            }),
-            Command::RemoveTrip { key } => self.trips.remove(key).map(
-                |TripView {
-                     name,
-                     schedule,
-                     service_class,
-                 }| Command::AddTrip {
-                    key,
-                    info: TripInfo {
-                        name,
-                        schedule,
-                        service_class,
-                    },
-                },
-            ),
-            // Simply use recursion in this case since macros are not common
-            Command::Macro(commands) => {
-                let backup = self.clone();
-                let mut inverses = Vec::with_capacity(commands.len());
+    /// Add `trip` to the cache of every vehicle in `vehicles`.
+    fn cache_trip(&mut self, trip: TripKey, vehicles: &[VehicleKey]) {
+        for vehicle in vehicles {
+            self.vehicles.update(*vehicle, |mut view| {
+                view.trips.get_mut().push(trip);
+            });
+        }
+    }
 
-                for cmd in commands.into_vec() {
-                    match self.apply_command(cmd) {
-                        Some(inverse) => inverses.push(inverse),
-                        None => {
-                            *self = backup;
-                            return None;
-                        }
-                    }
-                }
+    /// Remove `trip` from the cache of every vehicle in `vehicles`.
+    fn uncache_trip(&mut self, trip: TripKey, vehicles: &[VehicleKey]) {
+        for vehicle in vehicles {
+            self.vehicles.update(*vehicle, |mut view| {
+                view.trips.get_mut().retain(|t| *t != trip);
+            });
+        }
+    }
 
-                inverses.reverse();
-                Some(Command::Macro(inverses.into_boxed_slice()))
-            }
-            Command::UnloadWorld => {
-                let old = std::mem::take(self);
-                Some(Command::LoadWorld {
-                    snapshot: Box::new(old),
-                })
-            }
-            Command::LoadWorld { snapshot: mut new } => {
-                std::mem::swap(self, &mut *new);
-                Some(Command::LoadWorld { snapshot: new })
-            }
-            _ => {
-                todo!()
-            }
+    /// Rebuild every vehicle's trip cache from the trips' authoritative vehicle lists.
+    pub fn rebuild_vehicle_trip_cache(&mut self) {
+        let vehicles: Vec<VehicleKey> = self.vehicles.keys().collect();
+        for vehicle in vehicles {
+            self.vehicles.update(vehicle, |mut view| {
+                view.trips.get_mut().clear();
+            });
+        }
+        let trips: Vec<TripKey> = self.trips.keys().collect();
+        for trip in trips {
+            let trip_vehicles = self
+                .trips
+                .query(trip, |view| view.vehicles.clone())
+                .unwrap_or_default();
+            self.cache_trip(trip, &trip_vehicles);
+        }
+    }
+
+    /// Rebuild every node's outgoing-edge cache from the authoritative intervals.
+    pub fn rebuild_node_edge_cache(&mut self) {
+        let nodes: Vec<NodeKey> = self.nodes.keys().collect();
+        for node in nodes {
+            self.nodes.update(node, |mut view| {
+                view.outgoing.get_mut().clear();
+                view.incoming.get_mut().clear();
+            });
+        }
+
+        let intervals: Vec<IntervalKey> = self.intervals.keys().copied().collect();
+        for (source, target) in intervals {
+            self.nodes.update(source, |mut view| {
+                view.outgoing.get_mut().push(target);
+            });
+            self.nodes.update(target, |mut view| {
+                view.incoming.get_mut().push(source);
+            });
         }
     }
 }
@@ -531,6 +356,17 @@ pub struct Source {
     snap: WorldSnapshot,
     rtrees: GraphCacheWorld,
     // rhai_script_world: RhaiScriptWorld,
+}
+
+impl Source {
+    pub fn new() -> Self {
+        Self {
+            undos: Vec::new(),
+            undo_len: 0,
+            snap: WorldSnapshot::default(),
+            rtrees: GraphCacheWorld::new(),
+        }
+    }
 }
 
 impl std::ops::Deref for Source {
@@ -621,13 +457,18 @@ impl TryFrom<SaveFile> for Source {
     type Error = &'static str;
     fn try_from(value: SaveFile) -> Result<Self, Self::Error> {
         match value {
-            SaveFile::V1 { world } => Ok(Self {
-                undos: Vec::new(),
-                undo_len: 0,
-                snap: world,
-                rtrees: GraphCacheWorld::new(),
-                // rhai_script_world: RhaiScriptWorld::new(),
-            }),
+            SaveFile::V1 { world } => {
+                let mut snap = world;
+                snap.rebuild_vehicle_trip_cache();
+                snap.rebuild_node_edge_cache();
+                Ok(Self {
+                    undos: Vec::new(),
+                    undo_len: 0,
+                    snap,
+                    rtrees: GraphCacheWorld::new(),
+                    // rhai_script_world: RhaiScriptWorld::new(),
+                })
+            }
         }
     }
 }
@@ -636,76 +477,6 @@ impl From<Source> for SaveFile {
     fn from(value: Source) -> Self {
         Self::V1 { world: value.snap }
     }
-}
-
-#[derive(Clone, Debug)]
-pub enum Command {
-    /// Add a new trip to the world
-    AddTrip {
-        key: TripKey,
-        info: TripInfo,
-    },
-    /// Rename a trip
-    RenameTrip {
-        key: TripKey,
-        name: EcoString,
-    },
-    ChangeTripEntries {
-        key: TripKey,
-        entries: EcoVec<TEntry>,
-    },
-    /// Change the trip's class to another class
-    ChangeTripClass {
-        key: TripKey,
-        class: Option<ServiceClassKey>,
-    },
-    /// Remove a trip from the collection
-    RemoveTrip {
-        key: TripKey,
-    },
-    AddVehicle {
-        key: VehicleKey,
-        name: EcoString,
-    },
-    RenameVehicle {
-        key: VehicleKey,
-        name: EcoString,
-    },
-    RemoveVehicle {
-        key: VehicleKey,
-    },
-    // Stations
-    AddStation {
-        key: StationKey,
-        info: StationInfo,
-    },
-    // nodes
-    AddNode {
-        key: NodeKey,
-        info: NodeInfo,
-    },
-    // classes
-    AddServiceClass {
-        key: ServiceClassKey,
-        info: ServiceClassInfo,
-    },
-    // route
-    AddRoute {
-        key: RouteKey,
-        info: RouteInfo,
-    },
-    /// Hybrid
-    ChangeVehicleTrips {
-        key: VehicleKey,
-        trips: EcoVec<TripKey>,
-    },
-    // World related stuff
-    UnloadWorld,
-    LoadWorld {
-        snapshot: Box<WorldSnapshot>,
-    },
-    /// A user-defined macro.
-    Macro(Box<[Command]>),
 }
 
 /// The graph cache world
@@ -731,7 +502,6 @@ impl GraphCacheWorld {
         x_range: RangeInclusive<i32>,
         y_range: RangeInclusive<i32>,
         time: i32,
-        delta_time: f64,
     ) -> impl Iterator<Item = &TEntrySpatialEntry> {
         let time = time as i64;
         let x_min = (*x_range.start()).min(*x_range.end()) as i64;
@@ -878,8 +648,5 @@ impl RTreeObject for IntervalSpatialEntry {
     }
 }
 
-#[derive(Serialize, Deserialize, Default, Clone, PartialEq, Debug)]
-struct VehicleTripMatrix {
-    trip_to_veh: TripKeyHashMap<EcoVec<VehicleKey>>,
-    veh_to_trip: VehicleKeyHashMap<EcoVec<TripKey>>,
-}
+#[cfg(test)]
+mod test;

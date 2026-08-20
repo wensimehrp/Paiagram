@@ -27,6 +27,7 @@ git-version.workspace = true
 ib-matcher.workspace = true
 itertools.workspace = true
 itoa.workspace = true
+jiff.workspace = true
 log.workspace = true
 paiagram-core = { path = "../paiagram-core" }
 paiagram-raptor = { path = "../paiagram-raptor" }

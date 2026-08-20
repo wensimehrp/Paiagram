@@ -2,35 +2,44 @@ use std::borrow::Cow;
 
 use egui::{Id, Key, NumExt, Response, Ui, Vec2, WidgetText, emath, vec2};
 use egui_i18n::tr;
+use serde::{Deserialize, Serialize};
 
 use crate::App;
 
 macro_rules! define_tabs {
     ($(
         $name:ident;
-    )*) => {
+    )*) => { paste::paste! {
         $(
             pub(crate) mod $name;
         )*
         pub(crate) mod all_tabs {
-            paste::paste! {
-                $(
-                    pub(crate) use super::$name::[<$name:camel Tab>];
-                )*
+            $( pub(crate) use super::$name::[<$name:camel Tab>]; )*
+        }
+        #[derive(Serialize, Deserialize, Clone, PartialEq)]
+        pub(super) enum MainTab {
+            $( [<$name:camel>](super::tabs::all_tabs::[<$name:camel Tab>]), )*
+        }
+        macro_rules! for_all_tabs {
+            ($tab:expr, $t:ident, $body:expr) => {
+                match $tab {
+                    $( MainTab::[<$name:camel>]($t) => $body, )*
+                }
             }
         }
-    };
+        pub(super) use for_all_tabs;
+    } };
 }
 
 define_tabs!(
-    classes;
-    diagram;
-    graph;
-    route_timetable;
-    settings;
+    // classes;
+    // diagram;
+    // graph;
+    // route_timetable;
+    // settings;
     start;
-    station;
-    trip;
+    // station;
+    // trip;
 );
 
 fn handle_keyboard_navigation(ui: &Ui) -> Vec2 {

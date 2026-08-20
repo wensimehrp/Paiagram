@@ -1,39 +1,45 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Definitions for the user interface.
 
+mod config;
 mod selection;
-mod settings;
 mod tabs;
+mod timer;
 mod widgets;
 
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
-
-use chrono::{Local, Timelike};
-use egui::{
-    Color32, Frame, Key, KeyboardShortcut, Modifiers, OpenUrl, Panel, Response, RichText,
-    ScrollArea, Stroke, Ui,
-};
+use egui::{Color32, Frame, OpenUrl, Panel, Response, RichText, ScrollArea, Stroke, Ui};
 use egui_i18n::tr;
-use egui_tiles::{
-    Behavior, ContainerKind, SimplificationOptions, Tile, TileId, Tiles, Tree, UiResponse,
-};
-use paiagram_core::colors::{DisplayedColor, PredefinedColor};
-use paiagram_core::units::time::{Tick, TimetableTime};
-use paiagram_core::{LonLat, Source, StationKey, TripKey};
+use egui_tiles::{Behavior, SimplificationOptions, Tile, TileId, Tiles, Tree, UiResponse};
+use paiagram_core::Source;
+use paiagram_core::time::Tick;
 use serde::{Deserialize, Serialize};
-use tabs::Tab;
 use tabs::all_tabs::*;
-use vec1::{Vec1, vec1};
+use tabs::{MainTab, Tab, for_all_tabs};
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsCast;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
+use crate::timer::GlobalTimer;
 use crate::widgets::TimeDragValue;
 pub struct UiPlugin;
 
 pub struct App {
     source: Source,
+    timer: GlobalTimer,
+    preferences: config::Preferences,
+    settings: config::Settings,
+}
+
+impl App {
+    pub fn new() -> Self {
+        Self {
+            source: Source::new(),
+            timer: GlobalTimer::new(),
+            preferences: config::Preferences::default(),
+            settings: config::Settings::default(),
+        }
+    }
 }
 
 impl std::ops::Deref for App {
@@ -49,303 +55,10 @@ impl std::ops::DerefMut for App {
     }
 }
 
-#[derive(Clone, Debug)]
-pub(crate) struct TripSelection {
-    pub(crate) trip: TripKey,
-    // pub(crate) entries: Vec1<Entity>,
-}
-
-impl PartialEq for TripSelection {
-    fn eq(&self, other: &Self) -> bool {
-        self.trip == other.trip
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Hash, Debug, Eq, PartialOrd, Ord)]
-pub(crate) struct StationPairSelection {
-    pub(crate) source: StationKey,
-    pub(crate) target: StationKey,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct StationSelection {
-    pub(crate) station: StationKey,
-}
-
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub(crate) struct ExtendingRouteSelection {
-    pub(crate) prev_station: StationKey,
-}
-
-// Extending or creating a new trip
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub(crate) struct ExtendingTripSelection {
-    // The current focused trip
-    pub(crate) trip: TripKey,
-    // previous position on the canvas
-    pub(crate) previous_pos: Option<(TimetableTime, usize)>,
-    pub(crate) last_time: Option<TimetableTime>,
-}
-
-#[derive(Clone, PartialEq, Debug)]
-pub(crate) struct CoordinateSelection {
-    pub(crate) coor: LonLat,
-    pub(crate) name_candidate: String,
-}
-
-#[derive(Clone, PartialEq, Debug)]
-pub(crate) enum SelectedItems {
-    None,
-    Trips(Vec1<TripSelection>),
-    StationPairs(Vec1<StationPairSelection>),
-    Stations(Vec1<StationSelection>),
-    ExtendingRoute(ExtendingRouteSelection),
-    ExtendingTrip(ExtendingTripSelection),
-    Coordinate(CoordinateSelection),
-}
-
-#[derive(Message, Clone)]
-pub(crate) enum ModifySelectedItems {
-    Toggle(SelectedItem),
-    SetSingle(SelectedItem),
-    Clear,
-}
-
-#[derive(Clone)]
-#[non_exhaustive]
-pub(crate) enum SelectedItem {
-    None,
-    Trip(TripSelection),
-    StationPair(StationPairSelection),
-    Station(StationSelection),
-    Coordinate(CoordinateSelection),
-}
-
-impl Default for SelectedItems {
-    fn default() -> Self {
-        Self::None
-    }
-}
-
-impl Default for SelectedItem {
-    fn default() -> Self {
-        Self::None
-    }
-}
-
-struct FrameTimeHistory {
-    values: [f32; Self::CAPACITY],
-    next_index: usize,
-}
-
-impl FrameTimeHistory {
-    const CAPACITY: usize = 255;
-
-    fn push(&mut self, dt_seconds: f32) {
-        self.values[self.next_index] = dt_seconds;
-        self.next_index = (self.next_index + 1) % Self::CAPACITY;
-    }
-
-    fn average_dt(&self) -> f32 {
-        let sum: f32 = self.values.iter().sum();
-        sum / Self::CAPACITY as f32
-    }
-
-    fn previous_n(&self, n: usize) -> impl Iterator<Item = f32> {
-        let count = n.min(Self::CAPACITY);
-        (0..count).map(move |i| {
-            let index = (self.next_index + Self::CAPACITY - 1 - i) % Self::CAPACITY;
-            self.values[index]
-        })
-    }
-}
-
-impl Default for FrameTimeHistory {
-    fn default() -> Self {
-        Self {
-            values: [0.0; Self::CAPACITY],
-            next_index: 0,
-        }
-    }
-}
-
-pub(crate) struct GlobalTimer {
-    value: AtomicI64,
-    locker: AtomicU64,
-    animation_speed: f64,
-    animation_playing: bool,
-    sync_to_real_time: bool,
-}
-
-impl GlobalTimer {
-    fn update(&mut self) {
-        if !self.is_locked() && self.sync_to_real_time {
-            let now = Local::now();
-            let seconds = now.num_seconds_from_midnight() as f64;
-            let rest = now.nanosecond() as f64 / 1_000_000_000 as f64;
-            self.animation_speed = 1.0;
-            self.animation_playing = true;
-            self.write_seconds(seconds + rest);
-        } else if self.animation_playing && !self.is_locked() {
-            // TODO: fix timer
-            let mut seconds = self.read_seconds();
-            seconds += self.animation_speed * 0.0; // time.delta_secs_f64();
-            self.write_seconds(seconds);
-        }
-    }
-}
-
-impl Default for GlobalTimer {
-    fn default() -> Self {
-        Self {
-            value: AtomicI64::new(0),
-            locker: AtomicU64::new(Self::UNLOCKED),
-            animation_speed: 10.0,
-            animation_playing: false,
-            sync_to_real_time: false,
-        }
-    }
-}
-
-impl GlobalTimer {
-    const UNLOCKED: u64 = u64::MAX;
-    pub(crate) fn read_ticks(&self) -> Tick {
-        Tick(self.value.load(Ordering::Acquire))
-    }
-
-    pub(crate) fn write_ticks(&self, value: Tick) {
-        self.value.store(value.0, Ordering::Release);
-    }
-
-    pub(crate) fn read_seconds(&self) -> f64 {
-        self.read_ticks().as_seconds_f64()
-    }
-
-    pub(crate) fn write_seconds(&self, value: f64) {
-        let ticks_per_second = Tick::from_timetable_time(TimetableTime(1)).0 as f64;
-        let ticks = (value * ticks_per_second).round() as i64;
-        self.write_ticks(Tick(ticks));
-    }
-
-    pub(crate) fn is_locked(&self) -> bool {
-        self.locker.load(Ordering::Acquire) != Self::UNLOCKED
-    }
-
-    pub(crate) fn try_lock(&self, id: Entity) -> bool {
-        let id_bits = id.to_bits();
-
-        let result = self.locker.compare_exchange(
-            Self::UNLOCKED,
-            id_bits,
-            Ordering::AcqRel,
-            Ordering::Acquire,
-        );
-
-        result.is_ok() || result.unwrap_err() == id_bits
-    }
-
-    pub(crate) fn try_unlock(&self, id: Entity) {
-        let _ = self.locker.compare_exchange(
-            id.to_bits(),
-            Self::UNLOCKED,
-            Ordering::Release,
-            Ordering::Relaxed,
-        );
-    }
-
-    pub(crate) fn owner(&self) -> u64 {
-        self.locker.load(Ordering::Acquire)
-    }
-
-    pub(crate) unsafe fn try_lock_unchecked(&self, id: u64) -> bool {
-        self.try_lock(Entity::from_bits(id))
-    }
-
-    pub(crate) unsafe fn try_unlock_unchecked(&self, id: u64) {
-        self.try_unlock(Entity::from_bits(id))
-    }
-}
-
-macro_rules! for_all_tabs {
-    ($tab:expr, $t:ident, $body:expr) => {
-        match $tab {
-            MainTab::Start($t) => $body,
-            MainTab::Diagram($t) => $body,
-            MainTab::Settings($t) => $body,
-            MainTab::Classes($t) => $body,
-            MainTab::Graph($t) => $body,
-            MainTab::Trip($t) => $body,
-            MainTab::RouteTimetable($t) => $body,
-            MainTab::PriorityGraph($t) => $body,
-            MainTab::Text($t) => $body,
-            MainTab::Station($t) => $body,
-        }
-    };
-}
-
-macro_rules! for_all_tab_types {
-    ($tab:expr, $body:ident) => {
-        match $tab {
-            MainTab::Start(_) => StartTab::$body,
-            MainTab::Diagram(_) => DiagramTab::$body,
-            MainTab::Settings(_) => SettingsTab::$body,
-            MainTab::Classes(_) => ClassesTab::$body,
-            MainTab::Graph(_) => GraphTab::$body,
-            MainTab::Trip(_) => TripTab::$body,
-            MainTab::RouteTimetable(_) => RouteTimetableTab::$body,
-            MainTab::PriorityGraph(_) => PriorityGraphTab::$body,
-            MainTab::Text(_) => TextTab::$body,
-            MainTab::Station(_) => StationTab::$body,
-        }
-    };
-}
-
-#[derive(Serialize, Deserialize, Clone, PartialEq)]
-pub(crate) enum MainTab {
-    Start(StartTab),
-    Diagram(DiagramTab),
-    Settings(SettingsTab),
-    Classes(ClassesTab),
-    Graph(GraphTab),
-    Trip(TripTab),
-    RouteTimetable(RouteTimetableTab),
-    PriorityGraph(PriorityGraphTab),
-    Text(TextTab),
-    Station(StationTab),
-}
-
 #[derive(Serialize, Deserialize, Clone)]
-pub(crate) struct MainUiState {
+pub struct MainUiState {
     tree: Tree<MainTab>,
     maximized: Option<TileId>,
-}
-
-impl MainUiState {
-    pub(crate) fn push_to_focused_leaf(&mut self, new_pane: MainTab) -> TileId {
-        let new_id = self.tree.tiles.insert_pane(new_pane);
-
-        // Try to add it to the same Tabs container that is currently focused
-        if let Some(&active_id) = self.tree.active_tiles().last()
-            && let Some(parent_id) = self.tree.tiles.parent_of(active_id)
-            && let Some(Tile::Container(container)) = self.tree.tiles.get_mut(parent_id)
-            && container.kind() == ContainerKind::Tabs
-        {
-            container.add_child(new_id);
-            self.tree.make_active(|id, _| id == new_id);
-            return new_id;
-        }
-
-        // Fallback: create a new top-level Tabs container
-        let old_root = self.tree.root;
-        let tabs_id = if let Some(old_root) = old_root {
-            self.tree.tiles.insert_tab_tile(vec![old_root, new_id])
-        } else {
-            self.tree.tiles.insert_tab_tile(vec![new_id])
-        };
-        self.tree.root = Some(tabs_id);
-        self.tree.make_active(|id, _| id == new_id);
-        new_id
-    }
 }
 
 impl Default for MainUiState {
@@ -357,127 +70,25 @@ impl Default for MainUiState {
     }
 }
 
-fn open_or_focus_tab(
-    mut messages: MessageReader<OpenOrFocus>,
-    mut mus: ResMut<MainUiState>,
-    mut aus: ResMut<AdditionalUiState>,
-) {
-    for msg in messages.read() {
-        let pane = &msg.0; // your pane data
-
-        let focused_id = if let Some(tile_id) = mus.tree.tiles.find_pane(pane) {
-            // Already exists → just focus it
-            mus.make_active(|id, _| id == tile_id);
-            mus.set_visible(tile_id, true);
-            tile_id
-        } else {
-            // New pane → add it to the currently focused container
-            mus.push_to_focused_leaf(pane.clone())
-        };
-        aus.focused_id = Some(focused_id);
-    }
+struct MainTabViewer<'a> {
+    app: &'a mut App,
 }
 
-struct MainTabViewer<'w> {
-    world: &'w mut World,
-    last_focused_id: &'w mut Option<TileId>,
-    last_maximized_id: &'w mut Option<TileId>,
-}
-
-impl<'w> MainTabViewer<'w> {
+impl<'a> MainTabViewer<'a> {
     fn add_popup(&mut self, ui: &mut Ui) {
-        let tab_definitions: [(&str, _); 4] = [
-            (&tr!("tab-start"), MainTab::Start(StartTab::default())),
-            (&tr!("tab-settings"), MainTab::Settings(SettingsTab)),
-            (&tr!("tab-classes"), MainTab::Classes(ClassesTab::default())),
-            (&tr!("tab-graph"), MainTab::Graph(GraphTab::default())),
+        let tab_definitions: &[(&str, MainTab)] = &[
+            // (&tr!("tab-start"), MainTab::Start(StartTab::default())),
+            // (&tr!("tab-settings"), MainTab::Settings(SettingsTab)),
+            // (&tr!("tab-classes"), MainTab::Classes(ClassesTab::default())),
+            // (&tr!("tab-graph"), MainTab::Graph(GraphTab::default())),
         ];
         for (s, t) in tab_definitions {
-            if ui.button(s).clicked() {
-                self.world.write_message(OpenOrFocus(t));
+            if ui.button(*s).clicked() {
+                // TOOD: open tabs
+                // self.world.write_message(OpenOrFocus(t));
                 ui.close();
             }
         }
-        ui.menu_button(tr!("menu-route-timetable"), |ui| {
-            if ui.button(tr!("menu-new-route")).clicked() {}
-            ui.separator();
-            ScrollArea::vertical().show(ui, |ui| {
-                if let Some(e) = self
-                    .world
-                    .run_system_cached_with(show_name_button::<Route>, ui)
-                    .unwrap()
-                {
-                    self.world
-                        .write_message(OpenOrFocus(MainTab::RouteTimetable(
-                            RouteTimetableTab::new(e),
-                        )));
-                }
-            });
-        });
-        ui.menu_button(tr!("menu-priority-graph"), |ui| {
-            if ui.button(tr!("menu-new-route")).clicked() {}
-            ui.separator();
-            ScrollArea::vertical().show(ui, |ui| {
-                if let Some(e) = self
-                    .world
-                    .run_system_cached_with(show_name_button::<Route>, ui)
-                    .unwrap()
-                {
-                    self.world.write_message(OpenOrFocus(MainTab::PriorityGraph(
-                        PriorityGraphTab::new(e),
-                    )));
-                }
-            });
-        });
-        ui.menu_button(tr!("menu-diagrams"), |ui| {
-            if ui.button(tr!("menu-new-route")).clicked() {}
-            ui.separator();
-            ScrollArea::vertical().show(ui, |ui| {
-                if let Some(e) = self
-                    .world
-                    .run_system_cached_with(show_name_button::<Route>, ui)
-                    .unwrap()
-                {
-                    self.world
-                        .write_message(OpenOrFocus(MainTab::Diagram(DiagramTab::new(e))));
-                }
-            });
-        });
-        ui.menu_button(tr!("menu-trips"), |ui| {
-            if ui.button(tr!("menu-new-trip")).clicked() {}
-            ui.separator();
-            ScrollArea::vertical().show(ui, |ui| {
-                if let Some(e) = self
-                    .world
-                    .run_system_cached_with(show_name_button::<Trip>, ui)
-                    .unwrap()
-                {
-                    self.world
-                        .write_message(OpenOrFocus(MainTab::Trip(TripTab::new(e))));
-                }
-            });
-        });
-        ui.menu_button(tr!("menu-text"), |ui| {
-            if ui.button(tr!("menu-new-text-message")).clicked() {
-                self.world.spawn((
-                    TextMessage(String::new()),
-                    Name::new(tr!("menu-new-message")),
-                ));
-            }
-            ui.separator();
-            if ui.button(tr!("menu-project-remarks")).clicked() {
-                self.world
-                    .write_message(OpenOrFocus(MainTab::Text(TextTab::new(None))));
-            }
-            if let Some(e) = self
-                .world
-                .run_system_cached_with(show_name_button::<TextMessage>, ui)
-                .unwrap()
-            {
-                self.world
-                    .write_message(OpenOrFocus(MainTab::Text(TextTab::new(Some(e)))));
-            }
-        });
     }
 }
 
@@ -485,26 +96,11 @@ impl<'w> Behavior<MainTab> for MainTabViewer<'w> {
     fn tab_title_for_pane(&mut self, pane: &MainTab) -> egui::WidgetText {
         for_all_tabs!(pane, p, p.title())
     }
-    fn on_tab_button(
-        &mut self,
-        _tiles: &mut Tiles<MainTab>,
-        tile_id: TileId,
-        button_response: Response,
-    ) -> Response {
-        if button_response.clicked() || button_response.dragged() {
-            *self.last_focused_id = Some(tile_id);
-        }
-        button_response
-    }
-    fn pane_ui(&mut self, ui: &mut Ui, tile_id: TileId, tab: &mut MainTab) -> UiResponse {
+    fn pane_ui(&mut self, ui: &mut Ui, _tile_id: TileId, tab: &mut MainTab) -> UiResponse {
         ui.painter()
             .rect_filled(ui.available_rect_before_wrap(), 0, ui.visuals().panel_fill);
-        for_all_tabs!(tab, t, t.main_display(self.world, ui));
-        if let Some(pos) = ui.input(|i| i.pointer.press_origin())
-            && ui.clip_rect().shrink(10.0).contains(pos)
-        {
-            *self.last_focused_id = Some(tile_id)
-        }
+        for_all_tabs!(tab, t, t.main_display(self.app, ui));
+
         Default::default()
     }
     fn simplification_options(&self) -> SimplificationOptions {
@@ -525,72 +121,9 @@ impl<'w> Behavior<MainTab> for MainTabViewer<'w> {
             Some(Tile::Pane(_)) => true,
         }
     }
-    fn top_bar_right_ui(
-        &mut self,
-        _tiles: &Tiles<MainTab>,
-        ui: &mut Ui,
-        _tile_id: TileId,
-        _tabs: &egui_tiles::Tabs,
-        _scroll_offset: &mut f32,
-    ) {
-        // maximize
-        if ui.button("M").clicked() {
-            *self.last_maximized_id = *self.last_focused_id;
-        }
-        let res = ui.button("+");
-        egui::Popup::menu(&res).show(|ui| {
-            self.add_popup(ui);
-        });
-    }
-    fn tab_bg_color(
-        &self,
-        visuals: &egui::Visuals,
-        tiles: &Tiles<MainTab>,
-        tile_id: TileId,
-        state: &egui_tiles::TabState,
-    ) -> Color32 {
-        let base = match tiles.get(tile_id) {
-            None | Some(Tile::Container(_)) => visuals.panel_fill,
-            Some(Tile::Pane(tab)) => {
-                DisplayedColor::from_seed(for_all_tab_types!(tab, NAME)).get(visuals.dark_mode)
-            }
-        };
-        base.gamma_multiply(if state.active { 0.7 } else { 0.2 })
-    }
-    fn tab_outline_stroke(
-        &self,
-        visuals: &egui::Visuals,
-        tiles: &Tiles<MainTab>,
-        tile_id: TileId,
-        state: &egui_tiles::TabState,
-    ) -> Stroke {
-        let base = match tiles.get(tile_id) {
-            None | Some(Tile::Container(_)) => visuals.panel_fill,
-            Some(Tile::Pane(tab)) => {
-                DisplayedColor::from_seed(for_all_tab_types!(tab, NAME)).get(visuals.dark_mode)
-            }
-        };
-        Stroke::new(
-            1.0,
-            base.gamma_multiply(if state.active { 1.0 } else { 0.7 }),
-        )
-    }
     fn tab_bar_hline_stroke(&self, _visuals: &egui::Visuals) -> Stroke {
         Stroke::new(1.0, Color32::TRANSPARENT)
     }
-}
-
-fn show_name_button<T: Component>(
-    InMut(ui): InMut<Ui>,
-    names: Query<(Entity, &Name), With<T>>,
-) -> Option<Entity> {
-    for (e, name) in names {
-        if ui.button(name.as_str()).clicked() {
-            ui.close();
-            return Some(e);
-        }
-    }
-    return None;
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
@@ -600,10 +133,8 @@ enum AdditionalTab {
     Export,
 }
 
-#[derive(Reflect, Resource, Serialize, Deserialize, Clone, Deref, DerefMut)]
-#[reflect(opaque, Resource, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 struct AdditionalUiState {
-    #[deref]
     tree: Tree<AdditionalTab>,
     focused_id: Option<TileId>,
     expanded: bool,
@@ -627,7 +158,7 @@ impl Default for AdditionalUiState {
 }
 
 struct AdditionalTabViewer<'w> {
-    world: &'w mut World,
+    world: &'w mut App,
     focused_tab: Option<&'w mut MainTab>,
 }
 
@@ -691,27 +222,7 @@ extern "C" {
     fn toggle_fullscreen(id: &str);
 }
 
-pub fn show_ui(ui: &mut Ui, world: &mut World, cpu_time: Option<f32>) {
-    world.run_system_cached_with(sync_ui, ui.ctx()).unwrap();
-    world.resource_scope(|world, mut modal: Mut<UiModal>| {
-        let Some(m) = &mut modal.0 else { return };
-        let modal_response = egui::Modal::new(m.id()).show(ui.ctx(), |ui| m.display(ui, world));
-        if modal_response.should_close() {
-            modal.0 = None
-        }
-    });
-
-    // check if ctrl+p clicked
-    world.resource_scope(
-        |world, mut command_palette: Mut<command_palette::CommandPalette>| {
-            if ui.input_mut(|r| r.consume_shortcut(&KeyboardShortcut::new(Modifiers::CTRL, Key::P)))
-            {
-                command_palette.toggle();
-            };
-            command_palette.show(ui.ctx(), world);
-        },
-    );
-
+pub fn show_ui(ui: &mut Ui, app: &mut App, mus: &mut MainUiState) {
     Panel::top("top panel")
         .exact_size(32.0)
         .show_inside(ui, |ui| {
@@ -726,73 +237,7 @@ pub fn show_ui(ui: &mut Ui, world: &mut World, cpu_time: Option<f32>) {
                 if ui.button("Fullscreen").clicked() {
                     toggle_fullscreen("paiagram_canvas");
                 }
-                egui::Popup::menu(&res).show(|ui| {
-                    if ui.button("Import from URL...").clicked() {
-                        world.resource_mut::<UiModal>().0 = Some(Modals::OpenUrl(String::new()));
-                    }
-                    ui.separator();
-                    let mut read_file = |name: &str, extensions: &[&str], cb: CallbackFn| {
-                        if ui.button(tr!("read-file-prompt", {name: name})).clicked() {
-                            world.commands().trigger(paiagram_rw::read::ReadFile {
-                                title: tr!("read-file-title", {name: name}),
-                                extensions: vec![(
-                                    tr!("read-file-filetype", {name: name}),
-                                    extensions.iter().map(|s| s.to_string()).collect(),
-                                )],
-                                callback: cb,
-                            });
-                        }
-                    };
-                    read_file("OuDia", &["oud"], |c, s| {
-                        c.trigger(LoadOuDia::original(s));
-                    });
-                    read_file("OuDiaSecond", &["oud2"], |c, s| {
-                        c.trigger(LoadOuDia::second(String::from_utf8(s).unwrap()));
-                    });
-                    read_file("qETRC/pyETRC", &["pyetgr", "json"], |c, s| {
-                        c.trigger(LoadQETRC {
-                            content: String::from_utf8(s).unwrap(),
-                        });
-                    });
-                    read_file("GTFS", &["zip"], |c, s| {
-                        c.trigger(LoadGTFS { content: s });
-                    });
-                    read_file("LLT", &["json"], |c, s| {
-                        c.trigger(LoadLlt {
-                            content: String::from_utf8(s).unwrap(),
-                        });
-                    });
-                    ui.separator();
-                    if ui.button("Save...").clicked() {
-                        save::save(world, "save.paia".to_string());
-                    }
-                    if ui.button("Read...").clicked() {
-                        world.commands().trigger(paiagram_rw::read::ReadFile {
-                            title: "Load Save".to_string(),
-                            extensions: vec![(
-                                "Paiagram Savefiles".to_string(),
-                                vec!["paia".to_string()],
-                            )],
-                            callback: paiagram_rw::save::add_load_candidate_compressed_cbor,
-                        });
-                    }
-                    let developer_mode = world.resource_mut::<UserPreferences>().developer_mode;
-                    {
-                        if developer_mode && ui.button("Save RON...").clicked() {
-                            save::save_ron(world, "saved.ron".to_string());
-                        }
-                        if developer_mode && ui.button("Read RON...").clicked() {
-                            world.commands().trigger(paiagram_rw::read::ReadFile {
-                                title: "Load RON Files".to_string(),
-                                extensions: vec![(
-                                    "RON Files".to_string(),
-                                    vec!["ron".to_string()],
-                                )],
-                                callback: paiagram_rw::save::add_load_candidate_ron,
-                            });
-                        }
-                    }
-                });
+                egui::Popup::menu(&res).show(|ui| {});
                 let res = ui.button(tr!("menu-about"));
                 egui::Popup::menu(&res).show(|ui| {
                     if ui.button(tr!("menu-documentation")).clicked() {
@@ -807,63 +252,8 @@ pub fn show_ui(ui: &mut Ui, world: &mut World, cpu_time: Option<f32>) {
                         ui.ctx().open_url(OpenUrl::new_tab("./license.html"));
                     }
                 });
-                if world.resource::<UserPreferences>().developer_mode {
-                    let mut frame_time_history = world.resource_mut::<FrameTimeHistory>();
-                    frame_time_history.push(ui.input(|r| r.stable_dt));
-                    let average_dt = frame_time_history.average_dt();
-                    ui.monospace(format!("FPS: {:6.2}", 1.0_f32 / average_dt));
-                    ui.monospace(format!("FRAME: {:5.2}ms", average_dt * 1000.0_f32));
-                    ui.monospace(format!(
-                        "CPU: {:5.2}ms",
-                        cpu_time.unwrap_or(0.0) * 1000.0_f32
-                    ));
-                    ui.horizontal(|ui| {
-                        const GAP: f32 = 4.0;
-                        const SAMPLE_COUNT: usize = 32;
-                        let stroke = Stroke {
-                            color: PredefinedColor::Blue.get(ui.visuals().dark_mode),
-                            width: 3.0,
-                        };
-                        let max = frame_time_history
-                            .previous_n(SAMPLE_COUNT)
-                            .fold(0.0_f32, f32::max)
-                            .max(f32::EPSILON);
-                        let graph_width = SAMPLE_COUNT as f32 * (stroke.width + GAP) - GAP;
-                        let graph_height = ui.available_height();
-                        let (rect, _) = ui.allocate_exact_size(
-                            egui::vec2(graph_width, graph_height),
-                            egui::Sense::hover(),
-                        );
-                        for (idx, f) in frame_time_history.previous_n(SAMPLE_COUNT).enumerate() {
-                            let height = rect.height() * (f / max).clamp(0.0, 1.0);
-                            let x = rect.right()
-                                - idx as f32 * (stroke.width + GAP)
-                                - stroke.width * 0.5;
-                            let points = [
-                                egui::pos2(x, rect.bottom()),
-                                egui::pos2(x, rect.bottom() - height),
-                            ];
-                            ui.painter().line_segment(points, stroke);
-                        }
-                    });
-                }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    world.resource_scope(|world, mut history: Mut<actions::ActionHistory>| {
-                        if ui
-                            .add_enabled(history.can_undo(), egui::Button::new(tr!("menu-undo")))
-                            .clicked()
-                        {
-                            history.try_undo(world);
-                        }
-                        if ui
-                            .add_enabled(history.can_redo(), egui::Button::new(tr!("menu-redo")))
-                            .clicked()
-                        {
-                            history.try_redo(world);
-                        }
-                    });
-                    let mut aus = world.resource_mut::<AdditionalUiState>();
-                    ui.checkbox(&mut aus.expanded, "");
+                    ui.checkbox(&mut true, "");
                     const GIT_REV_SHORT: &str = git_version::git_version!(fallback = "unknown");
                     const GH_LINK: &str = git_version::git_version!(
                         args = ["--always", "--abbrev=40"],
@@ -878,125 +268,41 @@ pub fn show_ui(ui: &mut Ui, world: &mut World, cpu_time: Option<f32>) {
         .exact_size(24.0)
         .show_inside(ui, |ui| {
             ui.horizontal_centered(|ui| {
-                let ticks_in_cycle = world
-                    .resource::<ProjectSettings>()
-                    .repeat_frequency
-                    .to_ticks();
-                let mut timer = world.resource_mut::<GlobalTimer>();
-                let mut time = timer.read_ticks().to_timetable_time();
+                let ticks_in_cycle = app.settings.repeat_frequency;
+                let mut time = app.timer.ticks.to_timetable_time();
                 ui.add_enabled(
-                    !timer.sync_to_real_time,
-                    egui::Checkbox::new(&mut timer.animation_playing, ""),
+                    !app.timer.sync_to_real_time,
+                    egui::Checkbox::new(&mut app.timer.animation_playing, ""),
                 );
                 let time_response = ui.add(TimeDragValue(&mut time));
                 ui.add_enabled(
-                    !timer.sync_to_real_time,
-                    egui::DragValue::new(&mut timer.animation_speed)
+                    !app.timer.sync_to_real_time,
+                    egui::DragValue::new(&mut app.timer.animation_speed)
                         .fixed_decimals(1)
                         .suffix("×"),
                 );
                 egui::Popup::menu(&time_response).show(|ui| {
-                    ui.checkbox(&mut timer.sync_to_real_time, tr!("menu-sync-system-clock"));
+                    ui.checkbox(
+                        &mut app.timer.sync_to_real_time,
+                        tr!("menu-sync-system-clock"),
+                    );
                 });
-                if !timer.sync_to_real_time
+                if !app.timer.sync_to_real_time
                     && time_response.dragged()
-                    && timer.try_lock(Entity::PLACEHOLDER)
+                    && let Some(key) = app.timer.try_lock()
                 {
-                    timer.write_ticks(Tick::from_timetable_time(time));
-                } else {
-                    timer.try_unlock(Entity::PLACEHOLDER);
+                    app.timer.ticks = Tick::from_timetable_time(time);
+                    app.timer.unlock(key);
                 }
-                if timer.animation_playing {
+                if app.timer.animation_playing {
                     ui.ctx().request_repaint();
                 }
-
-                // cycle progress bar
-                // don't allocate a painter here instead directly use ui's painter
-                // to avoid the content from being clipped
-                let (_id, rect) = ui.allocate_space(ui.available_size());
-                let progress_stroke = ui.visuals().window_stroke();
-                ui.painter()
-                    .hline(rect.x_range(), rect.center().y, progress_stroke);
-                let amount_of_ticks = 24;
-                for i in 0..(amount_of_ticks + 1) {
-                    let progress = (1.0 / amount_of_ticks as f32) * i as f32;
-                    let x = rect.left().lerp(rect.right(), progress);
-                    let y_range = if i % 4 == 0 {
-                        rect.y_range()
-                    } else {
-                        rect.y_range().shrink(5.0)
-                    };
-                    ui.painter().vline(x, y_range, progress_stroke);
-                }
-                let indicator_stroke = Stroke::new(1.5, Color32::RED);
-                let progress = timer.read_ticks().normalized_with(ticks_in_cycle);
-                let progress = progress.0 as f32 / ticks_in_cycle.0 as f32;
-                ui.painter().vline(
-                    rect.left().lerp(rect.right(), progress),
-                    rect.y_range(),
-                    indicator_stroke,
-                );
             })
         });
-    world.resource_scope(|world, mut aus: Mut<AdditionalUiState>| {
-        world.resource_scope(|mut world, mut mus: Mut<MainUiState>| {
-            let mut tab_viewer = AdditionalTabViewer {
-                world: &mut world,
-                focused_tab: aus
-                    .focused_id
-                    .and_then(|id| mus.tiles.get_mut(id))
-                    .and_then(|p| {
-                        if let Tile::Pane(pane) = p {
-                            Some(pane)
-                        } else {
-                            None
-                        }
-                    }),
-            };
-            Panel::right("right panel")
-                .frame(Frame::default())
-                .show_animated_inside(ui, aus.expanded, |ui| {
-                    aus.ui(&mut tab_viewer, ui);
-                });
-            egui::CentralPanel::default()
-                .frame(Frame::default())
-                .show_inside(ui, |ui| {
-                    let mut maximized = mus.maximized;
-                    if let Some(max_id) = mus.maximized
-                        && let Some(Tile::Pane(pane)) = mus.tree.tiles.get_mut(max_id)
-                    {
-                        let mut tab_viewer = MainTabViewer {
-                            world: &mut world,
-                            last_focused_id: &mut None,
-                            last_maximized_id: &mut None,
-                        };
-                        Panel::top("maximized_top")
-                            .exact_size(24.0)
-                            .show_inside(ui, |ui| {
-                                let res = ui.horizontal(|ui| {
-                                    ui.label(tab_viewer.tab_title_for_pane(pane));
-                                    ui.label(RichText::new(tr!("menu-maximized-view")).italics());
-                                    ui.with_layout(
-                                        egui::Layout::right_to_left(egui::Align::Center),
-                                        |ui| ui.button("x"),
-                                    )
-                                    .inner
-                                });
-                                if res.inner.clicked() {
-                                    maximized = None
-                                }
-                            });
-                        let _ = tab_viewer.pane_ui(ui, max_id, pane);
-                    } else {
-                        let mut tab_viewer = MainTabViewer {
-                            world: &mut world,
-                            last_focused_id: &mut aus.focused_id,
-                            last_maximized_id: &mut maximized,
-                        };
-                        mus.tree.ui(&mut tab_viewer, ui);
-                    }
-                    mus.maximized = maximized;
-                });
-        })
-    });
+    egui::CentralPanel::default()
+        .frame(Frame::default())
+        .show_inside(ui, |ui| {
+            let mut tab_viewer = MainTabViewer { app };
+            mus.tree.ui(&mut tab_viewer, ui);
+        });
 }

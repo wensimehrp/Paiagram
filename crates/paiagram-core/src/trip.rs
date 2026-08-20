@@ -6,7 +6,7 @@ use ecow::EcoVec;
 use serde::{Deserialize, Serialize};
 
 use crate::time::{TDuration, TTime};
-use crate::{IntervalCollection, NodeKey, StationKey, WorldGraph};
+use crate::{IntervalCollection, NodeKey};
 
 /// Travel mode. Travel mode defines how the vehicle travels.
 #[derive(Clone, Serialize, Deserialize, Copy, Debug, PartialEq)]
@@ -18,6 +18,15 @@ pub enum TravelMode {
 
 #[derive(Clone, Serialize, Deserialize, Copy, Debug, PartialEq)]
 pub struct TEntryId(u32);
+
+impl TEntryId {
+    /// Create a new unique entry ID.
+    pub fn new() -> Self {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        static NEXT: AtomicU32 = AtomicU32::new(1);
+        Self(NEXT.fetch_add(1, Ordering::Relaxed))
+    }
+}
 
 /// An entry in the schedule. `TEntry` is short for `TimetableEntry`.
 ///
@@ -59,6 +68,16 @@ impl TripSchedule {
     pub fn new(entries: EcoVec<TEntry>) -> Self {
         Self { entries }
     }
+
+    /// The schedule entries.
+    pub fn entries(&self) -> &[TEntry] {
+        &self.entries
+    }
+
+    /// Mutable access to the schedule entries.
+    pub fn entries_mut(&mut self) -> &mut EcoVec<TEntry> {
+        &mut self.entries
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -94,7 +113,7 @@ enum StackElem {
 }
 
 impl TripSchedule {
-    fn estimates<F, R>(&self, intervals: &IntervalCollection, map: &WorldGraph, mut f: F) -> R
+    fn estimates<F, R>(&self, intervals: &IntervalCollection, mut f: F) -> R
     where
         F: FnMut(&[(Option<TEstimate>, TEntry)]) -> R,
     {

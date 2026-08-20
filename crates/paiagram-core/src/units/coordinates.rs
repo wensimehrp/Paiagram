@@ -7,7 +7,7 @@ pub struct Wgs84LonLat {
 }
 
 impl Wgs84LonLat {
-    pub fn new(lon: f64, lat: f64) -> Self {
+    pub const fn new(lon: f64, lat: f64) -> Self {
         Self {
             lon: lon.clamp(-180.0, 180.0),
             lat: lat.clamp(-90.0, 90.0),
@@ -41,6 +41,7 @@ pub struct LonLat {
 }
 
 impl LonLat {
+    pub const ZERO: Self = Self { lon: 0, lat: 0 };
     const CONVERSION_FACTOR_F64: f64 = 10_000_000.0;
 }
 
