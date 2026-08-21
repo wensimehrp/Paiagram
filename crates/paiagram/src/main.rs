@@ -13,6 +13,14 @@ struct PaiagramApp {
 
 impl PaiagramApp {
     fn new(cc: &eframe::CreationContext) -> Self {
+        // load translations
+        let en = include_str!("../assets/locales/en-CA.ftl");
+        let zh = include_str!("../assets/locales/zh-Hans.ftl");
+        egui_i18n::load_translations_from_text("en-CA", en).unwrap();
+        egui_i18n::load_translations_from_text("zh-Hans", zh).unwrap();
+        egui_i18n::set_language("en-CA");
+        egui_i18n::set_fallback("en-CA");
+        // set styles
         cc.egui_ctx.global_style_mut(|style| {
             style.spacing.window_margin = egui::Margin::same(2);
             style.interaction.selectable_labels = false;
