@@ -8,7 +8,7 @@ pub(crate) struct TimerLockKey {
 
 pub(crate) struct GlobalTimer {
     /// Progress of the timer
-    pub ticks: Tick,
+    ticks: Tick,
     locked: bool,
     /// Ignored when synched to real time.
     pub animation_speed: f32,
@@ -51,7 +51,15 @@ impl GlobalTimer {
         self.ticks = Tick(self.ticks.0 + tick_delta.round() as i64);
     }
 
-    /// Acquire the lock and return a handle used to release it.
+    pub fn ticks(&self) -> Tick {
+        self.ticks
+    }
+
+    pub fn ticks_mut(&mut self, _key: &TimerLockKey) -> &mut Tick {
+        &mut self.ticks
+    }
+
+    /// Acquire the lock and return a key used to release it.
     pub fn try_lock(&mut self) -> Option<TimerLockKey> {
         if self.locked {
             None
@@ -61,8 +69,8 @@ impl GlobalTimer {
         }
     }
 
-    /// Release the lock associated with `handle`.
-    pub fn unlock(&mut self, _handle: TimerLockKey) {
+    /// Release the lock associated with `key`.
+    pub fn unlock(&mut self, _key: TimerLockKey) {
         debug_assert_eq!(self.locked, true);
         self.locked = false;
     }

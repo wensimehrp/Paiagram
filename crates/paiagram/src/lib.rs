@@ -268,8 +268,7 @@ pub fn show_ui(ui: &mut Ui, app: &mut App, mus: &mut MainUiState) {
         .exact_size(24.0)
         .show_inside(ui, |ui| {
             ui.horizontal_centered(|ui| {
-                let ticks_in_cycle = app.settings.repeat_frequency;
-                let mut time = app.timer.ticks.to_timetable_time();
+                let mut time = app.timer.ticks().to_timetable_time();
                 ui.add_enabled(
                     !app.timer.sync_to_real_time,
                     egui::Checkbox::new(&mut app.timer.animation_playing, ""),
@@ -291,7 +290,7 @@ pub fn show_ui(ui: &mut Ui, app: &mut App, mus: &mut MainUiState) {
                     && time_response.dragged()
                     && let Some(key) = app.timer.try_lock()
                 {
-                    app.timer.ticks = Tick::from_timetable_time(time);
+                    *app.timer.ticks_mut(&key) = Tick::from_timetable_time(time);
                     app.timer.unlock(key);
                 }
                 if app.timer.animation_playing {
