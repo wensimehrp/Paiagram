@@ -66,15 +66,12 @@ impl WorldSnapshot {
             |edge| {
                 let mut query_key = edge.id();
                 // discard the info on the other key
-                if let Some(IntervalDirection::TwoWay(other)) = self
-                    .intervals
-                    .query(query_key, |interval| interval.direction)
+                if let Some(IntervalDirection::TwoWay(other)) =
+                    self.intervals.query(query_key, |interval| interval.direction)
                 {
                     query_key = std::cmp::min(other, query_key);
                 }
-                let Some(length) = self
-                    .intervals
-                    .query(query_key, |interval| interval.length())
+                let Some(length) = self.intervals.query(query_key, |interval| interval.length())
                 else {
                     return i32::MAX;
                 };
@@ -109,10 +106,7 @@ impl WorldSnapshot {
 /// The outgoing-neighbour iterator backing `IntoNeighbors` and `IntoEdges`.
 fn node_neighbours<'a>(world: &'a WorldSnapshot, node: NodeKey) -> std::slice::Iter<'a, NodeKey> {
     static EMPTY: [NodeKey; 0] = [];
-    world
-        .nodes
-        .query(node, |view| view.outgoing.iter())
-        .unwrap_or_else(|| EMPTY.iter())
+    world.nodes.query(node, |view| view.outgoing.iter()).unwrap_or_else(|| EMPTY.iter())
 }
 
 /// A copyable reference to an outgoing edge.

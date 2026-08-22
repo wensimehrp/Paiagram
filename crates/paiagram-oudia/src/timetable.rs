@@ -164,9 +164,8 @@ mod test {
             for (hierarchy, operations) in vals.iter().filter_map(|it| match it {
                 Structure::Pair(k, vals) if k.as_ref().starts_with("Operation") => {
                     let hierarchy = parse_to_operation_hierarchy(k.as_ref()).unwrap();
-                    let raw_operations = vals
-                        .iter()
-                        .map(|it| parse_to_raw_operation(it.as_ref()).unwrap());
+                    let raw_operations =
+                        vals.iter().map(|it| parse_to_raw_operation(it.as_ref()).unwrap());
                     Some((hierarchy, raw_operations))
                 }
                 _ => None,

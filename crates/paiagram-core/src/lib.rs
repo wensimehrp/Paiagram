@@ -314,10 +314,8 @@ impl WorldSnapshot {
         }
         let trips: Vec<TripKey> = self.trips.keys().collect();
         for trip in trips {
-            let trip_vehicles = self
-                .trips
-                .query(trip, |view| view.vehicles.clone())
-                .unwrap_or_default();
+            let trip_vehicles =
+                self.trips.query(trip, |view| view.vehicles.clone()).unwrap_or_default();
             self.cache_trip(trip, &trip_vehicles);
         }
     }

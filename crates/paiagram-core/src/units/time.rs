@@ -144,11 +144,7 @@ impl TimetableTime {
         let mut parts = time_part.split(':');
         let h = parts.next()?.parse::<i32>().ok()?;
         let m = parts.next()?.parse::<i32>().ok()?;
-        let s = parts
-            .next()
-            .map(|s| s.parse::<i32>().ok())
-            .flatten()
-            .unwrap_or(0);
+        let s = parts.next().map(|s| s.parse::<i32>().ok()).flatten().unwrap_or(0);
 
         if parts.next().is_some() {
             return None;

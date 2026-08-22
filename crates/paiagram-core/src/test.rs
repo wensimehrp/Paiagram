@@ -331,20 +331,12 @@ fn change_trip_entries_round_trip() {
     // The inverse carries the old, empty entry list.
     assert!(matches!(&inv, Command::ChangeTripEntries { entries, .. } if entries.is_empty()));
     assert_eq!(
-        world
-            .trips
-            .query(trip_key, |v| v.schedule.entries().to_vec()),
+        world.trips.query(trip_key, |v| v.schedule.entries().to_vec()),
         Some(vec![entry_a, entry_b])
     );
 
     let _inv = world.apply_command(inv).unwrap();
-    assert!(
-        world
-            .trips
-            .query(trip_key, |v| v.schedule.entries().to_vec())
-            .unwrap()
-            .is_empty()
-    );
+    assert!(world.trips.query(trip_key, |v| v.schedule.entries().to_vec()).unwrap().is_empty());
 }
 
 #[test]
@@ -422,26 +414,14 @@ fn removing_trip_cleans_vehicle_cache() {
     });
 
     // Removing the trip drops it from the serving vehicle's cache.
-    let inv = world
-        .apply_command(Command::RemoveTrip { key: trip })
-        .unwrap();
-    assert!(
-        world
-            .vehicles
-            .query(vehicle, |v| v.trips.clone())
-            .unwrap()
-            .is_empty()
-    );
+    let inv = world.apply_command(Command::RemoveTrip { key: trip }).unwrap();
+    assert!(world.vehicles.query(vehicle, |v| v.trips.clone()).unwrap().is_empty());
 
     // Undo restores the trip and re-populates the vehicle cache.
     let _ = world.apply_command(inv).unwrap();
     assert!(world.trips.contains_key(trip));
     assert_eq!(
-        world
-            .vehicles
-            .query(vehicle, |v| v.trips.clone())
-            .unwrap()
-            .as_slice(),
+        world.vehicles.query(vehicle, |v| v.trips.clone()).unwrap().as_slice(),
         &[trip]
     );
 }
@@ -471,21 +451,11 @@ fn rebuild_vehicle_trip_cache() {
             view.trips.get_mut().clear();
         });
     }
-    assert!(
-        world
-            .vehicles
-            .query(vehicle, |v| v.trips.clone())
-            .unwrap()
-            .is_empty()
-    );
+    assert!(world.vehicles.query(vehicle, |v| v.trips.clone()).unwrap().is_empty());
 
     world.rebuild_vehicle_trip_cache();
     assert_eq!(
-        world
-            .vehicles
-            .query(vehicle, |v| v.trips.clone())
-            .unwrap()
-            .as_slice(),
+        world.vehicles.query(vehicle, |v| v.trips.clone()).unwrap().as_slice(),
         &[trip]
     );
 }
@@ -583,9 +553,7 @@ fn graph_keeps_opposite_edges_distinct() {
     assert!(world.route_between_nodes(b, a).is_some());
 
     // Removing one edge leaves the other intact.
-    let inv = world
-        .apply_command(Command::RemoveInterval { key: ab })
-        .unwrap();
+    let inv = world.apply_command(Command::RemoveInterval { key: ab }).unwrap();
     assert!(world.route_between_nodes(a, b).is_none());
     assert!(world.route_between_nodes(b, a).is_some());
     let _ = world.apply_command(inv).unwrap();

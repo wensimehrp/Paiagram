@@ -53,7 +53,8 @@ fn color_button(ui: &mut egui::Ui, color: Color32, open: bool) -> egui::Response
         ui.painter().rect_stroke(
             rect,
             corner_radius,
-            (stroke_width, visuals.bg_fill), /* Using fill for stroke is intentional, because
+            (stroke_width, visuals.bg_fill), /* Using fill for stroke is intentional,
+                                              * because
                                               * default style has no
                                               * border */
             egui::StrokeKind::Inside,

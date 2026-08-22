@@ -94,9 +94,7 @@ impl From<LonLat> for Wgs84LonLat {
 impl From<Wgs84LonLat> for XyPosF64 {
     fn from(value: Wgs84LonLat) -> Self {
         let x = Self::EARTH_RADIUS_METERS * value.lon.to_radians();
-        let lat = value
-            .lat
-            .clamp(-Self::WEB_MERCATOR_MAX_LAT, Self::WEB_MERCATOR_MAX_LAT);
+        let lat = value.lat.clamp(-Self::WEB_MERCATOR_MAX_LAT, Self::WEB_MERCATOR_MAX_LAT);
         let lat_rad = lat.to_radians();
         let y =
             -Self::EARTH_RADIUS_METERS * (std::f64::consts::FRAC_PI_4 + lat_rad / 2.0).tan().ln();

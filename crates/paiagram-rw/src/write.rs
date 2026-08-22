@@ -13,10 +13,7 @@ where
 {
     thread::spawn(|| {
         let file = block_on(async move {
-            rfd::AsyncFileDialog::new()
-                .set_file_name(&filename)
-                .save_file()
-                .await
+            rfd::AsyncFileDialog::new().set_file_name(&filename).save_file().await
         });
         let Some(file) = file else { return };
         let mut buf_writer = match std::fs::File::create(file.path()) {
@@ -35,9 +32,7 @@ where
             return;
         }
         info!("File saved to {:?}", file.path());
-        let size = std::fs::metadata(file.path())
-            .map(|m| m.len() as usize)
-            .unwrap_or_default();
+        let size = std::fs::metadata(file.path()).map(|m| m.len() as usize).unwrap_or_default();
         info!("Filesize: {size}");
     });
 }

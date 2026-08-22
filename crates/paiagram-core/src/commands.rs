@@ -176,18 +176,16 @@ impl WorldSnapshot {
                 }
             }),
             Command::RemoveVehicle { key } => {
-                self.vehicles
-                    .remove(key)
-                    .map(|VehicleView { name, trips }| {
-                        // Drop this vehicle from the authoritative vehicle lists of
-                        // the trips it served.
-                        for trip in &trips {
-                            self.trips.update(*trip, |mut view| {
-                                view.vehicles.get_mut().retain(|v| *v != key);
-                            });
-                        }
-                        Command::AddVehicle { key, name }
-                    })
+                self.vehicles.remove(key).map(|VehicleView { name, trips }| {
+                    // Drop this vehicle from the authoritative vehicle lists of
+                    // the trips it served.
+                    for trip in &trips {
+                        self.trips.update(*trip, |mut view| {
+                            view.vehicles.get_mut().retain(|v| *v != key);
+                        });
+                    }
+                    Command::AddVehicle { key, name }
+                })
             }
             Command::AddStation { key, info } => (!self.stations.contains_key(key)).then(|| {
                 self.stations.insert(key, info.into());
@@ -226,11 +224,7 @@ impl WorldSnapshot {
             Command::RemoveNode { key } => {
                 // Edges cannot exist without their endpoint nodes, so a node that
                 // still has incident intervals cannot be removed.
-                if self
-                    .intervals
-                    .keys()
-                    .any(|&(source, target)| source == key || target == key)
-                {
+                if self.intervals.keys().any(|&(source, target)| source == key || target == key) {
                     return None;
                 }
                 self.nodes.remove(key).map(|view| Command::AddNode {
@@ -254,12 +248,10 @@ impl WorldSnapshot {
                 }
             }),
             Command::RemoveServiceClass { key } => {
-                self.service_classes
-                    .remove(key)
-                    .map(|view| Command::AddServiceClass {
-                        key,
-                        info: view.into(),
-                    })
+                self.service_classes.remove(key).map(|view| Command::AddServiceClass {
+                    key,
+                    info: view.into(),
+                })
             }
             Command::AddRoute { key, info } => (!self.routes.contains_key(key)).then(|| {
                 self.routes.insert(key, info.into());
@@ -334,10 +326,8 @@ impl WorldSnapshot {
                     std::mem::swap(view.vehicles.get_mut(), &mut vehicles);
                 });
                 self.uncache_trip(key, &vehicles);
-                let new_vehicles = self
-                    .trips
-                    .query(key, |view| view.vehicles.clone())
-                    .unwrap_or_default();
+                let new_vehicles =
+                    self.trips.query(key, |view| view.vehicles.clone()).unwrap_or_default();
                 self.cache_trip(key, &new_vehicles);
                 Some(Command::ChangeTripVehicles { key, vehicles })
             }
