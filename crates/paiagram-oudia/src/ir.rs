@@ -1,138 +1,70 @@
 // SPDX-License-Identifier: MPL-2.0
-/*!
-Intermediate representation of the .oud/oud2 formats.
-Take a look at [`Root`] to get started.
-*/
+//! Intermediate representation of the .oud/oud2 formats.
+//! Take a look at [`Root`] to get started.
+
 use std::borrow::Cow;
 use std::cmp::{max, min};
 
 use smallvec::SmallVec;
 use thiserror::Error;
 
+use crate::ir_macros::{make_ir_enum, make_ir_type, parse_fields};
 use crate::operation::{InsertOperation, parse_to_operation_hierarchy, parse_to_raw_operation};
 use crate::time::Time;
 use crate::timetable::{TimetableEntry, parse_to_timetable_entry};
 use crate::{pair, structure};
 
-/// The root of the structure
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Clone, Debug, PartialEq)]
-pub struct Root {
+make_ir_type! {
+    /// The root of the structure
+    Root;
     /// File type. Usually the software name + version.
-    /// Also known as `FileType`.
-    #[doc(alias = "FileType")]
-    pub file_type: String,
+    pub file_type as ["FileType"]: String,
     /// The route in the file.
-    /// Also known as `Rosen`.
-    /// Also known as `路線`.
-    #[doc(alias = "Rosen")]
-    #[doc(alias = "路線")]
-    pub route: Route,
+    pub route as ["Rosen", "路線"]: Route,
 }
 
-/// Also known as `Rosen`.
-/// Also known as `路線`.
-#[doc(alias = "Rosen")]
-#[doc(alias = "路線")]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Clone, Debug, PartialEq)]
-pub struct Route {
+make_ir_type! {
+    Route as ["Rosen", "路線"];
     /// The name of the route
-    /// Also known as `Rosenmei`.
-    /// Also known as `路線名`.
-    #[doc(alias = "Rosenmei")]
-    #[doc(alias = "路線名")]
-    pub name: String,
+    pub name as ["Rosenmei", "路線名"]: String,
     /// What stations are included in the route
-    /// Also known as `Eki`.
-    /// Also known as `駅`.
-    #[doc(alias = "Eki")]
-    #[doc(alias = "駅")]
-    pub stations: Vec<Station>,
+    pub stations as ["Eki", "駅"]: Vec<Station>,
     /// The available train classes. E.g., local, express.
-    /// Also known as `Ressyasyubetsu`.
-    /// Also known as `列車種別`.
-    #[doc(alias = "Ressyasyubetsu")]
-    #[doc(alias = "列車種別")]
-    pub classes: Vec<Class>,
+    pub classes as ["Ressyasyubetsu", "列車種別"]: Vec<Class>,
     /// The diagrams included in this route. Each diagram is a timetable set.
-    /// Also known as `Dia`.
-    /// Also known as `ダイヤ`.
-    #[doc(alias = "Dia")]
-    #[doc(alias = "ダイヤ")]
-    pub diagrams: Vec<Diagram>,
+    pub diagrams as ["Dia", "ダイヤ"]: Vec<Diagram>,
     /// When to start displaying times on the diagram page.
-    /// Also known as `KitenJikoku`.
-    /// Also known as `起点時刻`.
-    #[doc(alias = "KitenJikoku")]
-    #[doc(alias = "起点時刻")]
-    pub display_start_time: Time,
-    /// Also known as `Comment`.
-    #[doc(alias = "Comment")]
-    pub comment: String,
+    pub display_start_time as ["KitenJikoku", "起点時刻"]: Time,
+    pub comment as ["Comment"]: String,
 }
 
-/// A station on the route.
-/// Also known as `Eki`.
-/// Also known as `駅`.
-#[doc(alias = "Eki")]
-#[doc(alias = "駅")]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Clone, Debug, PartialEq)]
-pub struct Station {
-    /// Also known as `Ekimei`.
-    /// Also known as `駅名`.
-    #[doc(alias = "Ekimei")]
-    #[doc(alias = "駅名")]
-    pub name: String,
+make_ir_type! {
+    /// A station on the route.
+    Station as ["Eki", "駅"];
+    pub name as ["Ekimei", "駅名"]: String,
     /// The abbreviation used in timetables.
-    /// Also known as `EkimeiJikokuRyaku`.
-    /// Also known as `駅名時刻略`.
-    #[doc(alias = "EkimeiJikokuRyaku")]
-    #[doc(alias = "駅名時刻略")]
-    pub timetable_abbreviation: Option<String>,
+    pub timetable_abbreviation as ["EkimeiJikokuRyaku", "駅名時刻略"]: Option<String>,
     /// The abbreviation used in diagrams.
-    /// Also known as `EkimeiDiaRyaku`.
-    /// Also known as `駅名ダイヤ略`.
-    #[doc(alias = "EkimeiDiaRyaku")]
-    #[doc(alias = "駅名ダイヤ略")]
-    pub diagram_abbreviation: Option<String>,
+    pub diagram_abbreviation as ["EkimeiDiaRyaku", "駅名ダイヤ略"]: Option<String>,
     /// Stations that branch off at certain points may repeat themselves on
     /// the diagram. This index refers to the other station in the station list
     /// that should be treated as if it is this station. Please also note that
     /// the name `BrunchCoreEkiIndex` contains a spelling mistake. It should be
     /// `branch` instead of `brunch`.
-    ///  Also known as `BrunchCoreEkiIndex`.
-    #[doc(alias = "BrunchCoreEkiIndex")]
-    pub branch_index: Option<usize>,
+    pub branch_index as ["BrunchCoreEkiIndex"]: Option<usize>,
     /// Diagrams representing loop lines may repeat certain stations on
     /// the diagram. This index refers to the other station in the station list
     /// that should be treated as if it is this station.
-    /// Also known as `LoopOriginEkiIndex`.
-    #[doc(alias = "LoopOriginEkiIndex")]
-    pub loop_index: Option<usize>,
+    pub loop_index as ["LoopOriginEkiIndex"]: Option<usize>,
     /// The tracks of the station
-    /// Also known as `EkiTrack2Cont`.
-    #[doc(alias = "EkiTrack2Cont")]
-    pub tracks: SmallVec<[Track; 2]>,
-    /// Also known as `Ekikibo`
-    /// Also known as `駅規模`
-    #[doc(alias = "Ekikibo")]
-    #[doc(alias = "駅規模")]
-    pub station_type: StationType,
+    pub tracks as ["EkiTrack2Cont"]: SmallVec<[Track; 2]>,
+    pub station_type as ["Ekikibo", "駅規模"]: StationType,
 }
 
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Clone, Debug, PartialEq)]
-pub struct Track {
-    /// Also known as `TrackName`.
-    #[doc(alias = "TrackName")]
-    pub name: String,
-    /// Also known as `TrackRyakusyou`.
-    /// Also known as `Track略称`.
-    #[doc(alias = "TrackRyakusyou")]
-    #[doc(alias = "Track略称")]
-    pub abbreviation: String,
+make_ir_type! {
+    Track;
+    pub name as ["TrackName"]: String,
+    pub abbreviation as ["TrackRyakusyou", "Track略称"]: String,
 }
 
 /// Color. This color is stored in ARGB format.
@@ -173,64 +105,27 @@ impl std::str::FromStr for Color {
     }
 }
 
-/// A train class. E.g., local, express.
-/// Also known as `Ressyasyubetsu`.
-/// Also known as `列車種別`.
-#[doc(alias = "Ressyasyubetsu")]
-#[doc(alias = "列車種別")]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Clone, Debug, PartialEq)]
-pub struct Class {
-    /// Also known as `Syubetsumei`.
-    /// Also known as `種別名`.
-    #[doc(alias = "Syubetsumei")]
-    #[doc(alias = "種別名")]
-    pub name: String,
+make_ir_type! {
+    /// A train class. E.g., local, express.
+    Class as ["Ressyasyubetsu", "列車種別"];
+    pub name as ["Syubetsumei", "種別名"]: String,
     /// An optional abbreviation.
-    /// Also known as `Ryakusyou`.
-    /// Also known as `略称`.
-    #[doc(alias = "Ryakusyou")]
-    #[doc(alias = "略称")]
-    pub abbreviation: Option<String>,
+    pub abbreviation as ["Ryakusyou", "略称"]: Option<String>,
     /// The color displayed in diagrams and in the timetable.
-    /// Also known as `DiagramSenColor`.
-    /// Also known as `ダイア線Color`.
-    #[doc(alias = "DiagramSenColor")]
-    #[doc(alias = "ダイア線Color")]
-    pub diagram_line_color: Color,
+    pub diagram_line_color as ["DiagramSenColor", "ダイア線Color"]: Color,
 }
 
-/// A timetable set.
-/// Also known as `Dia`.
-/// Also known as `ダイヤ`.
-#[doc(alias = "Dia")]
-#[doc(alias = "ダイヤ")]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Clone, Debug, PartialEq)]
-pub struct Diagram {
-    /// Also known as `DiaName`.
-    #[doc(alias = "DiaName")]
-    pub name: Option<String>,
+make_ir_type! {
+    /// A timetable set.
+    Diagram as ["Dia", "ダイヤ"];
+    pub name as ["DiaName"]: Option<String>,
     pub trips: Vec<Trip>,
 }
 
-/// Also known as `Houkou`.
-/// Also known as `方向`.
-#[doc(alias = "Houkou")]
-#[doc(alias = "方向")]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Clone, Debug, PartialEq)]
-pub enum Direction {
-    /// Also known as `Nobori`.
-    /// Also known as `上り`.
-    #[doc(alias = "Nobori")]
-    #[doc(alias = "上り")]
-    Up,
-    /// Also known as `Kudari`.
-    /// Also known as `下り`.
-    #[doc(alias = "Kudari")]
-    #[doc(alias = "下り")]
-    Down,
+make_ir_enum! {
+    Direction as ["Houkou", "方向"];
+    Up as ["Nobori", "上り"],
+    Down as ["Kudari", "下り"],
 }
 
 impl std::str::FromStr for Direction {
@@ -246,23 +141,10 @@ impl std::str::FromStr for Direction {
     }
 }
 
-/// Also known as `Ekikibo`.
-/// Also known as `駅規模`.
-#[doc(alias = "Ekikibo")]
-#[doc(alias = "駅規模")]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Clone, Debug, PartialEq)]
-pub enum StationType {
-    /// Also known as `Ekikibo_Syuyou`.
-    /// Also known as `駅規模_主要`.
-    #[doc(alias = "Ekikibo_Syuyou")]
-    #[doc(alias = "駅規模_主要")]
-    Major,
-    /// Also known as `Kudari`.
-    /// Also known as `下り`.
-    #[doc(alias = "Ekikibo_Ippan")]
-    #[doc(alias = "駅規模_一般")]
-    Minor,
+make_ir_enum! {
+    StationType as ["Ekikibo", "駅規模"];
+    Major as ["Ekikibo_Syuyou", "駅規模_主要"],
+    Minor as ["Ekikibo_Ippan", "駅規模_一般"],
 }
 
 impl std::str::FromStr for StationType {
@@ -278,38 +160,13 @@ impl std::str::FromStr for StationType {
     }
 }
 
-/// Also known as `Ressya`.
-/// Also known as `列車`.
-#[doc(alias = "Ressya")]
-#[doc(alias = "列車")]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Clone, Debug, PartialEq)]
-pub struct Trip {
-    /// Also known as `Ressyabangou`.
-    /// Also known as `列車番号`.
-    #[doc(alias = "Ressyabangou")]
-    #[doc(alias = "列車番号")]
-    pub name: Option<String>,
-    /// Also known as `Bikou`.
-    /// Also known as `備考`.
-    #[doc(alias = "Bikou")]
-    #[doc(alias = "備考")]
-    pub comment: Option<String>,
-    /// Also known as `Houkou`.
-    /// Also known as `方向`.
-    #[doc(alias = "Houkou")]
-    #[doc(alias = "方向")]
-    pub direction: Direction,
-    /// Also known as `Syubetsu`.
-    /// Also known as `種別`.
-    #[doc(alias = "Syubetsu")]
-    #[doc(alias = "種別")]
-    pub class_index: usize,
-    /// Also known as `EkiJikoku`.
-    /// Also known as `駅時刻`.
-    #[doc(alias = "EkiJikoku")]
-    #[doc(alias = "駅時刻")]
-    pub times: Vec<TimetableEntry>,
+make_ir_type! {
+    Trip as ["Ressya", "列車"];
+    pub name as ["Ressyabangou", "列車番号"]: Option<String>,
+    pub comment as ["Bikou", "備考"]: Option<String>,
+    pub direction as ["Houkou", "方向"]: Direction,
+    pub class_index as ["Syubetsu", "種別"]: usize,
+    pub times as ["EkiJikoku", "駅時刻"]: Vec<TimetableEntry>,
 }
 
 /// Also known as `運用`.
@@ -433,37 +290,6 @@ impl Diagram {
     }
 
     pub fn rotations<'a>(&self, _stations: &[Station]) -> Vec<Rotation<'a>> {
-        // struct Train<'a> {
-        //     head: &'a str,
-        //     rest: Vec<&'a str>,
-        //     time: Time,
-        // }
-        // impl<'a> Train<'a> {
-        //     fn rotations(&self) -> impl Iterator<Item = &'a str> {
-        //         std::iter::once(self.head).chain(self.rest.iter().copied())
-        //     }
-        // }
-        // let mut rotations = Vec::new();
-        // let mut active_trains: Vec<Train> = Vec::new();
-        // // Maybe it's better to use a hashmap instead?
-        // let mut train_on_station_tracks: FxHashMap<(usize, Option<usize>), Vec<Train>> =
-        //     HashMap::with_hasher(FxBuildHasher);
-        // for root_tree in self
-        //     .trips
-        //     .iter()
-        //     .filter_map(|it| {
-        //         it.times
-        //             .iter()
-        //             .find(|it| it.service_mode != ServiceMode::NoOperation)
-        //     })
-        //     .filter_map(|it| it.operations())
-        // {
-        //     let before_tree = &root_tree.befores;
-        // }
-        // for val in train_on_station_tracks.values_mut() {
-        //     val.sort_unstable_by_key(|it| it.time);
-        // }
-        // rotations
         unimplemented!()
     }
 }
@@ -534,71 +360,12 @@ fn pass<'r, 'a>(v: &'r [Structure<'a>]) -> Result<&'r [Structure<'a>], IrConvers
     Ok(v)
 }
 
-macro_rules! parse_fields {
-    ($iter:expr; $($once_or_many:ident($variant:ident($key:expr, $variable_name:ident)) => $action:expr,)*) => {
-        $(
-            parse_fields!(@make_variable $once_or_many($variable_name));
-        )*
-        if $iter.is_empty() {
-            return Err(IrConversionError::EmptyError(std::any::type_name::<Self>()));
-        }
-        for field in $iter {
-            match field {
-                $(
-                    $crate::Structure::$variant(k, v) if k == $key => {
-                        parse_fields!(@populate_inner $once_or_many($variable_name), v.as_slice(), $action);
-                    },
-                )*
-                _ => {}
-            }
-        }
-        $(
-            parse_fields!(@post_population $once_or_many($key, $variable_name));
-        )*
-    };
-
-    (@make_variable RequiredOnce($variable_name:ident)) => {
-        let mut $variable_name = None;
-    };
-
-    (@make_variable OptionalOnce($variable_name:ident)) => {
-        let mut $variable_name = None;
-    };
-
-    (@make_variable Many($variable_name:ident)) => {
-        let mut $variable_name = Vec::new();
-    };
-
-    (@populate_inner RequiredOnce($variable_name:ident), $value:expr, $action:expr) => {
-        $variable_name = Some($action($value)?);
-    };
-
-    (@populate_inner OptionalOnce($variable_name:ident), $value:expr, $action:expr) => {
-        $variable_name = Some($action($value)?);
-    };
-
-    (@populate_inner Many($variable_name:ident), $value:expr, $action:expr) => {
-        $variable_name.push($action($value)?);
-    };
-
-    (@post_population RequiredOnce($key:expr, $variable_name:ident)) => {
-        let Some($variable_name) = $variable_name else {
-            return Err(IrConversionError::MissingField {
-                processing: std::any::type_name::<Self>(),
-                missing: $key,
-            })
-        };
-    };
-
-    (@post_population $($tokens:tt)*) => {}
-}
-
 impl<'a> TryFrom<&[Structure<'a>]> for Root {
     type Error = IrConversionError;
     fn try_from(value: &[Structure<'a>]) -> Result<Self, Self::Error> {
-        parse_fields!(value;
-            RequiredOnce(Pair("FileType", file_type)) => infer_name,
-            RequiredOnce(Struct("Rosen", route)) => Route::try_from,
+        parse_fields!(value; Root;
+            RequiredOnce(file_type: Pair) => infer_name,
+            RequiredOnce(route: Struct) => Route::try_from,
         );
         Ok(Self { file_type, route })
     }
@@ -607,13 +374,13 @@ impl<'a> TryFrom<&[Structure<'a>]> for Root {
 impl<'a> TryFrom<&[Structure<'a>]> for Route {
     type Error = IrConversionError;
     fn try_from(value: &[Structure<'a>]) -> Result<Self, Self::Error> {
-        parse_fields!(value;
-            Many(Struct("Eki", stations)) => Station::try_from,
-            Many(Struct("Dia", diagrams)) => Diagram::try_from,
-            Many(Struct("Ressyasyubetsu", classes)) => Class::try_from,
-            RequiredOnce(Pair("Rosenmei", name)) => infer_name,
-            RequiredOnce(Pair("KitenJikoku", display_start_time)) => infer_parse::<Time>,
-            RequiredOnce(Pair("Comment", comment)) => infer_name,
+        parse_fields!(value; Route;
+            Many(stations: Struct) => Station::try_from,
+            Many(diagrams: Struct) => Diagram::try_from,
+            Many(classes: Struct) => Class::try_from,
+            RequiredOnce(name: Pair) => infer_name,
+            RequiredOnce(display_start_time: Pair) => infer_parse::<Time>,
+            RequiredOnce(comment: Pair) => infer_name,
         );
         Ok(Self {
             name,
@@ -629,21 +396,20 @@ impl<'a> TryFrom<&[Structure<'a>]> for Route {
 impl<'a> TryFrom<&[Structure<'a>]> for Station {
     type Error = IrConversionError;
     fn try_from(value: &[Structure<'a>]) -> Result<Self, Self::Error> {
-        parse_fields!(value;
-            RequiredOnce(Pair("Ekimei", name)) => infer_name,
-            RequiredOnce(Pair("Ekikibo", station_type)) => infer_parse::<StationType>,
-            OptionalOnce(Pair("EkimeiJikokuRyaku", timetable_abbreviation)) => infer_name,
-            OptionalOnce(Pair("EkimeiDiaRyaku", diagram_abbreviation)) => infer_name,
-            // There is a spelling mistake in the original software. Instead of "Brunch" it should be "Branch"
-            OptionalOnce(Pair("BrunchCoreEkiIndex", branch_index)) => infer_parse::<usize>,
-            OptionalOnce(Pair("LoopOriginEkiIndex", loop_index)) => infer_parse::<usize>,
-            OptionalOnce(Struct("EkiTrack2Cont", all_tracks)) => pass,
+        parse_fields!(value; Station;
+            RequiredOnce(name: Pair) => infer_name,
+            RequiredOnce(station_type: Pair) => infer_parse::<StationType>,
+            OptionalOnce(timetable_abbreviation: Pair) => infer_name,
+            OptionalOnce(diagram_abbreviation: Pair) => infer_name,
+            OptionalOnce(branch_index: Pair) => infer_parse::<usize>,
+            OptionalOnce(loop_index: Pair) => infer_parse::<usize>,
+            OptionalOnce(all_tracks: Struct(Self::TRACKS_OUD_NAME)) => pass,
         );
         let mut tracks = SmallVec::new();
         for (_, ast) in all_tracks.into_iter().flatten().every_struct("EkiTrack2") {
-            parse_fields!(ast;
-                RequiredOnce(Pair("TrackName", name)) => infer_name,
-                RequiredOnce(Pair("TrackRyakusyou", abbreviation)) => infer_name,
+            parse_fields!(ast; Track;
+                RequiredOnce(name: Pair) => infer_name,
+                RequiredOnce(abbreviation: Pair) => infer_name,
             );
             tracks.push(Track { name, abbreviation })
         }
@@ -662,10 +428,10 @@ impl<'a> TryFrom<&[Structure<'a>]> for Station {
 impl<'a> TryFrom<&[Structure<'a>]> for Diagram {
     type Error = IrConversionError;
     fn try_from(value: &[Structure<'a>]) -> Result<Self, Self::Error> {
-        parse_fields!(value;
-            OptionalOnce(Pair("DiaName", name)) => infer_name,
-            Many(Struct("Nobori", up_trips)) => pass,
-            Many(Struct("Kudari", down_trips)) => pass,
+        parse_fields!(value; Diagram;
+            OptionalOnce(name: Pair) => infer_name,
+            Many(up_trips: Struct(Direction::Up.oud_name())) => pass,
+            Many(down_trips: Struct(Direction::Down.oud_name())) => pass,
         );
         let mut trips = Vec::new();
         let down_trips_iter = down_trips.into_iter().flatten();
@@ -690,12 +456,12 @@ impl<'a> TryFrom<&[Structure<'a>]> for Diagram {
 impl<'a> TryFrom<&[Structure<'a>]> for Trip {
     type Error = IrConversionError;
     fn try_from(value: &[Structure<'a>]) -> Result<Self, Self::Error> {
-        parse_fields!(value;
-            OptionalOnce(Pair("Ressyabangou", name)) => infer_name,
-            OptionalOnce(Pair("Bikou", comment)) => infer_name,
-            RequiredOnce(Pair("Houkou", direction)) => infer_parse::<Direction>,
-            RequiredOnce(Pair("Syubetsu", class_index)) => infer_parse::<usize>,
-            RequiredOnce(Pair("EkiJikoku", times)) =>
+        parse_fields!(value; Trip;
+            OptionalOnce(name: Pair) => infer_name,
+            OptionalOnce(comment: Pair) => infer_name,
+            RequiredOnce(direction: Pair) => infer_parse::<Direction>,
+            RequiredOnce(class_index: Pair) => infer_parse::<usize>,
+            RequiredOnce(times: Pair) =>
                 |v: &[Cow<'a, str>]| -> Result<_, IrConversionError> {
                 let mut times = Vec::with_capacity(v.len());
                 for entry in v {
@@ -714,10 +480,8 @@ impl<'a> TryFrom<&[Structure<'a>]> for Trip {
                 continue;
             }
             let hierarchy = parse_to_operation_hierarchy(k)?;
-            let operations = vals
-                .iter()
-                .map(|it| parse_to_raw_operation(it))
-                .collect::<Result<Vec<_>, _>>()?;
+            let operations =
+                vals.iter().map(|it| parse_to_raw_operation(it)).collect::<Result<Vec<_>, _>>()?;
             times.insert_operations(hierarchy, operations);
         }
         Ok(Self {
@@ -733,10 +497,10 @@ impl<'a> TryFrom<&[Structure<'a>]> for Trip {
 impl<'a> TryFrom<&[Structure<'a>]> for Class {
     type Error = IrConversionError;
     fn try_from(value: &[Structure<'a>]) -> Result<Self, Self::Error> {
-        parse_fields!(value;
-            RequiredOnce(Pair("Syubetsumei", name)) => infer_name,
-            OptionalOnce(Pair("Ryakusyou", abbreviation)) => infer_name,
-            RequiredOnce(Pair("DiagramSenColor", diagram_line_color)) => infer_parse::<Color>,
+        parse_fields!(value; Class;
+            RequiredOnce(name: Pair) => infer_name,
+            OptionalOnce(abbreviation: Pair) => infer_name,
+            RequiredOnce(diagram_line_color: Pair) => infer_parse::<Color>,
         );
         Ok(Self {
             name,

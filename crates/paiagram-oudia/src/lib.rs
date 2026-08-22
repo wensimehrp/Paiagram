@@ -25,6 +25,8 @@ pub use ir::*;
 pub use time::Time;
 pub use timetable::{ServiceMode, TimetableEntry};
 
+mod ir_macros;
+
 pub mod ast;
 pub mod ir;
 pub mod operation;
