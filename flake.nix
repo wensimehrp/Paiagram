@@ -112,6 +112,7 @@
               gitui
               typst
               trunk
+              imagemagick
             ]
             ++ runtimeLibs
             ++ [
