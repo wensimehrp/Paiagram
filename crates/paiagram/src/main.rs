@@ -12,10 +12,12 @@ use fontdb::Family;
 use log::{info, warn};
 use paiagram::{App, MainUiState};
 use serde::Deserialize;
+use web_time::Instant;
 
 struct PaiagramApp {
     app: App,
     mus: MainUiState,
+    prev_time: Instant,
 }
 
 impl PaiagramApp {
@@ -41,6 +43,7 @@ impl PaiagramApp {
         Self {
             app: App::new(),
             mus: MainUiState::default(),
+            prev_time: Instant::now(),
         }
     }
 }
@@ -96,8 +99,10 @@ impl eframe::App for PaiagramApp {
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
         egui::Rgba::TRANSPARENT.to_array()
     }
-    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
-        paiagram::show_ui(ui, &mut self.app, &mut self.mus);
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let curr_time = Instant::now();
+        paiagram::show_ui(ui, &mut self.app, &mut self.mus, curr_time - self.prev_time);
+        self.prev_time = curr_time;
     }
 }
 

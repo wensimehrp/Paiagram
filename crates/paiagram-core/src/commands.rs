@@ -106,6 +106,18 @@ pub enum Command {
     Macro(Box<[Command]>),
 }
 
+impl Command {
+    pub fn new_empty() -> Self {
+        Self::Macro(Box::new([]))
+    }
+    pub fn is_empty(&self) -> bool {
+        match self {
+            Self::Macro(inner) if inner.is_empty() => true,
+            _ => false,
+        }
+    }
+}
+
 impl WorldSnapshot {
     /// Applies a command and returns its inverse. Could modify the world and return the inverse if
     /// the application succeeds; doesn't modify the world and returns None if the application

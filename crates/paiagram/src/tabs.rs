@@ -39,7 +39,7 @@ define_tabs!(
     config;
     start;
     // station;
-    // trip;
+    trip;
 );
 
 fn handle_keyboard_navigation(ui: &Ui) -> Vec2 {

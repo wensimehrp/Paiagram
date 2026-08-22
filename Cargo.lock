@@ -4057,6 +4057,7 @@ dependencies = [
  "env_logger",
  "eros",
  "fontdb",
+ "futures-lite",
  "git-version",
  "ib-matcher",
  "itertools 0.14.0",
@@ -4068,6 +4069,7 @@ dependencies = [
  "paiagram-raptor",
  "paiagram-rw",
  "paste",
+ "rfd",
  "serde",
  "serde_html_form",
  "smallvec",
@@ -4075,6 +4077,7 @@ dependencies = [
  "walkers",
  "wasm-bindgen",
  "wasm-bindgen-futures",
+ "web-time",
 ]
 
 [[package]]

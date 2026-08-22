@@ -59,6 +59,16 @@ pub enum TEntry {
     },
 }
 
+impl TEntry {
+    pub fn node_key(&self) -> NodeKey {
+        match self {
+            Self::Derived { node, .. } => *node,
+            Self::Pinned { node, .. } => *node,
+            Self::PinnedNonStop { node, .. } => *node,
+        }
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
 pub struct TripSchedule {
     entries: EcoVec<TEntry>,

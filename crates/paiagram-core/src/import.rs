@@ -48,7 +48,7 @@ pub enum ImportType {
 }
 
 impl ImportType {
-    fn file_extensions(&self) -> &[&'static str] {
+    pub fn file_extensions(&self) -> &[&'static str] {
         match self {
             Self::Pyetgr => &["json", "pyetgr"],
             Self::OuDia => &["oud"],
@@ -60,20 +60,15 @@ impl ImportType {
     }
 }
 
-fn generate_commands(
-    mut stream: impl std::io::Read,
+pub fn generate_commands(
+    stream: &[u8],
     import_content: ImportType,
-) -> Result<Box<[Command]>, Box<dyn std::error::Error>> {
+) -> Result<Command, Box<dyn std::error::Error>> {
     match import_content {
         ImportType::Pyetgr => todo!(),
-        ImportType::OuDia => {
-            let mut buf = Vec::new();
-            stream.read_to_end(&mut buf)?;
-            oudia::parse_oudia(oudia::OudFileType::OuDia(&buf))
-        }
+        ImportType::OuDia => oudia::parse_oudia(oudia::OudFileType::OuDia(stream)),
         ImportType::OuDiaSecond => {
-            let mut buf = String::new();
-            stream.read_to_string(&mut buf)?;
+            let buf = str::from_utf8(stream)?;
             oudia::parse_oudia(oudia::OudFileType::OuDiaSecond(&buf))
         }
         ImportType::Gtfs => todo!(),

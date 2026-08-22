@@ -47,9 +47,7 @@ pub(super) enum OudFileType<'a> {
     OuDia(&'a [u8]),
 }
 
-pub(crate) fn parse_oudia(
-    stream: OudFileType,
-) -> Result<Box<[Command]>, Box<dyn std::error::Error>> {
+pub(crate) fn parse_oudia(stream: OudFileType) -> Result<Command, Box<dyn std::error::Error>> {
     let root = match stream {
         OudFileType::OuDiaSecond(s) => parse_oud2_to_ir(s)?,
         OudFileType::OuDia(buf) => parse_oud_to_ir(buf)?,
@@ -220,7 +218,7 @@ pub(crate) fn parse_oudia(
         }
     }
 
-    Ok(cmd_buf.into_boxed_slice())
+    Ok(Command::Macro(cmd_buf.into_boxed_slice()))
 }
 
 #[cfg(test)]

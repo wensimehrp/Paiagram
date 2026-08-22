@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+//! Cursed territory. Don't edit it unless you know the super cow power.
 
 macro_rules! make_ir_type {
     {

@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use super::Tab;
 use crate::App;
+use crate::tabs::trip::TripTab;
 use crate::widgets::{LOGO_COORDINATES, LogoStroke};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Default)]
@@ -71,6 +72,16 @@ impl Tab for StartTab {
                     ui.label(app.intervals.len().to_string());
                     ui.end_row();
                 });
+                for k in app.source.trips.keys().take(20) {
+                    let Some(res) = app.trips.query(k, |view| ui.button(view.name.as_str())) else {
+                        continue;
+                    };
+                    if res.clicked() {
+                        app.ui_action_queue.push(crate::UiCommand::OpenOrFocus(
+                            super::MainTab::Trip(TripTab::new(k)),
+                        ));
+                    }
+                }
             })
         });
     }
