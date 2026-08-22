@@ -37,8 +37,8 @@ tab-start-amount-intervals = Amount of intervals:
 tab-start-version = Version: {$version}
 tab-start-revision = Revision: {$revision}
 tab-start-description = A high-performance transport timetable diagramming and analysis tool built with egui and Bevy.
-# Settings tab
-tab-settings = Settings
+# Config tab
+tab-config = Config
 # Diagram tab
 tab-diagram = Diagram
 tab-diagram-save-typst-module = Save Typst module

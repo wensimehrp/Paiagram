@@ -35,7 +35,7 @@ impl GlobalTimer {
     /// When synchronized to real time the timer ignores `delta` and derives its
     /// value from the system clock directly. Otherwise it only advances while
     /// animation is playing, scaled by [`Self::animation_speed`].
-    fn march(&mut self, delta: f64) {
+    pub fn march(&mut self, delta: f64) {
         if self.locked {
             return;
         }

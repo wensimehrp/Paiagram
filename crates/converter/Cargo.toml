@@ -14,4 +14,25 @@ serde_yaml = "0.9.34"
 toml = "1.1.0"
 wasm-bindgen.workspace = true
 wasm-bindgen-futures.workspace = true
-web-sys = { version = "0.3.81", features = ["Blob", "Clipboard", "DataTransfer", "Document", "DragEvent", "Event", "EventTarget", "File", "FileList", "HtmlAnchorElement", "HtmlButtonElement", "HtmlInputElement", "HtmlSelectElement", "HtmlTextAreaElement", "Navigator", "Url", "Window"] }
+web-sys = {
+  version = "0.3.81",
+  features = [
+    "Blob",
+    "Clipboard",
+    "DataTransfer",
+    "Document",
+    "DragEvent",
+    "Event",
+    "EventTarget",
+    "File",
+    "FileList",
+    "HtmlAnchorElement",
+    "HtmlButtonElement",
+    "HtmlInputElement",
+    "HtmlSelectElement",
+    "HtmlTextAreaElement",
+    "Navigator",
+    "Url",
+    "Window",
+  ]
+}

@@ -13,16 +13,18 @@ categories.workspace = true
 
 [dependencies]
 bytemuck.workspace = true
-chrono.workspace = true
 clap.workspace = true
 eframe.workspace = true
 egui.workspace = true
 egui_commonmark = "0.23.0"
+egui_extras.workspace = true
 egui-i18n.workspace = true
 egui_table = "0.8.0"
-egui_tiles = "0.15.0"
+egui_tiles.workspace = true
 either.workspace = true
+env_logger.workspace = true
 eros.workspace = true
+fontdb.workspace = true
 git-version.workspace = true
 ib-matcher.workspace = true
 itertools.workspace = true

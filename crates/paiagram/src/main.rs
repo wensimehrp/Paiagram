@@ -1,8 +1,15 @@
 //! The entrypoint of the application
 
 use std::path::PathBuf;
+#[cfg(not(target_arch = "wasm32"))]
+use std::sync::Arc;
 
 use clap::Parser;
+#[cfg(not(target_arch = "wasm32"))]
+use egui::Context;
+#[cfg(not(target_arch = "wasm32"))]
+use fontdb::Family;
+use log::{info, warn};
 use paiagram::{App, MainUiState};
 use serde::Deserialize;
 
@@ -13,23 +20,60 @@ struct PaiagramApp {
 
 impl PaiagramApp {
     fn new(cc: &eframe::CreationContext) -> Self {
+        egui_extras::install_image_loaders(&cc.egui_ctx);
+        info!("Installed image loaders");
         // load translations
+        env_logger::init();
         let en = include_str!("../assets/locales/en-CA.ftl");
         let zh = include_str!("../assets/locales/zh-Hans.ftl");
         egui_i18n::load_translations_from_text("en-CA", en).unwrap();
         egui_i18n::load_translations_from_text("zh-Hans", zh).unwrap();
         egui_i18n::set_language("en-CA");
         egui_i18n::set_fallback("en-CA");
+        info!("Loaded translations");
         // set styles
         cc.egui_ctx.global_style_mut(|style| {
             style.spacing.window_margin = egui::Margin::same(2);
             style.interaction.selectable_labels = false;
         });
+        load_font(&cc.egui_ctx);
+
         Self {
             app: App::new(),
             mus: MainUiState::default(),
         }
     }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn load_font(ctx: &Context) {
+    let mut db = fontdb::Database::new();
+    db.load_system_fonts();
+
+    let Some(face_id) = db.query(&fontdb::Query {
+        families: &[Family::Name("Sarasa UI SC"), Family::SansSerif],
+        ..Default::default()
+    }) else {
+        warn!("Couldn't select font from system");
+        return;
+    };
+    let Some(bytes) = db.with_face_data(face_id, |font_bytes, _index| font_bytes.to_owned()) else {
+        let font_name = db.face(face_id).map_or("<no name>", |info| &info.post_script_name);
+        warn!("Couldn't load font named {:?}", font_name);
+        return;
+    };
+    let bytes = Arc::new(bytes);
+    let mut fonts = egui::FontDefinitions::default();
+    fonts.font_data.insert(
+        "system_font".into(),
+        Arc::new(egui::FontData::from_owned((*bytes).clone())),
+    );
+    fonts
+        .families
+        .entry(egui::FontFamily::Proportional)
+        .or_default()
+        .insert(0, "system_font".into());
+    ctx.set_fonts(fonts);
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -82,13 +126,10 @@ fn main() -> eframe::Result<()> {
             .with_app_id("Paiagram")
             .with_inner_size([1280.0, 720.0]),
         renderer: eframe::Renderer::Wgpu,
-        wgpu_options: eframe::egui_wgpu::WgpuConfiguration {
-            desired_maximum_frame_latency: Some(2),
-            ..Default::default()
-        },
         multisampling: 4,
         ..Default::default()
     };
+    let args = Arguments::parse();
     eframe::run_native(
         "Paiagram Drawer",
         native_options,
@@ -97,83 +138,6 @@ fn main() -> eframe::Result<()> {
 }
 
 #[cfg(target_arch = "wasm32")]
-use wasm_bindgen::prelude::*;
-
-#[cfg(target_arch = "wasm32")]
-#[derive(Clone)]
-#[wasm_bindgen]
-pub struct WebHandle {
-    runner: eframe::WebRunner,
-}
-
-#[cfg(target_arch = "wasm32")]
 fn main() {
-    i18n::init();
-    use eframe::wasm_bindgen::JsCast as _;
-    use eframe::web_sys;
-
-    let web_options = eframe::WebOptions::default();
-
-    wasm_bindgen_futures::spawn_local(async {
-        let document = web_sys::window()
-            .expect("No window")
-            .document()
-            .expect("No document");
-
-        let canvas = if let Some(canvas) = document.get_element_by_id("paiagram_canvas") {
-            canvas
-                .dyn_into::<web_sys::HtmlCanvasElement>()
-                .expect("paiagram_canvas was not a HtmlCanvasElement")
-        } else {
-            let canvas = document
-                .create_element("canvas")
-                .expect("Failed to create canvas element");
-            canvas.set_id("paiagram_canvas");
-
-            canvas
-                .set_attribute("style", "display: block; width: 100%; height: 100%;")
-                .ok();
-
-            let body = document.body().expect("Failed to get document body");
-            body.set_attribute(
-                "style",
-                "margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;",
-            )
-            .ok();
-
-            let html = document.document_element().expect("No document element");
-            html.set_attribute(
-                "style",
-                "margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;",
-            )
-            .ok();
-
-            body.append_child(&canvas).expect("Failed to append canvas");
-            canvas
-                .dyn_into::<web_sys::HtmlCanvasElement>()
-                .expect("Failed to cast canvas")
-        };
-
-        let start_result = eframe::WebRunner::new()
-            .start(
-                canvas,
-                web_options,
-                Box::new(|cc| Ok(Box::new(PaiagramApp::new(cc)))),
-            )
-            .await;
-
-        if let Some(loading_text) = document.get_element_by_id("loading_text") {
-            match start_result {
-                Ok(_) => {
-                    loading_text.remove();
-                }
-                Err(e) => {
-                    loading_text.set_inner_html(
-                        "<p> The app has crashed. See the developer console for details. </p>",
-                    );
-                    panic!("Failed to start eframe: {e:?}");
-                }
-            }
-        }
-    });
+    todo!()
 }

@@ -36,7 +36,7 @@ define_tabs!(
     // diagram;
     // graph;
     // route_timetable;
-    // settings;
+    config;
     start;
     // station;
     // trip;
@@ -155,9 +155,7 @@ pub(crate) trait Navigatable {
     /// Returns true if there are any user input
     fn handle_navigation(&mut self, ui: &mut Ui, response: &Response) -> bool {
         let mut moved = response.dragged();
-        let started_pos = ui
-            .ctx()
-            .input(|i| i.pointer.press_origin().or(i.pointer.hover_pos()));
+        let started_pos = ui.ctx().input(|i| i.pointer.press_origin().or(i.pointer.hover_pos()));
         let zoom_delta = if self.allow_axis_zoom() {
             ui.input(|input| input.zoom_delta_2d())
         } else {
