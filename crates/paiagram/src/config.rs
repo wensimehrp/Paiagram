@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: MPL-2.0
 //! The settings for the app
 
+use egui::ScrollArea;
+use log::info;
 use paiagram_core::time::TDuration;
 
+use crate::font::{FONT_DATABASE, load_default_font, load_font_to_egui};
 use crate::widgets::DurationDragValue;
+use crate::widgets::search::search;
 
 #[derive(Default, PartialEq)]
 pub(crate) enum LevelOfDetailMode {
@@ -20,9 +24,10 @@ macro_rules! make_lang {
     } => { paste::paste! {
         /// The language of the application.
         #[derive(PartialEq, Clone, Copy)]
-        pub(crate) enum AppLanguage {
-            $( [<$lang_code:camel>], )*
-        }
+        pub enum AppLanguage { $(
+            #[doc = $native_name]
+            [<$lang_code:camel>],
+        )* }
         impl std::fmt::Display for AppLanguage {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 write!(f, "{}", self.lang_code())
@@ -39,6 +44,19 @@ macro_rules! make_lang {
                     $(Self::[<$lang_code:camel>] => $native_name, )*
                 }
             }
+            pub fn init() {
+                $(
+                    let content = include_str!(concat!(
+                        "../assets/locales/",
+                        $lang_code,
+                        ".ftl",
+                    ));
+                    egui_i18n::load_translations_from_text($lang_code, content).unwrap_or_else(|e| panic!("{} {:?}", $lang_code, e));
+                )*
+                egui_i18n::set_language(Self::EnCa.lang_code());
+                egui_i18n::set_fallback(Self::EnCa.lang_code());
+                info!("Loaded translations");
+            }
             const ALL: &[AppLanguage] = &[
                 $( AppLanguage::[<$lang_code:camel>], )*
             ];
@@ -49,8 +67,11 @@ macro_rules! make_lang {
 make_lang! {
     "en-CA", "English (Canada)";
     "zh-Hans", "简体中文";
-    "zh-Hans-x-en-CA-transliteration", "森普勒费艾德柴尼斯（喀内迪安英格利什特兰斯勒特勒申）";
-    "zh-Hans-x-japanese-railway", "简体中文（日本交通术语）";
+    // "zh-Hans-x-japanese-railway", "简体中文（日本交通术语）";
+    // "zh-Hans-x-en-CA-transliteration", "森普勒费艾德柴尼斯（喀内迪安英格利什特兰斯勒特勒申）";
+    "zh-Hant", "繁體中文";
+    // "zh-Latn-x-pinyin", "Zhongwen (Pinyin)";
+    "ja-JP", "日本語";
 }
 
 impl Default for AppLanguage {
@@ -64,15 +85,18 @@ pub(crate) struct Preferences {
     pub aa: bool,
     pub lod_mode: LevelOfDetailMode,
     pub language: AppLanguage,
+    pub font_name: String,
 }
 
-impl Default for Preferences {
-    fn default() -> Self {
+impl Preferences {
+    pub fn new(ctx: &egui::Context) -> Self {
+        AppLanguage::init();
         Self {
             dev_mode: false,
             aa: true,
             lod_mode: LevelOfDetailMode::default(),
             language: AppLanguage::default(),
+            font_name: load_default_font(&ctx).into(),
         }
     }
 }
@@ -95,13 +119,21 @@ impl egui::Widget for &mut Preferences {
             .num_columns(2)
             .show(ui, |ui| {
                 ui.label("Language");
-                ui.horizontal_wrapped(|ui| {
-                    for lang in AppLanguage::ALL {
-                        ui.radio_value(&mut self.language, *lang, lang.native_name());
-                    }
-                });
+                egui::ComboBox::from_id_salt("language selection")
+                    .selected_text(self.language.native_name())
+                    .truncate()
+                    .show_ui(ui, |ui| {
+                        for lang in AppLanguage::ALL {
+                            if ui
+                                .selectable_value(&mut self.language, *lang, lang.native_name())
+                                .changed()
+                            {
+                                egui_i18n::set_language(lang.lang_code());
+                            }
+                        }
+                    });
                 ui.end_row();
-                ui.label("Current language code");
+                ui.weak("(Language code)");
                 ui.label(self.language.lang_code());
                 ui.end_row();
                 ui.label("Level of Detail");
@@ -117,6 +149,42 @@ impl egui::Widget for &mut Preferences {
                 ui.label("Developer Mode");
                 ui.checkbox(&mut self.dev_mode, "");
                 ui.end_row();
+                ui.label("Font");
+                egui::ComboBox::from_id_salt("font selection")
+                    .selected_text(&self.font_name)
+                    .height(300.0)
+                    .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+                    .show_ui(ui, |ui| {
+                        let query_id = ui.id().with("query text");
+                        let candidate_id = ui.id().with("query candidates");
+                        let mut query: String =
+                            ui.data_mut(|w| w.remove_temp(query_id)).unwrap_or_default();
+                        let mut matches: Vec<usize> =
+                            ui.data_mut(|w| w.remove_temp(candidate_id)).unwrap_or_default();
+                        if ui.text_edit_singleline(&mut query).changed() {
+                            matches.clear();
+                            matches.extend(search(
+                                &query,
+                                FONT_DATABASE.faces().map(|face| face.post_script_name.as_str()),
+                                100,
+                            ));
+                        }
+                        ScrollArea::vertical().show(ui, |ui| {
+                            for (idx, face) in FONT_DATABASE.faces().enumerate() {
+                                if let Err(_) = matches.binary_search(&idx) {
+                                    continue;
+                                }
+                                let face_name = face.post_script_name.as_str();
+                                if ui.button(face_name).clicked() {
+                                    load_font_to_egui(face.id, ui.ctx());
+                                    self.font_name.clear();
+                                    self.font_name.push_str(face_name);
+                                }
+                            }
+                        });
+                        ui.data_mut(|w| w.insert_temp(query_id, query));
+                        ui.data_mut(|w| w.insert_temp(candidate_id, matches));
+                    });
             })
             .response
     }

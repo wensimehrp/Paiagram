@@ -1,51 +1,44 @@
-use std::sync::LazyLock;
-
-use egui::{Context, Key, NumExt, Ui};
+use ecow::EcoString;
+use egui::{Context, Key, Modifiers, NumExt, Ui};
 use egui_i18n::tr;
-use ib_matcher::matcher::{IbMatcher, PinyinMatchConfig, RomajiMatchConfig};
-use ib_matcher::pinyin::PinyinNotation;
 use paiagram_core::{RouteKey, StationKey, TripKey};
 
 use super::MainTab;
-use crate::App;
 use crate::tabs::all_tabs::*;
+use crate::widgets::search::build_matcher;
+use crate::{App, UiCommand};
 
 // TODO: make this based on settings
 // TODO: make this a resource instead?
-static PINYIN_MATCH_DATA: LazyLock<PinyinMatchConfig> = std::sync::LazyLock::new(|| {
-    PinyinMatchConfig::builder(
-        PinyinNotation::Ascii
-            | PinyinNotation::AsciiFirstLetter
-            | PinyinNotation::DiletterMicrosoft,
-    )
-    .build()
-});
-
-static ROMAJI_MATCH_DATA: LazyLock<RomajiMatchConfig> =
-    std::sync::LazyLock::new(|| RomajiMatchConfig::builder().build());
 
 #[derive(Default)]
 pub(crate) struct CommandPalette {
     visible: bool,
     query: String,
+    matched: Vec<(EcoString, MatchedType)>,
     selected_alternative: usize,
 }
 
+#[derive(Clone, Copy)]
 enum MatchedType {
     Route(RouteKey),
     Station(StationKey),
     Trip(TripKey),
     Tab(fn() -> MainTab),
+    LoadOuDiaSecond,
 }
 
 impl CommandPalette {
-    pub(crate) fn toggle(&mut self) {
-        self.visible ^= true;
+    fn clear(&mut self) {
+        self.visible = false;
+        self.query.clear();
+        self.matched.clear();
+        self.selected_alternative = 0;
     }
     pub(crate) fn show(&mut self, ctx: &Context, app: &mut App) {
-        self.visible &= !ctx.input_mut(|i| i.key_pressed(Key::Escape));
+        self.visible |= ctx.input_mut(|i| i.consume_key(Modifiers::COMMAND, Key::P));
+        self.visible &= !ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape));
         if !self.visible {
-            self.query.clear();
             return;
         }
 
@@ -61,12 +54,7 @@ impl CommandPalette {
             .scroll(false)
             .title_bar(false)
             .show(ctx, |ui| {
-                // We need an extra egui frame here because we set clip_rect_margin to zero.
-                egui::Frame {
-                    inner_margin: 2.0.into(),
-                    ..Default::default()
-                }
-                .show(ui, |ui| self.window_content_ui(ui, App));
+                egui::Frame::new().inner_margin(2).show(ui, |ui| self.window_content_ui(ui, app))
             });
     }
 
@@ -76,7 +64,8 @@ impl CommandPalette {
         let text_response = ui.add(
             egui::TextEdit::singleline(&mut self.query)
                 .desired_width(f32::INFINITY)
-                .lock_focus(true),
+                .lock_focus(true)
+                .hint_text("Perform an action..."),
         );
         text_response.request_focus();
         let scroll_to_selected_alternative = if text_response.changed() {
@@ -86,115 +75,75 @@ impl CommandPalette {
             false
         };
 
-        let selected = egui::ScrollArea::vertical()
+        #[rustfmt::skip]
+        let panel_info: [(EcoString, MatchedType); 3] = [
+            (tr!("tab-start").into(), MatchedType::Tab(|| MainTab::Start(StartTab)),),
+            (tr!("tab-settings").into(), MatchedType::Tab(|| MainTab::Config(ConfigTab)),),
+            ("Load OuDiaSecond".into(), MatchedType::LoadOuDiaSecond),
+        ];
+
+        let candidates_iter = panel_info
+            .into_iter()
+            .chain(app.trips.iter().map(|v| (v.name.clone(), MatchedType::Trip(v.key))))
+            .chain(app.stations.iter().map(|v| (v.name.clone(), MatchedType::Station(v.key))));
+
+        if text_response.changed() {
+            self.matched.clear();
+            let matcher = build_matcher(&self.query);
+            let extender = candidates_iter.filter(|(n, _)| matcher.is_match(n.as_str())).take(100);
+            self.matched.extend(extender)
+        }
+
+        if let Some(item) = egui::ScrollArea::vertical()
             .auto_shrink([false, true])
             .show(ui, |ui| {
-                world
-                    .run_system_cached_with(
-                        Self::alternatives_ui,
-                        (
-                            self,
-                            ui,
-                            enter_pressed,
-                            scroll_to_selected_alternative,
-                            text_response.changed(),
-                        ),
-                    )
-                    .unwrap()
+                self.alternatives_ui(ui, enter_pressed, scroll_to_selected_alternative)
             })
-            .inner;
-
-        if selected {
-            *self = Default::default();
+            .inner
+        {
+            if let Some(tab) = match item {
+                MatchedType::Route(k) => None,
+                MatchedType::Station(k) => None,
+                MatchedType::Trip(k) => Some(MainTab::Trip(TripTab::new(k))),
+                MatchedType::Tab(f) => Some(f()),
+                MatchedType::LoadOuDiaSecond => {
+                    // TODO
+                    None
+                }
+            } {
+                app.ui_action_queue.push(UiCommand::OpenOrFocus(tab));
+            }
+            self.clear();
         }
     }
 
     fn alternatives_ui(
-        (
-            InMut(panel),
-            InMut(ui),
-            In(enter_pressed),
-            In(mut scroll_to_selected_alternative),
-            In(query_changed),
-        ): (InMut<Self>, InMut<Ui>, In<bool>, In<bool>, In<bool>),
-        names: Query<(Entity, &Name, AnyOf<(&Trip, &Station, &Route)>)>,
-        mut matched: Local<Vec<(String, MatchedType)>>,
-        mut matcher: Local<Option<IbMatcher>>,
-        mut commands: Commands,
-    ) -> bool {
-        scroll_to_selected_alternative |= ui.input(|i| i.key_pressed(Key::ArrowUp));
-        scroll_to_selected_alternative |= ui.input(|i| i.key_pressed(Key::ArrowDown));
+        &mut self,
+        ui: &mut Ui,
+        enter_pressed: bool,
+        mut scroll_to_selected_alternative: bool,
+    ) -> Option<MatchedType> {
+        let mut ret: Option<MatchedType> = None;
+        scroll_to_selected_alternative |=
+            ui.input(|i| i.key_pressed(Key::ArrowUp) || i.key_pressed(Key::ArrowDown));
 
         let item_height = 16.0;
-
         let mut num_alternatives: usize = 0;
-        let mut selected_and_determined = false;
 
-        let build_matcher = || {
-            IbMatcher::builder(panel.query.as_str())
-                .pinyin(PINYIN_MATCH_DATA.shallow_clone())
-                .romaji(ROMAJI_MATCH_DATA.shallow_clone())
-                .analyze(true)
-                .build()
-        };
-
-        let matcher = matcher.get_or_insert_with(build_matcher);
-
-        if query_changed {
-            *matcher = build_matcher();
-            matched.clear();
-            let mut match_string = String::new();
-            let panel_info: [(String, fn() -> MainTab); 4] = [
-                (tr!("tab-start"), || MainTab::Start(StartTab::default())),
-                (tr!("tab-settings"), || MainTab::Settings(SettingsTab)),
-                (tr!("tab-classes"), || {
-                    MainTab::Classes(ClassesTab::default())
-                }),
-                (tr!("tab-graph"), || MainTab::Graph(GraphTab::default())),
-            ];
-            for (name, fn_ptr) in panel_info.into_iter() {
-                match_string.clear();
-                match_string.push_str(&name);
-                match_string.push_str(" (Tab)");
-                if !matcher.is_match(match_string.as_str()) {
-                    continue;
-                }
-                matched.push((name.to_string(), MatchedType::Tab(fn_ptr)));
-            }
-            for (e, name, matched_type) in names {
-                match_string.clear();
-                let (matched_type, matched_str) = match matched_type {
-                    (Some(_), _, _) => (MatchedType::Trip(e), "trip"),
-                    (_, Some(_), _) => (MatchedType::Station(e), "station"),
-                    (_, _, Some(_)) => (MatchedType::Route(e), "route"),
-                    (None, None, None) => unreachable!(),
-                };
-                match_string.push_str(name.as_str());
-                match_string.push_str(" ");
-                match_string.push_str(matched_str);
-                if !matcher.is_match(match_string.as_str()) {
-                    continue;
-                }
-                matched.push((name.to_string(), matched_type));
-                if matched.len() >= 100 {
-                    break;
-                }
-            }
-        }
-
-        for (i, (name, matched_type)) in matched.iter().enumerate() {
-            let selected = i == panel.selected_alternative;
+        for (i, (name, matched_type)) in self.matched.iter().enumerate() {
+            let selected = i == self.selected_alternative;
             let response = ui.add_sized(
                 egui::vec2(ui.available_width(), item_height),
-                egui::Button::new(name).right_text(match matched_type {
+                egui::Button::new(name.as_str()).right_text(match matched_type {
                     MatchedType::Route(_) => "(Route)",
                     MatchedType::Station(_) => "(Station)",
                     MatchedType::Trip(_) => "(Trip)",
                     MatchedType::Tab(_) => "(Tab)",
+                    _ => "(Action)",
                 }),
             );
             if response.clicked() {
-                selected_and_determined |= true;
+                ret = Some(*matched_type);
             }
             if selected {
                 ui.painter().rect_filled(
@@ -204,13 +153,7 @@ impl CommandPalette {
                 );
 
                 if enter_pressed {
-                    commands.write_message(OpenOrFocus(match matched_type {
-                        MatchedType::Route(e) => MainTab::Diagram(DiagramTab::new(*e)),
-                        MatchedType::Station(e) => MainTab::Station(StationTab::new(*e)),
-                        MatchedType::Trip(e) => MainTab::Trip(TripTab::new(*e)),
-                        MatchedType::Tab(f) => f(),
-                    }));
-                    selected_and_determined |= true;
+                    ret = Some(*matched_type);
                 }
 
                 if scroll_to_selected_alternative {
@@ -224,17 +167,16 @@ impl CommandPalette {
             ui.weak("Nothing matched...");
         }
 
-        panel.selected_alternative = panel.selected_alternative.saturating_sub(
+        self.selected_alternative = self.selected_alternative.saturating_sub(
             ui.input_mut(|i| i.count_and_consume_key(Default::default(), Key::ArrowUp)),
         );
-        panel.selected_alternative = panel.selected_alternative.saturating_add(
+        self.selected_alternative = self.selected_alternative.saturating_add(
             ui.input_mut(|i| i.count_and_consume_key(Default::default(), Key::ArrowDown)),
         );
 
-        panel.selected_alternative = panel
-            .selected_alternative
-            .clamp(0, num_alternatives.saturating_sub(1));
+        self.selected_alternative =
+            self.selected_alternative.clamp(0, num_alternatives.saturating_sub(1));
 
-        selected_and_determined
+        ret
     }
 }

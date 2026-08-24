@@ -18,6 +18,7 @@ eframe.workspace = true
 egui.workspace = true
 egui_commonmark = "0.23.0"
 egui_extras.workspace = true
+ecow.workspace = true
 egui-i18n.workspace = true
 egui_table = "0.8.0"
 egui_tiles.workspace = true

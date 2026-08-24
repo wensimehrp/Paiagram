@@ -1,82 +1,33 @@
 //! The entrypoint of the application
 
 use std::path::PathBuf;
-#[cfg(not(target_arch = "wasm32"))]
-use std::sync::Arc;
 
 use clap::Parser;
-#[cfg(not(target_arch = "wasm32"))]
-use egui::Context;
-#[cfg(not(target_arch = "wasm32"))]
-use fontdb::Family;
-use log::{info, warn};
-use paiagram::{App, MainUiState};
+use paiagram::{App, UiState};
 use serde::Deserialize;
 use web_time::Instant;
 
 struct PaiagramApp {
     app: App,
-    mus: MainUiState,
+    ui_state: UiState,
     prev_time: Instant,
 }
 
 impl PaiagramApp {
     fn new(cc: &eframe::CreationContext) -> Self {
         egui_extras::install_image_loaders(&cc.egui_ctx);
-        info!("Installed image loaders");
-        // load translations
         env_logger::init();
-        let en = include_str!("../assets/locales/en-CA.ftl");
-        let zh = include_str!("../assets/locales/zh-Hans.ftl");
-        egui_i18n::load_translations_from_text("en-CA", en).unwrap();
-        egui_i18n::load_translations_from_text("zh-Hans", zh).unwrap();
-        egui_i18n::set_language("en-CA");
-        egui_i18n::set_fallback("en-CA");
-        info!("Loaded translations");
         // set styles
         cc.egui_ctx.global_style_mut(|style| {
             style.spacing.window_margin = egui::Margin::same(2);
             style.interaction.selectable_labels = false;
         });
-        load_font(&cc.egui_ctx);
-
         Self {
-            app: App::new(),
-            mus: MainUiState::default(),
+            app: App::new(&cc.egui_ctx),
+            ui_state: UiState::default(),
             prev_time: Instant::now(),
         }
     }
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-fn load_font(ctx: &Context) {
-    let mut db = fontdb::Database::new();
-    db.load_system_fonts();
-
-    let Some(face_id) = db.query(&fontdb::Query {
-        families: &[Family::Name("Sarasa UI SC"), Family::SansSerif],
-        ..Default::default()
-    }) else {
-        warn!("Couldn't select font from system");
-        return;
-    };
-    let Some(bytes) = db.with_face_data(face_id, |font_bytes, _index| font_bytes.to_owned()) else {
-        let font_name = db.face(face_id).map_or("<no name>", |info| &info.post_script_name);
-        warn!("Couldn't load font named {:?}", font_name);
-        return;
-    };
-    let bytes = Arc::new(bytes);
-    let mut fonts = egui::FontDefinitions::default();
-    fonts.font_data.insert(
-        "system_font".into(),
-        Arc::new(egui::FontData::from_owned((*bytes).clone())),
-    );
-    fonts
-        .families
-        .entry(egui::FontFamily::Proportional)
-        .or_default()
-        .insert(0, "system_font".into());
-    ctx.set_fonts(fonts);
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -101,7 +52,12 @@ impl eframe::App for PaiagramApp {
     }
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let curr_time = Instant::now();
-        paiagram::show_ui(ui, &mut self.app, &mut self.mus, curr_time - self.prev_time);
+        paiagram::show_ui(
+            ui,
+            &mut self.app,
+            &mut self.ui_state,
+            curr_time - self.prev_time,
+        );
         self.prev_time = curr_time;
     }
 }

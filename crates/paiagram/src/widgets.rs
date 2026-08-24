@@ -4,6 +4,7 @@ use paiagram_core::units::time::{TDuration, TimetableTime};
 
 pub(crate) mod buttons;
 pub(crate) mod indicators;
+pub(crate) mod search;
 // pub(crate) mod timetable_popup;
 
 /// [`DragValue`] for [`TimetableTime`].

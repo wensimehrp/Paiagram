@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Definitions for the user interface.
 
+mod command_palette;
 mod config;
+mod font;
 mod selection;
 mod tabs;
 mod timer;
 mod widgets;
 
+pub use config::AppLanguage;
 use egui::{Color32, Frame, OpenUrl, Panel, Stroke, Ui};
 use egui_i18n::tr;
 use egui_tiles::{
@@ -22,6 +25,7 @@ use serde::{Deserialize, Serialize};
 use tabs::all_tabs::*;
 use tabs::{MainTab, Tab, for_all_tabs};
 
+use crate::selection::SelectedItems;
 use crate::timer::GlobalTimer;
 use crate::widgets::TimeDragValue;
 pub struct UiPlugin;
@@ -32,16 +36,24 @@ pub struct App {
     preferences: config::Preferences,
     settings: config::Settings,
     ui_action_queue: Vec<UiCommand>,
+    selected_items: SelectedItems,
+}
+
+#[derive(Default)]
+pub struct UiState {
+    command_palette: command_palette::CommandPalette,
+    mus: MainUiState,
 }
 
 impl App {
-    pub fn new() -> Self {
+    pub fn new(ctx: &egui::Context) -> Self {
         Self {
             source: Source::new(),
             timer: GlobalTimer::new(),
-            preferences: config::Preferences::default(),
+            preferences: config::Preferences::new(ctx),
             settings: config::Settings::default(),
             ui_action_queue: Vec::default(),
+            selected_items: SelectedItems::None,
         }
     }
     fn apply_ui_commands(&mut self, mus: &mut MainUiState) {
@@ -208,8 +220,14 @@ extern "C" {
     fn toggle_fullscreen(id: &str);
 }
 
-pub fn show_ui(ui: &mut Ui, app: &mut App, mus: &mut MainUiState, delta_time: std::time::Duration) {
-    app.apply_ui_commands(mus);
+pub fn show_ui(
+    ui: &mut Ui,
+    app: &mut App,
+    ui_state: &mut UiState,
+    delta_time: std::time::Duration,
+) {
+    ui_state.command_palette.show(ui.ctx(), app);
+    app.apply_ui_commands(&mut ui_state.mus);
     Panel::top("top panel").exact_size(32.0).show(ui, |ui| {
         ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
             let res = ui.button("File");
@@ -317,6 +335,6 @@ pub fn show_ui(ui: &mut Ui, app: &mut App, mus: &mut MainUiState, delta_time: st
     });
     egui::CentralPanel::default().frame(Frame::default()).show(ui, |ui| {
         let mut tab_viewer = MainTabViewer { app };
-        mus.tree.ui(&mut tab_viewer, ui);
+        ui_state.mus.tree.ui(&mut tab_viewer, ui);
     });
 }

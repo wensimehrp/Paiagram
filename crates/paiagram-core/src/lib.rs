@@ -60,6 +60,20 @@ impl<'a, T: Clone> BorrowMutField<'a, T> {
     }
 }
 
+/// An iterator that yields items borrowing from the iterator itself, so at most one item can be
+/// alive at a time. The standard [`Iterator`] trait cannot express this, which is what makes it
+/// impossible to hand out `BorrowMut` views through a plain `IntoIterator` implementation.
+///
+/// Because each item borrows from `&mut self`, this must be consumed with
+/// `while let Some(item) = iter.next() { ... }` instead of a `for` loop.
+pub(crate) trait LendingIterator {
+    type Item<'a>
+    where
+        Self: 'a;
+
+    fn next(&mut self) -> Option<Self::Item<'_>>;
+}
+
 make_type!(
     Trip,
     data {

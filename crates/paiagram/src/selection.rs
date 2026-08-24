@@ -85,7 +85,8 @@ gen_selected_items! {
 }
 
 impl SelectedItems {
-    fn discard(&mut self) -> Self {
+    /// Take the current selected item and leave [`SelectedItems::None`] in place.
+    fn take(&mut self) -> Self {
         let mut a = Self::None;
         std::mem::swap(self, &mut a);
         a

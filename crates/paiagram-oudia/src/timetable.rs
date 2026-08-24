@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 use pest_consume::Parser;
 
+use crate::ir_macros::make_ir_type;
 use crate::operation::RootOperationTree;
 use crate::time::Time;
 
@@ -22,30 +23,16 @@ pub enum ServiceMode {
     Pass = 2,
 }
 
-/// A timetable entry
-/// Also known as `Ekijikoku`.
-/// Also known as `駅時刻`.
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Clone, Debug, PartialEq, Default)]
-#[doc(alias = "Ekijikoku")]
-#[doc(alias = "駅時刻")]
-pub struct TimetableEntry {
-    /// Also known as `駅扱`.
-    #[doc(alias = "駅扱")]
-    pub service_mode: ServiceMode,
-    /// Also known as `着時刻`.
-    #[doc(alias = "着時刻")]
-    pub arrival_time: Option<Time>,
-    /// Also known as `発時刻`.
-    #[doc(alias = "発時刻")]
-    pub departure_time: Option<Time>,
-    /// Also known as `着発番線`.
-    #[doc(alias = "着発番線")]
-    pub track_index: Option<usize>,
+make_ir_type! {
+    /// A timetable entry
+    #[derive(Default)]
+    TimetableEntry as ["Ekijikoku", "駅時刻"];
+    pub service_mode as ["駅扱"]: ServiceMode,
+    pub arrival_time as ["着時刻"]: Option<Time>,
+    pub departure_time as ["発時刻"]: Option<Time>,
+    pub track_index as ["着発番線"]: Option<usize>,
     /// Operations associated with this timetable entry.
-    /// Also known as `作業`.
-    #[doc(alias = "作業")]
-    operations: Option<Box<RootOperationTree>>,
+    operations as ["作業"]: Option<Box<RootOperationTree>>,
 }
 
 impl TimetableEntry {

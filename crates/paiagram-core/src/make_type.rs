@@ -88,11 +88,13 @@ macro_rules! make_type {
             }
 
             pub struct [<$struct_name Borrow>]<'a> {
+                pub key: [<$struct_name Key>],
                 $( pub $field_name: &'a $field_type, )*
                 $( pub $cache_name: &'a $cache_type, )*
             }
 
             pub(crate) struct [<$struct_name BorrowMut>]<'a> {
+                pub key: [<$struct_name Key>],
                 $( pub $field_name: BorrowMutField<'a, $field_type>, )*
                 $( pub $cache_name: BorrowMutField<'a, $cache_type>, )*
             }
@@ -127,6 +129,26 @@ macro_rules! make_type {
                 /// Iterate over the keys in the collection.
                 pub fn keys(&self) -> impl Iterator<Item = [<$struct_name Key>]> + '_ {
                     self.keys.iter().copied()
+                }
+
+                /// Iterate over all elements in the collection, yielding `Borrow` views.
+                pub fn iter(&self) -> [<$struct_name Iter>]<'_> {
+                    [<$struct_name Iter>] {
+                        collection: self,
+                        idx: 0,
+                    }
+                }
+
+                /// Mutably iterate over all elements in the collection, yielding `BorrowMut` views.
+                ///
+                /// This is a *lending* iterator: each item borrows from the iterator itself, so it
+                /// must be consumed with `while let Some(view) = iter.next() { ... }` rather than a
+                /// `for` loop.
+                pub(crate) fn iter_mut(&mut self) -> [<$struct_name IterMut>]<'_> {
+                    [<$struct_name IterMut>] {
+                        collection: self,
+                        idx: 0,
+                    }
                 }
 
                 /// Remove an entry from the collection
@@ -190,6 +212,7 @@ macro_rules! make_type {
                     let idx = handle.0;
 
                     let borrow = [<$struct_name Borrow>] {
+                        key: key,
                         $( $field_name: &self.$field_name[idx], )*
                         $( $cache_name: &self.$cache_name[idx], )*
                     };
@@ -207,6 +230,7 @@ macro_rules! make_type {
                     let idx = handle.0;
 
                     let borrow_mut = [<$struct_name BorrowMut>] {
+                        key: key,
                         $( $field_name: BorrowMutField {
                             borrow: &mut self.[<$field_name>],
                             idx
@@ -218,6 +242,77 @@ macro_rules! make_type {
                     };
 
                     Some(f(borrow_mut))
+                }
+            }
+            /// An iterator over the elements in the collection, yielding immutable `Borrow` views.
+            pub struct [<$struct_name Iter>]<'a> {
+                collection: &'a [<$struct_name Collection>],
+                idx: usize,
+            }
+
+            impl<'a> Iterator for [<$struct_name Iter>]<'a> {
+                type Item = [<$struct_name Borrow>]<'a>;
+
+                fn next(&mut self) -> Option<Self::Item> {
+                    let idx = self.idx;
+                    if idx >= self.collection.len() {
+                        return None;
+                    }
+                    self.idx = idx + 1;
+                    Some([<$struct_name Borrow>] {
+                        key: self.collection.keys[idx],
+                        $( $field_name: &self.collection.$field_name[idx], )*
+                        $( $cache_name: &self.collection.$cache_name[idx], )*
+                    })
+                }
+
+                fn size_hint(&self) -> (usize, Option<usize>) {
+                    let remaining = self.collection.len().saturating_sub(self.idx);
+                    (remaining, Some(remaining))
+                }
+            }
+
+            /// A lending iterator over the elements in the collection, yielding mutable
+            /// `BorrowMut` views. Consume it with `while let Some(view) = iter.next()`.
+            pub(crate) struct [<$struct_name IterMut>]<'a> {
+                collection: &'a mut [<$struct_name Collection>],
+                idx: usize,
+            }
+
+            impl<'a> LendingIterator for [<$struct_name IterMut>]<'a> {
+                type Item<'b> = [<$struct_name BorrowMut>]<'b>
+                where
+                    Self: 'b;
+
+                fn next(&mut self) -> Option<Self::Item<'_>> {
+                    let idx = self.idx;
+                    if idx >= self.collection.len() {
+                        return None;
+                    }
+                    self.idx = idx + 1;
+                    Some([<$struct_name BorrowMut>] {
+                        key: self.collection.keys[idx],
+                        $( $field_name: BorrowMutField {
+                            borrow: &mut self.collection.$field_name,
+                            idx
+                        }, )*
+                        $( $cache_name: BorrowMutField {
+                            borrow: &mut self.collection.$cache_name,
+                            idx
+                        }, )*
+                    })
+                }
+            }
+
+            impl<'a> IntoIterator for &'a [<$struct_name Collection>] {
+                type Item = [<$struct_name Borrow>]<'a>;
+                type IntoIter = [<$struct_name Iter>]<'a>;
+
+                fn into_iter(self) -> Self::IntoIter {
+                    [<$struct_name Iter>] {
+                        collection: self,
+                        idx: 0,
+                    }
                 }
             }
         }
