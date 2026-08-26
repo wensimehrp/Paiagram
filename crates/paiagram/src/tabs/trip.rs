@@ -1,17 +1,18 @@
-use egui::{Button, Color32, Popup, RectAlign, RichText, Sense, Ui, Vec2, WidgetText, vec2};
+use egui::{
+    Align2, AtomExt, Button, Color32, FontFamily, FontId, Popup, RectAlign, RichText, Sense, Ui,
+    Vec2, WidgetText, vec2,
+};
 use egui_i18n::tr;
 use paiagram_core::time::TimetableTime;
 use paiagram_core::trip::TravelMode::Flexible;
-use paiagram_core::trip::{TEntry, TravelMode};
-use paiagram_core::{Command, TripKey};
+use paiagram_core::trip::{TEntry, TEstimate, TravelMode, TripSchedule};
+use paiagram_core::{Command, Source, TripKey};
 use serde::{Deserialize, Serialize};
 
 use super::Tab;
-use crate::App;
+use crate::UiCommand::OpenOrFocus;
 use crate::widgets::{DurationDragValue, TimeDragValue};
-// use crate::widgets::timetable_popup::{
-//     arrival_popup, departure_popup, shift_at_value, shift_for_value,
-// };
+use crate::{App, MainTab, UiCommand};
 
 #[derive(Serialize, Deserialize, Clone, PartialEq)]
 pub(crate) struct TripTab {
@@ -71,63 +72,103 @@ fn show_trip(tab: &mut TripTab, app: &mut App, ui: &mut Ui) {
                 ui.end_row();
                 // Remove button background
                 ui.visuals_mut().widgets.inactive.weak_bg_fill = Color32::TRANSPARENT;
-                for entry in schedule
-                    .entries()
-                    .iter()
-                    .filter(|e| !matches!(e, TEntry::Derived { .. }) || tab.show_derived)
-                {
-                    row_ui(*entry, app, ui);
-                    ui.end_row();
-                }
+                schedule.estimates(&app.source.intervals, |estimates| {
+                    for (estimate, entry) in estimates.into_iter().copied() {
+                        row_ui(
+                            &schedule,
+                            estimates,
+                            estimate,
+                            entry,
+                            &app.source,
+                            &mut app.ui_action_queue,
+                            &mut app.command_queue,
+                            ui,
+                        );
+                        ui.end_row();
+                    }
+                });
             });
         });
     });
 }
 
-fn row_ui(entry: TEntry, app: &mut App, ui: &mut Ui) {
+fn row_ui(
+    schedule: &TripSchedule,
+    estimates: &[(Option<TEstimate>, TEntry)],
+    estimate: Option<TEstimate>,
+    entry: TEntry,
+    source: &Source,
+    ui_queue: &mut Vec<UiCommand>,
+    cmd_queue: &mut Vec<Command>,
+    ui: &mut Ui,
+) {
     const BUTTON_SIZE: Vec2 = vec2(70.0, 18.0);
-    let Some(station) = app.nodes.query(entry.node_key(), |view| *view.parent) else {
+    let Some(station) = source.nodes.query(entry.node_key(), |view| *view.parent) else {
         ui.label("No station");
         return;
     };
-    app.stations.query(station, |view| {
-        ui.label(view.name.as_str());
+    source.stations.query(station, |view| {
+        let mut text = RichText::new(view.name.as_str());
+        if matches!(entry, TEntry::Derived { .. }) {
+            text = text.weak();
+        }
+        if ui.button(text.atom_align(Align2::LEFT_CENTER)).clicked() {
+            // ui_queue.push(OpenOrFocus(MainTab::Trip(())));
+        };
     });
     let mut wide_size = BUTTON_SIZE;
     wide_size.x *= 2.0;
     wide_size.x += ui.spacing().item_spacing.x;
     let mut dd1 = None;
     let mut dd2 = None;
+    let fmt_str = |f: fn(TEstimate) -> TimetableTime, placeholder: &str| -> RichText {
+        RichText::new(if let Some(e) = estimate {
+            f(e).to_string()
+        } else {
+            placeholder.to_string()
+        })
+        .weak()
+        .font(FontId::new(13.0, FontFamily::Name("timetable font".into())))
+    };
     let (res1, res2) = ui
         .horizontal(|ui| match entry {
             TEntry::Derived { .. } => (
+                ui.add_sized(wide_size, Button::new(fmt_str(|e| e.arr, "||"))),
                 None,
-                ui.add_sized(wide_size, Button::new(RichText::new("(↓)").weak())),
             ),
             TEntry::Pinned { arr, dep, .. } => (
-                Some(match arr {
+                match arr {
                     TravelMode::For(mut d) => ui.add_sized(BUTTON_SIZE, DurationDragValue(&mut d)),
                     TravelMode::At(t) => ui.add_sized(BUTTON_SIZE, TimeDragValue(t, &mut dd1)),
-                    Flexible => ui.add_sized(BUTTON_SIZE, Button::new("〇")),
-                }),
-                match dep {
+                    Flexible => {
+                        ui.add_sized(BUTTON_SIZE, Button::new(fmt_str(|e| e.arr, "--:--:--")))
+                    }
+                },
+                Some(match dep {
                     TravelMode::For(mut d) => ui.add_sized(BUTTON_SIZE, DurationDragValue(&mut d)),
                     TravelMode::At(t) => ui.add_sized(BUTTON_SIZE, TimeDragValue(t, &mut dd2)),
-                    Flexible => ui.add_sized(BUTTON_SIZE, Button::new("〇")),
-                },
+                    Flexible => {
+                        ui.add_sized(BUTTON_SIZE, Button::new(fmt_str(|e| e.dep, "--:--:--")))
+                    }
+                }),
             ),
             TEntry::PinnedNonStop { pass, .. } => (
-                None,
                 match pass {
                     TravelMode::For(mut d) => ui.add_sized(wide_size, DurationDragValue(&mut d)),
                     TravelMode::At(t) => ui.add_sized(wide_size, TimeDragValue(t, &mut dd2)),
-                    Flexible => ui.add_sized(wide_size, Button::new("↓")),
+                    Flexible => ui.add_sized(wide_size, Button::new(fmt_str(|e| e.arr, "||"))),
                 },
+                None,
             ),
         })
         .inner;
 
-    Popup::menu(&res2).align(RectAlign::RIGHT).show(|ui| {
+    let res1_align = if matches!(entry, TEntry::Pinned { .. }) {
+        RectAlign::LEFT
+    } else {
+        RectAlign::RIGHT
+    };
+    Popup::menu(&res1).align(res1_align).show(|ui| {
         // display departure stuff and change mode
         if ui
             .button(match entry {
@@ -139,26 +180,32 @@ fn row_ui(entry: TEntry, app: &mut App, ui: &mut Ui) {
         {
             // do something
         }
-        match match entry {
-            TEntry::Derived { .. } => return,
-            TEntry::Pinned { dep, .. } => dep,
-            TEntry::PinnedNonStop { pass, .. } => pass,
-        } {
-            TravelMode::At(t) => {
-                ui.add(TimeDragValue(t, &mut None));
-            }
-            TravelMode::For(mut d) => {
-                ui.add(DurationDragValue(&mut d));
-            }
-            TravelMode::Flexible => {
-                ui.button("123");
-            }
-        }
+        let t = estimate.map(|e| e.arr).unwrap_or_default();
+        let mut d = schedule.arr_to_dur(estimates, entry.id()).unwrap_or_default();
+        if ui.add(TimeDragValue(t, &mut None)).clicked() {
+            // do something
+        };
+        if ui.add(DurationDragValue(&mut d)).clicked() {
+            // do something
+        };
+        if ui.button("Flexible").clicked() {
+            // do something
+        };
     });
-    let Some(res1) = res1 else {
+    let Some(res2) = res2 else {
         return;
     };
-    Popup::menu(&res1).align(RectAlign::LEFT).show(|ui| {
-        // only arrival
+    Popup::menu(&res2).align(RectAlign::RIGHT).show(|ui| {
+        let t = estimate.map(|e| e.arr).unwrap_or_default();
+        let mut d = estimate.map(|e| e.duration()).unwrap_or_default();
+        if ui.add(TimeDragValue(t, &mut None)).clicked() {
+            // do something
+        };
+        if ui.add(DurationDragValue(&mut d)).clicked() {
+            // do something
+        };
+        if ui.button("Flexible").clicked() {
+            // do something
+        };
     });
 }

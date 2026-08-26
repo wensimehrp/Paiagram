@@ -6,8 +6,8 @@ use std::cell::RefCell;
 use ecow::EcoVec;
 use serde::{Deserialize, Serialize};
 
-use crate::time::{TDuration, TTime};
-use crate::{IntervalCollection, NodeKey};
+use crate::time::{TDuration, TTime, TimetableTime};
+use crate::{Distance, Interval, IntervalCollection, NodeKey};
 
 /// Travel mode. Travel mode defines how the vehicle travels.
 #[derive(Clone, Serialize, Deserialize, Copy, Debug, PartialEq)]
@@ -97,12 +97,34 @@ impl TripSchedule {
     pub(crate) fn entries_mut(&mut self) -> &mut EcoVec<TEntry> {
         &mut self.entries
     }
+
+    pub fn arr_to_dur(
+        &self,
+        estimates: &[(Option<TEstimate>, TEntry)],
+        id: TEntryId,
+    ) -> Option<TDuration> {
+        let Some(pos) = estimates.iter().position(|it| it.1.id() == id) else {
+            return None;
+        };
+        let e1 = estimates[pos].0?.arr;
+        let e0 = estimates[..pos]
+            .iter()
+            .rfind(|(_, it)| {
+                matches!(
+                    make_se(*it),
+                    StackElem::AtAt(..) | StackElem::ForAt(..) | StackElem::ForFor(..)
+                )
+            })
+            .map(|(es, _)| *es)??
+            .dep;
+        Some(e1 - e0)
+    }
 }
 
 #[derive(Clone, Copy)]
 pub struct TEstimate {
-    arr: TTime,
-    dep: TTime,
+    pub arr: TTime,
+    pub dep: TTime,
 }
 
 impl TEstimate {
@@ -111,9 +133,14 @@ impl TEstimate {
     }
 }
 
+/// A pending flexible entry, whose exact timepoint is only known once the next
+/// stable timepoint shows up.
 struct EstimateSketch {
+    /// The node the entry passes.
     node: NodeKey,
+    /// The index of the entry's placeholder in the output buffer.
     slot: usize,
+    /// The duration the vehicle dwells at the node.
     dur: TDuration,
 }
 
@@ -133,7 +160,7 @@ enum StackElem {
 
 impl TripSchedule {
     /// Output the estimates of the trip at all places
-    pub fn estimates<F, R>(&self, intervals: &IntervalCollection, mut f: F) -> R
+    pub fn estimates<F, R>(&self, intervals: &IntervalCollection, f: F) -> R
     where
         F: FnMut(&[(Option<TEstimate>, TEntry)]) -> R,
     {
@@ -158,6 +185,9 @@ impl TripSchedule {
     where
         F: FnMut(&[(Option<TEstimate>, TEntry)]) -> R,
     {
+        // The departure time and node of the last stable timepoint. `For` modes are
+        // relative to it, and it anchors the distance-based estimates.
+        let mut prev_stable: Option<(TTime, NodeKey)> = None;
         for entry in &self.entries {
             let se = make_se(*entry);
             match se {
@@ -165,19 +195,132 @@ impl TripSchedule {
                     otb.push((None, *entry));
                 }
                 StackElem::In(node, dur) => {
-                    let slot = esb.len();
-                    let es = EstimateSketch { node, slot, dur };
-                    esb.push(es);
+                    // The estimate depends on the next stable timepoint, so only push
+                    // a placeholder for now and record where it lives.
+                    let slot = otb.len();
+                    otb.push((None, *entry));
+                    esb.push(EstimateSketch { node, slot, dur });
                 }
-                // unwind
-                StackElem::AtAt(node, at, dt) => {}
-                StackElem::ForAt(node, ad, dt) => {}
-                StackElem::ForFor(node, ad, dd) => {}
+                // A stable timepoint unwinds all pending flexible entries.
+                StackElem::AtAt(node, at, dt) => {
+                    if let Some((prev_t, prev_n)) = prev_stable {
+                        unwind(itv, esb, otb, prev_t, prev_n, node, at - prev_t);
+                    } else {
+                        esb.clear();
+                    }
+                    otb.push((Some(TEstimate { arr: at, dep: dt }), *entry));
+                    prev_stable = Some((dt, node));
+                }
+                StackElem::ForAt(node, ad, dt) => {
+                    if let Some((prev_t, prev_n)) = prev_stable {
+                        let ok = unwind(itv, esb, otb, prev_t, prev_n, node, ad);
+                        otb.push((
+                            ok.then(|| TEstimate {
+                                arr: prev_t + ad,
+                                dep: dt,
+                            }),
+                            *entry,
+                        ));
+                    } else {
+                        esb.clear();
+                        otb.push((None, *entry));
+                    }
+                    // `dt` is absolute, so this entry still anchors the next segment
+                    // even if its own estimate could not be resolved.
+                    prev_stable = Some((dt, node));
+                }
+                StackElem::ForFor(node, ad, dd) => {
+                    if let Some((prev_t, prev_n)) = prev_stable {
+                        let ok = unwind(itv, esb, otb, prev_t, prev_n, node, ad);
+                        if ok {
+                            let arr = prev_t + ad;
+                            let dep = arr + dd;
+                            otb.push((Some(TEstimate { arr, dep }), *entry));
+                            prev_stable = Some((dep, node));
+                        } else {
+                            otb.push((None, *entry));
+                        }
+                    } else {
+                        esb.clear();
+                        otb.push((None, *entry));
+                    }
+                }
             };
         }
         // finalize
         f(otb.as_slice())
     }
+}
+
+/// Resolve the pending flexible entries in `esb`, which lie between the previous
+/// stable timepoint `prev_t`/`prev_n` and the current stable timepoint at `curr_n`.
+/// `total` is the time from the previous departure to the current arrival.
+///
+/// The time is distributed proportionally to the lengths of the intervals along the
+/// way; the time spent dwelling at the flexible nodes does not count towards the
+/// travel time. The resolved estimates are written back into the corresponding output
+/// slots. Returns `false` if some interval along the way cannot be found in `itv`; the
+/// pending entries are then left without estimates.
+fn unwind(
+    itv: &IntervalCollection,
+    esb: &mut Vec<EstimateSketch>,
+    otb: &mut Vec<(Option<TEstimate>, TEntry)>,
+    prev_t: TTime,
+    prev_n: NodeKey,
+    curr_n: NodeKey,
+    total: TDuration,
+) -> bool {
+    // Dwelling does not count towards the average velocity.
+    let stop_dur: TDuration = esb.iter().map(|s| s.dur).sum();
+    let travel_dur = total - stop_dur;
+
+    // The total length of the segment, including the two stable endpoints.
+    let mut total_dis = 0i64;
+    let mut cur = prev_n;
+    for s in esb.iter() {
+        let Some(dis) = interval_length(itv, cur, s.node) else {
+            esb.clear();
+            return false;
+        };
+        total_dis += dis.0 as i64;
+        cur = s.node;
+    }
+    let Some(dis) = interval_length(itv, cur, curr_n) else {
+        esb.clear();
+        return false;
+    };
+    total_dis += dis.0 as i64;
+
+    // Distribute the travel time proportionally to the interval lengths. The lookups
+    // here cannot fail, as every pair was already checked above.
+    let total_dis_f = total_dis as f64;
+    let travel_s = travel_dur.0 as f64;
+    let mut t_f = prev_t.0 as f64;
+    let mut cur = prev_n;
+    for s in esb.drain(..) {
+        let dis = interval_length(itv, cur, s.node).unwrap().0 as f64;
+        let leg = if total_dis_f == 0.0 {
+            0.0
+        } else {
+            travel_s * dis / total_dis_f
+        };
+        t_f += leg;
+        let arr = TimetableTime(t_f.round() as i32);
+        let dep = arr + s.dur;
+        otb[s.slot].0 = Some(TEstimate { arr, dep });
+        t_f += s.dur.0 as f64;
+        cur = s.node;
+    }
+    true
+}
+
+/// The length of the interval from `a` to `b` in metres. A node is trivially at
+/// distance zero from itself; otherwise the interval must exist in the collection.
+fn interval_length(itv: &IntervalCollection, a: NodeKey, b: NodeKey) -> Option<Distance> {
+    if a == b {
+        return Some(Distance::ZERO);
+    }
+    itv.get((a, b)).map(Interval::length)
 }
 
 fn make_se(entry: TEntry) -> StackElem {
@@ -198,6 +341,309 @@ fn make_se(entry: TEntry) -> StackElem {
             (Tm::Flexible, Tm::For(dd)) => Se::In(node, dd),
             (Tm::Flexible, Tm::Flexible) => Se::In(node, TDuration::ZERO),
         },
-        TEntry::PinnedNonStop { node, .. } => Se::In(node, TDuration::ZERO),
+        TEntry::PinnedNonStop { node, pass, .. } => match pass {
+            Tm::At(dt) => Se::AtAt(node, dt, dt),
+            Tm::For(dd) => Se::ForFor(node, dd, TDuration::ZERO),
+            Tm::Flexible => Se::In(node, TDuration::ZERO),
+        },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::num::NonZeroU32;
+
+    use super::*;
+    use crate::{IntervalDirection, LonLat};
+
+    fn interval(a: NodeKey, b: NodeKey, len_m: u32) -> ((NodeKey, NodeKey), Interval) {
+        (
+            (a, b),
+            Interval {
+                nodes: EcoVec::from_iter([LonLat::ZERO, LonLat::ZERO]),
+                length: Some(NonZeroU32::new(len_m).unwrap()),
+                direction: IntervalDirection::OneWay,
+                trips: EcoVec::new(),
+            },
+        )
+    }
+
+    fn pinned(node: NodeKey, arr: TravelMode, dep: TravelMode) -> TEntry {
+        TEntry::Pinned {
+            node,
+            arr,
+            dep,
+            external: false,
+            id: TEntryId::new(),
+        }
+    }
+
+    fn nonstop(node: NodeKey, pass: TravelMode) -> TEntry {
+        TEntry::PinnedNonStop {
+            node,
+            pass,
+            external: false,
+            id: TEntryId::new(),
+        }
+    }
+
+    fn derived(node: NodeKey) -> TEntry {
+        TEntry::Derived {
+            node,
+            id: TEntryId::new(),
+        }
+    }
+
+    fn estimates(
+        entries: &[TEntry],
+        itvs: &IntervalCollection,
+    ) -> Vec<(Option<TEstimate>, TEntry)> {
+        let schedule = TripSchedule::new(EcoVec::from_iter(entries.iter().copied()));
+        schedule.estimates(itvs, |out| out.to_vec())
+    }
+
+    /// Assert the estimate of entry `i` equals `expected` (given as seconds), and that
+    /// the output mirrors the input entries.
+    fn check_est(
+        out: &[(Option<TEstimate>, TEntry)],
+        entries: &[TEntry],
+        i: usize,
+        expected: Option<(i32, i32)>,
+    ) {
+        assert_eq!(out[i].1, entries[i], "entry {i} mismatch");
+        match (&out[i].0, expected) {
+            (Some(est), Some((arr, dep))) => {
+                assert_eq!(est.arr, TimetableTime(arr), "entry {i} arrival");
+                assert_eq!(est.dep, TimetableTime(dep), "entry {i} departure");
+            }
+            (None, None) => {}
+            (Some(est), None) => panic!(
+                "entry {i}: expected no estimate, got {:?} -> {:?}",
+                est.arr, est.dep
+            ),
+            (None, Some(_)) => panic!("entry {i}: expected an estimate, got none"),
+        }
+    }
+
+    /// The example table from the design doc.
+    #[test]
+    fn estimates_follow_doc_example() {
+        use TravelMode as Tm;
+        let n: [NodeKey; 9] = std::array::from_fn(|_| NodeKey::new());
+        let entries = vec![
+            pinned(
+                n[0],
+                Tm::At(TTime::from_hms(10, 0, 0)),
+                Tm::For(TDuration::from_hms(0, 10, 0)),
+            ),
+            nonstop(n[1], Tm::For(TDuration::from_hms(0, 30, 0))),
+            pinned(n[2], Tm::For(TDuration::from_hms(0, 10, 0)), Tm::Flexible),
+            derived(n[3]),
+            nonstop(n[4], Tm::Flexible),
+            pinned(
+                n[5],
+                Tm::For(TDuration::from_hms(1, 0, 0)),
+                Tm::At(TTime::from_hms(12, 0, 0)),
+            ),
+            pinned(n[6], Tm::Flexible, Tm::At(TTime::from_hms(12, 15, 0))),
+            pinned(n[7], Tm::Flexible, Tm::For(TDuration::from_hms(0, 30, 0))),
+            nonstop(n[8], Tm::At(TTime::from_hms(13, 0, 0))),
+        ];
+        let mut itvs = IntervalCollection::default();
+        for (a, b, len) in [
+            (n[0], n[1], 1000),
+            (n[1], n[2], 1000),
+            (n[2], n[3], 1000),
+            (n[3], n[4], 2000),
+            (n[4], n[5], 1000),
+            (n[5], n[6], 1000),
+            (n[6], n[7], 2000),
+            (n[7], n[8], 1000),
+        ] {
+            let (k, v) = interval(a, b, len);
+            itvs.insert(k, v);
+        }
+        let out = estimates(&entries, &itvs);
+        assert_eq!(out.len(), entries.len());
+        let expected = [
+            Some((36000, 36600)), // 10:00, 10:10
+            Some((38400, 38400)), // 10:40, 10:40
+            Some((39000, 39000)), // 10:50, 10:50
+            Some((39900, 39900)), // 11:05, 11:05
+            Some((41700, 41700)), // 11:35, 11:35
+            Some((42600, 43200)), // 11:50, 12:00
+            Some((44100, 44100)), // 12:15, 12:15
+            Some((44700, 46500)), // 12:25, 12:55
+            Some((46800, 46800)), // 13:00, 13:00
+        ];
+        for (i, exp) in expected.into_iter().enumerate() {
+            check_est(&out, &entries, i, exp);
+        }
+    }
+
+    /// A missing interval makes the whole segment unresolvable, but the schedule
+    /// recovers at the next `At` timepoint.
+    #[test]
+    fn estimates_missing_on_inaccessible_route() {
+        use TravelMode as Tm;
+        let n: [NodeKey; 5] = std::array::from_fn(|_| NodeKey::new());
+        let entries = vec![
+            pinned(
+                n[0],
+                Tm::At(TTime::from_hms(10, 0, 0)),
+                Tm::For(TDuration::from_hms(0, 10, 0)),
+            ),
+            derived(n[1]), // the interval (n[0], n[1]) is intentionally missing
+            pinned(
+                n[2],
+                Tm::For(TDuration::from_hms(0, 30, 0)),
+                Tm::At(TTime::from_hms(11, 0, 0)),
+            ),
+            pinned(
+                n[3],
+                Tm::At(TTime::from_hms(11, 30, 0)),
+                Tm::For(TDuration::from_hms(0, 5, 0)),
+            ),
+            pinned(
+                n[4],
+                Tm::For(TDuration::from_hms(0, 10, 0)),
+                Tm::At(TTime::from_hms(12, 0, 0)),
+            ),
+        ];
+        let mut itvs = IntervalCollection::default();
+        let (k, v) = interval(n[3], n[4], 1000);
+        itvs.insert(k, v);
+        let out = estimates(&entries, &itvs);
+        let expected = [
+            Some((36000, 36600)), // 10:00, 10:10
+            None,                 // derived: interval (n[0], n[1]) missing
+            None,                 // ForAt: the unwind failed
+            Some((41400, 41700)), // 11:30, 11:35 — AtAt recovers
+            Some((42300, 43200)), // 11:45, 12:00 — relative to entry 3's departure
+        ];
+        for (i, exp) in expected.into_iter().enumerate() {
+            check_est(&out, &entries, i, exp);
+        }
+    }
+
+    /// A `For` mode at the very start of the schedule has no reference and yields no
+    /// estimate, but its absolute departure still anchors the rest of the schedule.
+    #[test]
+    fn estimates_first_entry_relative_to_nothing() {
+        use TravelMode as Tm;
+        let n: [NodeKey; 2] = std::array::from_fn(|_| NodeKey::new());
+        let entries = vec![
+            pinned(
+                n[0],
+                Tm::For(TDuration::from_hms(0, 10, 0)),
+                Tm::At(TTime::from_hms(11, 0, 0)),
+            ),
+            pinned(
+                n[1],
+                Tm::At(TTime::from_hms(11, 30, 0)),
+                Tm::For(TDuration::from_hms(0, 10, 0)),
+            ),
+        ];
+        // The interval (n[0], n[1]) is intentionally missing as well.
+        let itvs = IntervalCollection::default();
+        let out = estimates(&entries, &itvs);
+        let expected = [None, Some((41400, 42000))]; // 11:30, 11:40
+        for (i, exp) in expected.into_iter().enumerate() {
+            check_est(&out, &entries, i, exp);
+        }
+    }
+
+    /// Flexible entries with no following stable timepoint cannot be estimated.
+    #[test]
+    fn estimates_trailing_flexible_entries() {
+        use TravelMode as Tm;
+        let n: [NodeKey; 3] = std::array::from_fn(|_| NodeKey::new());
+        let entries = vec![
+            pinned(
+                n[0],
+                Tm::At(TTime::from_hms(10, 0, 0)),
+                Tm::For(TDuration::from_hms(0, 10, 0)),
+            ),
+            derived(n[1]),
+            derived(n[2]),
+        ];
+        let itvs = IntervalCollection::default();
+        let out = estimates(&entries, &itvs);
+        let expected = [Some((36000, 36600)), None, None];
+        for (i, exp) in expected.into_iter().enumerate() {
+            check_est(&out, &entries, i, exp);
+        }
+    }
+
+    /// External entries are skipped entirely, and do not disturb the stable
+    /// timepoint chain.
+    #[test]
+    fn estimates_skip_external_entries() {
+        use TravelMode as Tm;
+        let n: [NodeKey; 3] = std::array::from_fn(|_| NodeKey::new());
+        let entries = vec![
+            pinned(
+                n[0],
+                Tm::At(TTime::from_hms(10, 0, 0)),
+                Tm::For(TDuration::from_hms(0, 10, 0)),
+            ),
+            TEntry::Pinned {
+                node: n[1],
+                arr: Tm::At(TTime::from_hms(10, 15, 0)),
+                dep: Tm::For(TDuration::from_hms(0, 5, 0)),
+                external: true,
+                id: TEntryId::new(),
+            },
+            pinned(
+                n[2],
+                Tm::For(TDuration::from_hms(0, 10, 0)),
+                Tm::At(TTime::from_hms(11, 0, 0)),
+            ),
+        ];
+        let mut itvs = IntervalCollection::default();
+        let (k, v) = interval(n[0], n[2], 1000);
+        itvs.insert(k, v);
+        let out = estimates(&entries, &itvs);
+        let expected = [
+            Some((36000, 36600)), // 10:00, 10:10
+            None,                 // external
+            Some((37200, 39600)), // 10:20, 11:00 — anchored at entry 0's departure
+        ];
+        for (i, exp) in expected.into_iter().enumerate() {
+            check_est(&out, &entries, i, exp);
+        }
+    }
+
+    /// A flexible entry at the same node as the previous stable timepoint travels
+    /// zero distance, so only its dwell time counts.
+    #[test]
+    fn estimates_same_node_has_zero_distance() {
+        use TravelMode as Tm;
+        let n: [NodeKey; 2] = std::array::from_fn(|_| NodeKey::new());
+        let entries = vec![
+            pinned(
+                n[0],
+                Tm::At(TTime::from_hms(10, 0, 0)),
+                Tm::For(TDuration::from_hms(0, 10, 0)),
+            ),
+            pinned(n[0], Tm::Flexible, Tm::For(TDuration::from_hms(0, 5, 0))),
+            pinned(
+                n[1],
+                Tm::For(TDuration::from_hms(0, 30, 0)),
+                Tm::At(TTime::from_hms(11, 0, 0)),
+            ),
+        ];
+        let mut itvs = IntervalCollection::default();
+        let (k, v) = interval(n[0], n[1], 1000);
+        itvs.insert(k, v);
+        let out = estimates(&entries, &itvs);
+        let expected = [
+            Some((36000, 36600)), // 10:00, 10:10
+            Some((36600, 36900)), // 10:10, 10:15 — zero travel to the same node
+            Some((38400, 39600)), // 10:40, 11:00
+        ];
+        for (i, exp) in expected.into_iter().enumerate() {
+            check_est(&out, &entries, i, exp);
+        }
     }
 }

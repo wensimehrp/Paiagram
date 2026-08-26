@@ -1,7 +1,6 @@
 use std::sync::{Arc, LazyLock};
 
-use egui::epaint::text::{FontInsert, FontPriority, InsertFontFamily};
-use egui::{FontData, FontDefinitions, FontFamily, FontId, TextStyle};
+use egui::{FontDefinitions, FontFamily, FontId, TextStyle};
 use fontdb::{Family, ID};
 use log::{info, warn};
 

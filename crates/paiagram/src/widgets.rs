@@ -26,7 +26,6 @@ impl<'a> egui::Widget for TimeDragValue<'a> {
             TimeDragValueStates::NotDragging => self.0,
             TimeDragValueStates::Dragging(t) => t,
         };
-        let prev_text_style = ui.style().drag_value_text_style.clone();
         ui.style_mut().drag_value_text_style = TextStyle::Name("timetable font".into());
         // TODO: find a way to display the second in smaller scripts, i.e. 12:00 ₀₀
         let widget = DragValue::new(&mut new)
@@ -34,7 +33,6 @@ impl<'a> egui::Widget for TimeDragValue<'a> {
             .custom_formatter(|v, _| TimetableTime::from_f64(v).to_string())
             .custom_parser(|s| TimetableTime::from_str(s).map(TimetableTime::to_f64));
         let res = ui.add(widget);
-        ui.style_mut().drag_value_text_style = prev_text_style;
         match current_state {
             TimeDragValueStates::NotDragging => {
                 *self.1 = None;
