@@ -94,27 +94,28 @@ impl CommandPalette {
             self.matched.extend(extender)
         }
 
-        if let Some(item) = egui::ScrollArea::vertical()
+        let Some(item) = egui::ScrollArea::vertical()
             .auto_shrink([false, true])
             .show(ui, |ui| {
                 self.alternatives_ui(ui, enter_pressed, scroll_to_selected_alternative)
             })
             .inner
-        {
-            if let Some(tab) = match item {
-                MatchedType::Route(k) => None,
-                MatchedType::Station(k) => None,
-                MatchedType::Trip(k) => Some(MainTab::Trip(TripTab::new(k))),
-                MatchedType::Tab(f) => Some(f()),
-                MatchedType::LoadOuDiaSecond => {
-                    // TODO
-                    None
-                }
-            } {
-                app.ui_action_queue.push(UiCommand::OpenOrFocus(tab));
+        else {
+            return;
+        };
+        if let Some(tab) = match item {
+            MatchedType::Route(k) => None,
+            MatchedType::Station(k) => None,
+            MatchedType::Trip(k) => Some(MainTab::Trip(TripTab::new(k))),
+            MatchedType::Tab(f) => Some(f()),
+            MatchedType::LoadOuDiaSecond => {
+                // TODO
+                None
             }
-            self.clear();
+        } {
+            app.ui_action_queue.push(UiCommand::OpenOrFocus(tab));
         }
+        self.clear();
     }
 
     fn alternatives_ui(

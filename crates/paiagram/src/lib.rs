@@ -17,9 +17,9 @@ use egui_tiles::{
 };
 use futures_lite::future::block_on;
 use log::{info, warn};
-use paiagram_core::Source;
 use paiagram_core::import::{ImportType, generate_commands};
 use paiagram_core::time::Tick;
+use paiagram_core::{Command, Source};
 use rfd::AsyncFileDialog;
 use serde::{Deserialize, Serialize};
 use tabs::all_tabs::*;
@@ -36,6 +36,7 @@ pub struct App {
     preferences: config::Preferences,
     settings: config::Settings,
     ui_action_queue: Vec<UiCommand>,
+    command_queue: Vec<Command>,
     selected_items: SelectedItems,
 }
 
@@ -52,14 +53,25 @@ impl App {
             timer: GlobalTimer::new(),
             preferences: config::Preferences::new(ctx),
             settings: config::Settings::default(),
-            ui_action_queue: Vec::default(),
+            ui_action_queue: Vec::with_capacity(100),
+            command_queue: Vec::with_capacity(100),
             selected_items: SelectedItems::None,
         }
     }
+    /// Apply UI commands and change the main ui state
     fn apply_ui_commands(&mut self, mus: &mut MainUiState) {
         for cmd in self.ui_action_queue.drain(..) {
             match cmd {
                 UiCommand::OpenOrFocus(tab) => mus.open_or_focus(tab),
+            }
+        }
+    }
+    /// Clear the command queue and apply queued commands to the source
+    fn apply_commands(&mut self) {
+        for cmd in self.command_queue.drain(..) {
+            // TODO: warn about fails in GUI;
+            if !self.source.apply_command(cmd.clone()) {
+                warn!("Failed to apply command {:?}", cmd);
             }
         }
     }
@@ -228,6 +240,7 @@ pub fn show_ui(
 ) {
     ui_state.command_palette.show(ui.ctx(), app);
     app.apply_ui_commands(&mut ui_state.mus);
+    app.apply_commands();
     Panel::top("top panel").exact_size(32.0).show(ui, |ui| {
         ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
             let res = ui.button("File");
@@ -304,12 +317,12 @@ pub fn show_ui(
     });
     Panel::bottom("bottom panel").exact_size(24.0).show(ui, |ui| {
         ui.horizontal_centered(|ui| {
-            let mut time = app.timer.ticks().to_timetable_time();
+            let time = app.timer.ticks().to_timetable_time();
             ui.add_enabled(
                 !app.timer.sync_to_real_time,
                 egui::Checkbox::new(&mut app.timer.animation_playing, ""),
             );
-            let time_response = ui.add(TimeDragValue(&mut time));
+            let time_response = ui.add(TimeDragValue(time, &mut None));
             ui.add_enabled(
                 !app.timer.sync_to_real_time,
                 egui::DragValue::new(&mut app.timer.animation_speed).fixed_decimals(1).suffix("×"),

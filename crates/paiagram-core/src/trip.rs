@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+#![doc = include_str!("trip/doc.md")]
 
 use std::cell::RefCell;
 
@@ -67,8 +68,16 @@ impl TEntry {
             Self::PinnedNonStop { node, .. } => *node,
         }
     }
+    pub fn id(&self) -> TEntryId {
+        match self {
+            Self::Derived { id, .. } => *id,
+            Self::Pinned { id, .. } => *id,
+            Self::PinnedNonStop { id, .. } => *id,
+        }
+    }
 }
 
+/// The trip's schedule.
 #[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
 pub struct TripSchedule {
     entries: EcoVec<TEntry>,
@@ -85,19 +94,19 @@ impl TripSchedule {
     }
 
     /// Mutable access to the schedule entries.
-    pub fn entries_mut(&mut self) -> &mut EcoVec<TEntry> {
+    pub(crate) fn entries_mut(&mut self) -> &mut EcoVec<TEntry> {
         &mut self.entries
     }
 }
 
 #[derive(Clone, Copy)]
-struct TEstimate {
+pub struct TEstimate {
     arr: TTime,
     dep: TTime,
 }
 
 impl TEstimate {
-    fn duration(self) -> TDuration {
+    pub fn duration(self) -> TDuration {
         self.dep - self.arr
     }
 }
@@ -123,7 +132,8 @@ enum StackElem {
 }
 
 impl TripSchedule {
-    fn estimates<F, R>(&self, intervals: &IntervalCollection, mut f: F) -> R
+    /// Output the estimates of the trip at all places
+    pub fn estimates<F, R>(&self, intervals: &IntervalCollection, mut f: F) -> R
     where
         F: FnMut(&[(Option<TEstimate>, TEntry)]) -> R,
     {
@@ -133,30 +143,40 @@ impl TripSchedule {
             OUTPUT_BUFFER.with(|r| {
                 let mut output_buf = r.borrow_mut();
                 output_buf.clear();
-                for entry in &self.entries {
-                    let se = make_se(*entry);
-                    match se {
-                        StackElem::Ignored => {
-                            output_buf.push((None, *entry));
-                        }
-                        StackElem::In(node, dur) => {
-                            let es = EstimateSketch {
-                                node,
-                                slot: estimate_buf.len(),
-                                dur,
-                            };
-                            estimate_buf.push(es);
-                        }
-                        // unwind
-                        StackElem::AtAt(node, at, dt) => {}
-                        StackElem::ForAt(node, ad, dt) => {}
-                        StackElem::ForFor(node, ad, dd) => {}
-                    };
-                }
-                // finalize
-                f(output_buf.as_slice())
+                self.estimates_inner(intervals, &mut estimate_buf, &mut output_buf, f)
             })
         })
+    }
+
+    fn estimates_inner<F, R>(
+        &self,
+        itv: &IntervalCollection,
+        esb: &mut Vec<EstimateSketch>,
+        otb: &mut Vec<(Option<TEstimate>, TEntry)>,
+        mut f: F,
+    ) -> R
+    where
+        F: FnMut(&[(Option<TEstimate>, TEntry)]) -> R,
+    {
+        for entry in &self.entries {
+            let se = make_se(*entry);
+            match se {
+                StackElem::Ignored => {
+                    otb.push((None, *entry));
+                }
+                StackElem::In(node, dur) => {
+                    let slot = esb.len();
+                    let es = EstimateSketch { node, slot, dur };
+                    esb.push(es);
+                }
+                // unwind
+                StackElem::AtAt(node, at, dt) => {}
+                StackElem::ForAt(node, ad, dt) => {}
+                StackElem::ForFor(node, ad, dd) => {}
+            };
+        }
+        // finalize
+        f(otb.as_slice())
     }
 }
 

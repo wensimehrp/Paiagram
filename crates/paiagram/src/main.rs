@@ -15,7 +15,7 @@ struct PaiagramApp {
 
 impl PaiagramApp {
     fn new(cc: &eframe::CreationContext) -> Self {
-        egui_extras::install_image_loaders(&cc.egui_ctx);
+        // egui_extras::install_image_loaders(&cc.egui_ctx);
         env_logger::init();
         // set styles
         cc.egui_ctx.global_style_mut(|style| {

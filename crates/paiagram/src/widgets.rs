@@ -1,5 +1,5 @@
 use egui::emath::Numeric;
-use egui::{DragValue, Pos2};
+use egui::{DragValue, TextStyle};
 use paiagram_core::units::time::{TDuration, TimetableTime};
 
 pub(crate) mod buttons;
@@ -8,25 +8,51 @@ pub(crate) mod search;
 // pub(crate) mod timetable_popup;
 
 /// [`DragValue`] for [`TimetableTime`].
-pub(crate) struct TimeDragValue<'a>(pub &'a mut TimetableTime);
+pub(crate) struct TimeDragValue<'a>(pub TimetableTime, pub &'a mut Option<TDuration>);
+
+#[derive(Default, Clone, Copy)]
+enum TimeDragValueStates {
+    #[default]
+    NotDragging,
+    Dragging(TimetableTime),
+}
 
 impl<'a> egui::Widget for TimeDragValue<'a> {
     fn ui(self, ui: &mut egui::Ui) -> egui::Response {
-        let shift_pressed = ui.input(|r| r.modifiers.shift_only());
-        ui.add(
-            DragValue::from_get_set(|v| {
-                if let Some(v) = v {
-                    if shift_pressed {
-                        *self.0 = TimetableTime::from_f64(v);
-                    } else {
-                        *self.0 = TimetableTime::from_hms(0, (v / 60.0).round() as i32, 0);
-                    }
-                }
-                self.0.to_f64()
-            })
+        let id = ui.next_auto_id().with("time drag value");
+        let mut current_state: TimeDragValueStates =
+            ui.data_mut(|w| w.remove_temp(id)).unwrap_or_default();
+        let mut new = match current_state {
+            TimeDragValueStates::NotDragging => self.0,
+            TimeDragValueStates::Dragging(t) => t,
+        };
+        let prev_text_style = ui.style().drag_value_text_style.clone();
+        ui.style_mut().drag_value_text_style = TextStyle::Name("timetable font".into());
+        // TODO: find a way to display the second in smaller scripts, i.e. 12:00 ₀₀
+        let widget = DragValue::new(&mut new)
+            .update_while_editing(false)
             .custom_formatter(|v, _| TimetableTime::from_f64(v).to_string())
-            .custom_parser(|s| TimetableTime::from_str(s).map(TimetableTime::to_f64)),
-        )
+            .custom_parser(|s| TimetableTime::from_str(s).map(TimetableTime::to_f64));
+        let res = ui.add(widget);
+        ui.style_mut().drag_value_text_style = prev_text_style;
+        match current_state {
+            TimeDragValueStates::NotDragging => {
+                *self.1 = None;
+                if res.dragged() {
+                    current_state = TimeDragValueStates::Dragging(new)
+                }
+            }
+            TimeDragValueStates::Dragging(..) => {
+                current_state = TimeDragValueStates::Dragging(new);
+                if !res.dragged() {
+                    let dt = new - self.0;
+                    *self.1 = Some(dt);
+                    current_state = TimeDragValueStates::NotDragging;
+                }
+            }
+        }
+        ui.data_mut(|w| w.insert_temp(id, current_state));
+        res
     }
 }
 

@@ -1,5 +1,7 @@
 use std::sync::{Arc, LazyLock};
 
+use egui::epaint::text::{FontInsert, FontPriority, InsertFontFamily};
+use egui::{FontData, FontDefinitions, FontFamily, FontId, TextStyle};
 use fontdb::{Family, ID};
 use log::{info, warn};
 
@@ -10,6 +12,7 @@ pub(crate) static FONT_DATABASE: LazyLock<fontdb::Database> = LazyLock::new(|| {
 });
 
 pub(crate) fn load_default_font(ctx: &egui::Context) -> &str {
+    // dynamic query
     let Some(face_id) = FONT_DATABASE.query(&fontdb::Query {
         families: &[Family::Name("Sarasa UI SC"), Family::SansSerif],
         ..Default::default()
@@ -19,11 +22,15 @@ pub(crate) fn load_default_font(ctx: &egui::Context) -> &str {
     };
     let font_name = FONT_DATABASE.face(face_id).map_or("<no name>", |info| &info.post_script_name);
     info!("Trying to load font `{}`", font_name);
-    load_font_to_egui(face_id, ctx);
+    load_font_to_egui(face_id, ctx, FontDefinitions::default());
     font_name
 }
 
-pub(crate) fn load_font_to_egui(face_id: ID, ctx: &egui::Context) {
+pub(crate) fn load_font_to_egui(
+    face_id: ID,
+    ctx: &egui::Context,
+    mut definitions: FontDefinitions,
+) {
     let Some(bytes) =
         FONT_DATABASE.with_face_data(face_id, |font_bytes, _index| font_bytes.to_owned())
     else {
@@ -31,15 +38,33 @@ pub(crate) fn load_font_to_egui(face_id: ID, ctx: &egui::Context) {
         return;
     };
     let bytes = Arc::new(bytes);
-    let mut fonts = egui::FontDefinitions::default();
-    fonts.font_data.insert(
+    definitions.font_data.insert(
         "system_font".into(),
         Arc::new(egui::FontData::from_owned((*bytes).clone())),
     );
-    fonts
+    definitions.font_data.insert(
+        "XF_Nstf".into(),
+        Arc::new(egui::FontData::from_static(include_bytes!(
+            "../assets/fonts/XF_Nstf.otf"
+        ))),
+    );
+    definitions
         .families
-        .entry(egui::FontFamily::Proportional)
+        .entry(FontFamily::Proportional)
         .or_default()
         .insert(0, "system_font".into());
-    ctx.set_fonts(fonts);
+    definitions
+        .families
+        .entry(FontFamily::Name("timetable font".into()))
+        .or_default()
+        .insert(0, "XF_Nstf".into());
+    ctx.global_style_mut(|s| {
+        s.text_styles.insert(TextStyle::Name("timetable font".into()), {
+            let mut default = FontId::default();
+            default.size = 13.0;
+            default.family = FontFamily::Name("timetable font".into());
+            default
+        });
+    });
+    ctx.set_fonts(definitions);
 }

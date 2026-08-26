@@ -116,6 +116,7 @@ impl Default for Settings {
 impl egui::Widget for &mut Preferences {
     fn ui(self, ui: &mut egui::Ui) -> egui::Response {
         egui::Grid::new("preferences grid")
+            .min_row_height(24.0)
             .num_columns(2)
             .show(ui, |ui| {
                 ui.label("Language");
@@ -176,7 +177,11 @@ impl egui::Widget for &mut Preferences {
                                 }
                                 let face_name = face.post_script_name.as_str();
                                 if ui.button(face_name).clicked() {
-                                    load_font_to_egui(face.id, ui.ctx());
+                                    load_font_to_egui(
+                                        face.id,
+                                        ui.ctx(),
+                                        ui.fonts(|r| r.definitions().clone()),
+                                    );
                                     self.font_name.clear();
                                     self.font_name.push_str(face_name);
                                 }
@@ -193,6 +198,7 @@ impl egui::Widget for &mut Preferences {
 impl egui::Widget for &mut Settings {
     fn ui(self, ui: &mut egui::Ui) -> egui::Response {
         egui::Grid::new("settings grid")
+            .min_row_height(24.0)
             .num_columns(2)
             .show(ui, |ui| {
                 ui.set_max_width(ui.available_width());
