@@ -86,6 +86,7 @@ pub(crate) struct DurationDragValue<'a>(pub &'a mut TDuration);
 
 impl<'a> egui::Widget for DurationDragValue<'a> {
     fn ui(self, ui: &mut egui::Ui) -> egui::Response {
+        ui.style_mut().drag_value_text_style = TIMETABLTE_TEXT_STYLE.clone();
         let shift_pressed = ui.input(|r| r.modifiers.shift_only());
         ui.add(
             DragValue::from_get_set(|v| {
