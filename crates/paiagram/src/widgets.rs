@@ -1,6 +1,9 @@
 use egui::emath::Numeric;
 use egui::{DragValue, TextStyle};
+use log::{info, warn};
 use paiagram_core::units::time::{TDuration, TimetableTime};
+
+use crate::font::TIMETABLTE_TEXT_STYLE;
 
 pub(crate) mod buttons;
 pub(crate) mod indicators;
@@ -26,7 +29,7 @@ impl<'a> egui::Widget for TimeDragValue<'a> {
             TimeDragValueStates::NotDragging => self.0,
             TimeDragValueStates::Dragging(t) => t,
         };
-        ui.style_mut().drag_value_text_style = TextStyle::Name("timetable font".into());
+        ui.style_mut().drag_value_text_style = TIMETABLTE_TEXT_STYLE.clone();
         // TODO: find a way to display the second in smaller scripts, i.e. 12:00 ₀₀
         let widget = DragValue::new(&mut new)
             .update_while_editing(false)

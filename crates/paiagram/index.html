@@ -14,42 +14,23 @@
             data-trunk
             rel="rust"
             data-wasm-opt="z"
-            data-wasm-opt-params="--all-features --fast-math"
+            data-wasm-opt-params="--all-features --fast-math --enable-threads"
+            data-cargo-profile-release="wasm-release"
         />
         <!-- this is the base url relative to which other urls will be constructed. trunk will insert this from the public-url option -->
         <base data-trunk-public-url />
 
-        <link data-trunk rel="icon" href="assets/favicon.ico" />
+        <link
+            data-trunk
+            rel="icon"
+            href="assets/paiagram-adaptive-no-bg.svg"
+            type="image/svg+xml"
+        />
 
         <link data-trunk rel="copy-file" href="assets/sw.js" />
         <link data-trunk rel="copy-file" href="assets/manifest.json" />
-        <link
-            data-trunk
-            rel="copy-file"
-            href="assets/favicon-192x192.png"
-            data-target-path="assets"
-        />
-        <link
-            data-trunk
-            rel="copy-file"
-            href="assets/favicon-512x512.png"
-            data-target-path="assets"
-        />
-        <link
-            data-trunk
-            rel="copy-file"
-            href="assets/apple-touch-icon.png"
-            data-target-path="assets"
-        />
-
-        <script
-            defer
-            src="https://cloud.umami.is/script.js"
-            data-website-id="067cd05f-b395-4813-916c-2063c383685f"
-        ></script>
-
         <link rel="manifest" href="manifest.json" />
-        <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+
         <meta
             name="theme-color"
             media="(prefers-color-scheme: light)"

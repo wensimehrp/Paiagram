@@ -14,11 +14,11 @@ categories.workspace = true
 [dependencies]
 bytemuck.workspace = true
 clap.workspace = true
+ecow.workspace = true
 eframe.workspace = true
 egui.workspace = true
 egui_commonmark = "0.23.0"
 egui_extras.workspace = true
-ecow.workspace = true
 egui-i18n.workspace = true
 egui_table = "0.8.0"
 egui_tiles.workspace = true
@@ -37,6 +37,8 @@ paiagram-core = { path = "../paiagram-core" }
 paiagram-raptor = { path = "../paiagram-raptor" }
 paiagram-rw = { path = "../paiagram-rw" }
 paste.workspace = true
+pollster.workspace = true
+rayon.workspace = true
 rfd.workspace = true
 serde.workspace = true
 smallvec.workspace = true
@@ -45,7 +47,11 @@ walkers = { version = "0.53.0", features = ["mvt"] }
 web-time.workspace = true
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom.workspace = true
+jiff = { workspace = true, features = ["js"] }
 js-sys.workspace = true
 serde_html_form = "0.4.0"
 wasm-bindgen.workspace = true
 wasm-bindgen-futures.workspace = true
+wasm-bindgen-rayon.workspace = true
+web-sys.workspace = true

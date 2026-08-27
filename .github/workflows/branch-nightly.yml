@@ -29,25 +29,20 @@ jobs:
       - uses: DeterminateSystems/magic-nix-cache-action@v13
       - uses: Swatinem/rust-cache@v2
 
-      - name: Download Sarasa fonts
-        run: nix develop .#default --command just get-fonts
-
       - name: Prepare Pages artifact
-        run: nix develop .#default --command just prep-wasm
+        run: nix develop .#default --command just release-wasm-app
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@v7
         with:
           name: wasm-pages
-          path: ./dist/nightly
+          path: ./dist/app
 
-      - name: Deploy
-        uses: peaceiris/actions-gh-pages@v4
+      - uses: peaceiris/actions-gh-pages@v4
         with:
           personal_token: ${{ secrets.PERSONAL_TOKEN }}
           external_repository: WenSimEHRP/Paiagram-Archive
           user_name: github-actions[bot]
           user_email: 41898282+github-actions[bot]@users.noreply.github.com
           publish_branch: main
-          publish_dir: ./dist/nightly
+          publish_dir: ./dist/app
           destination_dir: ${{ github.ref_name }}-preview

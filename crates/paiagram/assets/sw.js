@@ -1,4 +1,4 @@
-var cacheName = "paiagram";
+var cacheName = "paiagram-pwa";
 var filesToCache = [
     "./",
     "./index.html",

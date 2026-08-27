@@ -1,4 +1,4 @@
 [toolchain]
-channel = "1.95"
+channel = "nightly-2026-08-26"
 components = ["rust-src", "rustc-dev", "llvm-tools"]
 targets = ["x86_64-unknown-linux-gnu", "wasm32-unknown-unknown"]

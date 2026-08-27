@@ -9,26 +9,64 @@ mod tabs;
 mod timer;
 mod widgets;
 
+use std::sync::{Arc, Mutex};
+
 pub use config::AppLanguage;
 use egui::{Color32, Frame, OpenUrl, Panel, Stroke, Ui};
 use egui_i18n::tr;
 use egui_tiles::{
     Behavior, ContainerKind, SimplificationOptions, Tile, TileId, Tiles, Tree, UiResponse,
 };
-use futures_lite::future::block_on;
 use log::{info, warn};
 use paiagram_core::import::{ImportType, generate_commands};
 use paiagram_core::time::Tick;
 use paiagram_core::{Command, Source};
+use pollster::block_on;
+use rayon::prelude::*;
 use rfd::AsyncFileDialog;
 use serde::{Deserialize, Serialize};
 use tabs::all_tabs::*;
 use tabs::{MainTab, Tab, for_all_tabs};
+#[cfg(target_arch = "wasm32")]
+pub use wasm_bindgen_rayon::init_thread_pool;
 
 use crate::selection::SelectedItems;
 use crate::timer::GlobalTimer;
 use crate::widgets::TimeDragValue;
 pub struct UiPlugin;
+
+fn load_file(dialog: AsyncFileDialog, import_type: ImportType, state: Arc<Mutex<FileLoadState>>) {
+    *state.lock().unwrap() = FileLoadState::Reading { progress: None };
+    let process = async move {
+        let data = dialog.pick_file().await;
+        let Some(data) = data else {
+            *state.lock().unwrap() = FileLoadState::NotProcessing;
+            return;
+        };
+        *state.lock().unwrap() = FileLoadState::Processing { progress: None };
+        let data = data.read().await;
+        rayon::spawn(move || {
+            let commands = generate_commands(&data, import_type).map_err(|e| e.to_string());
+            *state.lock().unwrap() = FileLoadState::Done(commands)
+        });
+    };
+    #[cfg(target_arch = "wasm32")]
+    {
+        wasm_bindgen_futures::spawn_local(process);
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _ = std::thread::spawn(move || block_on(process));
+    }
+}
+
+#[derive(Clone)]
+enum FileLoadState {
+    NotProcessing,
+    Reading { progress: Option<f32> },
+    Processing { progress: Option<f32> },
+    Done(Result<Command, String>),
+}
 
 pub struct App {
     source: Source,
@@ -38,6 +76,7 @@ pub struct App {
     ui_action_queue: Vec<UiCommand>,
     command_queue: Vec<Command>,
     selected_items: SelectedItems,
+    file_load_state: Arc<Mutex<FileLoadState>>,
 }
 
 #[derive(Default)]
@@ -56,6 +95,7 @@ impl App {
             ui_action_queue: Vec::with_capacity(100),
             command_queue: Vec::with_capacity(100),
             selected_items: SelectedItems::None,
+            file_load_state: Arc::new(Mutex::new(FileLoadState::NotProcessing)),
         }
     }
     /// Apply UI commands and change the main ui state
@@ -210,28 +250,6 @@ impl<'w> Behavior<MainTab> for MainTabViewer<'w> {
     }
 }
 
-/// WASM fullscreen toggle
-#[cfg(target_arch = "wasm32")]
-#[wasm_bindgen(inline_js = r#"
-export function toggle_fullscreen(id) {
-    if (!document.fullscreenElement) {
-        const el = document.getElementById(id);
-        if (el?.requestFullscreen) {
-            el.requestFullscreen().catch(err => {
-                console.error(`Error attempting to enable full-screen mode: ${err.message}`);
-            });
-        }
-    } else {
-        if (document.exitFullscreen) {
-            document.exitFullscreen();
-        }
-    }
-}
-"#)]
-extern "C" {
-    fn toggle_fullscreen(id: &str);
-}
-
 pub fn show_ui(
     ui: &mut Ui,
     app: &mut App,
@@ -241,6 +259,18 @@ pub fn show_ui(
     ui_state.command_palette.show(ui.ctx(), app);
     app.apply_ui_commands(&mut ui_state.mus);
     app.apply_commands();
+    if let Ok(mut cmd) = app.file_load_state.try_lock()
+        && matches!(*cmd, FileLoadState::Done(..))
+        && let FileLoadState::Done(res) = std::mem::replace(&mut *cmd, FileLoadState::NotProcessing)
+    {
+        let _result = match res {
+            Ok(cmd) => app.source.apply_command(cmd),
+            Err(s) => {
+                warn!("{s}");
+                false
+            }
+        };
+    }
     Panel::top("top panel").exact_size(32.0).show(ui, |ui| {
         ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
             let res = ui.button("File");
@@ -251,44 +281,29 @@ pub fn show_ui(
             }
             #[cfg(target_arch = "wasm32")]
             if ui.button("Fullscreen").clicked() {
-                toggle_fullscreen("paiagram_canvas");
+                use eframe::web_sys;
+                let document = web_sys::window().unwrap().document().unwrap();
+                if document.fullscreen_element().is_none() {
+                    let _ =
+                        document.get_element_by_id("paiagram_canvas").unwrap().request_fullscreen();
+                } else {
+                    document.exit_fullscreen();
+                }
             }
             egui::Popup::menu(&res).show(|ui| {
-                if ui.button("Import OuDia(Second)").clicked() {
-                    info!("trying to read file");
-                    let Some(file) = block_on(
-                        AsyncFileDialog::new()
-                            .add_filter("OuDiaSecond", ImportType::OuDiaSecond.file_extensions())
-                            .add_filter("OuDia", ImportType::OuDia.file_extensions())
-                            .pick_file(),
-                    ) else {
-                        warn!("File not picked");
-                        return;
-                    };
-                    info!("File picked");
-                    let data = block_on(file.read());
-                    info!("Data read");
-                    let command = generate_commands(
-                        &data,
-                        if file.file_name().ends_with("oud2") {
-                            ImportType::OuDiaSecond
-                        } else {
-                            ImportType::OuDia
-                        },
-                    );
-                    if let Err(e) = match command {
-                        Ok(cmd) => {
-                            if app.apply_command(cmd) {
-                                Ok(())
-                            } else {
-                                Err("Failed to apply stuff".to_string())
-                            }
-                        }
-                        Err(e) => Err(format!("Error while loading command: {:?}", e)),
-                    } {
-                        warn!("{e}");
+                for (button_display, category, import_type) in [
+                    ("Import OuDiaSecond", "OuDiaSecond", ImportType::OuDiaSecond),
+                    ("Import OuDia", "OuDia", ImportType::OuDia),
+                ] {
+                    if !ui.button(button_display).clicked() {
+                        continue;
                     }
-                };
+                    info!("Trying to read {category}");
+                    let dialog = AsyncFileDialog::new()
+                        .set_title(button_display)
+                        .add_filter(category, import_type.file_extensions());
+                    load_file(dialog, import_type, app.file_load_state.clone());
+                }
             });
             let res = ui.button(tr!("menu-about"));
             egui::Popup::menu(&res).show(|ui| {
@@ -340,7 +355,7 @@ pub fn show_ui(
                 *app.timer.ticks_mut(&key) = Tick::from_timetable_time(time);
                 app.timer.unlock(key);
             }
-            if app.timer.animation_playing {
+            if app.timer.animation_playing || app.timer.sync_to_real_time {
                 ui.ctx().request_repaint();
             }
             app.timer.march(delta_time.as_secs_f64());

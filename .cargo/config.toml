@@ -3,7 +3,18 @@ linker = "clang"
 rustflags = ["-C", "link-arg=-fuse-ld=mold"]
 
 [target.wasm32-unknown-unknown]
-runner = "/home/jeremyg/.cargo/bin/wasm-server-runner"
+rustflags = [
+  "--cfg=getrandom_backend=\"wasm_js\"",
+  "--cfg=web_sys_unstable_apis",  # for query_local_fonts
+  "-Ctarget-feature=+simd128,+atomics,+bulk-memory,+mutable-globals",
+  "-Clink-arg=--shared-memory",
+  "-Clink-arg=--max-memory=1073741824",
+  "-Clink-arg=--import-memory",
+  "-Clink-arg=--export=__wasm_init_tls",
+  "-Clink-arg=--export=__tls_size",
+  "-Clink-arg=--export=__tls_align",
+  "-Clink-arg=--export=__tls_base",
+]
 
-[doc.extern-map.registries]
-crates-io = "https://docs.rs/{pkg}/{version}/"
+[unstable]
+build-std = ["std", "panic_abort"]

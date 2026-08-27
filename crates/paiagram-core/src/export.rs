@@ -14,7 +14,7 @@ pub trait ExportObject {
         let mut filename = String::new();
         filename.push_str(self.filename().as_ref());
         filename.push_str(self.extension().as_ref());
-        paiagram_rw::write::write_file(filename, move |writer| writer.write_all(&buffer));
+        // paiagram_rw::write::write_file(filename, move |writer| writer.write_all(&buffer));
     }
     /// the filename
     fn filename(&self) -> impl AsRef<str> {
