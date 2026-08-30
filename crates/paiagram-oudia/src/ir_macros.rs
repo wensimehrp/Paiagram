@@ -3,7 +3,8 @@
 
 macro_rules! make_ir_type {
     {
-        $(#[$struct_attr:meta])* $ir_name:ident $(as [$first_ir_alias:expr $(, $rest_ir_alias:expr)*])?;
+        $(#[$struct_attr:meta])*
+        struct $ir_name:ident $(as [$first_ir_alias:expr $(, $rest_ir_alias:expr)*])?;
         $(
             $(#[$field_attr:meta])*
             $field_vis:vis $field_name:ident
@@ -57,7 +58,7 @@ macro_rules! make_ir_type {
 macro_rules! make_ir_enum {
     {
         $(#[$enum_attr:meta])*
-        $ir_name:ident $(as [$first_ir_alias:expr $(, $rest_ir_alias:expr)*])?;
+        enum $ir_name:ident $(as [$first_ir_alias:expr $(, $rest_ir_alias:expr)*])?;
         $(
             $(#[$variant_attr:meta])*
             $variant_name:ident

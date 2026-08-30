@@ -11,12 +11,13 @@ use thiserror::Error;
 use crate::ir_macros::{make_ir_enum, make_ir_type, parse_fields};
 use crate::operation::{InsertOperation, parse_to_operation_hierarchy, parse_to_raw_operation};
 use crate::time::Time;
-use crate::timetable::{TimetableEntry, parse_to_timetable_entry};
+use crate::timetable::{TimetableEntry, normalize_times, parse_to_timetable_entry};
 use crate::{pair, structure};
+mod diagram_trips;
 
 make_ir_type! {
     /// The root of the structure
-    Root;
+    struct Root;
     /// File type. Usually the software name + version.
     pub file_type as ["FileType"]: String,
     /// The route in the file.
@@ -24,7 +25,7 @@ make_ir_type! {
 }
 
 make_ir_type! {
-    Route as ["Rosen", "路線"];
+    struct Route as ["Rosen", "路線"];
     /// The name of the route
     pub name as ["Rosenmei", "路線名"]: String,
     /// What stations are included in the route
@@ -40,7 +41,7 @@ make_ir_type! {
 
 make_ir_type! {
     /// A station on the route.
-    Station as ["Eki", "駅"];
+    struct Station as ["Eki", "駅"];
     pub name as ["Ekimei", "駅名"]: String,
     /// The abbreviation used in timetables.
     pub timetable_abbreviation as ["EkimeiJikokuRyaku", "駅名時刻略"]: Option<String>,
@@ -61,8 +62,49 @@ make_ir_type! {
     pub station_type as ["Ekikibo", "駅規模"]: StationType,
 }
 
+pub trait StationToGraph {
+    fn merge_duplicate(&self) -> Vec<&Station>;
+    fn to_graph<'a>(&'a self) -> petgraph::graph::UnGraph<&'a Station, ()>;
+}
+
+impl StationToGraph for [Station] {
+    fn merge_duplicate(&self) -> Vec<&Station> {
+        let mut ret: Vec<&Station> = self.iter().collect();
+        for curr in 0..ret.len() {
+            let Some(ext) = ret[curr].branch_index.or(ret[curr].loop_index) else {
+                continue;
+            };
+            if let Some(stn) = ret.get(ext).copied() {
+                ret[curr] = stn;
+            }
+        }
+        ret
+    }
+    fn to_graph<'a>(&'a self) -> petgraph::graph::UnGraph<&'a Station, ()> {
+        // only merge stations based on branch index and loop index
+        let mut graph = petgraph::graph::UnGraph::new_undirected();
+        let mut idxs: Vec<_> = self.iter().map(|stn| graph.add_node(stn)).collect();
+        for curr in 0..idxs.len() {
+            let Some(ext) = self[curr].branch_index.or(self[curr].loop_index) else {
+                continue;
+            };
+            if let Some(node_idx) = idxs.get(ext).copied() {
+                let old_idx = idxs[curr];
+                idxs[curr] = node_idx;
+                graph.remove_node(old_idx);
+            }
+        }
+        for [prev, next] in idxs.array_windows::<2>().copied() {
+            if graph.node_weight(prev).is_some() && graph.node_weight(next).is_some() {
+                graph.update_edge(prev, next, ());
+            }
+        }
+        graph
+    }
+}
+
 make_ir_type! {
-    Track;
+    struct Track;
     pub name as ["TrackName"]: String,
     pub abbreviation as ["TrackRyakusyou", "Track略称"]: String,
 }
@@ -107,23 +149,23 @@ impl std::str::FromStr for Color {
 
 make_ir_type! {
     /// A train class. E.g., local, express.
-    Class as ["Ressyasyubetsu", "列車種別"];
+    struct Class as ["Ressyasyubetsu", "列車種別"];
     pub name as ["Syubetsumei", "種別名"]: String,
     /// An optional abbreviation.
     pub abbreviation as ["Ryakusyou", "略称"]: Option<String>,
     /// The color displayed in diagrams and in the timetable.
-    pub diagram_line_color as ["DiagramSenColor", "ダイア線Color"]: Color,
+    pub diagram_line_color as ["DiagramSenColor", "ダイヤ線Color"]: Color,
 }
 
 make_ir_type! {
     /// A timetable set.
-    Diagram as ["Dia", "ダイヤ"];
+    struct Diagram as ["Dia", "ダイヤ"];
     pub name as ["DiaName"]: Option<String>,
     pub trips: Vec<Trip>,
 }
 
 make_ir_enum! {
-    Direction as ["Houkou", "方向"];
+    enum Direction as ["Houkou", "方向"];
     Up as ["Nobori", "上り"],
     Down as ["Kudari", "下り"],
 }
@@ -142,7 +184,7 @@ impl std::str::FromStr for Direction {
 }
 
 make_ir_enum! {
-    StationType as ["Ekikibo", "駅規模"];
+    enum StationType as ["Ekikibo", "駅規模"];
     Major as ["Ekikibo_Syuyou", "駅規模_主要"],
     Minor as ["Ekikibo_Ippan", "駅規模_一般"],
 }
@@ -161,7 +203,7 @@ impl std::str::FromStr for StationType {
 }
 
 make_ir_type! {
-    Trip as ["Ressya", "列車"];
+    struct Trip as ["Ressya", "列車"];
     pub name as ["Ressyabangou", "列車番号"]: Option<String>,
     pub comment as ["Bikou", "備考"]: Option<String>,
     pub direction as ["Houkou", "方向"]: Direction,
@@ -465,7 +507,7 @@ impl<'a> TryFrom<&[Structure<'a>]> for Trip {
                 |v: &[Cow<'a, str>]| -> Result<_, IrConversionError> {
                 let mut times = Vec::with_capacity(v.len());
                 for entry in v {
-                    let v = parse_to_timetable_entry(entry).unwrap();
+                    let v = parse_to_timetable_entry(entry)?;
                     times.push(v);
                 }
                 Ok(times)
@@ -484,6 +526,9 @@ impl<'a> TryFrom<&[Structure<'a>]> for Trip {
                 vals.iter().map(|it| parse_to_raw_operation(it)).collect::<Result<Vec<_>, _>>()?;
             times.insert_operations(hierarchy, operations);
         }
+        normalize_times(times.iter_mut().flat_map(|ent| {
+            [ent.arrival_time.as_mut(), ent.departure_time.as_mut()].into_iter().flatten()
+        }));
         Ok(Self {
             name,
             direction,
@@ -531,10 +576,33 @@ mod test {
     use crate::ast::parse_to_ast;
     type E = Result<(), Box<dyn std::error::Error>>;
 
-    fn get_ir() -> Result<Root, IrConversionError> {
+    pub(crate) fn get_ir() -> Result<Root, IrConversionError> {
         let s = include_str!("../test/sample.oud2");
         let ast = parse_to_ast(s)?;
         Root::try_from(ast.as_slice())
+    }
+
+    pub(crate) fn get_ir_small() -> Result<Root, IrConversionError> {
+        let s = include_str!("../test/sample2.oud2");
+        let ast = parse_to_ast(s)?;
+        Root::try_from(ast.as_slice())
+    }
+
+    #[test]
+    fn gen_graph() -> E {
+        let root = get_ir()?;
+        let graph = root.route.stations.to_graph();
+        use petgraph::dot::{Config, Dot};
+        println!(
+            "{:?}",
+            Dot::with_attr_getters(
+                &graph,
+                &[Config::EdgeNoLabel, Config::NodeNoLabel],
+                &|_, _| String::new(),
+                &|_, (_, stn)| format!("label = \"{}\"", stn.name)
+            )
+        );
+        Ok(())
     }
 
     #[test]

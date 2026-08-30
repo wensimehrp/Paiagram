@@ -12,13 +12,19 @@ use crate::time::Time;
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ServiceMode {
     /// Also known as `運行なし`.
+    ///
+    /// The trip does not visit the station
     #[default]
     #[doc(alias = "運行なし")]
     NoOperation = 0,
     /// Also known as `停車`.
+    ///
+    /// The trip visits the station and stops
     #[doc(alias = "停車")]
     Stop = 1,
     /// Also known as `通過`.
+    ///
+    /// The trip visits the station but does not stop
     #[doc(alias = "通過")]
     Pass = 2,
 }
@@ -26,7 +32,7 @@ pub enum ServiceMode {
 make_ir_type! {
     /// A timetable entry
     #[derive(Default)]
-    TimetableEntry as ["Ekijikoku", "駅時刻"];
+    struct TimetableEntry as ["Ekijikoku", "駅時刻"];
     pub service_mode as ["駅扱"]: ServiceMode,
     pub arrival_time as ["着時刻"]: Option<Time>,
     pub departure_time as ["発時刻"]: Option<Time>,
@@ -100,7 +106,19 @@ pub mod time {
     }
 }
 
-pub fn parse_to_timetable_entry(
+pub(crate) fn normalize_times<'a>(mut time_iter: impl Iterator<Item = &'a mut Time> + 'a) {
+    let Some(mut previous_time) = time_iter.next().copied() else {
+        return;
+    };
+    for time in time_iter {
+        while *time < previous_time {
+            *time += Time::from_hms(24, 0, 0);
+        }
+        previous_time = *time;
+    }
+}
+
+pub(crate) fn parse_to_timetable_entry(
     input: &'_ str,
 ) -> Result<TimetableEntry, pest::error::Error<time::Rule>> {
     let a = time::TimeParser::parse(time::Rule::timetable_entry, input)?.single()?;
