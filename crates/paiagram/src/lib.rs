@@ -20,9 +20,8 @@ use egui_tiles::{
 use log::{info, warn};
 use paiagram_core::import::{ImportType, generate_commands};
 use paiagram_core::time::Tick;
-use paiagram_core::{Command, Source};
-use pollster::block_on;
-use rayon::prelude::*;
+use paiagram_core::{Command, SaveFile, Source};
+use paiagram_rw::{ExportObject, FileWriteState};
 use rfd::AsyncFileDialog;
 use serde::{Deserialize, Serialize};
 use tabs::all_tabs::*;
@@ -40,7 +39,7 @@ fn load_file(dialog: AsyncFileDialog, import_type: ImportType, state: Arc<Mutex<
     let process = async move {
         let data = dialog.pick_file().await;
         let Some(data) = data else {
-            *state.lock().unwrap() = FileLoadState::NotProcessing;
+            *state.lock().unwrap() = FileLoadState::Idle;
             return;
         };
         *state.lock().unwrap() = FileLoadState::Processing { progress: None };
@@ -56,13 +55,13 @@ fn load_file(dialog: AsyncFileDialog, import_type: ImportType, state: Arc<Mutex<
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let _ = std::thread::spawn(move || block_on(process));
+        let _ = std::thread::spawn(move || pollster::block_on(process));
     }
 }
 
 #[derive(Clone)]
 enum FileLoadState {
-    NotProcessing,
+    Idle,
     Reading { progress: Option<f32> },
     Processing { progress: Option<f32> },
     Done(Result<Command, String>),
@@ -77,6 +76,7 @@ pub struct App {
     command_queue: Vec<Command>,
     selected_items: SelectedItems,
     file_load_state: Arc<Mutex<FileLoadState>>,
+    file_write_state: Arc<Mutex<FileWriteState>>,
 }
 
 #[derive(Default)]
@@ -95,7 +95,8 @@ impl App {
             ui_action_queue: Vec::with_capacity(100),
             command_queue: Vec::with_capacity(100),
             selected_items: SelectedItems::None,
-            file_load_state: Arc::new(Mutex::new(FileLoadState::NotProcessing)),
+            file_load_state: Arc::new(Mutex::new(FileLoadState::Idle)),
+            file_write_state: Arc::new(Mutex::new(FileWriteState::Idle)),
         }
     }
     /// Apply UI commands and change the main ui state
@@ -261,7 +262,7 @@ pub fn show_ui(
     app.apply_commands();
     if let Ok(mut cmd) = app.file_load_state.try_lock()
         && matches!(*cmd, FileLoadState::Done(..))
-        && let FileLoadState::Done(res) = std::mem::replace(&mut *cmd, FileLoadState::NotProcessing)
+        && let FileLoadState::Done(res) = std::mem::replace(&mut *cmd, FileLoadState::Idle)
     {
         let _result = match res {
             Ok(cmd) => app.source.apply_command(cmd),
@@ -303,6 +304,10 @@ pub fn show_ui(
                         .set_title(button_display)
                         .add_filter(category, import_type.file_extensions());
                     load_file(dialog, import_type, app.file_load_state.clone());
+                }
+                if ui.button("Save .paia").clicked() {
+                    let new_file: SaveFile = app.source.snap().clone().into();
+                    new_file.write_to_file::<true>(app.file_write_state.clone());
                 }
             });
             let res = ui.button(tr!("menu-about"));

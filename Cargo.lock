@@ -1862,6 +1862,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b97b65636e5b9ef369943878ac74335ba1c55c1cb6adbf1e2c293c624248d693"
 
 [[package]]
+name = "fearless_simd"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f4beca3cb2444e3304ac30843cc091f44ed58932353cd492ce740067bfce6b12"
+
+[[package]]
 name = "find-msvc-tools"
 version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3382,15 +3388,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "lz4_flex"
-version = "0.12.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "90071f8077f8e40adfc4b7fe9cd495ce316263f19e75c2211eeff3fdf475a3d9"
-dependencies = [
- "twox-hash 2.1.3",
-]
-
-[[package]]
 name = "memchr"
 version = "2.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3603,16 +3600,6 @@ name = "num-conv"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "521739c6d2bac4aa25192232afe6841231376b2b26d4d9fae5ecf8ca5772e441"
-
-[[package]]
-name = "num-format"
-version = "0.4.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a652d9771a63711fd3c3deb670acfbe5c30a4072e664d7a3bf5a9e1056ac72c3"
-dependencies = [
- "arrayvec",
- "itoa",
-]
 
 [[package]]
 name = "num-traits"
@@ -4103,6 +4090,7 @@ dependencies = [
 name = "paiagram-core"
 version = "0.1.3"
 dependencies = [
+ "cbor4ii",
  "derive_more",
  "ecow",
  "egui 0.36.1",
@@ -4165,17 +4153,12 @@ dependencies = [
 name = "paiagram-rw"
 version = "0.1.3"
 dependencies = [
- "cbor4ii",
  "log",
- "lz4_flex",
- "num-format",
  "pollster 1.0.1",
  "rayon",
  "rfd",
- "ron",
- "serde",
- "wasm-bindgen",
- "wasm-bindgen-rayon",
+ "web-sys",
+ "zrip",
 ]
 
 [[package]]
@@ -5237,7 +5220,7 @@ checksum = "9a15e661f0f9dac21f3494fe5d23a6338c0ac116a2d22c2b63010acd89467ffe"
 dependencies = [
  "byteorder",
  "thiserror 1.0.69",
- "twox-hash 1.6.3",
+ "twox-hash",
 ]
 
 [[package]]
@@ -6207,12 +6190,6 @@ dependencies = [
  "cfg-if",
  "static_assertions",
 ]
-
-[[package]]
-name = "twox-hash"
-version = "2.1.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8464ec13c3691491391d9fce00f6416c9a48e46972f72d7865688be2080192c9"
 
 [[package]]
 name = "type-map"
@@ -7706,6 +7683,42 @@ dependencies = [
  "crc32fast",
  "log",
  "simd-adler32",
+]
+
+[[package]]
+name = "zrip"
+version = "0.8.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "edd02f990082191d398ad4ffb08dc3d92174f275b0b5e8b76d12eddd3e486bcf"
+dependencies = [
+ "zrip-core",
+ "zrip-decode",
+ "zrip-encode",
+]
+
+[[package]]
+name = "zrip-core"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d0122e5712041938e8a1a4db57975da142f9b9cd1aab24cf8a94bb2ce4b79774"
+
+[[package]]
+name = "zrip-decode"
+version = "0.8.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8a21823fd3263a53b26c082461bd411006652fa3e0d7842c5bac552ac5498bab"
+dependencies = [
+ "fearless_simd 0.7.0",
+ "zrip-core",
+]
+
+[[package]]
+name = "zrip-encode"
+version = "0.8.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "233b9d977003b9c1e3aaaf95ea1863a2e6263c37c9050b001d69152058b58735"
+dependencies = [
+ "zrip-core",
 ]
 
 [[package]]

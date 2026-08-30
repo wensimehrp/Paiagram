@@ -20,6 +20,7 @@ categories = ["visualization"]
 async-executor = "1.14.0"
 # WGSL data communication
 bytemuck = { version = "1.23.2", features = ["extern_crate_alloc"] }
+cbor4ii = { version = "1.2.2", features = ["serde1", "use_alloc", "use_std"] }
 # CLI
 clap = { version = "4.5.51", features = ["derive"] }
 # Interesting string
@@ -64,7 +65,6 @@ itoa = "1.0.18"
 jiff = "0.2.29"
 js-sys = "0.3"
 log = "0.4.33"
-lz4_flex = "0.12.0"
 num-format = "0.4.4"
 paste = "1.0.15"
 petgraph = { version = "0.8.3", features = ["rayon", "serde-1"] }
@@ -108,6 +108,7 @@ web-sys = {
   ]
 }
 web-time = "1.1.0"
+zrip = "0.8.7"
 
 [patch.crates-io]
 epaint_default_fonts = { path = "crates/epaint_default_fonts" }

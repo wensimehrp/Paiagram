@@ -3,7 +3,6 @@
 //! the types.
 
 pub mod colors;
-pub mod export;
 pub mod graph;
 pub mod import;
 pub mod problems;
@@ -23,6 +22,7 @@ use egui::emath::inverse_lerp;
 use egui::{Color32, remap};
 use make_type::make_type;
 use nohash_hasher::BuildNoHashHasher;
+use paiagram_rw::ExportObject;
 use rstar::{AABB, RTree, RTreeObject};
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
@@ -365,6 +365,12 @@ pub struct Source {
 }
 
 impl Source {
+    pub fn snap(&self) -> &WorldSnapshot {
+        &self.snap
+    }
+}
+
+impl Source {
     pub fn new() -> Self {
         Self {
             undos: Vec::new(),
@@ -459,6 +465,16 @@ pub enum SaveFile {
     V1 { world: WorldSnapshot },
 }
 
+impl ExportObject for SaveFile {
+    fn extension(&self) -> impl AsRef<str> {
+        ".paia"
+    }
+    fn write_content<W: std::io::prelude::Write>(&mut self, writer: &mut W) -> std::io::Result<()> {
+        cbor4ii::serde::to_writer(writer, &self)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+    }
+}
+
 impl TryFrom<SaveFile> for Source {
     type Error = &'static str;
     fn try_from(value: SaveFile) -> Result<Self, Self::Error> {
@@ -479,9 +495,9 @@ impl TryFrom<SaveFile> for Source {
     }
 }
 
-impl From<Source> for SaveFile {
-    fn from(value: Source) -> Self {
-        Self::V1 { world: value.snap }
+impl From<WorldSnapshot> for SaveFile {
+    fn from(world: WorldSnapshot) -> Self {
+        Self::V1 { world }
     }
 }
 
