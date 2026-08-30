@@ -3,14 +3,9 @@
     "short_name": "paiagram",
     "icons": [
         {
-            "src": "./assets/favicon-192x192.png",
-            "sizes": "192x192",
-            "type": "image/png"
-        },
-        {
-            "src": "./assets/favicon-512x512.png",
+            "src": "./assets/paiagram-adaptive-no-bg.svg",
             "sizes": "512x512",
-            "type": "image/png",
+            "type": "image/svg+xml",
             "purpose": "any maskable"
         }
     ],
