@@ -19,4 +19,6 @@ rfd.workspace = true
 zrip.workspace = true
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
+futures-channel.workspace = true
+wasm-bindgen-futures.workspace = true
 web-sys.workspace = true

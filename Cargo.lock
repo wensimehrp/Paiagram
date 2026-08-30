@@ -4153,10 +4153,12 @@ dependencies = [
 name = "paiagram-rw"
 version = "0.1.3"
 dependencies = [
+ "futures-channel",
  "log",
  "pollster 1.0.1",
  "rayon",
  "rfd",
+ "wasm-bindgen-futures",
  "web-sys",
  "zrip",
 ]
