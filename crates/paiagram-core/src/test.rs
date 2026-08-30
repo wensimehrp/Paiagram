@@ -131,7 +131,6 @@ fn add_remove_round_trip() {
     let info = Interval {
         nodes: eco_vec![LonLat::ZERO, LonLat::ZERO],
         length: None,
-        direction: IntervalDirection::OneWay,
         trips: EcoVec::new(),
     };
     let inv = world
@@ -302,44 +301,6 @@ fn rename_round_trip() {
 }
 
 #[test]
-fn change_trip_entries_round_trip() {
-    let mut world = WorldSnapshot::default();
-    let trip_key = TripKey::new();
-    world.apply_command(Command::AddTrip {
-        key: trip_key,
-        info: trip_info("T"),
-    });
-
-    let node_a = NodeKey::new();
-    let node_b = NodeKey::new();
-    let entry_a = TEntry::Derived {
-        node: node_a,
-        id: TEntryId::new(),
-    };
-    let entry_b = TEntry::Derived {
-        node: node_b,
-        id: TEntryId::new(),
-    };
-    let entries: EcoVec<TEntry> = [entry_a, entry_b].into_iter().collect();
-
-    let inv = world
-        .apply_command(Command::ChangeTripEntries {
-            key: trip_key,
-            entries,
-        })
-        .unwrap();
-    // The inverse carries the old, empty entry list.
-    assert!(matches!(&inv, Command::ChangeTripEntries { entries, .. } if entries.is_empty()));
-    assert_eq!(
-        world.trips.query(trip_key, |v| v.schedule.entries().to_vec()),
-        Some(vec![entry_a, entry_b])
-    );
-
-    let _inv = world.apply_command(inv).unwrap();
-    assert!(world.trips.query(trip_key, |v| v.schedule.entries().to_vec()).unwrap().is_empty());
-}
-
-#[test]
 fn change_trip_vehicles() {
     let mut world = WorldSnapshot::default();
     let vehicle_a = VehicleKey::new();
@@ -482,7 +443,6 @@ fn interval_maintains_world_graph() {
     let info = Interval {
         nodes: eco_vec![LonLat::ZERO, LonLat::ZERO],
         length: Some(NonZeroU32::new(1000).unwrap()),
-        direction: IntervalDirection::OneWay,
         trips: EcoVec::new(),
     };
     let inv = world
@@ -537,7 +497,6 @@ fn graph_keeps_opposite_edges_distinct() {
     let mk_info = || Interval {
         nodes: eco_vec![LonLat::ZERO, LonLat::ZERO],
         length: Some(NonZeroU32::new(1000).unwrap()),
-        direction: IntervalDirection::OneWay,
         trips: EcoVec::new(),
     };
     world.apply_command(Command::AddInterval {

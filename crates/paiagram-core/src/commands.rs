@@ -1,30 +1,51 @@
 use super::*;
+use crate::time::TDuration;
+use crate::trip::{TEntry, TEntryId};
 
 #[derive(Clone, Debug)]
 pub enum Command {
-    /// Add a new trip to the world
+    // trips
     AddTrip {
         key: TripKey,
         info: TripInfo,
     },
-    /// Rename a trip
     RenameTrip {
         key: TripKey,
         name: EcoString,
     },
-    ChangeTripEntries {
-        key: TripKey,
-        entries: EcoVec<TEntry>,
-    },
-    /// Change the trip's class to another class
     ChangeTripClass {
         key: TripKey,
         class: Option<ServiceClassKey>,
     },
-    /// Remove a trip from the collection
     RemoveTrip {
         key: TripKey,
     },
+    // trip entry
+    ShiftTripEntryArrOrPass {
+        key: TripKey,
+        id: TEntryId,
+        dur: TDuration,
+    },
+    ShiftTripEntryDep {
+        key: TripKey,
+        id: TEntryId,
+        dur: TDuration,
+    },
+    ChangeTripEntry {
+        key: TripKey,
+        id: TEntryId,
+        new_entry: TEntry,
+    },
+    RemoveTripEntry {
+        key: TripKey,
+        id: TEntryId,
+    },
+    InsertTripEntry {
+        key: TripKey,
+        id: TEntryId,
+        pos: usize,
+    },
+    // vehicles
     AddVehicle {
         key: VehicleKey,
         name: EcoString,
@@ -157,16 +178,21 @@ impl WorldSnapshot {
                     info: view.into(),
                 }
             }),
-            Command::ChangeTripEntries {
-                key,
-                entries: mut new_entries,
-            } => self.trips.update(key, |mut view| {
-                std::mem::swap(view.schedule.get_mut().entries_mut(), &mut new_entries);
-                Command::ChangeTripEntries {
-                    key,
-                    entries: new_entries,
-                }
-            }),
+            Command::ShiftTripEntryArrOrPass { .. } => {
+                todo!()
+            }
+            Command::ShiftTripEntryDep { .. } => {
+                todo!()
+            }
+            Command::ChangeTripEntry { .. } => {
+                todo!()
+            }
+            Command::RemoveTripEntry { .. } => {
+                todo!()
+            }
+            Command::InsertTripEntry { .. } => {
+                todo!()
+            }
             Command::AddVehicle { key, name } => (!self.vehicles.contains_key(key)).then(|| {
                 self.vehicles.insert(
                     key,
@@ -307,7 +333,6 @@ impl WorldSnapshot {
                 let Some(Interval {
                     nodes,
                     length,
-                    direction,
                     trips,
                 }) = self.intervals.remove(key)
                 else {
@@ -325,7 +350,6 @@ impl WorldSnapshot {
                     info: Interval {
                         nodes,
                         length,
-                        direction,
                         trips,
                     },
                 })

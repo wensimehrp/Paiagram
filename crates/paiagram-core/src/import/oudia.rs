@@ -1,46 +1,18 @@
+use std::collections::HashMap;
+use std::num::NonZeroU32;
+
 use ecow::{EcoVec, eco_vec};
-use egui::Color32;
-use indexmap::IndexMap;
-use paiagram_oudia::{Direction, ServiceMode, parse_oud_to_ir, parse_oud2_to_ir};
+use paiagram_oudia::{Station, StationToGraph, parse_oud_to_ir, parse_oud2_to_ir};
+use petgraph::visit::EdgeRef;
+use rustc_hash::FxBuildHasher;
 use smallvec::SmallVec;
 
+use crate::time::TimetableTime;
 use crate::trip::{TEntry, TEntryId, TravelMode, TripSchedule};
-use crate::units::time::TimetableTime;
 use crate::{
-    Command, Interval, IntervalDirection, LonLat, NodeInfo, NodeKey, RouteInfo, RouteKey,
-    ServiceClassInfo, ServiceClassKey, StationInfo, StationKey, StationRecord, TripInfo, TripKey,
+    Command, Distance, Interval, LonLat, NodeInfo, NodeKey, ServiceClassKey, StationInfo,
+    StationKey, TripInfo, TripKey,
 };
-
-struct OuDiaStationRecord {
-    key: StationKey,
-    // inbound
-    kudari_arr_node: (LonLat, NodeKey),
-    kudari_dep_node: (LonLat, NodeKey),
-    // outbound
-    nobori_arr_node: (LonLat, NodeKey),
-    nobori_dep_node: (LonLat, NodeKey),
-    tracks: Box<[NodeKey]>,
-}
-
-/// Emit an [`Command::AddNode`] and return the freshly created [`NodeKey`].
-fn push_node(
-    cmd_buf: &mut Vec<Command>,
-    name: &str,
-    parent: StationKey,
-    is_platform: bool,
-) -> NodeKey {
-    let key = NodeKey::new();
-    cmd_buf.push(Command::AddNode {
-        key,
-        info: NodeInfo {
-            name: name.into(),
-            parent,
-            pos: LonLat::ZERO,
-            is_platform,
-        },
-    });
-    key
-}
 
 pub(super) enum OudFileType<'a> {
     OuDiaSecond(&'a str),
@@ -54,170 +26,144 @@ pub(crate) fn parse_oudia(stream: OudFileType) -> Result<Command, Box<dyn std::e
     };
     let route = root.route;
     let mut cmd_buf: Vec<Command> = Vec::with_capacity(512);
-
-    // Stations and their nodes. Nodes are created first so that the intervals
-    // and trips below can reference them.
-    let station_map: IndexMap<&str, OuDiaStationRecord> = {
-        let mut map = IndexMap::with_capacity(route.stations.len());
-        for stn in &route.stations {
-            if map.contains_key(stn.name.as_str()) {
-                continue;
-            }
-            let key = StationKey::new();
-            let tracks = stn
-                .tracks
-                .iter()
-                .map(|tr| push_node(&mut cmd_buf, tr.name.as_str(), key, true))
-                .collect::<Vec<_>>()
-                .into_boxed_slice();
-            cmd_buf.push(Command::AddStation {
-                key,
+    let graph = route.stations.to_graph();
+    let mut stn_to_node_key = HashMap::with_capacity_and_hasher(graph.node_count(), FxBuildHasher);
+    for node in graph.node_weights().copied() {
+        let node_key = NodeKey::new();
+        let stn_key = StationKey::new();
+        stn_to_node_key.insert(node as *const Station, node_key);
+        cmd_buf.extend_from_slice(&[
+            Command::AddStation {
+                key: stn_key,
                 info: StationInfo {
-                    name: (&stn.name).into(),
+                    name: node.name.clone().into(),
                     pos: LonLat::ZERO,
                 },
-            });
-            let z = LonLat::ZERO; // to make rustfmt happy and keep stuff in one line
-            let record = OuDiaStationRecord {
-                key,
-                kudari_arr_node: (z, push_node(&mut cmd_buf, "Kudari Arr", key, false)),
-                kudari_dep_node: (z, push_node(&mut cmd_buf, "Kudari Dep", key, false)),
-                nobori_arr_node: (z, push_node(&mut cmd_buf, "Nobori Arr", key, false)),
-                nobori_dep_node: (z, push_node(&mut cmd_buf, "Nobori Dep", key, false)),
-                tracks,
-            };
-            map.insert(stn.name.as_str(), record);
-        }
-        map
-    };
-    let station_list: Vec<(&str, &OuDiaStationRecord)> = route
-        .stations
-        .iter()
-        .map(|s| {
-            let name = s.name.as_str();
-            let record = station_map.get(name).unwrap();
-            (name, record)
-        })
-        .collect();
-
-    // Connect consecutive stations with one interval per direction.
-    for [(_, curr), (_, next)] in station_list.array_windows::<2>() {
-        cmd_buf.push(Command::AddInterval {
-            key: (curr.kudari_dep_node.1, next.kudari_arr_node.1),
-            info: Interval {
-                nodes: eco_vec![curr.kudari_dep_node.0, next.kudari_arr_node.0],
-                length: None,
-                direction: IntervalDirection::OneWay,
-                trips: EcoVec::new(),
             },
-        });
-        cmd_buf.push(Command::AddInterval {
-            key: (next.nobori_dep_node.1, curr.nobori_arr_node.1),
-            info: Interval {
-                nodes: eco_vec![next.nobori_dep_node.0, curr.nobori_arr_node.0],
-                length: None,
-                direction: IntervalDirection::OneWay,
-                trips: EcoVec::new(),
+            Command::AddNode {
+                key: node_key,
+                info: NodeInfo {
+                    name: "".into(),
+                    parent: stn_key,
+                    pos: LonLat::ZERO,
+                    is_platform: true,
+                },
             },
-        });
+        ]);
     }
-
-    let service_class_keys: Vec<ServiceClassKey> = route
+    for (source, target) in graph.edge_references().map(|e| {
+        (
+            *stn_to_node_key
+                .get(&(*graph.node_weight(e.source()).unwrap() as *const Station))
+                .unwrap(),
+            *stn_to_node_key
+                .get(&(*graph.node_weight(e.target()).unwrap() as *const Station))
+                .unwrap(),
+        )
+    }) {
+        cmd_buf.extend_from_slice(&[
+            Command::AddInterval {
+                key: (source, target),
+                info: Interval {
+                    nodes: eco_vec![],
+                    length: NonZeroU32::new(1000),
+                    trips: eco_vec![],
+                },
+            },
+            Command::AddInterval {
+                key: (target, source),
+                info: Interval {
+                    nodes: eco_vec![],
+                    length: NonZeroU32::new(1000),
+                    trips: eco_vec![],
+                },
+            },
+        ]);
+    }
+    let mut service_classes = route
         .classes
         .iter()
-        .map(|it| {
-            let key = ServiceClassKey::new();
-            let [_, r, g, b] = it.diagram_line_color.0;
-            cmd_buf.push(Command::AddServiceClass {
-                key,
-                info: ServiceClassInfo {
-                    name: (&it.name).into(),
-                    style: crate::StrokeStyle {
-                        color: Color32::from_rgb(r, g, b),
-                        width: 1,
-                    },
+        .map(|cls| (cls.name.as_str(), ServiceClassKey::new(), 0u32))
+        .collect::<Vec<_>>();
+    let mut unknown_class_counter = 0u32;
+    let Some(diagram) = route.diagrams.get(0) else {
+        return Err(Box::new(std::io::Error::other(
+            "Route doesn't have a diagram!",
+        )));
+    };
+    let deduplicated = route.stations.merge_duplicate();
+    for (trip, schedule) in diagram.trip_station_times(&deduplicated) {
+        let mut buf = EcoVec::new();
+        for (idx, (stn, entry)) in schedule.enumerate() {
+            let node = *stn_to_node_key.get(&(stn as *const Station)).unwrap();
+            let id = TEntryId::new();
+            let external = false;
+            buf.push(match (entry.arrival_time, entry.departure_time) {
+                (Some(at), Some(dt)) => TEntry::Pinned {
+                    node,
+                    arr: TravelMode::At(TimetableTime::from_hms(0, 0, at.seconds())),
+                    dep: TravelMode::At(TimetableTime::from_hms(0, 0, dt.seconds())),
+                    external,
+                    id,
                 },
-            });
-            key
-        })
-        .collect();
-
-    cmd_buf.push(Command::AddRoute {
-        key: RouteKey::new(),
-        info: RouteInfo {
-            name: route.name.into(),
-            stations: station_list
-                .iter()
-                .map(|(_, record)| (StationRecord::All(record.key), None))
-                .collect(),
-        },
-    });
-
-    // Trips. Only the first diagram is imported for now.
-    if let Some(diagram) = route.diagrams.into_iter().next() {
-        for trip in diagram.trips {
-            let name = trip.name.as_deref().unwrap_or("<??>");
-            let class = service_class_keys.get(trip.class_index).copied();
-            let direction = trip.direction;
-
-            // Gather the stops (skipping stations without service) and their nodes.
-            let mut stops: Vec<(NodeKey, [Option<TimetableTime>; 2], ServiceMode)> = Vec::new();
-            for (i, time) in trip.times.iter().enumerate() {
-                if matches!(time.service_mode, ServiceMode::NoOperation) {
-                    continue;
-                }
-                let station_index = match direction {
-                    Direction::Down => i,
-                    Direction::Up => station_list.len() - 1 - i,
-                };
-                let (_, record) = station_list[station_index];
-                let node = match direction {
-                    Direction::Down => record.kudari_dep_node.1,
-                    Direction::Up => record.nobori_dep_node.1,
-                };
-                let arrival = time.arrival_time.map(|t| TimetableTime(t.seconds()));
-                let departure = time.departure_time.map(|t| TimetableTime(t.seconds()));
-                stops.push((node, [arrival, departure], time.service_mode));
-            }
-
-            // Wrap times that cross midnight so they remain monotonic.
-            super::normalize_times(stops.iter_mut().flat_map(|(_, g, _)| g).flatten());
-
-            let entries: EcoVec<TEntry> = stops
-                .into_iter()
-                .map(|(node, [arrival, departure], mode)| {
-                    let id = TEntryId::new();
-                    match mode {
-                        ServiceMode::Stop => TEntry::Pinned {
+                (Some(at), None) => TEntry::Pinned {
+                    node,
+                    arr: TravelMode::At(TimetableTime::from_hms(0, 0, at.seconds())),
+                    dep: TravelMode::Flexible,
+                    external,
+                    id,
+                },
+                (None, Some(dt)) => {
+                    let mode = TravelMode::At(TimetableTime::from_hms(0, 0, dt.seconds()));
+                    if idx == 0 {
+                        TEntry::Pinned {
                             node,
-                            arr: arrival.map_or(TravelMode::Flexible, TravelMode::At),
-                            dep: departure.map_or(TravelMode::Flexible, TravelMode::At),
-                            external: false,
+                            arr: TravelMode::Flexible,
+                            dep: mode,
+                            external,
                             id,
-                        },
-                        ServiceMode::Pass => TEntry::PinnedNonStop {
+                        }
+                    } else {
+                        TEntry::PinnedNonStop {
                             node,
-                            pass: departure.map_or(TravelMode::Flexible, TravelMode::At),
-                            external: false,
+                            pass: mode,
+                            external,
                             id,
-                        },
-                        ServiceMode::NoOperation => unreachable!(),
+                        }
                     }
-                })
-                .collect();
-
-            cmd_buf.push(Command::AddTrip {
-                key: TripKey::new(),
-                info: TripInfo {
-                    name: name.into(),
-                    schedule: TripSchedule::new(entries),
-                    service_class: class,
-                    vehicles: SmallVec::new(),
+                }
+                (None, None) => TEntry::PinnedNonStop {
+                    node,
+                    pass: TravelMode::Flexible,
+                    external,
+                    id,
                 },
-            });
+            })
         }
+        let (cls_name, cls_key, cls_counter) =
+            service_classes.get_mut(trip.class_index).map_or_else(
+                || ("Unknown Class", None, &mut unknown_class_counter),
+                |(s, key, count)| (*s, Some(*key), count),
+            );
+        cmd_buf.push(Command::AddTrip {
+            key: TripKey::new(),
+            info: TripInfo {
+                name: trip.name.as_ref().map_or_else(
+                    || {
+                        format!("{} ({})", cls_name, {
+                            *cls_counter += 1;
+                            cls_counter
+                        })
+                        .into()
+                    },
+                    |n| n.into(),
+                ),
+                schedule: TripSchedule::new(buf),
+                service_class: cls_key,
+                vehicles: SmallVec::new(),
+            },
+        });
     }
-
     Ok(Command::Macro(cmd_buf.into_boxed_slice()))
 }
 

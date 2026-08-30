@@ -29,7 +29,7 @@ use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 pub use units::*;
 
-use crate::trip::{TEntry, TripSchedule};
+use crate::trip::TripSchedule;
 
 pub trait Key: Clone + Copy {
     /// Return the key in bits
@@ -152,9 +152,17 @@ make_type!(
 
 /// What to include in this case
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
-enum StationRecord {
+pub enum StationRecord {
     All(StationKey),
     Some(EcoVec<NodeKey>),
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+pub struct RouteStationRecord {
+    stn: StationRecord,
+    nominal_distance: Option<Distance>,
+    canvas_length: Option<CanvasLength>,
+    nodes: EcoVec<NodeKey>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -179,29 +187,17 @@ make_type!(
         /// The name of the route.
         name: EcoString,
         /// List of stations in the route.
-        stations: EcoVec<(StationRecord, Option<Distance>)>,
+        stations: EcoVec<RouteStationRecord>,
     }
     cache {
         /// The routes from one station to another forms a tree structure.
-        nodes: EcoVec<EcoVec<(NodeKey, IntervalProgress)>>,
+        nodes: EcoVec<EcoVec<IntervalProgress>>,
     }
 );
 
 /// The key of an interval. An interval is a directed edge, so the ordered pair of
 /// its endpoints uniquely identifies it. Parallel edges are not allowed.
 pub type IntervalKey = (NodeKey, NodeKey);
-
-/// The direction of the interval.
-/// Some intervals allow traversing forwards and backwards
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
-pub enum IntervalDirection {
-    /// Bi-directional interval
-    /// For the sake of simplicity, if an interval is bi-directional,
-    /// the interval with a smaller key would have its node and length information disregarded.
-    TwoWay(IntervalKey),
-    /// One way interval
-    OneWay,
-}
 
 /// An interval is a directed edge between two nodes.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -213,8 +209,6 @@ pub struct Interval {
     pub nodes: EcoVec<LonLat>,
     /// The length of the interval. If the length is None, then it is calculated from nodes.
     pub length: Option<NonZeroU32>,
-    /// The direction of the interval. See [`IntervalDirection`] for details.
-    pub direction: IntervalDirection,
     /// trips passing this interval
     #[serde(skip)]
     pub trips: EcoVec<TripKey>,

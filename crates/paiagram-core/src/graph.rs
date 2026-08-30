@@ -2,7 +2,7 @@
 use petgraph::visit::EdgeRef;
 
 use super::{StationKey, WorldSnapshot};
-use crate::{Distance, Interval, IntervalDirection, IntervalKey, NodeInfo, NodeKey};
+use crate::{Distance, Interval, IntervalKey, NodeInfo, NodeKey};
 
 impl WorldSnapshot {
     /// Find a route between the source station and the target station.
@@ -64,14 +64,7 @@ impl WorldSnapshot {
             source,
             |node| node == target,
             |edge| {
-                let mut query_key = edge.id();
-                // discard the info on the other key
-                if let Some(IntervalDirection::TwoWay(other)) =
-                    self.intervals.query(query_key, |interval| interval.direction)
-                {
-                    query_key = std::cmp::min(other, query_key);
-                }
-                let Some(length) = self.intervals.query(query_key, |interval| interval.length())
+                let Some(length) = self.intervals.query(edge.id(), |interval| interval.length())
                 else {
                     return i32::MAX;
                 };

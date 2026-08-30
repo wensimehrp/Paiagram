@@ -354,7 +354,7 @@ mod tests {
     use std::num::NonZeroU32;
 
     use super::*;
-    use crate::{IntervalDirection, LonLat};
+    use crate::LonLat;
 
     fn interval(a: NodeKey, b: NodeKey, len_m: u32) -> ((NodeKey, NodeKey), Interval) {
         (
@@ -362,7 +362,6 @@ mod tests {
             Interval {
                 nodes: EcoVec::from_iter([LonLat::ZERO, LonLat::ZERO]),
                 length: Some(NonZeroU32::new(len_m).unwrap()),
-                direction: IntervalDirection::OneWay,
                 trips: EcoVec::new(),
             },
         )
