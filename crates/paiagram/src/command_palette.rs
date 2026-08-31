@@ -13,7 +13,7 @@ use crate::{App, UiCommand};
 
 #[derive(Default)]
 pub(crate) struct CommandPalette {
-    visible: bool,
+    pub visible: bool,
     query: String,
     matched: Vec<(EcoString, MatchedType)>,
     selected_alternative: usize,

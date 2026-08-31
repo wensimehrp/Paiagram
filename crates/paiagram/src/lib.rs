@@ -12,7 +12,7 @@ mod widgets;
 use std::sync::{Arc, Mutex};
 
 pub use config::AppLanguage;
-use egui::{Color32, Frame, OpenUrl, Panel, Stroke, Ui};
+use egui::{Button, Color32, Frame, OpenUrl, Panel, Popup, Stroke, Ui};
 use egui_i18n::tr;
 use egui_tiles::{
     Behavior, ContainerKind, SimplificationOptions, Tile, TileId, Tiles, Tree, UiResponse,
@@ -274,24 +274,29 @@ pub fn show_ui(
     }
     Panel::top("top panel").exact_size(32.0).show(ui, |ui| {
         ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-            let res = ui.button("File");
-            #[cfg(not(target_arch = "wasm32"))]
-            if ui.button("Fullscreen").clicked() {
-                let is_fullscreen = ui.input(|i| i.viewport().fullscreen.unwrap_or(false));
-                ui.send_viewport_cmd(egui::ViewportCommand::Fullscreen(!is_fullscreen));
-            }
-            #[cfg(target_arch = "wasm32")]
-            if ui.button("Fullscreen").clicked() {
-                use eframe::web_sys;
-                let document = web_sys::window().unwrap().document().unwrap();
-                if document.fullscreen_element().is_none() {
-                    let _ =
-                        document.get_element_by_id("paiagram_canvas").unwrap().request_fullscreen();
-                } else {
-                    document.exit_fullscreen();
+            Popup::menu(&ui.button("App")).show(|ui| {
+                if ui.add(Button::new("Command Palette").shortcut_text("Ctrl+P")).clicked() {
+                    ui_state.command_palette.visible ^= true;
                 }
-            }
-            egui::Popup::menu(&res).show(|ui| {
+                #[cfg(not(target_arch = "wasm32"))]
+                if ui.button("Toggle Fullscreen").clicked() {
+                    let is_fullscreen = ui.input(|i| i.viewport().fullscreen.unwrap_or(false));
+                    ui.send_viewport_cmd(egui::ViewportCommand::Fullscreen(!is_fullscreen));
+                }
+                #[cfg(target_arch = "wasm32")]
+                if ui.button("Toggle Fullscreen").clicked() {
+                    let document = web_sys::window().unwrap().document().unwrap();
+                    if document.fullscreen_element().is_none() {
+                        let _ = document
+                            .get_element_by_id("paiagram_canvas")
+                            .unwrap()
+                            .request_fullscreen();
+                    } else {
+                        document.exit_fullscreen();
+                    }
+                }
+            });
+            Popup::menu(&ui.button("File")).show(|ui| {
                 for (button_display, category, import_type) in [
                     ("Import OuDiaSecond", "OuDiaSecond", ImportType::OuDiaSecond),
                     ("Import OuDia", "OuDia", ImportType::OuDia),
@@ -310,8 +315,7 @@ pub fn show_ui(
                     new_file.write_to_file::<true>(app.file_write_state.clone());
                 }
             });
-            let res = ui.button(tr!("menu-about"));
-            egui::Popup::menu(&res).show(|ui| {
+            Popup::menu(&ui.button(tr!("menu-about"))).show(|ui| {
                 if ui.button(tr!("menu-documentation")).clicked() {
                     ui.ctx().open_url(OpenUrl::new_tab(if cfg!(target_arch = "wasm32") {
                         "/docs"
@@ -324,7 +328,12 @@ pub fn show_ui(
                 }
             });
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.checkbox(&mut true, "");
+                if ui.add_enabled(app.source.redoable(), Button::new("Redo")).clicked() {
+                    app.source.redo();
+                }
+                if ui.add_enabled(app.source.undoable(), Button::new("Undo")).clicked() {
+                    app.source.undo();
+                }
                 const GIT_REV_SHORT: &str = git_version::git_version!(fallback = "unknown");
                 const GH_LINK: &str = git_version::git_version!(
                     args = ["--always", "--abbrev=40"],
