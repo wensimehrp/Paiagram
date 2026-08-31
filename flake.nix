@@ -29,17 +29,6 @@
         # like `imports_granularity` while keeping the rest of our toolchain completely stable.
         nightlyRustfmt = pkgs.rust-bin.nightly.latest.rustfmt;
 
-        wasm-bindgen-cli-custom = pkgs.rustPlatform.buildRustPackage rec {
-          pname = "wasm-bindgen-cli";
-          version = "0.2.122";
-          src = pkgs.fetchCrate {
-            inherit pname version;
-            hash = "sha256-vO4RSxi/sMWxmsEs3GuljdMfIRSu75A+Q+c5wgYToRU=";
-          };
-          cargoHash = "sha256-Inup6vvJSG5ghNyeDPyZbfZo4d0LsMG2OJfStoaeDBs=";
-          doCheck = false;
-        };
-
         runtimeLibs = with pkgs; [
           vulkan-loader
           libX11
@@ -83,12 +72,6 @@
           ];
           buildInputs = runtimeLibs ++ [ pkgs.openssl ];
 
-          postPatch = ''
-            mkdir -p crates/paiagram/assets/fonts
-            ${pkgs.p7zip}/bin/7z x ${sarasaUiSrc} -ocrates/paiagram/assets/fonts -y
-            ${pkgs.p7zip}/bin/7z x ${diaProSrc} -ocrates/paiagram/assets/fonts -y
-          '';
-
           postInstall = ''
             wrapProgram $out/bin/paiagram \
               --prefix LD_LIBRARY_PATH : "${pkgs.lib.makeLibraryPath (runtimeLibs ++ [ pkgs.stdenv.cc.cc ])}"
@@ -101,7 +84,6 @@
               rustToolchain
               pkg-config
               openssl # TODO: remove this
-              wasm-bindgen-cli-custom
               just
               wget
               p7zip
