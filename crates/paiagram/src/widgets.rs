@@ -1,7 +1,6 @@
+use egui::DragValue;
 use egui::emath::Numeric;
-use egui::{DragValue, TextStyle};
-use log::{info, warn};
-use paiagram_core::units::time::{TDuration, TimetableTime};
+use paiagram_core::time::{TDuration, TTime, TimetableTime};
 
 use crate::font::TIMETABLTE_TEXT_STYLE;
 
@@ -11,13 +10,13 @@ pub(crate) mod search;
 // pub(crate) mod timetable_popup;
 
 /// [`DragValue`] for [`TimetableTime`].
-pub(crate) struct TimeDragValue<'a>(pub TimetableTime, pub &'a mut Option<TDuration>);
+pub(crate) struct TimeDragValue<'a>(pub TTime, pub &'a mut Option<TDuration>);
 
 #[derive(Default, Clone, Copy)]
 enum TimeDragValueStates {
     #[default]
     NotDragging,
-    Dragging(TimetableTime),
+    Dragging(TTime),
 }
 
 impl<'a> egui::Widget for TimeDragValue<'a> {
@@ -33,8 +32,8 @@ impl<'a> egui::Widget for TimeDragValue<'a> {
         // TODO: find a way to display the second in smaller scripts, i.e. 12:00 ₀₀
         let widget = DragValue::new(&mut new)
             .update_while_editing(false)
-            .custom_formatter(|v, _| TimetableTime::from_f64(v).to_string())
-            .custom_parser(|s| TimetableTime::from_str(s).map(TimetableTime::to_f64));
+            .custom_formatter(|v, _| TTime::from_f64(v).to_string())
+            .custom_parser(|s| TTime::from_str(s).map(TTime::to_f64));
         let res = ui.add(widget);
         match current_state {
             TimeDragValueStates::NotDragging => {

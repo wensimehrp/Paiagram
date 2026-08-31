@@ -7,7 +7,6 @@ use egui::{
 };
 use egui_i18n::tr;
 use itertools::Itertools;
-use paiagram_core::export::ExportObject;
 use paiagram_core::units::time::{Duration, Tick, TimetableTime};
 use paiagram_core::{RouteHandle, RouteKey, StationKey, TripKey, TripKeyHashMap};
 use paiagram_raptor::Journey;
