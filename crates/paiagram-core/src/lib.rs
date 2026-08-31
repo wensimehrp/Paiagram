@@ -9,6 +9,7 @@ pub mod problems;
 // pub mod script;
 mod commands;
 mod make_type;
+mod route;
 pub mod trip;
 pub mod units;
 use std::num::NonZeroU32;
@@ -160,7 +161,7 @@ pub enum StationRecord {
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub struct RouteStationRecord {
     stn: StationRecord,
-    nominal_distance: Option<Distance>,
+    milestone: Option<Distance>,
     canvas_length: Option<CanvasLength>,
     nodes: EcoVec<NodeKey>,
 }
@@ -189,10 +190,7 @@ make_type!(
         /// List of stations in the route.
         stations: EcoVec<RouteStationRecord>,
     }
-    cache {
-        /// The routes from one station to another forms a tree structure.
-        nodes: EcoVec<EcoVec<IntervalProgress>>,
-    }
+    cache {}
 );
 
 /// The key of an interval. An interval is a directed edge, so the ordered pair of
