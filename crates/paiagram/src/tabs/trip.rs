@@ -1,18 +1,17 @@
 use egui::{
-    Align2, AtomExt, Button, Color32, FontFamily, FontId, Popup, RectAlign, RichText, Sense, Ui,
-    Vec2, WidgetText, vec2,
+    Align2, AtomExt, Button, Color32, FontFamily, FontId, Popup, RectAlign, RichText, Ui, Vec2,
+    WidgetText, vec2,
 };
 use egui_i18n::tr;
 use paiagram_core::time::TimetableTime;
-use paiagram_core::trip::TravelMode::Flexible;
+use paiagram_core::trip::TravelMode::{At, Flexible, For};
 use paiagram_core::trip::{TEntry, TEstimate, TravelMode, TripSchedule};
 use paiagram_core::{Command, Source, TripKey};
 use serde::{Deserialize, Serialize};
 
 use super::Tab;
-use crate::UiCommand::OpenOrFocus;
 use crate::widgets::{DurationDragValue, TimeDragValue};
-use crate::{App, MainTab, UiCommand};
+use crate::{App, UiCommand};
 
 #[derive(Serialize, Deserialize, Clone, PartialEq)]
 pub(crate) struct TripTab {
@@ -75,6 +74,7 @@ fn show_trip(tab: &mut TripTab, app: &mut App, ui: &mut Ui) {
                 schedule.estimates(&app.source.intervals, |estimates| {
                     for (estimate, entry) in estimates.into_iter().copied() {
                         row_ui(
+                            tab.trip,
                             &schedule,
                             estimates,
                             estimate,
@@ -93,6 +93,7 @@ fn show_trip(tab: &mut TripTab, app: &mut App, ui: &mut Ui) {
 }
 
 fn row_ui(
+    trip_key: TripKey,
     schedule: &TripSchedule,
     estimates: &[(Option<TEstimate>, TEntry)],
     estimate: Option<TEstimate>,
@@ -102,7 +103,7 @@ fn row_ui(
     cmd_queue: &mut Vec<Command>,
     ui: &mut Ui,
 ) {
-    const BUTTON_SIZE: Vec2 = vec2(70.0, 18.0);
+    const BTN_SIZE: Vec2 = vec2(70.0, 18.0);
     let Some(station) = source.nodes.query(entry.node_key(), |view| *view.parent) else {
         ui.label("No station");
         return;
@@ -116,11 +117,11 @@ fn row_ui(
             // ui_queue.push(OpenOrFocus(MainTab::Trip(())));
         };
     });
-    let mut wide_size = BUTTON_SIZE;
+    let mut wide_size = BTN_SIZE;
     wide_size.x *= 2.0;
     wide_size.x += ui.spacing().item_spacing.x;
-    let mut dd1 = None;
-    let mut dd2 = None;
+    let mut arr_pass_dur = None;
+    let mut dep_dur = None;
     let fmt_str = |f: fn(TEstimate) -> TimetableTime, placeholder: &str| -> RichText {
         RichText::new(if let Some(e) = estimate {
             f(e).to_string()
@@ -138,24 +139,20 @@ fn row_ui(
             ),
             TEntry::Pinned { arr, dep, .. } => (
                 match arr {
-                    TravelMode::For(mut d) => ui.add_sized(BUTTON_SIZE, DurationDragValue(&mut d)),
-                    TravelMode::At(t) => ui.add_sized(BUTTON_SIZE, TimeDragValue(t, &mut dd1)),
-                    Flexible => {
-                        ui.add_sized(BUTTON_SIZE, Button::new(fmt_str(|e| e.arr, "--:--:--")))
-                    }
+                    For(mut d) => ui.add_sized(BTN_SIZE, DurationDragValue(&mut d)),
+                    At(t) => ui.add_sized(BTN_SIZE, TimeDragValue(t, &mut arr_pass_dur)),
+                    Flexible => ui.add_sized(BTN_SIZE, Button::new(fmt_str(|e| e.arr, "--:--:--"))),
                 },
                 Some(match dep {
-                    TravelMode::For(mut d) => ui.add_sized(BUTTON_SIZE, DurationDragValue(&mut d)),
-                    TravelMode::At(t) => ui.add_sized(BUTTON_SIZE, TimeDragValue(t, &mut dd2)),
-                    Flexible => {
-                        ui.add_sized(BUTTON_SIZE, Button::new(fmt_str(|e| e.dep, "--:--:--")))
-                    }
+                    For(mut d) => ui.add_sized(BTN_SIZE, DurationDragValue(&mut d)),
+                    At(t) => ui.add_sized(BTN_SIZE, TimeDragValue(t, &mut dep_dur)),
+                    Flexible => ui.add_sized(BTN_SIZE, Button::new(fmt_str(|e| e.dep, "--:--:--"))),
                 }),
             ),
             TEntry::PinnedNonStop { pass, .. } => (
                 match pass {
-                    TravelMode::For(mut d) => ui.add_sized(wide_size, DurationDragValue(&mut d)),
-                    TravelMode::At(t) => ui.add_sized(wide_size, TimeDragValue(t, &mut dd2)),
+                    For(mut d) => ui.add_sized(wide_size, DurationDragValue(&mut d)),
+                    At(t) => ui.add_sized(wide_size, TimeDragValue(t, &mut arr_pass_dur)),
                     Flexible => ui.add_sized(wide_size, Button::new(fmt_str(|e| e.arr, "||"))),
                 },
                 None,
@@ -163,11 +160,28 @@ fn row_ui(
         })
         .inner;
 
+    if let Some(dur) = arr_pass_dur {
+        cmd_queue.push(Command::ShiftTripEntryArrOrPass {
+            key: trip_key,
+            id: entry.id(),
+            dur,
+        });
+    }
+
+    if let Some(dur) = dep_dur {
+        cmd_queue.push(Command::ShiftTripEntryDep {
+            key: trip_key,
+            id: entry.id(),
+            dur,
+        });
+    }
+
     let res1_align = if matches!(entry, TEntry::Pinned { .. }) {
         RectAlign::LEFT
     } else {
         RectAlign::RIGHT
     };
+
     Popup::menu(&res1).align(res1_align).show(|ui| {
         // display departure stuff and change mode
         if ui

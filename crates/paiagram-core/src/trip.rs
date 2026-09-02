@@ -10,11 +10,21 @@ use crate::time::{TDuration, TTime, TimetableTime};
 use crate::{Distance, Interval, IntervalCollection, NodeKey};
 
 /// Travel mode. Travel mode defines how the vehicle travels.
-#[derive(Clone, Serialize, Deserialize, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq)]
 pub enum TravelMode {
     At(TTime),
     For(TDuration),
     Flexible,
+}
+
+impl TravelMode {
+    pub fn shifted_by(self, dd: TDuration) -> TravelMode {
+        match self {
+            Self::At(t) => Self::At(t + dd),
+            Self::For(d) => Self::For(d + dd),
+            Self::Flexible => Self::Flexible,
+        }
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize, Copy, Debug, PartialEq)]
@@ -74,6 +84,19 @@ impl TEntry {
             Self::Pinned { id, .. } => *id,
             Self::PinnedNonStop { id, .. } => *id,
         }
+    }
+    pub(crate) fn arr_or_pass_mut(&mut self) -> Option<&mut TravelMode> {
+        match self {
+            Self::Derived { .. } => None,
+            Self::Pinned { arr, .. } => Some(arr),
+            Self::PinnedNonStop { pass, .. } => Some(pass),
+        }
+    }
+    pub(crate) fn dep_mut(&mut self) -> Option<&mut TravelMode> {
+        let Self::Pinned { dep, .. } = self else {
+            return None;
+        };
+        Some(dep)
     }
 }
 

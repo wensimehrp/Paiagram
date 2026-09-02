@@ -1,4 +1,5 @@
 //! Definitions for the graph.
+use petgraph::Direction;
 use petgraph::visit::EdgeRef;
 
 use super::{StationKey, WorldSnapshot};
@@ -96,13 +97,24 @@ impl WorldSnapshot {
     }
 }
 
-/// The outgoing-neighbour iterator backing `IntoNeighbors` and `IntoEdges`.
-fn node_neighbours<'a>(world: &'a WorldSnapshot, node: NodeKey) -> std::slice::Iter<'a, NodeKey> {
+/// The neighbour iterator backing `IntoNeighbors`, `IntoEdges`, and their
+/// directed variants.
+fn node_neighbours<'a>(
+    world: &'a WorldSnapshot,
+    node: NodeKey,
+    dir: Direction,
+) -> std::slice::Iter<'a, NodeKey> {
     static EMPTY: [NodeKey; 0] = [];
-    world.nodes.query(node, |view| view.outgoing.iter()).unwrap_or_else(|| EMPTY.iter())
+    world
+        .nodes
+        .query(node, |view| match dir {
+            Direction::Outgoing => view.outgoing.iter(),
+            Direction::Incoming => view.incoming.iter(),
+        })
+        .unwrap_or_else(|| EMPTY.iter())
 }
 
-/// A copyable reference to an outgoing edge.
+/// A copyable reference to an edge.
 #[derive(Clone, Copy)]
 pub struct WorldEdgeRef {
     key: IntervalKey,
@@ -131,7 +143,8 @@ impl petgraph::visit::EdgeRef for WorldEdgeRef {
 }
 
 pub struct WorldEdges<'a> {
-    source: NodeKey,
+    node: NodeKey,
+    dir: Direction,
     inner: std::slice::Iter<'a, NodeKey>,
 }
 
@@ -139,8 +152,11 @@ impl<'a> Iterator for WorldEdges<'a> {
     type Item = WorldEdgeRef;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next().map(|&target| WorldEdgeRef {
-            key: (self.source, target),
+        self.inner.next().map(|&other| WorldEdgeRef {
+            key: match self.dir {
+                Direction::Outgoing => (self.node, other),
+                Direction::Incoming => (other, self.node),
+            },
         })
     }
 }
@@ -184,7 +200,7 @@ impl<'a> petgraph::visit::IntoNeighbors for &'a WorldSnapshot {
 
     fn neighbors(self, node: Self::NodeId) -> Self::Neighbors {
         WorldNeighbors {
-            inner: node_neighbours(self, node),
+            inner: node_neighbours(self, node, Direction::Outgoing),
         }
     }
 }
@@ -205,8 +221,9 @@ impl<'a> petgraph::visit::IntoEdges for &'a WorldSnapshot {
 
     fn edges(self, node: Self::NodeId) -> Self::Edges {
         WorldEdges {
-            source: node,
-            inner: node_neighbours(self, node),
+            node,
+            dir: Direction::Outgoing,
+            inner: node_neighbours(self, node, Direction::Outgoing),
         }
     }
 }
@@ -221,5 +238,27 @@ impl petgraph::visit::Visitable for WorldSnapshot {
     fn reset_map(&self, map: &mut Self::Map) {
         map.clear();
         map.reserve(self.nodes.len());
+    }
+}
+
+impl<'a> petgraph::visit::IntoNeighborsDirected for &'a WorldSnapshot {
+    type NeighborsDirected = WorldNeighbors<'a>;
+
+    fn neighbors_directed(self, node: Self::NodeId, dir: Direction) -> Self::NeighborsDirected {
+        WorldNeighbors {
+            inner: node_neighbours(self, node, dir),
+        }
+    }
+}
+
+impl<'a> petgraph::visit::IntoEdgesDirected for &'a WorldSnapshot {
+    type EdgesDirected = WorldEdges<'a>;
+
+    fn edges_directed(self, node: Self::NodeId, dir: Direction) -> Self::EdgesDirected {
+        WorldEdges {
+            node,
+            dir,
+            inner: node_neighbours(self, node, dir),
+        }
     }
 }

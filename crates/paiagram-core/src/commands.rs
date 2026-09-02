@@ -178,12 +178,26 @@ impl WorldSnapshot {
                     info: view.into(),
                 }
             }),
-            Command::ShiftTripEntryArrOrPass { .. } => {
-                todo!()
-            }
-            Command::ShiftTripEntryDep { .. } => {
-                todo!()
-            }
+            Command::ShiftTripEntryArrOrPass { key, id, dur } => self
+                .trips
+                .update(key, |mut v| {
+                    let sch = v.schedule.get_mut().entries_mut();
+                    let entry = sch.make_mut().iter_mut().find(|ent| ent.id() == id)?;
+                    let mode = entry.arr_or_pass_mut()?;
+                    *mode = mode.shifted_by(dur);
+                    Some(Command::ShiftTripEntryArrOrPass { key, id, dur: -dur })
+                })
+                .flatten(),
+            Command::ShiftTripEntryDep { key, id, dur } => self
+                .trips
+                .update(key, |mut v| {
+                    let sch = v.schedule.get_mut().entries_mut();
+                    let entry = sch.make_mut().iter_mut().find(|ent| ent.id() == id)?;
+                    let mode = entry.dep_mut()?;
+                    *mode = mode.shifted_by(dur);
+                    Some(Command::ShiftTripEntryDep { key, id, dur: -dur })
+                })
+                .flatten(),
             Command::ChangeTripEntry { .. } => {
                 todo!()
             }

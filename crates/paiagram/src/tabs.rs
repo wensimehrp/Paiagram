@@ -38,8 +38,9 @@ define_tabs!(
     // route_timetable;
     config;
     start;
-    // station;
+    station;
     trip;
+    changelog;
 );
 
 fn handle_keyboard_navigation(ui: &Ui) -> Vec2 {

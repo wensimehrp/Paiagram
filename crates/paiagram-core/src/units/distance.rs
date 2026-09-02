@@ -2,11 +2,27 @@ use derive_more::{Add, AddAssign, Sub, SubAssign};
 use serde::{Deserialize, Serialize};
 
 /// The length or distance represented in metres
-#[derive(Debug, Clone, Copy, Add, AddAssign, Sub, SubAssign, Serialize, Deserialize, PartialEq)]
+#[derive(
+    Debug,
+    Default,
+    Clone,
+    Copy,
+    Add,
+    AddAssign,
+    Sub,
+    SubAssign,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+)]
 pub struct Distance(pub i32);
 
 impl Distance {
     pub const ZERO: Self = Distance(0);
+    pub const MAX: Self = Distance(i32::MAX);
     #[inline]
     pub fn from_km(km: f32) -> Self {
         Distance((km * 1000.0).round() as i32)

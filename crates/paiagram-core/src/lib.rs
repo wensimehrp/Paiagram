@@ -9,7 +9,7 @@ pub mod problems;
 // pub mod script;
 mod commands;
 mod make_type;
-mod route;
+pub mod route;
 pub mod trip;
 pub mod units;
 use std::num::NonZeroU32;
@@ -163,17 +163,41 @@ pub struct RouteStationRecord {
     stn: StationRecord,
     milestone: Option<Distance>,
     canvas_length: Option<CanvasLength>,
-    nodes: EcoVec<NodeKey>,
+    prev_curr_nodes: EcoVec<NodeKey>,
+    curr_prev_nodes: EcoVec<NodeKey>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+/// The progress of a node within a single interval of a route.
+///
+/// `0` marks the start of the interval and [`u16::MAX`] marks its end.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct IntervalProgress(u16);
 
 impl IntervalProgress {
-    fn is_start(self) -> bool {
+    /// Create a progress from a ratio in `0.0..=1.0`. Values outside the range
+    /// are clamped.
+    pub fn from_ratio(ratio: f64) -> Self {
+        let clamped = ratio.clamp(0.0, 1.0);
+        Self((clamped * u16::MAX as f64).round() as u16)
+    }
+
+    /// The progress as a ratio in `0.0..=1.0`.
+    pub fn to_ratio(self) -> f64 {
+        self.0 as f64 / u16::MAX as f64
+    }
+
+    /// The raw progress value in `0..=u16::MAX`.
+    pub fn get(self) -> u16 {
+        self.0
+    }
+
+    /// Whether this marks the start of an interval.
+    pub fn is_start(self) -> bool {
         self.0 == 0
     }
-    fn is_end(self) -> bool {
+
+    /// Whether this marks the end of an interval.
+    pub fn is_end(self) -> bool {
         self.0 == u16::MAX
     }
 }
@@ -213,13 +237,21 @@ pub struct Interval {
 }
 
 impl Interval {
-    /// The length of the interval
+    /// The length of the interval in metres.
+    ///
+    /// Uses the explicitly-stored length when present; otherwise sums the
+    /// great-circle (Haversine) distances between consecutive points in
+    /// [`Interval::nodes`].
     pub fn length(&self) -> Distance {
         if let Some(d) = self.length {
             return Distance(d.get() as i32);
         };
-        // TODO: compute the length from `self.nodes`.
-        todo!()
+        let total: f64 = self
+            .nodes
+            .windows(2)
+            .map(|w| Wgs84LonLat::from(w[0]).distance_to_meters(Wgs84LonLat::from(w[1])))
+            .sum();
+        Distance(total.round() as i32)
     }
 }
 

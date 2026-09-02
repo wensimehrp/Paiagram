@@ -425,3 +425,10 @@ impl ops::Mul<TDuration> for i32 {
         TimetableDuration(self * rhs.0)
     }
 }
+
+impl ops::Neg for TDuration {
+    type Output = Self;
+    fn neg(self) -> Self::Output {
+        Self(-self.0)
+    }
+}

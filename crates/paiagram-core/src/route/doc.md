@@ -41,13 +41,15 @@ User setting. Doesn't affect data model.
 
 The nodes are the most important part of the route data model.
 
-A route can be split into mutliple intervals; each interval has a set of nodes. Each node gets a
-progress from 0..=1 (implementation is 0..=u16::MAX). The progress is calculated by running a
-Dijkstra and calculating the minimal distance from all nodes in the sub-tree containing only the
-nodes in the nodes field of the current record to any of the nodes in the current record's station
-record (StationRecord::All means all nodes in the current station, and StationRecord::Some means
-some stations in the current station).
-
-Each node's progress is cached. It only gets recalculated every 500ms.
+A route can be split into multiple intervals; each interval has a set of nodes. Each node gets a
+progress from 0..=1 (implementation is 0..=u16::MAX) of the current interval. The progress is
+calculated by running a Dijkstra and calculating the minimal distance from all nodes in the subgraph
+containing only the nodes in the nodes field of the current record to any of the nodes in the
+current record's station record (StationRecord::All means all nodes in the current station, and
+StationRecord::Some means some nodes in the current station). The interval is treated as undirected.
+Each node's progress is then `1 - distance / longest_distance`, where `longest_distance` is the
+largest such distance across the interval; this puts the upstream end at `0` and the downstream
+station at `1` (i.e. `u16::MAX`). Nodes that can't reach any station nodes are omitted and the UI
+shall give a warning about that.
 
 The canvas would use this progress info and display trip lines at different sections of the diagram.
