@@ -64,10 +64,7 @@ pub trait ExportObject: Sized + Send + 'static {
                 match rx.await {
                     Ok(Ok(buffer)) => {
                         let res = download_file(&filename, &buffer).map_err(|e| {
-                            io::Error::new(
-                                io::ErrorKind::Other,
-                                format!("Error while downloading file: {:?}", e),
-                            )
+                            io::Error::other(format!("Error while downloading file: {:?}", e))
                         });
                         *state.lock().unwrap_or_else(|e| e.into_inner()) =
                             FileWriteState::Done(res);
@@ -79,11 +76,9 @@ pub trait ExportObject: Sized + Send + 'static {
                     }
                     Err(_) => {
                         warn!("Serialization task was dropped before sending a result");
-                        *state.lock().unwrap_or_else(|e| e.into_inner()) =
-                            FileWriteState::Done(Err(io::Error::new(
-                                io::ErrorKind::Other,
-                                "serialization task was cancelled",
-                            )));
+                        *state.lock().unwrap_or_else(|e| e.into_inner()) = FileWriteState::Done(
+                            Err(io::Error::other("serialization task was cancelled")),
+                        );
                     }
                 }
             });

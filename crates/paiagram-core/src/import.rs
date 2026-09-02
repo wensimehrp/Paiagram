@@ -1,6 +1,7 @@
 //! # Import
 //! Handles foreign formats such as GTFS Static, qETRC/pyETRC, and OuDiaSecond.
 
+use std::io;
 use std::path::PathBuf;
 
 use crate::Command;
@@ -8,6 +9,7 @@ use crate::time::TimetableDuration;
 use crate::units::time::TimetableTime;
 
 mod oudia;
+mod pyetgr;
 
 fn normalize_times<'a>(mut time_iter: impl Iterator<Item = &'a mut TimetableTime> + 'a) {
     let Some(mut previous_time) = time_iter.next().copied() else {
@@ -61,15 +63,16 @@ impl ImportType {
 }
 
 pub fn generate_commands(
-    stream: &[u8],
+    data: &[u8],
     import_content: ImportType,
 ) -> Result<Command, Box<dyn std::error::Error>> {
     match import_content {
-        ImportType::Pyetgr => todo!(),
-        ImportType::OuDia => oudia::parse_oudia(oudia::OudFileType::OuDia(stream)),
+        ImportType::Pyetgr => {
+            pyetgr::parse_pyetgr(data).ok_or(Box::new(io::Error::other("Failed!")))
+        }
+        ImportType::OuDia => oudia::parse_oudia(oudia::OudFileType::OuDia(data)),
         ImportType::OuDiaSecond => {
-            let buf = str::from_utf8(stream)?;
-            oudia::parse_oudia(oudia::OudFileType::OuDiaSecond(&buf))
+            oudia::parse_oudia(oudia::OudFileType::OuDiaSecond(&str::from_utf8(data)?))
         }
         ImportType::Gtfs => todo!(),
         ImportType::PaiagramPaia => todo!(),
