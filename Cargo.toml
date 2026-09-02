@@ -67,6 +67,7 @@ itertools = "0.14.0"
 itoa = "1.0.18"
 jiff = "0.2.29"
 js-sys = "0.3"
+krilla = "0.8.2"
 log = "0.4.33"
 num-format = "0.4.4"
 paiagram-core = { path = "crates/paiagram-core" }

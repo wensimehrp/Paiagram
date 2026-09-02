@@ -1,0 +1,17 @@
+[package]
+name = "paiagram-export"
+version.workspace = true
+edition.workspace = true
+description.workspace = true
+documentation.workspace = true
+readme.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+krilla.workspace = true
+paiagram-core.workspace = true
+paiagram-rw.workspace = true
