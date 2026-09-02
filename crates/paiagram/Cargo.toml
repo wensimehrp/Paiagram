@@ -29,6 +29,7 @@ env_logger.workspace = true
 eros.workspace = true
 fontdb.workspace = true
 futures-lite.workspace = true
+futures-channel.workspace = true
 git-version.workspace = true
 ib-matcher.workspace = true
 itertools.workspace = true

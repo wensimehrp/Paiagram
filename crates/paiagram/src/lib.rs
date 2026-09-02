@@ -12,7 +12,7 @@ mod widgets;
 use std::sync::{Arc, Mutex};
 
 pub use config::AppLanguage;
-use egui::{Button, Color32, Frame, OpenUrl, Panel, Popup, Stroke, Ui};
+use egui::{Button, Color32, Context, Frame, OpenUrl, Panel, Popup, Stroke, Ui};
 use egui_i18n::tr;
 use egui_material_icons::icons;
 use egui_tiles::{
@@ -34,9 +34,13 @@ use crate::command_palette::CommandPalette;
 use crate::selection::SelectedItems;
 use crate::timer::GlobalTimer;
 use crate::widgets::TimeDragValue;
-pub struct UiPlugin;
 
-fn load_file(dialog: AsyncFileDialog, import_type: ImportType, state: Arc<Mutex<FileLoadState>>) {
+fn load_file(
+    dialog: AsyncFileDialog,
+    import_type: ImportType,
+    state: Arc<Mutex<FileLoadState>>,
+    ctx: Context,
+) {
     *state.lock().unwrap() = FileLoadState::Reading { progress: None };
     let process = async move {
         let data = dialog.pick_file().await;
@@ -46,10 +50,17 @@ fn load_file(dialog: AsyncFileDialog, import_type: ImportType, state: Arc<Mutex<
         };
         *state.lock().unwrap() = FileLoadState::Processing { progress: None };
         let data = data.read().await;
+        let (tx, rx) = futures_channel::oneshot::channel();
+        // for some reason egui's Context doesn't implement Send on wasm32. This means it can't be
+        // send to the rayon thread.
+        // Use a tx rx pair from futures_channel instead.
         rayon::spawn(move || {
             let commands = generate_commands(&data, import_type).map_err(|e| e.to_string());
-            *state.lock().unwrap() = FileLoadState::Done(commands)
+            *state.lock().unwrap() = FileLoadState::Done(commands);
+            let _ = tx.send(());
         });
+        let _ = rx.await;
+        ctx.request_repaint();
     };
     #[cfg(target_arch = "wasm32")]
     {
@@ -319,7 +330,12 @@ pub fn show_ui(
                     let dialog = AsyncFileDialog::new()
                         .set_title(button_display)
                         .add_filter(category, import_type.file_extensions());
-                    load_file(dialog, import_type, app.file_load_state.clone());
+                    load_file(
+                        dialog,
+                        import_type,
+                        app.file_load_state.clone(),
+                        ui.ctx().clone(),
+                    );
                 }
                 if ui.button("Save .paia").clicked() {
                     let new_file: SaveFile = app.source.snap().clone().into();

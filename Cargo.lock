@@ -4072,6 +4072,7 @@ dependencies = [
  "env_logger",
  "eros",
  "fontdb",
+ "futures-channel",
  "futures-lite",
  "getrandom 0.3.4",
  "git-version",
