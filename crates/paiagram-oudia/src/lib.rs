@@ -22,6 +22,8 @@ interact with the AST directly.
 */
 pub use ast::{SerializeToOud, Structure, parse_to_ast};
 pub use ir::*;
+#[doc(hidden)]
+pub use smallvec;
 pub use time::Time;
 pub use timetable::{ServiceMode, TimetableEntry};
 
@@ -72,7 +74,7 @@ macro_rules! structure {
 macro_rules! pair {
     // start recursive accumulation
     ($k:expr => $($tokens:tt)*) => {{
-        let mut items = smallvec::SmallVec::new();
+        let mut items = $crate::smallvec::SmallVec::new();
         $crate::pair!(@extend items $($tokens)*);
         $crate::Structure::Pair($k.into(), items)
     }};
