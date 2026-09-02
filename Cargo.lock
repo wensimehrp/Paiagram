@@ -4205,6 +4205,7 @@ version = "0.1.3"
 dependencies = [
  "krilla",
  "paiagram-core",
+ "paiagram-oudia",
  "paiagram-rw",
 ]
 
