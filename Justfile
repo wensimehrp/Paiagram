@@ -3,7 +3,7 @@ default:
 
 download-font:
     wget https://github.com/be5invis/Sarasa-Gothic/releases/download/v1.0.41/SarasaUiCL-TTF-1.0.41.7z -O fonts.7z
-    rm -r fonts
+    rm -rf fonts
     7z x fonts.7z -ofonts
     rm fonts.7z
     mv fonts/SarasaUiCL-Regular.ttf crates/paiagram/
