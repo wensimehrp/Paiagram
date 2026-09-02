@@ -96,7 +96,7 @@ impl Preferences {
             aa: true,
             lod_mode: LevelOfDetailMode::default(),
             language: AppLanguage::default(),
-            font_name: load_default_font(&ctx).into(),
+            font_name: load_default_font(ctx.clone()).into(),
         }
     }
 }
@@ -166,12 +166,15 @@ impl egui::Widget for &mut Preferences {
                             matches.clear();
                             matches.extend(search(
                                 &query,
-                                FONT_DATABASE.faces().map(|face| face.post_script_name.as_str()),
+                                FONT_DATABASE
+                                    .read()
+                                    .faces()
+                                    .map(|face| face.post_script_name.as_str()),
                                 100,
                             ));
                         }
                         ScrollArea::vertical().show(ui, |ui| {
-                            for (idx, face) in FONT_DATABASE.faces().enumerate() {
+                            for (idx, face) in FONT_DATABASE.read().faces().enumerate() {
                                 if let Err(_) = matches.binary_search(&idx) {
                                     continue;
                                 }
@@ -179,7 +182,7 @@ impl egui::Widget for &mut Preferences {
                                 if ui.button(face_name).clicked() {
                                     load_font_to_egui(
                                         face.id,
-                                        ui.ctx(),
+                                        ui.ctx().clone(),
                                         ui.fonts(|r| r.definitions().clone()),
                                     );
                                     self.font_name.clear();

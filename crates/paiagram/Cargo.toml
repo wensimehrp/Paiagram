@@ -22,6 +22,7 @@ egui_extras.workspace = true
 egui-i18n.workspace = true
 egui_table = "0.8.0"
 egui_tiles.workspace = true
+ehttp.workspace = true
 either.workspace = true
 env_logger.workspace = true
 eros.workspace = true

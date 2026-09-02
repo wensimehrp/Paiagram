@@ -50,6 +50,7 @@ egui_extras = { version = "0.36.1", features = ["webp"] }
 # Internationalization
 egui-i18n = { version = "0.2.0", features = ["fluent"] }
 egui_tiles = "0.17.1"
+ehttp = "0.7.1"
 either = "1.15.0"
 encoding_rs = "0.8.35"
 env_logger = "0.11.11"

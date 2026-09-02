@@ -6,8 +6,6 @@ use clap::Parser;
 use log::{error, info};
 use paiagram::{App, UiState};
 use serde::Deserialize;
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen::prelude::*;
 use web_time::Instant;
 
 struct PaiagramApp {

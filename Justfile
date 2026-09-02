@@ -1,6 +1,14 @@
 default:
     just --list
 
+download-font:
+    wget https://github.com/be5invis/Sarasa-Gothic/releases/download/v1.0.41/SarasaUiCL-TTF-1.0.41.7z -O fonts.7z
+    rm -r fonts
+    7z x fonts.7z -ofonts
+    rm fonts.7z
+    mv fonts/SarasaUiCL-Regular.ttf crates/paiagram/
+    rm -r fonts
+
 # Build rust docs
 rust-docs:
     rm -rf dist/api-docs

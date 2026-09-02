@@ -4,6 +4,7 @@ var filesToCache = [
     "./index.html",
     "./paiagram.js",
     "./paiagram_bg.wasm",
+    "./SarasaUiCL-Regular.ttf",
 ];
 
 /* Start the service worker and cache all of the app's content */
