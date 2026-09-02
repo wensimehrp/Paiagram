@@ -4,6 +4,7 @@ use egui::mutex::RwLock;
 use egui::{Context, FontDefinitions, FontFamily, FontId, TextStyle};
 use fontdb::{Database, Family, ID};
 use log::{info, warn};
+use parking_lot::Mutex;
 
 pub(crate) static FONT_DATABASE: LazyLock<RwLock<Database>> = LazyLock::new(|| {
     let mut db = Database::new();
@@ -28,7 +29,7 @@ fn load_browser_fonts(db: &mut Database) -> Option<()> {
 pub(crate) const TIMETABLTE_TEXT_STYLE: LazyLock<TextStyle> =
     LazyLock::new(|| TextStyle::Name("timetable font".into()));
 
-pub(crate) fn load_default_font(ctx: Context) -> String {
+pub(crate) fn load_default_font(ctx: Context, font_name: Arc<Mutex<String>>) {
     let mut definitions = FontDefinitions::default();
     definitions
         .families
@@ -52,26 +53,29 @@ pub(crate) fn load_default_font(ctx: Context) -> String {
     info!("Loaded XF_Nstf");
     ctx.set_fonts(definitions.clone());
     egui_material_icons::initialize(&ctx);
-    #[cfg(target_arch = "wasm32")]
-    load_sarasa_cl(ctx.clone());
     // dynamic query
-    let Some(face_id) = FONT_DATABASE.read().query(&fontdb::Query {
+    match FONT_DATABASE.read().query(&fontdb::Query {
         families: &[Family::Name("Sarasa UI SC"), Family::SansSerif],
         ..Default::default()
-    }) else {
-        warn!("Couldn't select font from system");
-        return "Error".into();
+    }) {
+        Some(face_id) => {
+            load_font_name(face_id, font_name.clone());
+            load_font_to_egui(face_id, ctx.clone(), font_name.clone(), definitions);
+        }
+        None => {
+            warn!("Couldn't select font from system");
+            let mut name = font_name.lock();
+            name.clear();
+            name.push_str("Error");
+            return;
+        }
     };
-    let font_name = FONT_DATABASE.read().face(face_id).map_or("<no name>".to_string(), |info| {
-        info.post_script_name.to_string()
-    });
-    info!("Trying to load font `{}`", font_name);
-    load_font_to_egui(face_id, ctx, definitions);
-    font_name
+    #[cfg(target_arch = "wasm32")]
+    load_sarasa_cl(ctx.clone(), font_name.clone());
 }
 
 #[cfg(target_arch = "wasm32")]
-fn load_sarasa_cl(ctx: Context) {
+fn load_sarasa_cl(ctx: Context, font_name: Arc<Mutex<String>>) {
     wasm_bindgen_futures::spawn_local(async move {
         info!("Downloading `{WASM_FONT_NAME}`");
         let res = match ehttp::fetch_async(ehttp::Request::get(WASM_FONT_NAME)).await {
@@ -89,11 +93,38 @@ fn load_sarasa_cl(ctx: Context) {
         }
         let face_id =
             FONT_DATABASE.write().load_font_source(fontdb::Source::Binary(Arc::new(res.bytes)))[0];
-        load_font_to_egui(face_id, ctx.clone(), ctx.fonts(|r| r.definitions().clone()));
+        load_font_to_egui(
+            face_id,
+            ctx.clone(),
+            font_name,
+            ctx.fonts(|r| r.definitions().clone()),
+        );
     });
 }
 
-pub(crate) fn load_font_to_egui(face_id: ID, ctx: Context, mut definitions: FontDefinitions) {
+fn load_font_name(face_id: ID, font_name: Arc<Mutex<String>>) {
+    let font_name_clone = font_name.clone();
+    FONT_DATABASE.read().face(face_id).map_or_else(
+        move || {
+            let mut font_name = font_name.lock();
+            font_name.clear();
+            font_name.push_str("UNNAMED FONT");
+        },
+        move |info| {
+            info!("Trying to load font `{}`", &info.post_script_name);
+            let mut font_name = font_name_clone.lock();
+            font_name.clear();
+            font_name.push_str(&info.post_script_name);
+        },
+    );
+}
+
+pub(crate) fn load_font_to_egui(
+    face_id: ID,
+    ctx: Context,
+    font_name: Arc<Mutex<String>>,
+    mut definitions: FontDefinitions,
+) {
     let Some(bytes) =
         FONT_DATABASE.read().with_face_data(face_id, |font_bytes, _index| font_bytes.to_owned())
     else {
@@ -110,6 +141,7 @@ pub(crate) fn load_font_to_egui(face_id: ID, ctx: Context, mut definitions: Font
         .entry(FontFamily::Proportional)
         .or_default()
         .insert(0, "system_font".into());
+    load_font_name(face_id, font_name);
     ctx.set_fonts(definitions);
     ctx.request_repaint();
 }

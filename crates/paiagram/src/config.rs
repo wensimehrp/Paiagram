@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 //! The settings for the app
 
+use std::sync::Arc;
+
 use egui::ScrollArea;
 use log::info;
 use paiagram_core::time::TDuration;
+use parking_lot::Mutex;
 
 use crate::font::{FONT_DATABASE, load_default_font, load_font_to_egui};
 use crate::widgets::DurationDragValue;
@@ -85,19 +88,22 @@ pub(crate) struct Preferences {
     pub aa: bool,
     pub lod_mode: LevelOfDetailMode,
     pub language: AppLanguage,
-    pub font_name: String,
+    pub font_name: Arc<Mutex<String>>,
 }
 
 impl Preferences {
     pub fn new(ctx: &egui::Context) -> Self {
         AppLanguage::init();
-        Self {
+        let font_name = Arc::new(Mutex::new(String::new()));
+        let ret = Self {
             dev_mode: false,
             aa: true,
             lod_mode: LevelOfDetailMode::default(),
             language: AppLanguage::default(),
-            font_name: load_default_font(ctx.clone()).into(),
-        }
+            font_name: font_name.clone(),
+        };
+        load_default_font(ctx.clone(), font_name.clone());
+        ret
     }
 }
 
@@ -152,7 +158,7 @@ impl egui::Widget for &mut Preferences {
                 ui.end_row();
                 ui.label("Font");
                 egui::ComboBox::from_id_salt("font selection")
-                    .selected_text(&self.font_name)
+                    .selected_text(self.font_name.lock().as_str())
                     .height(300.0)
                     .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
                     .show_ui(ui, |ui| {
@@ -183,10 +189,9 @@ impl egui::Widget for &mut Preferences {
                                     load_font_to_egui(
                                         face.id,
                                         ui.ctx().clone(),
+                                        self.font_name.clone(),
                                         ui.fonts(|r| r.definitions().clone()),
                                     );
-                                    self.font_name.clear();
-                                    self.font_name.push_str(face_name);
                                 }
                             }
                         });

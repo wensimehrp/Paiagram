@@ -4084,6 +4084,7 @@ dependencies = [
  "paiagram-core",
  "paiagram-raptor",
  "paiagram-rw",
+ "parking_lot",
  "paste",
  "pollster 1.0.1",
  "rayon",

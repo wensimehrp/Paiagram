@@ -38,6 +38,7 @@ log.workspace = true
 paiagram-core = { path = "../paiagram-core" }
 paiagram-raptor = { path = "../paiagram-raptor" }
 paiagram-rw = { path = "../paiagram-rw" }
+parking_lot.workspace = true
 paste.workspace = true
 pollster.workspace = true
 rayon.workspace = true
