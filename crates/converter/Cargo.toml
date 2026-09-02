@@ -7,7 +7,7 @@ license.workspace = true
 
 [dependencies]
 js-sys = "0.3.81"
-paiagram-oudia = { path = "../paiagram-oudia", features = ["serde"] }
+paiagram-oudia = { workspace = true, features = ["serde"] }
 ron.workspace = true
 serde_json.workspace = true
 serde_yaml = "0.9.34"

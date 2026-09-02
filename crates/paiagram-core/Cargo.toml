@@ -25,8 +25,8 @@ indexmap.workspace = true
 itertools.workspace = true
 log.workspace = true
 nohash-hasher = "0.2.0"
-paiagram-oudia = { path = "../paiagram-oudia/" }
-paiagram-rw = { path = "../paiagram-rw" }
+paiagram-oudia.workspace = true
+paiagram-rw.workspace = true
 paste.workspace = true
 petgraph.workspace = true
 rayon.workspace = true

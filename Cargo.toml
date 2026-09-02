@@ -69,6 +69,10 @@ jiff = "0.2.29"
 js-sys = "0.3"
 log = "0.4.33"
 num-format = "0.4.4"
+paiagram-core = { path = "crates/paiagram-core" }
+paiagram-oudia = { path = "crates/paiagram-oudia" }
+paiagram-raptor = { path = "crates/paiagram-raptor" }
+paiagram-rw = { path = "crates/paiagram-rw" }
 parking_lot = "0.12"
 paste = "1.0.15"
 petgraph = { version = "0.8.3", features = ["rayon", "serde-1"] }

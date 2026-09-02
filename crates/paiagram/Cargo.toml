@@ -36,9 +36,9 @@ itertools.workspace = true
 itoa.workspace = true
 jiff.workspace = true
 log.workspace = true
-paiagram-core = { path = "../paiagram-core" }
-paiagram-raptor = { path = "../paiagram-raptor" }
-paiagram-rw = { path = "../paiagram-rw" }
+paiagram-core.workspace = true
+paiagram-raptor.workspace = true
+paiagram-rw.workspace = true
 parking_lot.workspace = true
 paste.workspace = true
 pollster.workspace = true
