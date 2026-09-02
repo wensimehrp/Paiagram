@@ -51,6 +51,7 @@ pub(crate) fn load_default_font(ctx: Context) -> String {
     );
     info!("Loaded XF_Nstf");
     ctx.set_fonts(definitions.clone());
+    egui_material_icons::initialize(&ctx);
     #[cfg(target_arch = "wasm32")]
     load_sarasa_cl(ctx.clone());
     // dynamic query

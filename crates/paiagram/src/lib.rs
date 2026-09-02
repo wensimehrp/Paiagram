@@ -14,6 +14,7 @@ use std::sync::{Arc, Mutex};
 pub use config::AppLanguage;
 use egui::{Button, Color32, Frame, OpenUrl, Panel, Popup, Stroke, Ui};
 use egui_i18n::tr;
+use egui_material_icons::icons;
 use egui_tiles::{
     Behavior, ContainerKind, SimplificationOptions, Tile, TileId, Tiles, Tree, UiResponse,
 };
@@ -29,6 +30,7 @@ use tabs::{MainTab, Tab, for_all_tabs};
 #[cfg(target_arch = "wasm32")]
 pub use wasm_bindgen_rayon::init_thread_pool;
 
+use crate::command_palette::CommandPalette;
 use crate::selection::SelectedItems;
 use crate::timer::GlobalTimer;
 use crate::widgets::TimeDragValue;
@@ -81,7 +83,7 @@ pub struct App {
 
 #[derive(Default)]
 pub struct UiState {
-    command_palette: command_palette::CommandPalette,
+    command_palette: CommandPalette,
     mus: MainUiState,
 }
 
@@ -246,8 +248,16 @@ impl<'w> Behavior<MainTab> for MainTabViewer<'w> {
             Some(Tile::Pane(_)) => true,
         }
     }
-    fn tab_bar_hline_stroke(&self, _visuals: &egui::Visuals) -> Stroke {
-        Stroke::new(1.0, Color32::TRANSPARENT)
+    fn tab_bar_trailing_ui(
+        &mut self,
+        _tiles: &Tiles<MainTab>,
+        ui: &mut Ui,
+        _tile_id: TileId,
+        _tabs: &egui_tiles::Tabs,
+    ) {
+        ui.menu_button(icons::ICON_ADD, |ui| {
+            ui.label("hi!");
+        });
     }
 }
 

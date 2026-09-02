@@ -49,6 +49,7 @@ egui = {
 egui_extras = { version = "0.36.1", features = ["webp"] }
 # Internationalization
 egui-i18n = { version = "0.2.0", features = ["fluent"] }
+egui_material_icons = "0.8.0"
 egui_tiles = "0.17.1"
 ehttp = "0.7.1"
 either = "1.15.0"

@@ -16,7 +16,7 @@ cbor4ii.workspace = true
 derive_more = { version = "2.1.0", features = ["full"] }
 ecow.workspace = true
 egui.workspace = true
-ehttp = { version = "0.6.0", features = ["json", "native-async"] }
+ehttp.workspace = true
 either.workspace = true
 encoding_rs = "0.8.35"
 eros.workspace = true
