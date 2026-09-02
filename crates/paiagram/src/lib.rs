@@ -322,10 +322,10 @@ pub fn show_ui(
                     ("Import OuDiaSecond", "OuDiaSecond", ImportType::OuDiaSecond),
                     ("Import OuDia", "OuDia", ImportType::OuDia),
                     ("Import qETRC/pyETRC", "pyetgr", ImportType::Pyetgr),
-                ]
-                .into_iter()
-                .filter(|(d, ..)| ui.button(*d).clicked())
-                {
+                ] {
+                    if !ui.button(button_display).clicked() {
+                        continue;
+                    }
                     info!("Trying to read {category}");
                     let dialog = AsyncFileDialog::new()
                         .set_title(button_display)
