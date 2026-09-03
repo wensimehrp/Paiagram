@@ -72,6 +72,7 @@ log = "0.4.33"
 num-format = "0.4.4"
 paiagram-core = { path = "crates/paiagram-core" }
 paiagram-oudia = { path = "crates/paiagram-oudia" }
+paiagram-oudia-macros = { path = "crates/paiagram-oudia-macros" }
 paiagram-raptor = { path = "crates/paiagram-raptor" }
 paiagram-rw = { path = "crates/paiagram-rw" }
 parking_lot = "0.12"

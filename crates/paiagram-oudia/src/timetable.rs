@@ -50,6 +50,32 @@ impl TimetableEntry {
     }
 }
 
+impl std::fmt::Display for TimetableEntry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.service_mode as u32)?;
+        if self.arrival_time.is_some() || self.departure_time.is_some() {
+            write!(f, ";")?;
+            if let Some(arrival) = self.arrival_time {
+                write!(f, "{}/", arrival.to_oud_string())?;
+            }
+            if let Some(departure) = self.departure_time {
+                write!(f, "{}", departure.to_oud_string())?;
+            }
+        }
+        if let Some(track) = self.track_index {
+            write!(f, "${}", track)?;
+        }
+        Ok(())
+    }
+}
+
+impl std::str::FromStr for TimetableEntry {
+    type Err = pest::error::Error<crate::timetable::time::Rule>;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        parse_to_timetable_entry(s)
+    }
+}
+
 pub mod time {
     use pest_consume::{Error, Parser};
 

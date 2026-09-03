@@ -2,64 +2,92 @@
 //! Intermediate representation of the .oud/oud2 formats.
 //! Take a look at [`Root`] to get started.
 
-use std::borrow::Cow;
 use std::cmp::{max, min};
 
-use smallvec::SmallVec;
+use paiagram_oudia_macros::oudia;
 use thiserror::Error;
 
-use crate::ir_macros::{make_ir_enum, make_ir_type, parse_fields};
+use crate::Structure;
+use crate::ir_macros::make_ir_enum;
 use crate::operation::{InsertOperation, parse_to_operation_hierarchy, parse_to_raw_operation};
 use crate::time::Time;
-use crate::timetable::{TimetableEntry, normalize_times, parse_to_timetable_entry};
-use crate::{pair, structure};
+use crate::timetable::{TimetableEntry, normalize_times};
+
 mod diagram_trips;
 
-make_ir_type! {
-    /// The root of the structure
-    struct Root;
+/// The root of the structure
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, PartialEq)]
+#[oudia(key = "")]
+pub struct Root {
     /// File type. Usually the software name + version.
-    pub file_type as ["FileType"]: String,
+    #[oudia(type(single_pair_single_entry = "FileType"))]
+    pub file_type: String,
     /// The route in the file.
-    pub route as ["Rosen", "路線"]: Route,
+    #[oudia(type(single_struct = "Rosen"), alias = "路線")]
+    pub route: Route,
 }
 
-make_ir_type! {
-    struct Route as ["Rosen", "路線"];
+/// The name of the route
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, PartialEq)]
+#[oudia(key = "Rosen", alias = "路線")]
+pub struct Route {
     /// The name of the route
-    pub name as ["Rosenmei", "路線名"]: String,
+    #[oudia(type(single_pair_single_entry = "Rosenmei"), alias = "路線名")]
+    pub name: String,
     /// What stations are included in the route
-    pub stations as ["Eki", "駅"]: Vec<Station>,
+    #[oudia(type(many_structs = "Eki"), alias = "駅")]
+    pub stations: Vec<Station>,
     /// The available train classes. E.g., local, express.
-    pub classes as ["Ressyasyubetsu", "列車種別"]: Vec<Class>,
+    #[oudia(type(many_structs = "Ressyasyubetsu"), alias = "列車種別")]
+    pub classes: Vec<Class>,
     /// The diagrams included in this route. Each diagram is a timetable set.
-    pub diagrams as ["Dia", "ダイヤ"]: Vec<Diagram>,
+    #[oudia(type(many_structs = "Dia"), alias = "ダイヤ")]
+    pub diagrams: Vec<Diagram>,
     /// When to start displaying times on the diagram page.
-    pub display_start_time as ["KitenJikoku", "起点時刻"]: Time,
-    pub comment as ["Comment"]: String,
+    #[oudia(type(single_pair_single_entry = "KitenJikoku"), alias = "起点時刻")]
+    pub display_start_time: Time,
+    #[oudia(type(single_pair_single_entry = "Comment"))]
+    pub comment: String,
 }
 
-make_ir_type! {
-    /// A station on the route.
-    struct Station as ["Eki", "駅"];
-    pub name as ["Ekimei", "駅名"]: String,
+/// A station on the route.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, PartialEq)]
+#[oudia(key = "Eki", alias = "駅")]
+pub struct Station {
+    #[oudia(type(single_pair_single_entry = "Ekimei"), alias = "駅名")]
+    pub name: String,
     /// The abbreviation used in timetables.
-    pub timetable_abbreviation as ["EkimeiJikokuRyaku", "駅名時刻略"]: Option<String>,
+    #[oudia(
+        type(single_pair_single_entry = "EkimeiJikokuRyaku"),
+        alias = "駅名時刻略"
+    )]
+    pub timetable_abbreviation: Option<String>,
     /// The abbreviation used in diagrams.
-    pub diagram_abbreviation as ["EkimeiDiaRyaku", "駅名ダイヤ略"]: Option<String>,
+    #[oudia(
+        type(single_pair_single_entry = "EkimeiDiaRyaku"),
+        alias = "駅名ダイヤ略"
+    )]
+    pub diagram_abbreviation: Option<String>,
     /// Stations that branch off at certain points may repeat themselves on
     /// the diagram. This index refers to the other station in the station list
     /// that should be treated as if it is this station. Please also note that
     /// the name `BrunchCoreEkiIndex` contains a spelling mistake. It should be
     /// `branch` instead of `brunch`.
-    pub branch_index as ["BrunchCoreEkiIndex"]: Option<usize>,
+    #[oudia(type(single_pair_single_entry = "BrunchCoreEkiIndex"))]
+    pub branch_index: Option<usize>,
     /// Diagrams representing loop lines may repeat certain stations on
     /// the diagram. This index refers to the other station in the station list
     /// that should be treated as if it is this station.
-    pub loop_index as ["LoopOriginEkiIndex"]: Option<usize>,
+    #[oudia(type(single_pair_single_entry = "LoopOriginEkiIndex"))]
+    pub loop_index: Option<usize>,
     /// The tracks of the station
-    pub tracks as ["EkiTrack2Cont"]: SmallVec<[Track; 2]>,
-    pub station_type as ["Ekikibo", "駅規模"]: StationType,
+    #[oudia(type(single_struct_many_entries = "EkiTrack2Cont"))]
+    pub tracks: Vec<Track>,
+    #[oudia(type(single_pair_single_entry = "Ekikibo"), alias = "駅規模")]
+    pub station_type: StationType,
 }
 
 pub trait StationToGraph {
@@ -103,10 +131,15 @@ impl StationToGraph for [Station] {
     }
 }
 
-make_ir_type! {
-    struct Track;
-    pub name as ["TrackName"]: String,
-    pub abbreviation as ["TrackRyakusyou", "Track略称"]: String,
+/// A station track.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, PartialEq)]
+#[oudia(key = "EkiTrack2")]
+pub struct Track {
+    #[oudia(type(single_pair_single_entry = "TrackName"))]
+    pub name: String,
+    #[oudia(type(single_pair_single_entry = "TrackRyakusyou"), alias = "Track略称")]
+    pub abbreviation: String,
 }
 
 /// Color. This color is stored in ARGB format.
@@ -129,6 +162,13 @@ impl Color {
     }
 }
 
+impl std::fmt::Display for Color {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // The OuDia color string is `00BBGGRR`, matching [`Color::from_str`].
+        write!(f, "00{:02X}{:02X}{:02X}", self.b(), self.g(), self.r())
+    }
+}
+
 impl std::str::FromStr for Color {
     type Err = IrConversionError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -147,20 +187,32 @@ impl std::str::FromStr for Color {
     }
 }
 
-make_ir_type! {
-    /// A train class. E.g., local, express.
-    struct Class as ["Ressyasyubetsu", "列車種別"];
-    pub name as ["Syubetsumei", "種別名"]: String,
+/// A train class. E.g., local, express.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, PartialEq)]
+#[oudia(key = "Ressyasyubetsu", alias = "列車種別")]
+pub struct Class {
+    #[oudia(type(single_pair_single_entry = "Syubetsumei"), alias = "種別名")]
+    pub name: String,
     /// An optional abbreviation.
-    pub abbreviation as ["Ryakusyou", "略称"]: Option<String>,
+    #[oudia(type(single_pair_single_entry = "Ryakusyou"), alias = "略称")]
+    pub abbreviation: Option<String>,
     /// The color displayed in diagrams and in the timetable.
-    pub diagram_line_color as ["DiagramSenColor", "ダイヤ線Color"]: Color,
+    #[oudia(
+        type(single_pair_single_entry = "DiagramSenColor"),
+        alias = "ダイヤ線Color"
+    )]
+    pub diagram_line_color: Color,
 }
 
-make_ir_type! {
-    /// A timetable set.
-    struct Diagram as ["Dia", "ダイヤ"];
-    pub name as ["DiaName"]: Option<String>,
+/// A timetable set.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, PartialEq)]
+#[oudia(key = "Dia", alias = "ダイヤ")]
+pub struct Diagram {
+    #[oudia(type(single_pair_single_entry = "DiaName"))]
+    pub name: Option<String>,
+    #[oudia(type(twin_struct_multiple_entries(first = "Kudari", second = "Nobori")))]
     pub trips: Vec<Trip>,
 }
 
@@ -168,6 +220,12 @@ make_ir_enum! {
     enum Direction as ["Houkou", "方向"];
     Up as ["Nobori", "上り"],
     Down as ["Kudari", "下り"],
+}
+
+impl std::fmt::Display for Direction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.oud_name())
+    }
 }
 
 impl std::str::FromStr for Direction {
@@ -189,6 +247,12 @@ make_ir_enum! {
     Minor as ["Ekikibo_Ippan", "駅規模_一般"],
 }
 
+impl std::fmt::Display for StationType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.oud_name())
+    }
+}
+
 impl std::str::FromStr for StationType {
     type Err = IrConversionError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -202,13 +266,59 @@ impl std::str::FromStr for StationType {
     }
 }
 
-make_ir_type! {
-    struct Trip as ["Ressya", "列車"];
-    pub name as ["Ressyabangou", "列車番号"]: Option<String>,
-    pub comment as ["Bikou", "備考"]: Option<String>,
-    pub direction as ["Houkou", "方向"]: Direction,
-    pub class_index as ["Syubetsu", "種別"]: usize,
-    pub times as ["EkiJikoku", "駅時刻"]: Vec<TimetableEntry>,
+/// A train trip.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, PartialEq)]
+#[oudia(key = "Ressya", alias = "列車")]
+pub struct Trip {
+    #[oudia(type(single_pair_single_entry = "Ressyabangou"), alias = "列車番号")]
+    pub name: Option<String>,
+    #[oudia(type(single_pair_single_entry = "Bikou"), alias = "備考")]
+    pub comment: Option<String>,
+    #[oudia(type(single_pair_single_entry = "Houkou"), alias = "方向")]
+    pub direction: Direction,
+    #[oudia(type(single_pair_single_entry = "Syubetsu"), alias = "種別")]
+    pub class_index: usize,
+    #[oudia(
+        type(single_pair_many_entries = "EkiJikoku"),
+        alias       = "駅時刻",
+        parse_fn    = parse_timetable_entries,
+        silence_fn  = |s: &str| s == "Ekijikoku" || s.starts_with("Operation")
+    )]
+    pub times: Vec<TimetableEntry>,
+}
+
+fn parse_timetable_entries(
+    ast: &[Structure<'_>],
+) -> Result<Vec<TimetableEntry>, IrConversionError> {
+    let times = ast
+        .iter()
+        .find_map(|node| match node {
+            Structure::Pair(k, v) if k == "EkiJikoku" => Some(v),
+            _ => None,
+        })
+        .ok_or(IrConversionError::MissingField {
+            processing: std::any::type_name::<TimetableEntry>(),
+            missing: "EkiJikoku",
+        })?;
+    let mut times: Vec<_> = times
+        .into_iter()
+        .map(|ent| ent.parse::<TimetableEntry>())
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(IrConversionError::from)?;
+    for (key, operations) in ast.iter().filter_map(|node| match node {
+        Structure::Pair(k, v) if k.starts_with("Operation") => Some((k, v)),
+        _ => None,
+    }) {
+        let hierarchy = parse_to_operation_hierarchy(key)?;
+        let operations =
+            operations.iter().map(|s| parse_to_raw_operation(s)).collect::<Result<Vec<_>, _>>()?;
+        times.insert_operations(hierarchy, operations);
+    }
+    normalize_times(times.iter_mut().flat_map(|ent| {
+        [ent.arrival_time.as_mut(), ent.departure_time.as_mut()].into_iter().flatten()
+    }));
+    Ok(times)
 }
 
 /// Also known as `運用`.
@@ -336,8 +446,6 @@ impl Diagram {
     }
 }
 
-use crate::ast::{GetItemWithKey, Structure};
-
 #[derive(Debug, Clone, Error)]
 pub enum IrConversionError {
     #[error("Missing field '{missing}' when converting AST to '{processing}'")]
@@ -370,203 +478,9 @@ pub enum IrConversionError {
     EmptyError(&'static str),
 }
 
-fn infer_name(v: &[Cow<'_, str>]) -> Result<String, IrConversionError> {
-    let Some(s) = v.get(0) else {
-        return Err(IrConversionError::IndexOutOfBounds {
-            field: "UNIMPLEMENTED",
-            processing: "UNIMPLEMENTED",
-            index: 0,
-            len: v.len(),
-        });
-    };
-    Ok(s.to_string())
-}
-
-fn infer_parse<T>(v: &[Cow<'_, str>]) -> Result<T, IrConversionError>
-where
-    T: std::str::FromStr,
-    IrConversionError: From<T::Err>,
-{
-    let Some(s) = v.get(0) else {
-        return Err(IrConversionError::IndexOutOfBounds {
-            field: "UNIMPLEMENTED",
-            processing: "UNIMPLEMENTED",
-            index: 0,
-            len: v.len(),
-        });
-    };
-    s.parse::<T>().map_err(IrConversionError::from)
-}
-
-fn pass<'r, 'a>(v: &'r [Structure<'a>]) -> Result<&'r [Structure<'a>], IrConversionError> {
-    Ok(v)
-}
-
-impl<'a> TryFrom<&[Structure<'a>]> for Root {
-    type Error = IrConversionError;
-    fn try_from(value: &[Structure<'a>]) -> Result<Self, Self::Error> {
-        parse_fields!(value; Root;
-            RequiredOnce(file_type: Pair) => infer_name,
-            RequiredOnce(route: Struct) => Route::try_from,
-        );
-        Ok(Self { file_type, route })
-    }
-}
-
-impl<'a> TryFrom<&[Structure<'a>]> for Route {
-    type Error = IrConversionError;
-    fn try_from(value: &[Structure<'a>]) -> Result<Self, Self::Error> {
-        parse_fields!(value; Route;
-            Many(stations: Struct) => Station::try_from,
-            Many(diagrams: Struct) => Diagram::try_from,
-            Many(classes: Struct) => Class::try_from,
-            RequiredOnce(name: Pair) => infer_name,
-            RequiredOnce(display_start_time: Pair) => infer_parse::<Time>,
-            RequiredOnce(comment: Pair) => infer_name,
-        );
-        Ok(Self {
-            name,
-            stations,
-            classes,
-            diagrams,
-            display_start_time,
-            comment,
-        })
-    }
-}
-
-impl<'a> TryFrom<&[Structure<'a>]> for Station {
-    type Error = IrConversionError;
-    fn try_from(value: &[Structure<'a>]) -> Result<Self, Self::Error> {
-        parse_fields!(value; Station;
-            RequiredOnce(name: Pair) => infer_name,
-            RequiredOnce(station_type: Pair) => infer_parse::<StationType>,
-            OptionalOnce(timetable_abbreviation: Pair) => infer_name,
-            OptionalOnce(diagram_abbreviation: Pair) => infer_name,
-            OptionalOnce(branch_index: Pair) => infer_parse::<usize>,
-            OptionalOnce(loop_index: Pair) => infer_parse::<usize>,
-            OptionalOnce(all_tracks: Struct(Self::TRACKS_OUD_NAME)) => pass,
-        );
-        let mut tracks = SmallVec::new();
-        for (_, ast) in all_tracks.into_iter().flatten().every_struct("EkiTrack2") {
-            parse_fields!(ast; Track;
-                RequiredOnce(name: Pair) => infer_name,
-                RequiredOnce(abbreviation: Pair) => infer_name,
-            );
-            tracks.push(Track { name, abbreviation })
-        }
-        Ok(Self {
-            name,
-            timetable_abbreviation,
-            diagram_abbreviation,
-            branch_index,
-            loop_index,
-            tracks,
-            station_type,
-        })
-    }
-}
-
-impl<'a> TryFrom<&[Structure<'a>]> for Diagram {
-    type Error = IrConversionError;
-    fn try_from(value: &[Structure<'a>]) -> Result<Self, Self::Error> {
-        parse_fields!(value; Diagram;
-            OptionalOnce(name: Pair) => infer_name,
-            Many(up_trips: Struct(Direction::Up.oud_name())) => pass,
-            Many(down_trips: Struct(Direction::Down.oud_name())) => pass,
-        );
-        let mut trips = Vec::new();
-        let down_trips_iter = down_trips.into_iter().flatten();
-        let up_trips_iter = up_trips.into_iter().flatten();
-        for trip_result in down_trips_iter
-            .chain(up_trips_iter)
-            .every_struct("Ressya")
-            .map(|(_, trip)| Trip::try_from(trip))
-        {
-            match trip_result {
-                Ok(r) => trips.push(r),
-                Err(Self::Error::EmptyError(_)) => {
-                    continue;
-                }
-                Err(e) => return Err(e),
-            }
-        }
-        Ok(Self { name, trips })
-    }
-}
-
-impl<'a> TryFrom<&[Structure<'a>]> for Trip {
-    type Error = IrConversionError;
-    fn try_from(value: &[Structure<'a>]) -> Result<Self, Self::Error> {
-        parse_fields!(value; Trip;
-            OptionalOnce(name: Pair) => infer_name,
-            OptionalOnce(comment: Pair) => infer_name,
-            RequiredOnce(direction: Pair) => infer_parse::<Direction>,
-            RequiredOnce(class_index: Pair) => infer_parse::<usize>,
-            RequiredOnce(times: Pair) =>
-                |v: &[Cow<'a, str>]| -> Result<_, IrConversionError> {
-                let mut times = Vec::with_capacity(v.len());
-                for entry in v {
-                    let v = parse_to_timetable_entry(entry)?;
-                    times.push(v);
-                }
-                Ok(times)
-            },
-        );
-        let mut times = times;
-        for it in value.iter() {
-            let Structure::Pair(k, vals) = it else {
-                continue;
-            };
-            if !k.starts_with("Operation") {
-                continue;
-            }
-            let hierarchy = parse_to_operation_hierarchy(k)?;
-            let operations =
-                vals.iter().map(|it| parse_to_raw_operation(it)).collect::<Result<Vec<_>, _>>()?;
-            times.insert_operations(hierarchy, operations);
-        }
-        normalize_times(times.iter_mut().flat_map(|ent| {
-            [ent.arrival_time.as_mut(), ent.departure_time.as_mut()].into_iter().flatten()
-        }));
-        Ok(Self {
-            name,
-            direction,
-            class_index,
-            times,
-            comment,
-        })
-    }
-}
-
-impl<'a> TryFrom<&[Structure<'a>]> for Class {
-    type Error = IrConversionError;
-    fn try_from(value: &[Structure<'a>]) -> Result<Self, Self::Error> {
-        parse_fields!(value; Class;
-            RequiredOnce(name: Pair) => infer_name,
-            OptionalOnce(abbreviation: Pair) => infer_name,
-            RequiredOnce(diagram_line_color: Pair) => infer_parse::<Color>,
-        );
-        Ok(Self {
-            name,
-            abbreviation,
-            diagram_line_color,
-        })
-    }
-}
-
-impl<'a> Into<Vec<Structure<'a>>> for Root {
-    fn into(self) -> Vec<Structure<'a>> {
-        vec![
-            pair!("FileType" => self.file_type),
-            structure!("Rosen" => ..<Route as Into<Vec<Structure>>>::into(self.route)),
-        ]
-    }
-}
-
-impl<'a> Into<Vec<Structure<'a>>> for Route {
-    fn into(self) -> Vec<Structure<'a>> {
-        vec![pair!("Rosenmei" => self.name)]
+impl From<std::convert::Infallible> for IrConversionError {
+    fn from(never: std::convert::Infallible) -> Self {
+        match never {}
     }
 }
 
@@ -579,13 +493,13 @@ mod test {
     pub(crate) fn get_ir() -> Result<Root, IrConversionError> {
         let s = include_str!("../test/sample.oud2");
         let ast = parse_to_ast(s)?;
-        Root::try_from(ast.as_slice())
+        <Root as crate::OuDiaIo>::from_structure(ast.as_slice())
     }
 
     pub(crate) fn get_ir_small() -> Result<Root, IrConversionError> {
         let s = include_str!("../test/sample2.oud2");
         let ast = parse_to_ast(s)?;
-        Root::try_from(ast.as_slice())
+        <Root as crate::OuDiaIo>::from_structure(ast.as_slice())
     }
 
     #[test]

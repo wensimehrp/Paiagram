@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use js_sys::Array;
-use paiagram_oudia::{Root, parse_to_ast};
+use paiagram_oudia::{OuDiaIo, Root, parse_to_ast};
 use wasm_bindgen::convert::FromWasmAbi;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
@@ -55,7 +55,8 @@ fn convert(input: &str, format: OutputFormat) -> Result<String, String> {
         return Ok(format!("{ast:#?}"));
     }
 
-    let ir = Root::try_from(ast.as_slice()).map_err(|err| format!("Error parsing AST:\n{err}"))?;
+    let ir =
+        Root::from_structure(ast.as_slice()).map_err(|err| format!("Error parsing AST:\n{err}"))?;
 
     let result = match format {
         OutputFormat::AstDebug => unreachable!(),

@@ -1,5 +1,5 @@
 use paiagram_core::{RouteKey, WorldSnapshot};
-use paiagram_oudia::{Root, SerializeToOud, Structure, pair, structure};
+use paiagram_oudia::{OuDiaIo, Root, SerializeToOud, Structure, pair, structure};
 
 pub struct ExportOuDia {
     world: WorldSnapshot,
@@ -11,8 +11,11 @@ impl paiagram_rw::ExportObject for ExportOuDia {
         ".oud"
     }
     fn write_content<W: std::io::Write>(&mut self, writer: &mut W) -> std::io::Result<()> {
-        let ast = [make_disp_prop()];
-        ast.serialize_oud_to(writer)
+        let root = make_root(&self.world);
+        let Structure::Struct(_, inner) = root.to_structure() else {
+            unreachable!();
+        };
+        inner.serialize_oud_to(writer)
     }
 }
 

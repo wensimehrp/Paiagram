@@ -14,6 +14,8 @@ all-features = true
 derive_more = { version = "2.1.1", features = ["full"] }
 either.workspace = true
 encoding_rs.workspace = true
+log.workspace = true
+paiagram-oudia-macros.workspace = true
 paste.workspace = true
 pest = "2.8.6"
 pest_consume = "1.1.3"
