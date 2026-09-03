@@ -67,7 +67,6 @@ pub(crate) fn load_default_font(ctx: Context, font_name: Arc<Mutex<String>>) {
             let mut name = font_name.lock();
             name.clear();
             name.push_str("Error");
-            return;
         }
     };
     #[cfg(target_arch = "wasm32")]
