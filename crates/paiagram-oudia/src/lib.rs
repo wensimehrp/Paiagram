@@ -1,25 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
-#![cfg_attr(docsrs, feature(doc_cfg))]
-/*!
-A utility crate for parsing the .oud/.oud2 formats used by timetabling tools
-[OuDia](https://web.archive.org/web/20240909024820/https://take-okm.a.la9.jp/oudia/index.html)
-and [OuDiaSecond](http://oudiasecond.seesaa.net/). This crate does not support
-parsing WINDIA files.
+#![doc = include_str!("../README.md")]
 
-This parses .oud/.oud2 strings into human readable intermediate
-representation in plain, comprehensible English (as in the [`ir`] module).
-The crate's goal is to provide a friendly interface for interacting with those
-formats. There crate also provides serialization support from AST to .oud/.oud2
-structure.
-
-# Getting Started
-
-To get started, simply use [`parse_oud2_to_ir`] for .oud2, or [`parse_oud_to_ir`]
-for .oud.
-
-Alternatively, you can use [`parse_to_ast`] if you want to parse a file to AST and
-interact with the AST directly.
-*/
 pub use ast::{SerializeToOud, Structure, parse_to_ast};
 pub use ir::*;
 #[doc(hidden)]
