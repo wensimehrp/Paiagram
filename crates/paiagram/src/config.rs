@@ -158,7 +158,9 @@ impl egui::Widget for &mut Preferences {
                 ui.end_row();
                 ui.label("Font");
                 egui::ComboBox::from_id_salt("font selection")
-                    .selected_text(self.font_name.lock().as_str())
+                    .selected_text(
+                        self.font_name.try_lock().map_or_else(|| "".to_string(), |s| s.clone()),
+                    )
                     .height(300.0)
                     .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
                     .show_ui(ui, |ui| {
@@ -198,6 +200,9 @@ impl egui::Widget for &mut Preferences {
                         ui.data_mut(|w| w.insert_temp(query_id, query));
                         ui.data_mut(|w| w.insert_temp(candidate_id, matches));
                     });
+                ui.end_row();
+                ui.label("No. of threads");
+                ui.label(rayon::current_num_threads().to_string());
             })
             .response
     }

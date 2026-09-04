@@ -102,20 +102,11 @@ fn load_sarasa_cl(ctx: Context, font_name: Arc<Mutex<String>>) {
 }
 
 fn load_font_name(face_id: ID, font_name: Arc<Mutex<String>>) {
-    let font_name_clone = font_name.clone();
-    FONT_DATABASE.read().face(face_id).map_or_else(
-        move || {
-            let mut font_name = font_name.lock();
-            font_name.clear();
-            font_name.push_str("UNNAMED FONT");
-        },
-        move |info| {
-            info!("Trying to load font `{}`", &info.post_script_name);
-            let mut font_name = font_name_clone.lock();
-            font_name.clear();
-            font_name.push_str(&info.post_script_name);
-        },
-    );
+    let post_script_name =
+        FONT_DATABASE.read().face(face_id).map_or("UNNAMED FONT".to_string(), |info| {
+            info.post_script_name.to_string()
+        });
+    *font_name.lock() = post_script_name;
 }
 
 pub(crate) fn load_font_to_egui(
