@@ -108,6 +108,7 @@ mod test {
 
     #[test]
     fn parse_all_files_to_ir() -> E {
+        let _ = env_logger::try_init();
         let mut dir_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         dir_path.push("test");
         let entries = std::fs::read_dir(dir_path)?;
