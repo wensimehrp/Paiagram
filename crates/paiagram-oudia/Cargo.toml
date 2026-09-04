@@ -25,5 +25,8 @@ serde = { version = "1.0.228", features = ["derive"], optional = true }
 smallvec.workspace = true
 thiserror.workspace = true
 
+[dev-dependencies]
+env_logger.workspace = true
+
 [features]
 serde = ["dep:serde", "petgraph/serde-1", "smallvec/serde"]

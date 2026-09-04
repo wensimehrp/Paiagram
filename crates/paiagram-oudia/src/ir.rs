@@ -14,6 +14,9 @@ use crate::time::Time;
 use crate::timetable::{TimetableEntry, normalize_times};
 
 mod diagram_trips;
+mod station;
+
+pub use station::{CrossingCheckRule, OuterTerminal, Station, StationToGraph, Track};
 
 /// The root of the structure
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -23,9 +26,208 @@ pub struct Root {
     /// File type. Usually the software name + version.
     #[oudia(type(single_pair_single_entry = "FileType"))]
     pub file_type: String,
+    #[oudia(type(single_pair_single_entry = "FileTypeAppComment"))]
+    pub file_type_app_comment: Option<String>,
     /// The route in the file.
     #[oudia(type(single_struct = "Rosen"), alias = "路線")]
     pub route: Route,
+    /// Display properties (fonts, colors, widths).
+    #[oudia(type(single_struct = "DispProp"), default)]
+    pub display_properties: DisplayProperties,
+    /// Window layout state saved in the file.
+    #[oudia(type(single_struct = "WindowPlacement"), default)]
+    pub window_position: WindowPosition,
+}
+
+/// Display-related properties. Font and color values are kept as the exact
+/// strings the format stores them in.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, PartialEq)]
+#[oudia(key = "DispProp")]
+pub struct DisplayProperties {
+    /// Horizontal fonts for the timetable screen (one entry per font slot).
+    #[oudia(
+        type(single_pair_many_entries = "JikokuhyouFont"),
+        default = vec![
+            "PointTextHeight=9;Facename=Meiryo UI".to_string(),
+            "PointTextHeight=9;Facename=Meiryo UI;Bold=1".to_string(),
+            "PointTextHeight=9;Facename=Meiryo UI;Itaric=1".to_string(),
+            "PointTextHeight=9;Facename=Meiryo UI;Bold=1;Itaric=1".to_string(),
+            "PointTextHeight=9;Facename=Meiryo UI".to_string(),
+            "PointTextHeight=9;Facename=Meiryo UI".to_string(),
+            "PointTextHeight=9;Facename=Meiryo UI".to_string(),
+            "PointTextHeight=9;Facename=Meiryo UI".to_string(),
+        ]
+    )]
+    pub timetable_fonts: Vec<String>,
+    #[oudia(
+        type(single_pair_single_entry = "JikokuhyouVFont"),
+        default = "PointTextHeight=9;Facename=@Meiryo UI".to_string()
+    )]
+    pub timetable_vertical_font: String,
+    #[oudia(
+        type(single_pair_single_entry = "DiaEkimeiFont"),
+        default = "PointTextHeight=9;Facename=Meiryo UI".to_string()
+    )]
+    pub diagram_station_name_font: String,
+    #[oudia(
+        type(single_pair_single_entry = "DiaJikokuFont"),
+        default = "PointTextHeight=9;Facename=Meiryo UI".to_string()
+    )]
+    pub diagram_time_font: String,
+    #[oudia(
+        type(single_pair_single_entry = "DiaRessyaFont"),
+        default = "PointTextHeight=9;Facename=Meiryo UI".to_string()
+    )]
+    pub diagram_trip_font: String,
+    #[oudia(
+        type(single_pair_single_entry = "OperationTableFont"),
+        default = "PointTextHeight=9;Facename=Meiryo UI".to_string()
+    )]
+    pub operation_table_font: String,
+    #[oudia(
+        type(single_pair_single_entry = "AllOperationTableJikokuFont"),
+        default = "PointTextHeight=8;Facename=Meiryo UI".to_string()
+    )]
+    pub all_operation_table_time_font: String,
+    #[oudia(
+        type(single_pair_single_entry = "CommentFont"),
+        default = "PointTextHeight=9;Facename=Meiryo UI".to_string()
+    )]
+    pub comment_font: String,
+    #[oudia(
+        type(single_pair_single_entry = "DiaMojiColor"),
+        default = Color([0, 0, 0, 0])
+    )]
+    pub diagram_text_color: Color,
+    /// Background colors for the diagram screen (one per color slot).
+    /// `DiaHaikeiColor` is the pre-`DiaBackColor` name for this field and is
+    /// silently ignored when present.
+    #[oudia(
+        type(single_pair_many_entries = "DiaBackColor"),
+        silence_fn = |k: &str| k == "DiaHaikeiColor",
+        default = vec![Color([0, 255, 255, 255]); 5]
+    )]
+    pub diagram_back_colors: Vec<Color>,
+    #[oudia(
+        type(single_pair_single_entry = "DiaRessyaColor"),
+        default = Color([0, 0, 0, 0])
+    )]
+    pub diagram_train_color: Color,
+    #[oudia(
+        type(single_pair_single_entry = "DiaJikuColor"),
+        default = Color([0, 192, 192, 192])
+    )]
+    pub diagram_axis_color: Color,
+    /// Background colors for the timetable screen (one per color slot).
+    #[oudia(
+        type(single_pair_many_entries = "JikokuhyouBackColor"),
+        default = vec![
+            Color([0, 255, 255, 255]),
+            Color([0, 240, 240, 240]),
+            Color([0, 255, 255, 255]),
+            Color([0, 255, 255, 255]),
+        ]
+    )]
+    pub timetable_back_colors: Vec<Color>,
+    #[oudia(
+        type(single_pair_single_entry = "StdOpeTimeLowerColor"),
+        default = Color([0, 224, 224, 255])
+    )]
+    pub std_ope_time_lower_color: Color,
+    #[oudia(
+        type(single_pair_single_entry = "StdOpeTimeHigherColor"),
+        default = Color([0, 255, 255, 224])
+    )]
+    pub std_ope_time_higher_color: Color,
+    #[oudia(
+        type(single_pair_single_entry = "StdOpeTimeUndefColor"),
+        default = Color([0, 255, 255, 128])
+    )]
+    pub std_ope_time_undef_color: Color,
+    #[oudia(
+        type(single_pair_single_entry = "StdOpeTimeIllegalColor"),
+        default = Color([0, 160, 160, 160])
+    )]
+    pub std_ope_time_illegal_color: Color,
+    #[oudia(
+        type(single_pair_single_entry = "OperationStringColor"),
+        default = Color([0, 0, 0, 0])
+    )]
+    pub operation_string_color: Color,
+    #[oudia(
+        type(single_pair_single_entry = "OperationGridColor"),
+        default = Color([0, 0, 0, 0])
+    )]
+    pub operation_grid_color: Color,
+    #[oudia(type(single_pair_single_entry = "EkimeiLength"), default = 6)]
+    pub station_name_length: i32,
+    #[oudia(type(single_pair_single_entry = "JikokuhyouRessyaWidth"), default = 5)]
+    pub timetable_train_width: i32,
+    #[oudia(type(single_pair_single_entry = "AnySecondIncDec1"), default = 5)]
+    pub any_second_step_1: i32,
+    #[oudia(type(single_pair_single_entry = "AnySecondIncDec2"), default = 15)]
+    pub any_second_step_2: i32,
+    #[oudia(type(single_pair_single_entry = "DisplayRessyamei"), default = true)]
+    pub display_train_name: bool,
+    #[oudia(
+        type(single_pair_single_entry = "DisplayOuterTerminalEkimeiOriginSide"),
+        default = false
+    )]
+    pub display_outer_terminal_origin: bool,
+    #[oudia(
+        type(single_pair_single_entry = "DisplayOuterTerminalEkimeiTerminalSide"),
+        default = false
+    )]
+    pub display_outer_terminal_terminal: bool,
+    #[oudia(
+        type(single_pair_single_entry = "DiagramDisplayOuterTerminal"),
+        default = 0
+    )]
+    pub diagram_display_outer_terminal: i32,
+    #[oudia(type(single_pair_single_entry = "SecondRoundChaku"), default = 0)]
+    pub second_round_arrival: i32,
+    #[oudia(type(single_pair_single_entry = "SecondRoundHatsu"), default = 0)]
+    pub second_round_departure: i32,
+    #[oudia(type(single_pair_single_entry = "Display2400"), default = false)]
+    pub display_2400: bool,
+    #[oudia(type(single_pair_single_entry = "OperationNumberRows"), default = 1)]
+    pub operation_number_rows: i32,
+    #[oudia(
+        type(single_pair_single_entry = "DisplayInOutLinkCode"),
+        default = false
+    )]
+    pub display_in_out_link_code: bool,
+}
+
+/// A single saved child window placement.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, PartialEq)]
+#[oudia(key = "ChildWindow")]
+pub struct Window {
+    #[oudia(type(single_pair_single_entry = "WindowType"))]
+    pub window_type: i32,
+    #[oudia(type(single_pair_single_entry = "DiaIndex"))]
+    pub diagram_index: i32,
+    #[oudia(type(single_pair_single_entry = "XPos"))]
+    pub x: i32,
+    #[oudia(type(single_pair_single_entry = "YPos"))]
+    pub y: i32,
+    #[oudia(type(single_pair_single_entry = "XSize"))]
+    pub width: i32,
+    #[oudia(type(single_pair_single_entry = "YSize"))]
+    pub height: i32,
+}
+
+/// Saved window layout.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, PartialEq)]
+#[oudia(key = "WindowPlacement")]
+pub struct WindowPosition {
+    #[oudia(type(single_pair_single_entry = "RosenViewWidth"), default = 0)]
+    pub route_view_width: i32,
+    #[oudia(type(many_structs = "ChildWindow"), default)]
+    pub child_windows: Vec<Window>,
 }
 
 /// The name of the route
@@ -50,96 +252,34 @@ pub struct Route {
     pub display_start_time: Time,
     #[oudia(type(single_pair_single_entry = "Comment"))]
     pub comment: String,
-}
-
-/// A station on the route.
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Clone, Debug, PartialEq)]
-#[oudia(key = "Eki", alias = "駅")]
-pub struct Station {
-    #[oudia(type(single_pair_single_entry = "Ekimei"), alias = "駅名")]
-    pub name: String,
-    /// The abbreviation used in timetables.
     #[oudia(
-        type(single_pair_single_entry = "EkimeiJikokuRyaku"),
-        alias = "駅名時刻略"
+        type(single_pair_single_entry = "KudariDiaAlias"),
+        alias = "下りダイヤ別名"
     )]
-    pub timetable_abbreviation: Option<String>,
-    /// The abbreviation used in diagrams.
+    pub down_dia_alias: Option<String>,
     #[oudia(
-        type(single_pair_single_entry = "EkimeiDiaRyaku"),
-        alias = "駅名ダイヤ略"
+        type(single_pair_single_entry = "NoboriDiaAlias"),
+        alias = "上りダイヤ別名"
     )]
-    pub diagram_abbreviation: Option<String>,
-    /// Stations that branch off at certain points may repeat themselves on
-    /// the diagram. This index refers to the other station in the station list
-    /// that should be treated as if it is this station. Please also note that
-    /// the name `BrunchCoreEkiIndex` contains a spelling mistake. It should be
-    /// `branch` instead of `brunch`.
-    #[oudia(type(single_pair_single_entry = "BrunchCoreEkiIndex"))]
-    pub branch_index: Option<usize>,
-    /// Diagrams representing loop lines may repeat certain stations on
-    /// the diagram. This index refers to the other station in the station list
-    /// that should be treated as if it is this station.
-    #[oudia(type(single_pair_single_entry = "LoopOriginEkiIndex"))]
-    pub loop_index: Option<usize>,
-    /// The tracks of the station
-    #[oudia(type(single_struct_many_entries = "EkiTrack2Cont"))]
-    pub tracks: Vec<Track>,
-    #[oudia(type(single_pair_single_entry = "Ekikibo"), alias = "駅規模")]
-    pub station_type: StationType,
-}
-
-pub trait StationToGraph {
-    fn merge_duplicate(&self) -> Vec<&Station>;
-    fn to_graph<'a>(&'a self) -> petgraph::graph::UnGraph<&'a Station, ()>;
-}
-
-impl StationToGraph for [Station] {
-    fn merge_duplicate(&self) -> Vec<&Station> {
-        let mut ret: Vec<&Station> = self.iter().collect();
-        for curr in 0..ret.len() {
-            let Some(ext) = ret[curr].branch_index.or(ret[curr].loop_index) else {
-                continue;
-            };
-            if let Some(stn) = ret.get(ext).copied() {
-                ret[curr] = stn;
-            }
-        }
-        ret
-    }
-    fn to_graph<'a>(&'a self) -> petgraph::graph::UnGraph<&'a Station, ()> {
-        // only merge stations based on branch index and loop index
-        let mut graph = petgraph::graph::UnGraph::new_undirected();
-        let mut idxs: Vec<_> = self.iter().map(|stn| graph.add_node(stn)).collect();
-        for curr in 0..idxs.len() {
-            let Some(ext) = self[curr].branch_index.or(self[curr].loop_index) else {
-                continue;
-            };
-            if let Some(node_idx) = idxs.get(ext).copied() {
-                let old_idx = idxs[curr];
-                idxs[curr] = node_idx;
-                graph.remove_node(old_idx);
-            }
-        }
-        for [prev, next] in idxs.array_windows::<2>().copied() {
-            if graph.node_weight(prev).is_some() && graph.node_weight(next).is_some() {
-                graph.update_edge(prev, next, ());
-            }
-        }
-        graph
-    }
-}
-
-/// A station track.
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Clone, Debug, PartialEq)]
-#[oudia(key = "EkiTrack2")]
-pub struct Track {
-    #[oudia(type(single_pair_single_entry = "TrackName"))]
-    pub name: String,
-    #[oudia(type(single_pair_single_entry = "TrackRyakusyou"), alias = "Track略称")]
-    pub abbreviation: String,
+    pub up_dia_alias: Option<String>,
+    /// Default vertical spacing (in the diagram's Y-coordinate units) between
+    /// adjacent stations on the diagram.
+    #[oudia(type(single_pair_single_entry = "DiagramDgrYZahyouKyoriDefault"))]
+    pub diagram_station_interval_default: i32,
+    #[oudia(type(single_pair_single_entry = "EnableOperation"))]
+    pub enable_operation: Option<i32>,
+    /// Whether operation numbers are shown in reverse order.
+    #[oudia(type(single_pair_single_entry = "OperationNumberReverse"))]
+    pub operation_number_reverse: Option<bool>,
+    /// Whether operations are allowed to cross the diagram's start time.
+    #[oudia(type(single_pair_single_entry = "OperationCrossKitenJikoku"))]
+    pub operation_crosses_start_time: Option<bool>,
+    /// Index of the reference (baseline) diagram.
+    #[oudia(type(single_pair_single_entry = "KijunDiaIndex"))]
+    pub reference_diagram_index: Option<i32>,
+    /// Whether to ignore classes marked as hidden.
+    #[oudia(type(single_pair_single_entry = "DisableHiddenSyubetsu"))]
+    pub disable_hidden_class: Option<bool>,
 }
 
 /// Color. This color is stored in ARGB format.
@@ -203,6 +343,34 @@ pub struct Class {
         alias = "ダイヤ線Color"
     )]
     pub diagram_line_color: Color,
+    #[oudia(
+        type(single_pair_single_entry = "JikokuhyouMojiColor"),
+        alias = "時刻表文字Color"
+    )]
+    pub timetable_text_color: Color,
+    #[oudia(type(single_pair_single_entry = "JikokuhyouFontIndex"))]
+    pub timetable_font_index: i32,
+    #[oudia(
+        type(single_pair_single_entry = "JikokuhyouBackColor"),
+        alias = "時刻表背景Color"
+    )]
+    pub timetable_background_color: Option<Color>,
+    #[oudia(
+        type(single_pair_single_entry = "DiagramSenStyle"),
+        alias = "ダイヤ線スタイル"
+    )]
+    pub diagram_line_style: DiagramLineStyle,
+    #[oudia(type(single_pair_single_entry = "DiagramSenIsBold"))]
+    pub diagram_line_is_bold: Option<bool>,
+    #[oudia(
+        type(single_pair_single_entry = "StopMarkDrawType"),
+        alias = "停車マーク描画タイプ"
+    )]
+    pub stop_mark_draw_type: StopMarkDrawType,
+    #[oudia(type(single_pair_single_entry = "ParentSyubetsuIndex"))]
+    pub parent_class_index: Option<i32>,
+    #[oudia(type(single_pair_single_entry = "Hidden"))]
+    pub hidden: Option<bool>,
 }
 
 /// A timetable set.
@@ -214,6 +382,16 @@ pub struct Diagram {
     pub name: Option<String>,
     #[oudia(type(twin_struct_multiple_entries(first = "Kudari", second = "Nobori")))]
     pub trips: Vec<Trip>,
+    #[oudia(type(single_pair_single_entry = "BackPatternIndex"))]
+    pub back_pattern_color_index: Option<i32>,
+    #[oudia(type(single_pair_single_entry = "MainBackColorIndex"))]
+    pub main_back_color_index: Option<i32>,
+    #[oudia(type(single_pair_single_entry = "SubBackColorIndex"))]
+    pub sub_back_color_index: Option<i32>,
+    #[oudia(type(single_pair_single_entry = "PatternDiagramPreviewEnable"))]
+    pub pattern_diagram_preview_enable: Option<bool>,
+    #[oudia(type(single_pair_single_entry = "PatternDiagramPreviewCycleSecond"))]
+    pub pattern_diagram_preview_cycle_second: Option<i32>,
 }
 
 make_ir_enum! {
@@ -222,48 +400,46 @@ make_ir_enum! {
     Down as ["Kudari", "下り"],
 }
 
-impl std::fmt::Display for Direction {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.oud_name())
-    }
-}
-
-impl std::str::FromStr for Direction {
-    type Err = IrConversionError;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if s == "Kudari" {
-            Ok(Self::Down)
-        } else if s == "Nobori" {
-            Ok(Self::Up)
-        } else {
-            Err(IrConversionError::UnknownToken(s.to_string()))
-        }
-    }
-}
-
 make_ir_enum! {
     enum StationType as ["Ekikibo", "駅規模"];
     Major as ["Ekikibo_Syuyou", "駅規模_主要"],
     Minor as ["Ekikibo_Ippan", "駅規模_一般"],
 }
 
-impl std::fmt::Display for StationType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.oud_name())
-    }
+make_ir_enum! {
+    /// How a station treats arriving and departing trains in the timetable.
+    enum StationTimetableFormat;
+    Departure as ["Jikokukeisiki_Hatsu"],
+    DepartureAndArrival as ["Jikokukeisiki_Hatsuchaku"],
+    DownArrival as ["Jikokukeisiki_KudariChaku"],
+    UpArrival as ["Jikokukeisiki_NoboriChaku"],
+    DownDepartureAndArrival as ["Jikokukeisiki_KudariHatsuchaku"],
+    UpDepartureAndArrival as ["Jikokukeisiki_NoboriHatsuchaku"],
 }
 
-impl std::str::FromStr for StationType {
-    type Err = IrConversionError;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if s == "Ekikibo_Syuyou" {
-            Ok(Self::Major)
-        } else if s == "Ekikibo_Ippan" {
-            Ok(Self::Minor)
-        } else {
-            Err(IrConversionError::UnknownToken(s.to_string()))
-        }
-    }
+make_ir_enum! {
+    /// The style used to draw a class's line on the diagram.
+    enum DiagramLineStyle;
+    Solid as ["SenStyle_Jissen"],
+    Dashed as ["SenStyle_Hasen"],
+    Dotted as ["SenStyle_Tensen"],
+    DashDot as ["SenStyle_Ittensasen"],
+}
+
+make_ir_enum! {
+    /// When to draw the stop mark on a diagram.
+    enum StopMarkDrawType;
+    DrawOnStop as ["EStopMarkDrawType_DrawOnStop"],
+    Nothing as ["EStopMarkDrawType_Nothing"],
+    DrawOnPass as ["EStopMarkDrawType_DrawOnPass"],
+}
+
+make_ir_enum! {
+    /// When to show train information next to a station on the diagram.
+    enum DiagramTrainInfoDisplay;
+    Origin as ["DiagramRessyajouhouHyouji_Origin"],
+    Anytime as ["DiagramRessyajouhouHyouji_Anytime"],
+    Not as ["DiagramRessyajouhouHyouji_Not"],
 }
 
 /// A train trip.
@@ -275,6 +451,12 @@ pub struct Trip {
     pub name: Option<String>,
     #[oudia(type(single_pair_single_entry = "Bikou"), alias = "備考")]
     pub comment: Option<String>,
+    #[oudia(type(single_pair_single_entry = "Ressyamei"), alias = "列車名")]
+    pub train_name: Option<String>,
+    #[oudia(type(single_pair_single_entry = "Gousuu"), alias = "号数")]
+    pub train_number: Option<String>,
+    #[oudia(type(single_pair_single_entry = "Canceled"))]
+    pub is_canceled: Option<bool>,
     #[oudia(type(single_pair_single_entry = "Houkou"), alias = "方向")]
     pub direction: Direction,
     #[oudia(type(single_pair_single_entry = "Syubetsu"), alias = "種別")]
@@ -283,7 +465,7 @@ pub struct Trip {
         type(single_pair_many_entries = "EkiJikoku"),
         alias       = "駅時刻",
         parse_fn    = parse_timetable_entries,
-        silence_fn  = |s: &str| s == "Ekijikoku" || s.starts_with("Operation")
+        silence_fn  = |s: &str| s == "EkiJikoku" || s.starts_with("Operation")
     )]
     pub times: Vec<TimetableEntry>,
 }

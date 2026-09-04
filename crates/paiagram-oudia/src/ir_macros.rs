@@ -90,6 +90,22 @@ macro_rules! make_ir_enum {
                 )* }
             }
         }
+        impl std::fmt::Display for $ir_name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str(self.oud_name())
+            }
+        }
+        impl std::str::FromStr for $ir_name {
+            type Err = crate::IrConversionError;
+            fn from_str(s: &str) -> Result<Self, Self::Err> {
+                match s {
+                    $(
+                        make_ir_enum!(@oud_name $variant_name, $($first_variant_alias)?) => Ok(Self::$variant_name),
+                    )*
+                    _ => Err(crate::IrConversionError::UnknownToken(s.to_string())),
+                }
+            }
+        }
     };
     (@oud_name $variant_name:ident, $first_name:expr) => {
         $first_name

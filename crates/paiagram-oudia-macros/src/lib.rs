@@ -35,6 +35,24 @@ struct StructArgs {
     alias: Option<String>,
 }
 
+/// A field-level `default` annotation, mirroring serde's `#[serde(default)]`.
+///
+/// `#[oudia(default)]` falls back to `Default::default()`, while
+/// `#[oudia(default = <expr>)]` uses the given expression.
+enum DefaultValue {
+    UseDefault,
+    Value(syn::Expr),
+}
+
+impl FromMeta for DefaultValue {
+    fn from_word() -> darling::Result<Self> {
+        Ok(DefaultValue::UseDefault)
+    }
+    fn from_expr(expr: &syn::Expr) -> darling::Result<Self> {
+        Ok(DefaultValue::Value(expr.clone()))
+    }
+}
+
 #[derive(FromField)]
 #[darling(attributes(oudia))]
 struct FieldOpts {
@@ -44,6 +62,7 @@ struct FieldOpts {
     parse_fn: Option<syn::Expr>,
     silence_fn: Option<syn::Expr>,
     serialize_fn: Option<syn::Expr>,
+    default: Option<DefaultValue>,
 }
 
 enum OuterType<'a> {
@@ -80,12 +99,23 @@ fn inspect_type(ty: &Type) -> OuterType<'_> {
     OuterType::Plain(ty)
 }
 
-fn doc_aliases(names: &[String]) -> Vec<syn::Attribute> {
+fn is_bool_type(ty: &Type) -> bool {
+    if let Type::Path(TypePath {
+        qself: None, path, ..
+    }) = ty
+    {
+        return path.is_ident("bool");
+    }
+    false
+}
+
+fn doc_aliases(names: &[String], skip: &str) -> Vec<syn::Attribute> {
+    let names: Vec<&String> = names.iter().filter(|name| name.as_str() != skip).collect();
     if names.is_empty() {
         return Vec::new();
     }
 
-    let first = &names[0];
+    let first = names[0];
     let rest = &names[1..];
     let doc_desc = quote! {
         concat!{
@@ -122,7 +152,7 @@ pub fn oudia(args: TokenStream, input: TokenStream) -> TokenStream {
     if let Some(alias) = &args.alias {
         struct_names.push(alias.clone());
     }
-    input.attrs.extend(doc_aliases(&struct_names));
+    input.attrs.extend(doc_aliases(&struct_names, &struct_ident.to_string()));
 
     let mut initializers = proc_macro2::TokenStream::new();
     let mut matchers = proc_macro2::TokenStream::new();
@@ -130,6 +160,11 @@ pub fn oudia(args: TokenStream, input: TokenStream) -> TokenStream {
     let mut assembler = proc_macro2::TokenStream::new();
     let mut fixups = proc_macro2::TokenStream::new();
     let mut serializers = proc_macro2::TokenStream::new();
+
+    // Fields used to synthesize a `Default` impl. We only emit one when every
+    // field has a resolvable default.
+    let mut all_fields_default = true;
+    let mut default_fields = proc_macro2::TokenStream::new();
 
     {
         let Data::Struct(data_struct) = &mut input.data else {
@@ -154,15 +189,47 @@ pub fn oudia(args: TokenStream, input: TokenStream) -> TokenStream {
             let field_ident = field.ident.as_ref();
             let outer = inspect_type(&field.ty);
             let inner_ty = outer.into_inner();
+            let is_bool = is_bool_type(inner_ty);
+            let has_default = opts.default.is_some();
+
+            // The value used for both deserialization fallback and the `Default` impl.
+            let default_expr = match &opts.default {
+                Some(DefaultValue::UseDefault) => Some(quote! { Default::default() }),
+                Some(DefaultValue::Value(expr)) => Some(quote! { #expr }),
+                None => match &outer {
+                    OuterType::Option(_) => Some(quote! { None }),
+                    OuterType::Vec(_) => Some(quote! { Vec::new() }),
+                    OuterType::Plain(_) => None,
+                },
+            };
+
+            if let (Some(ident), Some(expr)) = (field_ident, &default_expr) {
+                default_fields.extend(quote! {
+                    #ident: #expr,
+                });
+            } else {
+                all_fields_default = false;
+            }
 
             if let Some(parse_fn) = &opts.parse_fn {
                 initializers.extend(quote! {
                     let #field_ident = (#parse_fn)(input)?;
                 });
             } else {
+                // How to parse a single string value (a `&str`) into `inner_ty`.
+                let parse_value = |value: &syn::Expr| {
+                    if is_bool {
+                        quote! { (#value == "1") }
+                    } else {
+                        quote! { #value.parse::<#inner_ty>()? }
+                    }
+                };
+
+                // Uniform initializer: every field accumulates into `Option<T>`
+                // or `Vec<T>`; defaults are applied later, in the fixups.
                 match (&outer, &opts.kind) {
                     (
-                        OuterType::Option(_),
+                        OuterType::Option(_) | OuterType::Plain(_),
                         OuDiaType::SingleStruct(..) | OuDiaType::SinglePairSingleEntry(..),
                     ) => {
                         initializers.extend(quote! {
@@ -178,29 +245,6 @@ pub fn oudia(args: TokenStream, input: TokenStream) -> TokenStream {
                     ) => {
                         initializers.extend(quote! {
                             let mut #field_ident: Vec<#inner_ty> = Vec::new();
-                        });
-                    }
-                    (
-                        OuterType::Plain(_),
-                        OuDiaType::SingleStruct(..) | OuDiaType::SinglePairSingleEntry(..),
-                    ) => {
-                        initializers.extend(quote! {
-                            let mut #field_ident: Option<#inner_ty> = None;
-                        });
-
-                        let missing = match &opts.kind {
-                            OuDiaType::SingleStruct(key) => quote! { #key },
-                            OuDiaType::SinglePairSingleEntry(key) => quote! { #key },
-                            _ => unreachable!(),
-                        };
-
-                        fixups.extend(quote! {
-                            let Some(#field_ident) = #field_ident else {
-                                return Err(crate::IrConversionError::MissingField {
-                                    processing: std::any::type_name::<Self>(),
-                                    missing: #missing,
-                                });
-                            };
                         });
                     }
                     _ => {
@@ -219,21 +263,29 @@ pub fn oudia(args: TokenStream, input: TokenStream) -> TokenStream {
                             #field_ident = Some(<#inner_ty as crate::OuDiaIo>::from_structure(v)?);
                         }
                     },
-                    OuDiaType::SinglePairSingleEntry(key) => quote! {
-                        crate::ast::Structure::Pair(k, v) if k == #key && let Some(first) = v.first() => {
-                            #field_ident = Some(first.parse::<#inner_ty>()?);
+                    OuDiaType::SinglePairSingleEntry(key) => {
+                        let first = parse_quote!(first);
+                        let parse_expr = parse_value(&first);
+                        quote! {
+                            crate::ast::Structure::Pair(k, v) if k == #key && let Some(first) = v.first() => {
+                                #field_ident = Some(#parse_expr);
+                            }
                         }
-                    },
+                    }
                     OuDiaType::ManyStructs(key) => quote! {
                         crate::ast::Structure::Struct(k, v) if k == #key => {
                             #field_ident.push(<#inner_ty as crate::OuDiaIo>::from_structure(v)?);
                         }
                     },
-                    OuDiaType::SinglePairManyEntries(key) => quote! {
-                        crate::ast::Structure::Pair(k, v) if k == #key => for val in v {
-                            #field_ident.push(val.parse::<#inner_ty>()?);
+                    OuDiaType::SinglePairManyEntries(key) => {
+                        let val = parse_quote!(val);
+                        let parse_expr = parse_value(&val);
+                        quote! {
+                            crate::ast::Structure::Pair(k, v) if k == #key => for val in v {
+                                #field_ident.push(#parse_expr);
+                            }
                         }
-                    },
+                    }
                     OuDiaType::SingleStructManyEntries(key) => quote! {
                         crate::ast::Structure::Struct(k, v) if k == #key => for node in v {
                             match node {
@@ -261,6 +313,46 @@ pub fn oudia(args: TokenStream, input: TokenStream) -> TokenStream {
                         }
                     },
                 });
+
+                // Fixups are the only place defaults / required-ness differ.
+                match (&outer, &opts.kind) {
+                    (
+                        OuterType::Plain(_),
+                        OuDiaType::SingleStruct(..) | OuDiaType::SinglePairSingleEntry(..),
+                    ) => {
+                        if has_default {
+                            let expr = default_expr.as_ref().unwrap();
+                            fixups.extend(quote! {
+                                let #field_ident = #field_ident.unwrap_or(#expr);
+                            });
+                        } else {
+                            let missing = match &opts.kind {
+                                OuDiaType::SingleStruct(key) => quote! { #key },
+                                OuDiaType::SinglePairSingleEntry(key) => quote! { #key },
+                                _ => unreachable!(),
+                            };
+                            fixups.extend(quote! {
+                                let Some(#field_ident) = #field_ident else {
+                                    return Err(crate::IrConversionError::MissingField {
+                                        processing: std::any::type_name::<Self>(),
+                                        missing: #missing,
+                                    });
+                                };
+                            });
+                        }
+                    }
+                    (OuterType::Vec(_), _) => {
+                        if has_default {
+                            let expr = default_expr.as_ref().unwrap();
+                            fixups.extend(quote! {
+                                if #field_ident.is_empty() {
+                                    #field_ident = #expr;
+                                }
+                            });
+                        }
+                    }
+                    _ => {}
+                }
             }
 
             if let Some(silence_fn) = &opts.silence_fn {
@@ -275,17 +367,43 @@ pub fn oudia(args: TokenStream, input: TokenStream) -> TokenStream {
                 });
             } else {
                 serializers.extend(match (&outer, &opts.kind) {
-                    (OuterType::Option(_), OuDiaType::SinglePairSingleEntry(key)) => quote! {
-                        if let Some(value) = &self.#field_ident {
-                            __oudia_items.push(crate::pair!(#key => value.to_string()));
+                    (OuterType::Option(_), OuDiaType::SinglePairSingleEntry(key)) => {
+                        if is_bool {
+                            quote! {
+                                if let Some(value) = &self.#field_ident {
+                                    __oudia_items.push(crate::pair!(#key => if *value { "1" } else { "0" }));
+                                }
+                            }
+                        } else {
+                            quote! {
+                                if let Some(value) = &self.#field_ident {
+                                    __oudia_items.push(crate::pair!(#key => value.to_string()));
+                                }
+                            }
                         }
-                    },
-                    (OuterType::Plain(_), OuDiaType::SinglePairSingleEntry(key)) => quote! {
-                        __oudia_items.push(crate::pair!(#key => self.#field_ident.to_string()));
-                    },
-                    (OuterType::Vec(_), OuDiaType::SinglePairManyEntries(key)) => quote! {
-                        __oudia_items.push(crate::pair!(#key => .. self.#field_ident.iter().map(|value| value.to_string())));
-                    },
+                    }
+                    (OuterType::Plain(_), OuDiaType::SinglePairSingleEntry(key)) => {
+                        if is_bool {
+                            quote! {
+                                __oudia_items.push(crate::pair!(#key => if self.#field_ident { "1" } else { "0" }));
+                            }
+                        } else {
+                            quote! {
+                                __oudia_items.push(crate::pair!(#key => self.#field_ident.to_string()));
+                            }
+                        }
+                    }
+                    (OuterType::Vec(_), OuDiaType::SinglePairManyEntries(key)) => {
+                        if is_bool {
+                            quote! {
+                                __oudia_items.push(crate::pair!(#key => .. self.#field_ident.iter().map(|value| if *value { "1" } else { "0" })));
+                            }
+                        } else {
+                            quote! {
+                                __oudia_items.push(crate::pair!(#key => .. self.#field_ident.iter().map(|value| value.to_string())));
+                            }
+                        }
+                    }
                     (OuterType::Option(_), OuDiaType::SingleStruct(..)) => quote! {
                         if let Some(value) = &self.#field_ident {
                             __oudia_items.push(value.to_structure());
@@ -329,12 +447,31 @@ pub fn oudia(args: TokenStream, input: TokenStream) -> TokenStream {
             if let Some(alias) = &opts.alias {
                 field_names.push(alias.clone());
             }
-            field.attrs.extend(doc_aliases(&field_names));
+            field.attrs.extend(doc_aliases(
+                &field_names,
+                &field_ident.map(|ident| ident.to_string()).unwrap_or_default(),
+            ));
         }
     }
 
+    let default_impl = if all_fields_default {
+        quote! {
+            impl #impl_generics Default for #struct_ident #ty_generics #where_clause {
+                fn default() -> Self {
+                    Self {
+                        #default_fields
+                    }
+                }
+            }
+        }
+    } else {
+        proc_macro2::TokenStream::new()
+    };
+
     let expanded = quote! {
         #input
+
+        #default_impl
 
         impl #impl_generics crate::OuDiaIo for #struct_ident #ty_generics #where_clause {
             const OUDIA_KEY: &'static str = #struct_oudia_key;
