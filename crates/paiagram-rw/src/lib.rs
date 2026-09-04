@@ -21,14 +21,15 @@ pub enum FileWriteState {
     Done(io::Result<()>),
 }
 
-/// How to export the current world to another format.
+/// How to export some data to another format.
 pub trait ExportObject: Sized + Send + 'static {
     /// Write content to a writer
     fn write_content<W: Write>(&mut self, writer: &mut W) -> io::Result<()>;
-    /// the filename
+    /// The filename.
     fn filename(&self) -> impl AsRef<str> {
         "exported_file"
     }
+    /// The extension including the proceding dot.
     fn extension(&self) -> impl AsRef<str>;
     /// Export contents and save them on disk, with optional parameters
     fn write_to_file<const COMPRESS: bool>(mut self, state: Arc<Mutex<FileWriteState>>) {
