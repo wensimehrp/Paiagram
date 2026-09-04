@@ -242,7 +242,7 @@ pub fn oudia(args: TokenStream, input: TokenStream) -> TokenStream {
                                 }
                                 // Unknown field. Give error in log.
                                 crate::ast::Structure::Pair(k2, _) | crate::ast::Structure::Struct(k2, _) => {
-                                    log::warn!("Encountered unknown field `{k2}` when parsing `{}`", std::any::type_name::<Self>());
+                                    log::debug!("Encountered unknown field `{k2}` when parsing `{}`", std::any::type_name::<Self>());
                                 }
                             }
                         }
@@ -255,7 +255,7 @@ pub fn oudia(args: TokenStream, input: TokenStream) -> TokenStream {
                                 }
                                 // Unknown field. Give error in log.
                                 crate::ast::Structure::Pair(k2, _) | crate::ast::Structure::Struct(k2, _) => {
-                                    log::warn!("Encountered unknown field `{k2}` when parsing `{}`", std::any::type_name::<Self>());
+                                    log::debug!("Encountered unknown field `{k2}` when parsing `{}`", std::any::type_name::<Self>());
                                 }
                             }
                         }
@@ -347,7 +347,7 @@ pub fn oudia(args: TokenStream, input: TokenStream) -> TokenStream {
                         #silencers
                         // Unknown field. Give error in log.
                         crate::ast::Structure::Pair(k, _) | crate::ast::Structure::Struct(k, _) => {
-                            log::warn!("Encountered unknown field `{k}` when parsing `{}`", std::any::type_name::<Self>());
+                            log::debug!("Encountered unknown field `{k}` when parsing `{}`", std::any::type_name::<Self>());
                         }
                     }
                 }
