@@ -1378,7 +1378,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a05fbfa222ffb51989d5ccf33e5f7aebfcf96c5023413856b0c3618a7f79896e"
 dependencies = [
  "emath 0.34.3",
- "serde",
 ]
 
 [[package]]
@@ -1452,7 +1451,6 @@ dependencies = [
  "log",
  "nohash-hasher",
  "profiling",
- "serde",
  "smallvec",
  "unicode-segmentation",
 ]
@@ -1615,17 +1613,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "egui_table"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8512decdd471a2b6106d0b42cc0662f0e94b0ca8f21bc1b0075f455f58901010"
-dependencies = [
- "egui 0.34.3",
- "serde",
- "vec1",
-]
-
-[[package]]
 name = "egui_tiles"
 version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1663,9 +1650,6 @@ name = "emath"
 version = "0.34.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b53f0d33a479321da6b0caa71366c9f67e8a2c149762d90bdc0d16e601ee8ecb"
-dependencies = [
- "serde",
-]
 
 [[package]]
 name = "emath"
@@ -1783,7 +1767,6 @@ dependencies = [
  "parking_lot",
  "profiling",
  "self_cell",
- "serde",
  "skrifa 0.40.0",
  "smallvec",
  "vello_cpu 0.0.6",
@@ -2036,7 +2019,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5b38ad915f6dadd993ced50848a8291a543bd41ca62bc10740d5e64e2ab4cfd7"
 dependencies = [
  "bytemuck",
- "serde",
 ]
 
 [[package]]
@@ -4161,7 +4143,6 @@ dependencies = [
  "egui_commonmark",
  "egui_extras 0.36.1",
  "egui_material_icons",
- "egui_table",
  "egui_tiles",
  "ehttp",
  "either",
@@ -4179,6 +4160,7 @@ dependencies = [
  "js-sys",
  "log",
  "paiagram-core",
+ "paiagram-export",
  "paiagram-raptor",
  "paiagram-rw",
  "parking_lot",

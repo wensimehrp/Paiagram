@@ -12,7 +12,7 @@ mod widgets;
 use std::sync::{Arc, Mutex};
 
 pub use config::AppLanguage;
-use egui::{Button, Color32, Context, Frame, OpenUrl, Panel, Popup, Stroke, Ui};
+use egui::{Button, Context, Frame, OpenUrl, Panel, Popup, Ui};
 use egui_i18n::tr;
 use egui_material_icons::icons;
 use egui_tiles::{
@@ -21,7 +21,8 @@ use egui_tiles::{
 use log::{info, warn};
 use paiagram_core::import::{ImportType, generate_commands};
 use paiagram_core::time::Tick;
-use paiagram_core::{Command, SaveFile, Source};
+use paiagram_core::{Command, RouteKey, SaveFile, Source};
+use paiagram_export::ExportOuDia;
 use paiagram_rw::{ExportObject, FileWriteState};
 use rfd::AsyncFileDialog;
 use serde::{Deserialize, Serialize};
@@ -337,9 +338,19 @@ pub fn show_ui(
                         ui.ctx().clone(),
                     );
                 }
+                ui.separator();
                 if ui.button("Save .paia").clicked() {
                     let new_file: SaveFile = app.source.snap().clone().into();
                     new_file.write_to_file::<true>(app.file_write_state.clone());
+                }
+                ui.separator();
+                if ui.button("Export .oud").clicked() {
+                    ExportOuDia {
+                        world: app.source.snap().clone(),
+                        route: RouteKey::new(),
+                        is_oudia_second: false,
+                    }
+                    .write_to_file::<false>(app.file_write_state.clone());
                 }
             });
             Popup::menu(&ui.button(tr!("menu-about"))).show(|ui| {

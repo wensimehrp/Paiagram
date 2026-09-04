@@ -1,9 +1,12 @@
 use paiagram_core::{RouteKey, WorldSnapshot};
-use paiagram_oudia::{OuDiaIo, Root, SerializeToOud, Structure, pair, structure};
+use paiagram_oudia::{
+    OuDiaIo, Root, Route, SerializeToOud, Structure, Time as OudTime, pair, structure,
+};
 
 pub struct ExportOuDia {
-    world: WorldSnapshot,
-    route: RouteKey,
+    pub world: WorldSnapshot,
+    pub route: RouteKey,
+    pub is_oudia_second: bool,
 }
 
 impl paiagram_rw::ExportObject for ExportOuDia {
@@ -15,7 +18,13 @@ impl paiagram_rw::ExportObject for ExportOuDia {
         let Structure::Struct(_, inner) = root.to_structure() else {
             unreachable!();
         };
-        inner.serialize_oud_to(writer)
+        if self.is_oudia_second {
+            // UTF-8
+            inner.serialize_oud_to(writer)
+        } else {
+            // Doesn't have UTF-8
+            writer.write_all(&inner.to_shift_jis_string()?)
+        }
     }
 }
 
@@ -44,5 +53,15 @@ fn make_disp_prop() -> Structure<'static> {
 }
 
 fn make_root(world: &WorldSnapshot) -> Root {
-    todo!()
+    Root {
+        file_type: "this".into(),
+        route: Route {
+            name: "that".into(),
+            stations: Vec::new(),
+            classes: Vec::new(),
+            display_start_time: OudTime::from_hms(4, 0, 0),
+            diagrams: Vec::new(),
+            comment: concat!("Exported by Paiagram ", env!("CARGO_PKG_VERSION")).into(),
+        },
+    }
 }
