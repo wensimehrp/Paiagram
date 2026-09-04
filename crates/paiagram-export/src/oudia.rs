@@ -1,7 +1,5 @@
 use paiagram_core::{RouteKey, WorldSnapshot};
-use paiagram_oudia::{
-    OuDiaIo, Root, Route, SerializeToOud, Structure, Time as OudTime, pair, structure,
-};
+use paiagram_oudia::{OuDiaIo, Root, Route, SerializeToOud, Structure, Time as OudTime};
 
 pub struct ExportOuDia {
     pub world: WorldSnapshot,
@@ -28,33 +26,10 @@ impl paiagram_rw::ExportObject for ExportOuDia {
     }
 }
 
-fn make_disp_prop() -> Structure<'static> {
-    structure!("DispProp" =>
-        pair!("JikokuhyouFont"        => "PointTextHeight=9;Facename=ＭＳ ゴシック"),
-        pair!("JikokuhyouFont"        => "PointTextHeight=9;Facename=ＭＳ ゴシック;Bold=1"),
-        pair!("JikokuhyouFont"        => "PointTextHeight=9;Facename=ＭＳ ゴシック;Itaric=1"),
-        pair!("JikokuhyouFont"        => "PointTextHeight=9;Facename=ＭＳ ゴシック;Bold=1;Itaric=1"),
-        pair!("JikokuhyouFont"        => "PointTextHeight=9;Facename=ＭＳ ゴシック"),
-        pair!("JikokuhyouFont"        => "PointTextHeight=9;Facename=ＭＳ ゴシック"),
-        pair!("JikokuhyouFont"        => "PointTextHeight=9;Facename=ＭＳ ゴシック"),
-        pair!("JikokuhyouFont"        => "PointTextHeight=9;Facename=ＭＳ ゴシック"),
-        pair!("JikokuhyouVFont"       => "PointTextHeight=9;Facename=@ＭＳ ゴシック"),
-        pair!("DiaEkimeiFont"         => "PointTextHeight=9;Facename=ＭＳ ゴシック"),
-        pair!("DiaJikokuFont"         => "PointTextHeight=9;Facename=ＭＳ ゴシック"),
-        pair!("DiaRessyaFont"         => "PointTextHeight=9;Facename=ＭＳ ゴシック"),
-        pair!("CommentFont"           => "PointTextHeight=9;Facename=ＭＳ ゴシック"),
-        pair!("DiaMojiColor"          => "00000000"),
-        pair!("DiaHaikeiColor"        => "00FFFFFF"),
-        pair!("DiaRessyaColor"        => "00000000"),
-        pair!("DiaJikuColor"          => "00C0C0C0"),
-        pair!("EkimeiLength"          => "6"),
-        pair!("JikokuhyouRessyaWidth" => "5"),
-    )
-}
-
 fn make_root(world: &WorldSnapshot) -> Root {
     Root {
         file_type: "this".into(),
+        file_type_app_comment: None,
         route: Route {
             name: "that".into(),
             stations: Vec::new(),
@@ -62,6 +37,16 @@ fn make_root(world: &WorldSnapshot) -> Root {
             display_start_time: OudTime::from_hms(4, 0, 0),
             diagrams: Vec::new(),
             comment: concat!("Exported by Paiagram ", env!("CARGO_PKG_VERSION")).into(),
+            down_dia_alias: None,
+            up_dia_alias: None,
+            diagram_station_interval_default: 0,
+            enable_operation: None,
+            operation_number_reverse: None,
+            operation_crosses_start_time: None,
+            reference_diagram_index: None,
+            disable_hidden_class: None,
         },
+        display_properties: Default::default(),
+        window_position: Default::default(),
     }
 }
