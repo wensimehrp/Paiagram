@@ -55,6 +55,7 @@ sections of the diagram.
 Each node has a progress, which is normalized to a 0..=1 range. Each starting
 node gets a progress of 0, while each ending node gets 1. Nodes between the
 starting node and the ending node gets different progress values based on their
-position in the tree, and topology.
-
-Each starting node would... ??? I forgot how to model this. :-( sadge.
+distances to the source and target nodes. The progress is calculated as
+P = Dₛ ÷ (Dₛ + Dₜ), where P is the progress between 0..=1, Dₛ is the shortest
+distance from the node to any of the sources, and Dₜ is the shortest distance
+from the node to any of the targets.
