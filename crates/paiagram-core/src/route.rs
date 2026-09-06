@@ -10,7 +10,7 @@ use crate::{IntervalProgress, NodeKey, RouteInfo, StationRecord, WorldSnapshot};
 
 impl RouteInfo {
     /// Suboptimal implementation to generate the progress
-    pub fn gen_progresses(
+    pub(crate) fn gen_progresses(
         &self,
         world: &WorldSnapshot,
     ) -> Vec<(Vec<Option<IntervalProgress>>, Vec<Option<IntervalProgress>>)> {
