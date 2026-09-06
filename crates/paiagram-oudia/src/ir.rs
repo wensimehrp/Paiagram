@@ -62,7 +62,7 @@ pub struct DisplayProperties {
     pub timetable_fonts: Vec<String>,
     #[oudia(
         type(single_pair_single_entry = "JikokuhyouVFont"),
-        default = "PointTextHeight=9;Facename=@Meiryo UI".to_string()
+        default = "PointTextHeight=9;Facename=@メイリオ".to_string()
     )]
     pub timetable_vertical_font: String,
     #[oudia(
@@ -132,12 +132,12 @@ pub struct DisplayProperties {
     pub timetable_back_colors: Vec<Color>,
     #[oudia(
         type(single_pair_single_entry = "StdOpeTimeLowerColor"),
-        default = Color([0, 224, 224, 255])
+        default = Color([0, 255, 224, 224])
     )]
     pub std_ope_time_lower_color: Color,
     #[oudia(
         type(single_pair_single_entry = "StdOpeTimeHigherColor"),
-        default = Color([0, 255, 255, 224])
+        default = Color([0, 224, 255, 255])
     )]
     pub std_ope_time_higher_color: Color,
     #[oudia(
@@ -205,17 +205,17 @@ pub struct DisplayProperties {
 #[derive(Clone, Debug, PartialEq)]
 #[oudia(key = "ChildWindow")]
 pub struct Window {
-    #[oudia(type(single_pair_single_entry = "WindowType"))]
+    #[oudia(type(single_pair_single_entry = "WindowType"), default = 0)]
     pub window_type: i32,
-    #[oudia(type(single_pair_single_entry = "DiaIndex"))]
+    #[oudia(type(single_pair_single_entry = "DiaIndex"), default = 0)]
     pub diagram_index: i32,
-    #[oudia(type(single_pair_single_entry = "XPos"))]
+    #[oudia(type(single_pair_single_entry = "XPos"), default = 0)]
     pub x: i32,
-    #[oudia(type(single_pair_single_entry = "YPos"))]
+    #[oudia(type(single_pair_single_entry = "YPos"), default = 0)]
     pub y: i32,
-    #[oudia(type(single_pair_single_entry = "XSize"))]
+    #[oudia(type(single_pair_single_entry = "XSize"), default = 0)]
     pub width: i32,
-    #[oudia(type(single_pair_single_entry = "YSize"))]
+    #[oudia(type(single_pair_single_entry = "YSize"), default = 0)]
     pub height: i32,
 }
 
@@ -236,7 +236,11 @@ pub struct WindowPosition {
 #[oudia(key = "Rosen", alias = "路線")]
 pub struct Route {
     /// The name of the route
-    #[oudia(type(single_pair_single_entry = "Rosenmei"), alias = "路線名")]
+    #[oudia(
+        type(single_pair_single_entry = "Rosenmei"),
+        alias = "路線名",
+        default = String::new()
+    )]
     pub name: String,
     /// What stations are included in the route
     #[oudia(type(many_structs = "Eki"), alias = "駅")]
@@ -248,9 +252,16 @@ pub struct Route {
     #[oudia(type(many_structs = "Dia"), alias = "ダイヤ")]
     pub diagrams: Vec<Diagram>,
     /// When to start displaying times on the diagram page.
-    #[oudia(type(single_pair_single_entry = "KitenJikoku"), alias = "起点時刻")]
+    #[oudia(
+        type(single_pair_single_entry = "KitenJikoku"),
+        alias = "起点時刻",
+        default = Time::from_hms(0, 0, 0)
+    )]
     pub display_start_time: Time,
-    #[oudia(type(single_pair_single_entry = "Comment"))]
+    #[oudia(
+        type(single_pair_single_entry = "Comment"),
+        default = String::new()
+    )]
     pub comment: String,
     #[oudia(
         type(single_pair_single_entry = "KudariDiaAlias"),
@@ -264,22 +275,34 @@ pub struct Route {
     pub up_dia_alias: Option<String>,
     /// Default vertical spacing (in the diagram's Y-coordinate units) between
     /// adjacent stations on the diagram.
-    #[oudia(type(single_pair_single_entry = "DiagramDgrYZahyouKyoriDefault"))]
+    #[oudia(
+        type(single_pair_single_entry = "DiagramDgrYZahyouKyoriDefault"),
+        default = 60
+    )]
     pub diagram_station_interval_default: i32,
-    #[oudia(type(single_pair_single_entry = "EnableOperation"))]
-    pub enable_operation: Option<i32>,
+    #[oudia(type(single_pair_single_entry = "EnableOperation"), default = 0)]
+    pub enable_operation: i32,
     /// Whether operation numbers are shown in reverse order.
-    #[oudia(type(single_pair_single_entry = "OperationNumberReverse"))]
-    pub operation_number_reverse: Option<bool>,
+    #[oudia(
+        type(single_pair_single_entry = "OperationNumberReverse"),
+        default = false
+    )]
+    pub operation_number_reverse: bool,
     /// Whether operations are allowed to cross the diagram's start time.
-    #[oudia(type(single_pair_single_entry = "OperationCrossKitenJikoku"))]
-    pub operation_crosses_start_time: Option<bool>,
+    #[oudia(
+        type(single_pair_single_entry = "OperationCrossKitenJikoku"),
+        default = false
+    )]
+    pub operation_crosses_start_time: bool,
     /// Index of the reference (baseline) diagram.
     #[oudia(type(single_pair_single_entry = "KijunDiaIndex"))]
     pub reference_diagram_index: Option<i32>,
     /// Whether to ignore classes marked as hidden.
-    #[oudia(type(single_pair_single_entry = "DisableHiddenSyubetsu"))]
-    pub disable_hidden_class: Option<bool>,
+    #[oudia(
+        type(single_pair_single_entry = "DisableHiddenSyubetsu"),
+        default = false
+    )]
+    pub disable_hidden_class: bool,
 }
 
 /// Color. This color is stored in ARGB format.
@@ -340,37 +363,41 @@ pub struct Class {
     /// The color displayed in diagrams and in the timetable.
     #[oudia(
         type(single_pair_single_entry = "DiagramSenColor"),
-        alias = "ダイヤ線Color"
+        alias = "ダイヤ線Color",
+        default = Color([0, 0, 0, 0])
     )]
     pub diagram_line_color: Color,
     #[oudia(
         type(single_pair_single_entry = "JikokuhyouMojiColor"),
-        alias = "時刻表文字Color"
+        alias = "時刻表文字Color",
+        default = Color([0, 0, 0, 0])
     )]
     pub timetable_text_color: Color,
-    #[oudia(type(single_pair_single_entry = "JikokuhyouFontIndex"))]
+    #[oudia(type(single_pair_single_entry = "JikokuhyouFontIndex"), default = 0)]
     pub timetable_font_index: i32,
     #[oudia(
         type(single_pair_single_entry = "JikokuhyouBackColor"),
-        alias = "時刻表背景Color"
+        alias = "時刻表背景Color",
+        default = Color([0, 255, 255, 255])
     )]
-    pub timetable_background_color: Option<Color>,
+    pub timetable_background_color: Color,
     #[oudia(
         type(single_pair_single_entry = "DiagramSenStyle"),
         alias = "ダイヤ線スタイル"
     )]
     pub diagram_line_style: DiagramLineStyle,
-    #[oudia(type(single_pair_single_entry = "DiagramSenIsBold"))]
-    pub diagram_line_is_bold: Option<bool>,
+    #[oudia(type(single_pair_single_entry = "DiagramSenIsBold"), default = false)]
+    pub diagram_line_is_bold: bool,
     #[oudia(
         type(single_pair_single_entry = "StopMarkDrawType"),
-        alias = "停車マーク描画タイプ"
+        alias = "停車マーク描画タイプ",
+        default = StopMarkDrawType::DrawOnStop
     )]
     pub stop_mark_draw_type: StopMarkDrawType,
-    #[oudia(type(single_pair_single_entry = "ParentSyubetsuIndex"))]
-    pub parent_class_index: Option<i32>,
-    #[oudia(type(single_pair_single_entry = "Hidden"))]
-    pub hidden: Option<bool>,
+    #[oudia(type(single_pair_single_entry = "ParentSyubetsuIndex"), default = -1)]
+    pub parent_class_index: i32,
+    #[oudia(type(single_pair_single_entry = "Hidden"), default = false)]
+    pub hidden: bool,
 }
 
 /// A timetable set.
@@ -382,16 +409,22 @@ pub struct Diagram {
     pub name: Option<String>,
     #[oudia(type(twin_struct_multiple_entries(first = "Kudari", second = "Nobori")))]
     pub trips: Vec<Trip>,
-    #[oudia(type(single_pair_single_entry = "BackPatternIndex"))]
-    pub back_pattern_color_index: Option<i32>,
-    #[oudia(type(single_pair_single_entry = "MainBackColorIndex"))]
-    pub main_back_color_index: Option<i32>,
-    #[oudia(type(single_pair_single_entry = "SubBackColorIndex"))]
-    pub sub_back_color_index: Option<i32>,
-    #[oudia(type(single_pair_single_entry = "PatternDiagramPreviewEnable"))]
-    pub pattern_diagram_preview_enable: Option<bool>,
-    #[oudia(type(single_pair_single_entry = "PatternDiagramPreviewCycleSecond"))]
-    pub pattern_diagram_preview_cycle_second: Option<i32>,
+    #[oudia(type(single_pair_single_entry = "BackPatternIndex"), default = 0)]
+    pub back_pattern_color_index: i32,
+    #[oudia(type(single_pair_single_entry = "MainBackColorIndex"), default = 0)]
+    pub main_back_color_index: i32,
+    #[oudia(type(single_pair_single_entry = "SubBackColorIndex"), default = 1)]
+    pub sub_back_color_index: i32,
+    #[oudia(
+        type(single_pair_single_entry = "PatternDiagramPreviewEnable"),
+        default = false
+    )]
+    pub pattern_diagram_preview_enable: bool,
+    #[oudia(
+        type(single_pair_single_entry = "PatternDiagramPreviewCycleSecond"),
+        default = 600
+    )]
+    pub pattern_diagram_preview_cycle_second: i32,
 }
 
 make_ir_enum! {
@@ -455,11 +488,15 @@ pub struct Trip {
     pub train_name: Option<String>,
     #[oudia(type(single_pair_single_entry = "Gousuu"), alias = "号数")]
     pub train_number: Option<String>,
-    #[oudia(type(single_pair_single_entry = "Canceled"))]
-    pub is_canceled: Option<bool>,
+    #[oudia(type(single_pair_single_entry = "Canceled"), default = false)]
+    pub is_canceled: bool,
     #[oudia(type(single_pair_single_entry = "Houkou"), alias = "方向")]
     pub direction: Direction,
-    #[oudia(type(single_pair_single_entry = "Syubetsu"), alias = "種別")]
+    #[oudia(
+        type(single_pair_single_entry = "Syubetsu"),
+        alias = "種別",
+        default = 0
+    )]
     pub class_index: usize,
     #[oudia(
         type(single_pair_many_entries = "EkiJikoku"),
@@ -473,16 +510,12 @@ pub struct Trip {
 fn parse_timetable_entries(
     ast: &[Structure<'_>],
 ) -> Result<Vec<TimetableEntry>, IrConversionError> {
-    let times = ast
-        .iter()
-        .find_map(|node| match node {
-            Structure::Pair(k, v) if k == "EkiJikoku" => Some(v),
-            _ => None,
-        })
-        .ok_or(IrConversionError::MissingField {
-            processing: std::any::type_name::<TimetableEntry>(),
-            missing: "EkiJikoku",
-        })?;
+    let Some(times) = ast.iter().find_map(|node| match node {
+        Structure::Pair(k, v) if k == "EkiJikoku" => Some(v),
+        _ => None,
+    }) else {
+        return Ok(Vec::new());
+    };
     let mut times: Vec<_> = times
         .into_iter()
         .map(|ent| ent.parse::<TimetableEntry>())

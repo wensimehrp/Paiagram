@@ -35,8 +35,8 @@ impl RouteInfo {
                     let (ds, dt) = calc_node_min_distance_batch(
                         world,
                         node,
-                        prev_nodes.iter().copied(),
-                        curr_nodes.iter().copied(),
+                        &prev_nodes,
+                        &curr_nodes,
                         &curr_stn.prev_curr_nodes,
                     );
                     let ds = ds? as f64;
@@ -52,8 +52,8 @@ impl RouteInfo {
                     let (ds, dt) = calc_node_min_distance_batch(
                         world,
                         node,
-                        curr_nodes.iter().copied(),
-                        prev_nodes.iter().copied(),
+                        &curr_nodes,
+                        &prev_nodes,
                         &curr_stn.curr_prev_nodes,
                     );
                     let ds = ds? as f64;
@@ -71,16 +71,19 @@ impl RouteInfo {
 fn calc_node_min_distance_batch(
     world: &WorldSnapshot,
     node: NodeKey,
-    sources: impl Iterator<Item = NodeKey>,
-    targets: impl Iterator<Item = NodeKey>,
+    sources: &[NodeKey],
+    targets: &[NodeKey],
     subgraph: &[NodeKey],
 ) -> (Option<i32>, Option<i32>) {
+    let subgraph_contains_node =
+        |nd: NodeKey| subgraph.contains(&nd) || sources.contains(&nd) || targets.contains(&nd);
     let ds = sources
-        .map(|source| {
+        .iter()
+        .map(|&source| {
             bidirectional_dijkstra(world, source, node, |e| {
                 [e.source(), e.target()]
                     .into_iter()
-                    .all(|nd| subgraph.contains(&nd))
+                    .all(subgraph_contains_node)
                     .then(|| world.intervals.query((e.source(), e.target()), |int| int.length().0))
                     .flatten()
                     .unwrap_or(i32::MAX)
@@ -89,11 +92,12 @@ fn calc_node_min_distance_batch(
         .min()
         .flatten();
     let dt = targets
-        .map(|target| {
-            bidirectional_dijkstra(world, target, node, |e| {
+        .iter()
+        .map(|&target| {
+            bidirectional_dijkstra(world, node, target, |e| {
                 [e.source(), e.target()]
                     .into_iter()
-                    .all(|nd| subgraph.contains(&nd))
+                    .all(subgraph_contains_node)
                     .then(|| world.intervals.query((e.source(), e.target()), |int| int.length().0))
                     .flatten()
                     .unwrap_or(i32::MAX)

@@ -10,7 +10,11 @@ use super::{DiagramTrainInfoDisplay, StationTimetableFormat, StationType};
 #[derive(Clone, Debug, PartialEq)]
 #[oudia(key = "Eki", alias = "駅")]
 pub struct Station {
-    #[oudia(type(single_pair_single_entry = "Ekimei"), alias = "駅名")]
+    #[oudia(
+        type(single_pair_single_entry = "Ekimei"),
+        alias = "駅名",
+        default = String::new()
+    )]
     pub name: String,
     /// The abbreviation used in timetables.
     #[oudia(
@@ -32,8 +36,8 @@ pub struct Station {
     #[oudia(type(single_pair_single_entry = "BrunchCoreEkiIndex"))]
     pub branch_index: Option<usize>,
     /// Whether this branch repeats on the opposite side of the diagram.
-    #[oudia(type(single_pair_single_entry = "BrunchOpposite"))]
-    pub branch_opposite: Option<bool>,
+    #[oudia(type(single_pair_single_entry = "BrunchOpposite"), default = false)]
+    pub branch_opposite: bool,
     /// Diagrams representing loop lines may repeat certain stations on
     /// the diagram. This index refers to the other station in the station list
     /// that should be treated as if it is this station.
@@ -50,53 +54,88 @@ pub struct Station {
     )]
     pub station_timetable_format: StationTimetableFormat,
     /// The main track for down (Kudari) trains, as a track index.
-    #[oudia(type(single_pair_single_entry = "DownMain"))]
-    pub down_main_track_index: Option<i32>,
+    #[oudia(type(single_pair_single_entry = "DownMain"), default = 0)]
+    pub down_main_track_index: i32,
     /// The main track for up (Nobori) trains, as a track index.
-    #[oudia(type(single_pair_single_entry = "UpMain"))]
-    pub up_main_track_index: Option<i32>,
-    #[oudia(type(single_pair_single_entry = "DiagramTrackDisplay"))]
-    pub diagram_track_display: Option<bool>,
-    #[oudia(type(single_pair_single_entry = "JikokuhyouTrackDisplayKudari"))]
-    pub timetable_track_display_down: Option<bool>,
-    #[oudia(type(single_pair_single_entry = "JikokuhyouTrackDisplayNobori"))]
-    pub timetable_track_display_up: Option<bool>,
+    #[oudia(type(single_pair_single_entry = "UpMain"), default = 0)]
+    pub up_main_track_index: i32,
+    #[oudia(
+        type(single_pair_single_entry = "DiagramTrackDisplay"),
+        default = false
+    )]
+    pub diagram_track_display: bool,
+    #[oudia(
+        type(single_pair_single_entry = "JikokuhyouTrackDisplayKudari"),
+        default = false
+    )]
+    pub timetable_track_display_down: bool,
+    #[oudia(
+        type(single_pair_single_entry = "JikokuhyouTrackDisplayNobori"),
+        default = false
+    )]
+    pub timetable_track_display_up: bool,
     /// Marks a boundary between two parts of a line (e.g. where a loop joins).
-    #[oudia(type(single_pair_single_entry = "Kyoukaisen"))]
-    pub is_boundary: Option<bool>,
+    #[oudia(type(single_pair_single_entry = "Kyoukaisen"), default = false)]
+    pub is_boundary: bool,
     /// Whether the loop repeats this station on the opposite side.
-    #[oudia(type(single_pair_single_entry = "LoopOpposite"))]
-    pub loop_opposite: Option<bool>,
+    #[oudia(type(single_pair_single_entry = "LoopOpposite"), default = false)]
+    pub loop_opposite: bool,
     #[oudia(
         type(single_pair_single_entry = "DiagramRessyajouhouHyoujiKudari"),
-        alias = "ダイヤ列車情報表示下り"
+        alias = "ダイヤ列車情報表示下り",
+        default = DiagramTrainInfoDisplay::Origin
     )]
-    pub diagram_train_info_display_down: Option<DiagramTrainInfoDisplay>,
+    pub diagram_train_info_display_down: DiagramTrainInfoDisplay,
     #[oudia(
         type(single_pair_single_entry = "DiagramRessyajouhouHyoujiNobori"),
-        alias = "ダイヤ列車情報表示上り"
+        alias = "ダイヤ列車情報表示上り",
+        default = DiagramTrainInfoDisplay::Origin
     )]
-    pub diagram_train_info_display_up: Option<DiagramTrainInfoDisplay>,
+    pub diagram_train_info_display_up: DiagramTrainInfoDisplay,
     /// Index into the diagram background color list for the next station.
-    #[oudia(type(single_pair_single_entry = "DiagramColorNextEki"))]
-    pub next_station_color_index: Option<i32>,
-    #[oudia(type(single_pair_single_entry = "JikokuhyouTrackOmit"))]
-    pub timetable_track_omit: Option<bool>,
+    #[oudia(type(single_pair_single_entry = "DiagramColorNextEki"), default = 0)]
+    pub next_station_color_index: i32,
+    #[oudia(
+        type(single_pair_single_entry = "JikokuhyouTrackOmit"),
+        default = false
+    )]
+    pub timetable_track_omit: bool,
     /// Whether to show times at this station in the "box diagram" operation table.
-    #[oudia(type(single_pair_single_entry = "OperationTableDisplayJikoku"))]
-    pub operation_table_display_time: Option<bool>,
-    #[oudia(type(single_pair_single_entry = "JikokuhyouOperationOrigin"))]
-    pub timetable_operation_origin: Option<i32>,
-    #[oudia(type(single_pair_single_entry = "JikokuhyouOperationTerminal"))]
-    pub timetable_operation_terminal: Option<i32>,
-    #[oudia(type(single_pair_single_entry = "JikokuhyouOperationOriginDownBeforeUpAfter"))]
-    pub timetable_operation_origin_down_before_up_after: Option<bool>,
-    #[oudia(type(single_pair_single_entry = "JikokuhyouOperationOriginDownAfterUpBefore"))]
-    pub timetable_operation_origin_down_after_up_before: Option<bool>,
-    #[oudia(type(single_pair_single_entry = "JikokuhyouOperationTerminalDownBeforeUpAfter"))]
-    pub timetable_operation_terminal_down_before_up_after: Option<bool>,
-    #[oudia(type(single_pair_single_entry = "JikokuhyouOperationTerminalDownAfterUpBefore"))]
-    pub timetable_operation_terminal_down_after_up_before: Option<bool>,
+    #[oudia(
+        type(single_pair_single_entry = "OperationTableDisplayJikoku"),
+        default = false
+    )]
+    pub operation_table_display_time: bool,
+    #[oudia(
+        type(single_pair_single_entry = "JikokuhyouOperationOrigin"),
+        default = 0
+    )]
+    pub timetable_operation_origin: i32,
+    #[oudia(
+        type(single_pair_single_entry = "JikokuhyouOperationTerminal"),
+        default = 0
+    )]
+    pub timetable_operation_terminal: i32,
+    #[oudia(
+        type(single_pair_single_entry = "JikokuhyouOperationOriginDownBeforeUpAfter"),
+        default = false
+    )]
+    pub timetable_operation_origin_down_before_up_after: bool,
+    #[oudia(
+        type(single_pair_single_entry = "JikokuhyouOperationOriginDownAfterUpBefore"),
+        default = false
+    )]
+    pub timetable_operation_origin_down_after_up_before: bool,
+    #[oudia(
+        type(single_pair_single_entry = "JikokuhyouOperationTerminalDownBeforeUpAfter"),
+        default = false
+    )]
+    pub timetable_operation_terminal_down_before_up_after: bool,
+    #[oudia(
+        type(single_pair_single_entry = "JikokuhyouOperationTerminalDownAfterUpBefore"),
+        default = false
+    )]
+    pub timetable_operation_terminal_down_after_up_before: bool,
     /// Per-track flags hiding a track from the diagram track listing.
     #[oudia(type(single_pair_many_entries = "DiagramTrackOmit"))]
     pub diagram_track_omit: Vec<bool>,
@@ -118,10 +157,16 @@ pub struct Station {
     /// Up-direction per-station through-service display settings.
     #[oudia(type(single_pair_many_entries = "JikokuhyouOuterDisplayNobori"))]
     pub timetable_outer_display_up: Vec<i32>,
-    #[oudia(type(single_pair_single_entry = "JikokuhyouNyuusenJikokuDisplayKudari"))]
-    pub timetable_incoming_display_down: Option<bool>,
-    #[oudia(type(single_pair_single_entry = "JikokuhyouNyuusenJikokuDisplayNobori"))]
-    pub timetable_incoming_display_up: Option<bool>,
+    #[oudia(
+        type(single_pair_single_entry = "JikokuhyouNyuusenJikokuDisplayKudari"),
+        default = false
+    )]
+    pub timetable_incoming_display_down: bool,
+    #[oudia(
+        type(single_pair_single_entry = "JikokuhyouNyuusenJikokuDisplayNobori"),
+        default = false
+    )]
+    pub timetable_incoming_display_up: bool,
     #[oudia(type(many_structs = "OuterTerminal"))]
     pub outer_terminals: Vec<OuterTerminal>,
     #[oudia(type(many_structs = "CrossingCheckRule"))]
@@ -191,11 +236,20 @@ pub struct Track {
 #[derive(Clone, Debug, PartialEq)]
 #[oudia(key = "OuterTerminal", alias = "路線外終端")]
 pub struct OuterTerminal {
-    #[oudia(type(single_pair_single_entry = "OuterTerminalEkimei"))]
+    #[oudia(
+        type(single_pair_single_entry = "OuterTerminalEkimei"),
+        default = String::new()
+    )]
     pub name: String,
-    #[oudia(type(single_pair_single_entry = "OuterTerminalJikokuRyaku"))]
+    #[oudia(
+        type(single_pair_single_entry = "OuterTerminalJikokuRyaku"),
+        default = String::new()
+    )]
     pub timetable_abbreviation: String,
-    #[oudia(type(single_pair_single_entry = "OuterTerminalDiaRyaku"))]
+    #[oudia(
+        type(single_pair_single_entry = "OuterTerminalDiaRyaku"),
+        default = String::new()
+    )]
     pub diagram_abbreviation: String,
 }
 
@@ -206,26 +260,26 @@ pub struct OuterTerminal {
 pub struct CrossingCheckRule {
     #[oudia(type(single_pair_single_entry = "Caption"))]
     pub caption: String,
-    #[oudia(type(single_pair_single_entry = "Enable"))]
+    #[oudia(type(single_pair_single_entry = "Enable"), default = true)]
     pub enable: bool,
-    #[oudia(type(single_pair_single_entry = "HeadwaySecond"))]
+    #[oudia(type(single_pair_single_entry = "HeadwaySecond"), default = 60)]
     pub headway_second: i32,
-    #[oudia(type(single_pair_single_entry = "HeadwaySecondMinimum"))]
+    #[oudia(type(single_pair_single_entry = "HeadwaySecondMinimum"), default = 0)]
     pub headway_second_minimum: i32,
     #[oudia(type(single_pair_single_entry = "BeforeFromTrackContentCont"))]
     pub before_from_track_contents: String,
     #[oudia(type(single_pair_single_entry = "BeforeToTrackContentCont"))]
     pub before_to_track_contents: String,
-    #[oudia(type(single_pair_single_entry = "BeforeIsArrival"))]
+    #[oudia(type(single_pair_single_entry = "BeforeIsArrival"), default = false)]
     pub before_is_arrival: bool,
-    #[oudia(type(single_pair_single_entry = "BeforeIsTsuuka"))]
+    #[oudia(type(single_pair_single_entry = "BeforeIsTsuuka"), default = false)]
     pub before_is_pass: bool,
     #[oudia(type(single_pair_single_entry = "AfterFromTrackContentCont"))]
     pub after_from_track_contents: String,
     #[oudia(type(single_pair_single_entry = "AfterToTrackContentCont"))]
     pub after_to_track_contents: String,
-    #[oudia(type(single_pair_single_entry = "AfterIsArrival"))]
+    #[oudia(type(single_pair_single_entry = "AfterIsArrival"), default = false)]
     pub after_is_arrival: bool,
-    #[oudia(type(single_pair_single_entry = "AfterIsTsuuka"))]
+    #[oudia(type(single_pair_single_entry = "AfterIsTsuuka"), default = false)]
     pub after_is_pass: bool,
 }
