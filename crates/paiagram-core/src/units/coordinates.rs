@@ -52,7 +52,9 @@ pub struct XyPos {
 }
 
 impl XyPos {
-    const CONVERSION_FACTOR_F64: f64 = 10_000_000.0;
+    /// Centimetres: the full Web Mercator world (±20,037,509 m) fits in i32.
+    /// XyPos is derived, not serialized; LonLat remains in degrees * 10^7.
+    pub const UNITS_PER_METRE: f64 = 100.0;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -94,7 +96,9 @@ impl From<LonLat> for Wgs84LonLat {
 impl From<Wgs84LonLat> for XyPosF64 {
     fn from(value: Wgs84LonLat) -> Self {
         let x = Self::EARTH_RADIUS_METERS * value.lon.to_radians();
-        let lat = value.lat.clamp(-Self::WEB_MERCATOR_MAX_LAT, Self::WEB_MERCATOR_MAX_LAT);
+        let lat = value
+            .lat
+            .clamp(-Self::WEB_MERCATOR_MAX_LAT, Self::WEB_MERCATOR_MAX_LAT);
         let lat_rad = lat.to_radians();
         let y =
             -Self::EARTH_RADIUS_METERS * (std::f64::consts::FRAC_PI_4 + lat_rad / 2.0).tan().ln();
@@ -104,9 +108,9 @@ impl From<Wgs84LonLat> for XyPosF64 {
 
 impl From<XyPosF64> for XyPos {
     fn from(value: XyPosF64) -> Self {
-        let x = value.x * Self::CONVERSION_FACTOR_F64;
+        let x = value.x * Self::UNITS_PER_METRE;
         let x = x.round() as i32;
-        let y = value.y * Self::CONVERSION_FACTOR_F64;
+        let y = value.y * Self::UNITS_PER_METRE;
         let y = y.round() as i32;
         Self { x, y }
     }
@@ -114,8 +118,8 @@ impl From<XyPosF64> for XyPos {
 
 impl From<XyPos> for XyPosF64 {
     fn from(value: XyPos) -> Self {
-        let x = value.x as f64 / XyPos::CONVERSION_FACTOR_F64;
-        let y = value.y as f64 / XyPos::CONVERSION_FACTOR_F64;
+        let x = value.x as f64 / XyPos::UNITS_PER_METRE;
+        let y = value.y as f64 / XyPos::UNITS_PER_METRE;
         Self { x, y }
     }
 }

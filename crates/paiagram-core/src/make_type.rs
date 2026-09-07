@@ -100,7 +100,7 @@ macro_rules! make_type {
             }
 
             // The Struct wraps the entire collections in Arc
-            #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+            #[derive(Serialize, Clone, Debug, Default, PartialEq)]
             pub struct [<$struct_name Collection>] {
                 registry: std::sync::Arc<[<$struct_name KeyHashMap>]<[<$struct_name Handle>]>>,
                 keys: std::sync::Arc<Vec<[<$struct_name Key>]>>,
@@ -109,6 +109,31 @@ macro_rules! make_type {
                     #[serde(skip)]
                     $cache_name: std::sync::Arc<Vec<$cache_type>>,
                 )*
+            }
+
+            impl<'de> Deserialize<'de> for [<$struct_name Collection>] {
+                fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+                    #[derive(Deserialize)]
+                    struct Data {
+                        registry: Arc<[<$struct_name KeyHashMap>]<[<$struct_name Handle>]>>,
+                        keys: Arc<Vec<[<$struct_name Key>]>>,
+                        $( $field_name: Arc<Vec<$field_type>>, )*
+                    }
+                    let data = Data::deserialize(deserializer)?;
+                    let len = data.keys.len();
+                    if data.registry.len() != len
+                        || data.keys.iter().enumerate().any(|(i, key)| data.registry.get(key) != Some(&[<$struct_name Handle>](i)))
+                        $( || data.$field_name.len() != len )*
+                    {
+                        return Err(serde::de::Error::custom("Invalid collection lengths or registry"));
+                    }
+                    Ok(Self {
+                        registry: data.registry,
+                        keys: data.keys,
+                        $( $field_name: data.$field_name, )*
+                        $( $cache_name: Arc::new(vec![<$cache_type>::default(); len]), )*
+                    })
+                }
             }
 
             impl [<$struct_name Collection>] {

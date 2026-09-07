@@ -76,9 +76,10 @@ impl CommandPalette {
         };
 
         #[rustfmt::skip]
-        let panel_info: [(EcoString, MatchedType); 3] = [
+        let panel_info: [(EcoString, MatchedType); 4] = [
             (tr!("tab-start").into(), MatchedType::Tab(|| MainTab::Start(StartTab)),),
             (tr!("tab-settings").into(), MatchedType::Tab(|| MainTab::Config(ConfigTab)),),
+            (tr!("tab-graph").into(), MatchedType::Tab(|| MainTab::Graph(GraphTab::default()))),
             ("Load OuDiaSecond".into(), MatchedType::LoadOuDiaSecond),
         ];
 
@@ -86,6 +87,9 @@ impl CommandPalette {
             .into_iter()
             .chain(app.trips.iter().map(|v| (v.name.clone(), MatchedType::Trip(v.key))))
             .chain(app.stations.iter().map(|v| (v.name.clone(), MatchedType::Station(v.key))));
+
+        let candidates_iter = candidates_iter
+            .chain(app.routes.iter().map(|v| (v.name.clone(), MatchedType::Route(v.key))));
 
         if text_response.changed() {
             self.matched.clear();
@@ -104,7 +108,7 @@ impl CommandPalette {
             return;
         };
         if let Some(tab) = match item {
-            MatchedType::Route(k) => None,
+            MatchedType::Route(k) => Some(MainTab::Diagram(DiagramTab::new(k))),
             MatchedType::Station(k) => None,
             MatchedType::Trip(k) => Some(MainTab::Trip(TripTab::new(k))),
             MatchedType::Tab(f) => Some(f()),

@@ -48,14 +48,15 @@ fn station_ui(
     let mut all_trips: Vec<TripKey> = Vec::new();
     for nd_source in view.nodes.iter().copied() {
         let Some(neighbour_iter) = source.nodes.query(nd_source, |view| {
-            [view.incoming, view.outgoing].into_iter().flatten().copied()
+            view.incoming
+                .iter()
+                .map(move |n| (*n, nd_source))
+                .chain(view.outgoing.iter().map(move |n| (nd_source, *n)))
         }) else {
             continue;
         };
-        for target in neighbour_iter {
-            source.intervals.query((nd_source, target), |view| {
-                all_trips.extend(view.trips.iter())
-            });
+        for interval in neighbour_iter {
+            source.intervals.query(interval, |view| all_trips.extend(view.trips.iter()));
         }
     }
     all_trips.sort_unstable();

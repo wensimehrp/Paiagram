@@ -159,7 +159,9 @@ impl egui::Widget for &mut Preferences {
                 ui.label("Font");
                 egui::ComboBox::from_id_salt("font selection")
                     .selected_text(
-                        self.font_name.try_lock().map_or_else(|| "".to_string(), |s| s.clone()),
+                        self.font_name
+                            .try_lock()
+                            .map_or_else(|| "".to_string(), |s| s.clone()),
                     )
                     .height(300.0)
                     .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
@@ -168,8 +170,9 @@ impl egui::Widget for &mut Preferences {
                         let candidate_id = ui.id().with("query candidates");
                         let mut query: String =
                             ui.data_mut(|w| w.remove_temp(query_id)).unwrap_or_default();
-                        let mut matches: Vec<usize> =
-                            ui.data_mut(|w| w.remove_temp(candidate_id)).unwrap_or_default();
+                        let mut matches: Vec<usize> = ui
+                            .data_mut(|w| w.remove_temp(candidate_id))
+                            .unwrap_or_default();
                         if ui.text_edit_singleline(&mut query).changed() {
                             matches.clear();
                             matches.extend(search(

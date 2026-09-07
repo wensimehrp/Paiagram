@@ -133,7 +133,11 @@ fn download_file(filename: &str, content: &[u8]) -> Result<(), JsValue> {
     let anchor: HtmlAnchorElement = {
         let window = web_sys::window().expect("window is not available");
         let document = window.document().expect("document is not available");
-        document.create_element("a").unwrap().dyn_into::<HtmlAnchorElement>().unwrap()
+        document
+            .create_element("a")
+            .unwrap()
+            .dyn_into::<HtmlAnchorElement>()
+            .unwrap()
     };
     let blob = Blob::new_with_u8_array_sequence_and_options(
         &Array::of1(&Uint8Array::from(&content[..])),

@@ -152,7 +152,9 @@ pub fn oudia(args: TokenStream, input: TokenStream) -> TokenStream {
     if let Some(alias) = &args.alias {
         struct_names.push(alias.clone());
     }
-    input.attrs.extend(doc_aliases(&struct_names, &struct_ident.to_string()));
+    input
+        .attrs
+        .extend(doc_aliases(&struct_names, &struct_ident.to_string()));
 
     let mut initializers = proc_macro2::TokenStream::new();
     let mut matchers = proc_macro2::TokenStream::new();
@@ -449,7 +451,9 @@ pub fn oudia(args: TokenStream, input: TokenStream) -> TokenStream {
             }
             field.attrs.extend(doc_aliases(
                 &field_names,
-                &field_ident.map(|ident| ident.to_string()).unwrap_or_default(),
+                &field_ident
+                    .map(|ident| ident.to_string())
+                    .unwrap_or_default(),
             ));
         }
     }

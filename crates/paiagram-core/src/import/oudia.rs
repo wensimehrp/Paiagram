@@ -85,6 +85,22 @@ pub(crate) fn parse_oudia(stream: OudFileType) -> Result<Command, Box<dyn std::e
         .iter()
         .map(|cls| (cls.name.as_str(), ServiceClassKey::new(), 0u32))
         .collect::<Vec<_>>();
+    for (cls, (_, key, _)) in route.classes.iter().zip(&service_classes) {
+        cmd_buf.push(Command::AddServiceClass {
+            key: *key,
+            info: crate::ServiceClassInfo {
+                name: cls.name.clone().into(),
+                style: crate::StrokeStyle {
+                    color: egui::Color32::from_rgb(
+                        cls.diagram_line_color.r(),
+                        cls.diagram_line_color.g(),
+                        cls.diagram_line_color.b(),
+                    ),
+                    width: 1,
+                },
+            },
+        });
+    }
     let mut unknown_class_counter = 0u32;
     let Some(diagram) = route.diagrams.get(0) else {
         return Err(Box::new(std::io::Error::other(

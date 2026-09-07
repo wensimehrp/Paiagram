@@ -88,6 +88,7 @@ pub struct App {
     settings: config::Settings,
     ui_action_queue: Vec<UiCommand>,
     command_queue: Vec<Command>,
+    command_error: Option<String>,
     selected_items: SelectedItems,
     file_load_state: Arc<Mutex<FileLoadState>>,
     file_write_state: Arc<Mutex<FileWriteState>>,
@@ -108,6 +109,7 @@ impl App {
             settings: config::Settings::default(),
             ui_action_queue: Vec::with_capacity(100),
             command_queue: Vec::with_capacity(100),
+            command_error: None,
             selected_items: SelectedItems::None,
             file_load_state: Arc::new(Mutex::new(FileLoadState::Idle)),
             file_write_state: Arc::new(Mutex::new(FileWriteState::Idle)),
@@ -127,6 +129,7 @@ impl App {
             // TODO: warn about fails in GUI;
             if !self.source.apply_command(cmd.clone()) {
                 warn!("Failed to apply command {:?}", cmd);
+                self.command_error = Some("This edit could not be applied. Check that referenced items still exist and remove dependent routes, trips, or intervals before deleting an item.".into());
             }
         }
     }
@@ -219,12 +222,21 @@ impl<'a> MainTabViewer<'a> {
             // (&tr!("tab-start"), MainTab::Start(StartTab::default())),
             // (&tr!("tab-settings"), MainTab::Settings(SettingsTab)),
             // (&tr!("tab-classes"), MainTab::Classes(ClassesTab::default())),
-            // (&tr!("tab-graph"), MainTab::Graph(GraphTab::default())),
+            (&tr!("tab-graph"), MainTab::Graph(GraphTab::default())),
         ];
+        for route in self.app.source.routes.iter() {
+            if ui.button(format!("Diagram · {}", route.name)).clicked() {
+                self.app.ui_action_queue.push(UiCommand::OpenOrFocus(MainTab::Diagram(
+                    DiagramTab::new(route.key),
+                )));
+                ui.close();
+            }
+        }
         for (s, t) in tab_definitions {
             if ui.button(*s).clicked() {
-                // TOOD: open tabs
-                // self.world.write_message(OpenOrFocus(t));
+                self.app
+                    .ui_action_queue
+                    .push(UiCommand::OpenOrFocus(t.clone()));
                 ui.close();
             }
         }
@@ -236,7 +248,8 @@ impl<'w> Behavior<MainTab> for MainTabViewer<'w> {
         for_all_tabs!(pane, p, p.title())
     }
     fn pane_ui(&mut self, ui: &mut Ui, _tile_id: TileId, tab: &mut MainTab) -> UiResponse {
-        ui.painter().rect_filled(ui.available_rect_before_wrap(), 0, ui.visuals().panel_fill);
+        ui.painter()
+            .rect_filled(ui.available_rect_before_wrap(), 0, ui.visuals().panel_fill);
         for_all_tabs!(tab, t, t.main_display(self.app, ui));
 
         Default::default()
@@ -268,7 +281,7 @@ impl<'w> Behavior<MainTab> for MainTabViewer<'w> {
         _tabs: &egui_tiles::Tabs,
     ) {
         ui.menu_button(icons::ICON_ADD, |ui| {
-            ui.label("hi!");
+            self.add_popup(ui);
         });
     }
 }
@@ -297,7 +310,10 @@ pub fn show_ui(
     Panel::top("top panel").exact_size(32.0).show(ui, |ui| {
         ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
             Popup::menu(&ui.button("App")).show(|ui| {
-                if ui.add(Button::new("Command Palette").shortcut_text("Ctrl+P")).clicked() {
+                if ui
+                    .add(Button::new("Command Palette").shortcut_text("Ctrl+P"))
+                    .clicked()
+                {
                     ui_state.command_palette.visible ^= true;
                 }
                 #[cfg(not(target_arch = "wasm32"))]
@@ -355,21 +371,28 @@ pub fn show_ui(
             });
             Popup::menu(&ui.button(tr!("menu-about"))).show(|ui| {
                 if ui.button(tr!("menu-documentation")).clicked() {
-                    ui.ctx().open_url(OpenUrl::new_tab(if cfg!(target_arch = "wasm32") {
-                        "/docs"
-                    } else {
-                        "https://paiagram.com/docs"
-                    }));
+                    ui.ctx()
+                        .open_url(OpenUrl::new_tab(if cfg!(target_arch = "wasm32") {
+                            "/docs"
+                        } else {
+                            "https://paiagram.com/docs"
+                        }));
                 }
                 if cfg!(target_arch = "wasm32") && ui.button(tr!("menu-legal")).clicked() {
                     ui.ctx().open_url(OpenUrl::new_tab("./license.html"));
                 }
             });
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.add_enabled(app.source.redoable(), Button::new("Redo")).clicked() {
+                if ui
+                    .add_enabled(app.source.redoable(), Button::new("Redo"))
+                    .clicked()
+                {
                     app.source.redo();
                 }
-                if ui.add_enabled(app.source.undoable(), Button::new("Undo")).clicked() {
+                if ui
+                    .add_enabled(app.source.undoable(), Button::new("Undo"))
+                    .clicked()
+                {
                     app.source.undo();
                 }
                 const GIT_REV_SHORT: &str = git_version::git_version!(fallback = "unknown");
@@ -382,39 +405,45 @@ pub fn show_ui(
             });
         })
     });
-    Panel::bottom("bottom panel").exact_size(24.0).show(ui, |ui| {
-        ui.horizontal_centered(|ui| {
-            let time = app.timer.ticks().to_timetable_time();
-            ui.add_enabled(
-                !app.timer.sync_to_real_time,
-                egui::Checkbox::new(&mut app.timer.animation_playing, ""),
-            );
-            let time_response = ui.add(TimeDragValue(time, &mut None));
-            ui.add_enabled(
-                !app.timer.sync_to_real_time,
-                egui::DragValue::new(&mut app.timer.animation_speed).fixed_decimals(1).suffix("×"),
-            );
-            egui::Popup::menu(&time_response).show(|ui| {
-                ui.checkbox(
-                    &mut app.timer.sync_to_real_time,
-                    tr!("menu-sync-system-clock"),
+    Panel::bottom("bottom panel")
+        .exact_size(24.0)
+        .show(ui, |ui| {
+            ui.horizontal_centered(|ui| {
+                let time = app.timer.ticks().to_timetable_time();
+                ui.add_enabled(
+                    !app.timer.sync_to_real_time,
+                    egui::Checkbox::new(&mut app.timer.animation_playing, ""),
                 );
-            });
-            if !app.timer.sync_to_real_time
-                && time_response.dragged()
-                && let Some(key) = app.timer.try_lock()
-            {
-                *app.timer.ticks_mut(&key) = Tick::from_timetable_time(time);
-                app.timer.unlock(key);
-            }
-            if app.timer.animation_playing || app.timer.sync_to_real_time {
-                ui.ctx().request_repaint();
-            }
-            app.timer.march(delta_time.as_secs_f64());
-        })
-    });
-    egui::CentralPanel::default().frame(Frame::default()).show(ui, |ui| {
-        let mut tab_viewer = MainTabViewer { app };
-        ui_state.mus.tree.ui(&mut tab_viewer, ui);
-    });
+                let time_response = ui.add(TimeDragValue(time, &mut None));
+                ui.add_enabled(
+                    !app.timer.sync_to_real_time,
+                    egui::DragValue::new(&mut app.timer.animation_speed)
+                        .fixed_decimals(1)
+                        .suffix("×"),
+                );
+                egui::Popup::menu(&time_response).show(|ui| {
+                    ui.checkbox(
+                        &mut app.timer.sync_to_real_time,
+                        tr!("menu-sync-system-clock"),
+                    );
+                });
+                if !app.timer.sync_to_real_time
+                    && time_response.dragged()
+                    && let Some(key) = app.timer.try_lock()
+                {
+                    *app.timer.ticks_mut(&key) = Tick::from_timetable_time(time);
+                    app.timer.unlock(key);
+                }
+                if app.timer.animation_playing || app.timer.sync_to_real_time {
+                    ui.ctx().request_repaint();
+                }
+                app.timer.march(delta_time.as_secs_f64());
+            })
+        });
+    egui::CentralPanel::default()
+        .frame(Frame::default())
+        .show(ui, |ui| {
+            let mut tab_viewer = MainTabViewer { app };
+            ui_state.mus.tree.ui(&mut tab_viewer, ui);
+        });
 }

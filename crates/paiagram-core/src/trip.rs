@@ -27,15 +27,24 @@ impl TravelMode {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize, Copy, Debug, PartialEq)]
+#[derive(Clone, Serialize, Copy, Debug, PartialEq)]
 pub struct TEntryId(u32);
+static NEXT_ENTRY_ID: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
+impl<'de> Deserialize<'de> for TEntryId {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = u32::deserialize(deserializer)?;
+        if value == u32::MAX {
+            return Err(serde::de::Error::custom("Timetable entry ID exhausted"));
+        }
+        NEXT_ENTRY_ID.fetch_max(value + 1, std::sync::atomic::Ordering::Relaxed);
+        Ok(Self(value))
+    }
+}
 
 impl TEntryId {
     /// Create a new unique entry ID.
     pub fn new() -> Self {
-        use std::sync::atomic::{AtomicU32, Ordering};
-        static NEXT: AtomicU32 = AtomicU32::new(1);
-        Self(NEXT.fetch_add(1, Ordering::Relaxed))
+        Self(NEXT_ENTRY_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
     }
 }
 
@@ -71,6 +80,12 @@ pub enum TEntry {
 }
 
 impl TEntry {
+    pub fn is_external(&self) -> bool {
+        matches!(
+            self,
+            Self::Pinned { external: true, .. } | Self::PinnedNonStop { external: true, .. }
+        )
+    }
     pub fn node_key(&self) -> NodeKey {
         match self {
             Self::Derived { node, .. } => *node,

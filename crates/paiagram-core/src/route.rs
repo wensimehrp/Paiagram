@@ -17,15 +17,29 @@ impl RouteInfo {
         let mut ret = Vec::new();
         for [prev_stn, curr_stn] in self.stations.array_windows::<2>() {
             let curr_nodes = match &curr_stn.stn {
-                StationRecord::All(key) => {
-                    world.stations.query(*key, |stn| stn.nodes.clone()).unwrap_or_default()
-                }
+                StationRecord::All(key) => world
+                    .stations
+                    .query(*key, |stn| {
+                        stn.nodes
+                            .iter()
+                            .copied()
+                            .filter(|k| world.nodes.query(*k, |n| *n.is_platform).unwrap_or(false))
+                            .collect::<ecow::EcoVec<_>>()
+                    })
+                    .unwrap_or_default(),
                 StationRecord::Some(v) => v.clone(),
             };
             let prev_nodes = match &prev_stn.stn {
-                StationRecord::All(key) => {
-                    world.stations.query(*key, |stn| stn.nodes.clone()).unwrap_or_default()
-                }
+                StationRecord::All(key) => world
+                    .stations
+                    .query(*key, |stn| {
+                        stn.nodes
+                            .iter()
+                            .copied()
+                            .filter(|k| world.nodes.query(*k, |n| *n.is_platform).unwrap_or(false))
+                            .collect::<ecow::EcoVec<_>>()
+                    })
+                    .unwrap_or_default(),
                 StationRecord::Some(v) => v.clone(),
             };
             let prev_curr_prog: Vec<_> = curr_stn
@@ -41,8 +55,11 @@ impl RouteInfo {
                     );
                     let ds = ds? as f64;
                     let dt = dt? as f64;
-                    let progress = u16::MAX as f64 * (ds / (ds + dt));
-                    Some(IntervalProgress(progress as u16))
+                    Some(IntervalProgress::from_ratio(if ds + dt == 0.0 {
+                        0.0
+                    } else {
+                        ds / (ds + dt)
+                    }))
                 })
                 .collect();
             let curr_prev_prog: Vec<_> = curr_stn
@@ -58,8 +75,11 @@ impl RouteInfo {
                     );
                     let ds = ds? as f64;
                     let dt = dt? as f64;
-                    let progress = u16::MAX as f64 * (ds / (ds + dt));
-                    Some(IntervalProgress(progress as u16))
+                    Some(IntervalProgress::from_ratio(if ds + dt == 0.0 {
+                        0.0
+                    } else {
+                        ds / (ds + dt)
+                    }))
                 })
                 .collect();
             ret.push((prev_curr_prog, curr_prev_prog));
@@ -74,36 +94,99 @@ fn calc_node_min_distance_batch(
     sources: &[NodeKey],
     targets: &[NodeKey],
     subgraph: &[NodeKey],
-) -> (Option<i32>, Option<i32>) {
+) -> (Option<u64>, Option<u64>) {
     let subgraph_contains_node =
         |nd: NodeKey| subgraph.contains(&nd) || sources.contains(&nd) || targets.contains(&nd);
+    let graph = petgraph::visit::EdgeFiltered::from_fn(world, |e| {
+        subgraph_contains_node(e.source()) && subgraph_contains_node(e.target())
+    });
     let ds = sources
         .iter()
-        .map(|&source| {
-            bidirectional_dijkstra(world, source, node, |e| {
-                [e.source(), e.target()]
-                    .into_iter()
-                    .all(subgraph_contains_node)
-                    .then(|| world.intervals.query((e.source(), e.target()), |int| int.length().0))
-                    .flatten()
-                    .unwrap_or(i32::MAX)
+        .filter_map(|&source| {
+            bidirectional_dijkstra(&graph, source, node, |e| {
+                world
+                    .intervals
+                    .get((e.source(), e.target()))
+                    .unwrap()
+                    .length()
+                    .0
+                    .max(0) as u64
             })
         })
-        .min()
-        .flatten();
+        .min();
     let dt = targets
         .iter()
-        .map(|&target| {
-            bidirectional_dijkstra(world, node, target, |e| {
-                [e.source(), e.target()]
-                    .into_iter()
-                    .all(subgraph_contains_node)
-                    .then(|| world.intervals.query((e.source(), e.target()), |int| int.length().0))
-                    .flatten()
-                    .unwrap_or(i32::MAX)
+        .filter_map(|&target| {
+            bidirectional_dijkstra(&graph, node, target, |e| {
+                world
+                    .intervals
+                    .get((e.source(), e.target()))
+                    .unwrap()
+                    .length()
+                    .0
+                    .max(0) as u64
             })
         })
-        .min()
-        .flatten();
+        .min();
     (ds, dt)
+}
+
+impl crate::RouteStationRecord {
+    /// Construct an all-platform record, with directional shortest paths from the preceding
+    /// station.
+    pub fn for_station(
+        world: &WorldSnapshot,
+        station: crate::StationKey,
+        previous: Option<crate::StationKey>,
+    ) -> Self {
+        let platforms = |key| {
+            world
+                .stations
+                .query(key, |s| {
+                    s.nodes
+                        .iter()
+                        .copied()
+                        .filter(|n| world.nodes.query(*n, |n| *n.is_platform).unwrap_or(false))
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default()
+        };
+        let mut record = Self {
+            stn: StationRecord::All(station),
+            milestone: None,
+            canvas_length: None,
+            prev_curr_nodes: Default::default(),
+            curr_prev_nodes: Default::default(),
+        };
+        if let Some(previous) = previous {
+            let a = platforms(previous);
+            let b = platforms(station);
+            for (sources, targets, output) in [
+                (&a, &b, &mut record.prev_curr_nodes),
+                (&b, &a, &mut record.curr_prev_nodes),
+            ] {
+                for &source in sources {
+                    for &target in targets {
+                        if let Some((_, path)) = petgraph::algo::astar(
+                            world,
+                            source,
+                            |n| n == target,
+                            |e| world.intervals.get(*e.weight()).unwrap().length().0.max(0) as u64,
+                            |_| 0,
+                        ) {
+                            for node in path {
+                                if !sources.contains(&node)
+                                    && !targets.contains(&node)
+                                    && !output.contains(&node)
+                                {
+                                    output.push(node);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        record
+    }
 }

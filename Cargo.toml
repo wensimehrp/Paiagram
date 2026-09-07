@@ -65,6 +65,7 @@ ib-matcher = { version = "0.4.3", features = ["pinyin", "romaji"] }
 indexmap = "2.14.0"
 itertools = "0.14.0"
 itoa = "1.0.18"
+arc-swap = "1.9.2"
 jiff = "0.2.29"
 js-sys = "0.3"
 krilla = "0.8.2"

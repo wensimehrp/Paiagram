@@ -1,24 +1,20 @@
-use std::collections::HashSet;
+//! XYZ raster underlays using the same egui version and image loaders as the app.
+use std::collections::VecDeque;
 
-use egui::{Mesh, Painter, Rect, Shape, Stroke, Ui, Widget, pos2};
-use egui_i18n::tr;
-use paiagram_core::{Wgs84LonLat, XyPos};
+use egui::{Painter, Rect, Stroke, Ui};
 use serde::{Deserialize, Serialize};
-use walkers::sources::{Attribution, OpenStreetMap, TileSource};
-use walkers::{HttpTiles, Tile, TileId, Tiles, mercator};
 
 use crate::tabs::Navigatable;
 
 #[derive(Default, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub(crate) enum UnderlayTileType {
-    None,
     #[default]
+    None,
     OpenStreetMap,
     ChiriinChizu(ChiriinChizuVariant),
     AutoNavi,
     EsriWorldImagery,
 }
-
 #[derive(Default, Clone, Copy, Serialize, Deserialize, PartialEq, Debug)]
 pub(crate) enum ChiriinChizuVariant {
     #[default]
@@ -28,169 +24,90 @@ pub(crate) enum ChiriinChizuVariant {
     English,
     Satellite,
 }
-
-impl Widget for &mut UnderlayTileType {
-    fn ui(self, ui: &mut egui::Ui) -> egui::Response {
-        let mut changed = false;
-        changed |= ui
-            .radio_value(self, UnderlayTileType::None, tr!("tab-graph-underlay-none"))
-            .changed();
-        changed |= ui
-            .radio_value(
-                self,
-                UnderlayTileType::OpenStreetMap,
-                tr!("tab-graph-underlay-openstreetmap"),
-            )
-            .changed();
-        changed |= ui
-            .radio_value(
-                self,
-                UnderlayTileType::EsriWorldImagery,
-                "Esri World Imagery (Satellite)",
-            )
-            .changed();
-        let mut res = ui.radio_value(
-            self,
-            UnderlayTileType::AutoNavi,
-            tr!("tab-graph-underlay-amap"),
-        );
-        ui.horizontal(|ui| {
-            let variant_id = ui.id().with("chiriin variant");
-            let selected = ui
-                .ctx()
-                .memory_mut(|r| *r.data.get_temp_mut_or_default(variant_id));
-            changed |= ui
-                .radio_value(
-                    self,
-                    UnderlayTileType::ChiriinChizu(selected),
-                    tr!("tab-graph-underlay-chiriin"),
-                )
-                .changed();
-            let mut new_selected = selected;
-            ui.add_enabled_ui(matches!(self, UnderlayTileType::ChiriinChizu(_)), |ui| {
-                egui::ComboBox::new("variant", "")
-                    .selected_text(format!("{:?}", selected))
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(
-                            &mut new_selected,
-                            ChiriinChizuVariant::Standard,
-                            "Standard",
-                        );
-                        ui.selectable_value(&mut new_selected, ChiriinChizuVariant::Light, "Light");
-                        ui.selectable_value(&mut new_selected, ChiriinChizuVariant::White, "White");
-                        ui.selectable_value(
-                            &mut new_selected,
-                            ChiriinChizuVariant::English,
-                            "English",
-                        );
-                        ui.selectable_value(
-                            &mut new_selected,
-                            ChiriinChizuVariant::Satellite,
-                            "Satellite",
-                        );
-                    });
+pub(super) struct Attribution {
+    pub text: &'static str,
+    pub url: &'static str,
+}
+impl egui::Widget for &mut UnderlayTileType {
+    fn ui(self, ui: &mut Ui) -> egui::Response {
+        ui.vertical(|ui| {
+            ui.radio_value(self, UnderlayTileType::None, "None");
+            ui.radio_value(self, UnderlayTileType::OpenStreetMap, "OpenStreetMap");
+            ui.radio_value(self, UnderlayTileType::EsriWorldImagery, "Esri imagery");
+            ui.radio_value(self, UnderlayTileType::AutoNavi, "AutoNavi");
+            ui.collapsing("Japan GSI", |ui| {
+                for variant in [
+                    ChiriinChizuVariant::Standard,
+                    ChiriinChizuVariant::Light,
+                    ChiriinChizuVariant::White,
+                    ChiriinChizuVariant::English,
+                    ChiriinChizuVariant::Satellite,
+                ] {
+                    ui.radio_value(
+                        self,
+                        UnderlayTileType::ChiriinChizu(variant),
+                        format!("{variant:?}"),
+                    );
+                }
             });
-            if new_selected != selected {
-                *self = UnderlayTileType::ChiriinChizu(new_selected);
-                changed = true;
-            };
-            ui.ctx()
-                .memory_mut(|r| *r.data.get_temp_mut_or_default(variant_id) = new_selected);
-        });
-        if changed {
-            res.mark_changed();
-        }
-        res
+        })
+        .response
     }
 }
-
-pub(crate) struct ChiriinChizu(ChiriinChizuVariant);
-
-impl TileSource for ChiriinChizu {
-    fn tile_url(&self, tile_id: TileId) -> String {
-        let z = tile_id.zoom;
-        let x = tile_id.x;
-        let y = tile_id.y;
-        let (id, format) = match self.0 {
-            ChiriinChizuVariant::Standard => ("std", "png"),
-            ChiriinChizuVariant::Satellite => ("seamlessphoto", "jpg"),
-            ChiriinChizuVariant::English => ("english", "png"),
-            ChiriinChizuVariant::White => ("blank", "png"),
-            ChiriinChizuVariant::Light => ("pale", "png"),
-        };
-        format!("https://cyberjapandata.gsi.go.jp/xyz/{id}/{z}/{x}/{y}.{format}")
-    }
-    fn attribution(&self) -> Attribution {
-        Attribution {
-            text: "Chiri-in Chizu (Cyber Japan Data)",
-            url: "https://cyberjapandata.gsi.go.jp",
-            logo_dark: None,
-            logo_light: None,
+impl UnderlayTileType {
+    fn url(self, z: i32, x: i32, y: i32) -> String {
+        match self {
+            Self::None => String::new(),
+            Self::OpenStreetMap => format!("https://tile.openstreetmap.org/{z}/{x}/{y}.png"),
+            Self::EsriWorldImagery => format!(
+                "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+            ),
+            Self::AutoNavi => format!(
+                "https://webrd01.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}"
+            ),
+            Self::ChiriinChizu(variant) => {
+                let (id, ext) = match variant {
+                    ChiriinChizuVariant::Standard => ("std", "png"),
+                    ChiriinChizuVariant::Light => ("pale", "png"),
+                    ChiriinChizuVariant::White => ("blank", "png"),
+                    ChiriinChizuVariant::English => ("english", "png"),
+                    ChiriinChizuVariant::Satellite => ("seamlessphoto", "jpg"),
+                };
+                format!("https://cyberjapandata.gsi.go.jp/xyz/{id}/{z}/{x}/{y}.{ext}")
+            }
         }
     }
-}
-
-pub(crate) struct AutoNavi;
-
-impl TileSource for AutoNavi {
-    fn tile_url(&self, tile_id: TileId) -> String {
-        let z = tile_id.zoom;
-        let x = tile_id.x;
-        let y = tile_id.y;
-
-        // Cycle through subdomains 01-04 based on the x coordinate
-        let subdomain = (x % 4) + 1;
-
-        // style=8 is the standard vector road map
-        format!(
-            "https://webrd0{subdomain}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}"
-        )
-    }
-
-    fn attribution(&self) -> Attribution {
-        Attribution {
-            text: "AutoNavi (Amap)",
-            url: "https://www.amap.com/",
-            logo_dark: None,
-            logo_light: None,
-        }
+    fn attribution(self) -> Option<Attribution> {
+        Some(match self {
+            Self::None => return None,
+            Self::OpenStreetMap => Attribution {
+                text: "OpenStreetMap contributors",
+                url: "https://www.openstreetmap.org/copyright",
+            },
+            Self::EsriWorldImagery => Attribution {
+                text: "Esri",
+                url: "https://developers.arcgis.com/documentation/esri-and-data-attribution/",
+            },
+            Self::AutoNavi => Attribution {
+                text: "AutoNavi (Amap)",
+                url: "https://www.amap.com/",
+            },
+            Self::ChiriinChizu(_) => Attribution {
+                text: "GSI Japan",
+                url: "https://cyberjapandata.gsi.go.jp/",
+            },
+        })
     }
 }
-
-pub(crate) struct EsriWorldImagery;
-
-impl TileSource for EsriWorldImagery {
-    fn tile_url(&self, tile_id: TileId) -> String {
-        let z = tile_id.zoom;
-        let y = tile_id.y;
-        let x = tile_id.x;
-        format!(
-            "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-        )
-    }
-    fn attribution(&self) -> Attribution {
-        Attribution {
-            text: "Powered by Esri",
-            url: "https://developers.arcgis.com/documentation/esri-and-data-attribution/",
-            logo_light: None,
-            logo_dark: None,
-        }
-    }
-}
-
+#[derive(Default)]
 pub(super) struct UnderlayPainter {
-    visited: HashSet<TileId>,
-    stack: Vec<TileId>,
-    tiles: Option<Option<HttpTiles>>,
-    tile_type: Option<UnderlayTileType>,
-    changed: bool,
+    tile_type: UnderlayTileType,
+    recent: VecDeque<String>,
 }
-
 impl UnderlayPainter {
     pub fn update_tile_type(&mut self, new_type: Option<UnderlayTileType>) {
-        if new_type != self.tile_type {
-            self.tile_type = new_type;
-            self.changed = true;
+        if let Some(t) = new_type {
+            self.tile_type = t;
         }
     }
     pub fn draw_underlay(
@@ -199,213 +116,50 @@ impl UnderlayPainter {
         navi: &super::GraphNavigation,
         ui: &mut Ui,
     ) -> Option<Attribution> {
-        draw_world_grid(
-            &painter,
-            navi.visible_rect(),
-            navi.offset_x() as f32,
-            navi.offset_y() as f32,
-            navi.zoom_x(),
-        );
-
-        let tiles = self.tiles.get_or_insert(None);
-        let ctx = ui.ctx().clone();
-
-        if self.changed {
-            match self.tile_type {
-                None => {}
-                Some(UnderlayTileType::None) => *tiles = None,
-                Some(UnderlayTileType::OpenStreetMap) => {
-                    *tiles = Some(HttpTiles::new(OpenStreetMap, ctx))
-                }
-                Some(UnderlayTileType::ChiriinChizu(v)) => {
-                    *tiles = Some(HttpTiles::new(ChiriinChizu(v), ctx))
-                }
-                Some(UnderlayTileType::AutoNavi) => *tiles = Some(HttpTiles::new(AutoNavi, ctx)),
-                Some(UnderlayTileType::EsriWorldImagery) => {
-                    *tiles = Some(HttpTiles::new(EsriWorldImagery, ctx))
-                }
-            }
-            self.changed = false;
-        }
-
-        let Some(tiles) = tiles else {
-            return None;
-        };
-
-        let graph_zoom = navi.zoom_x() as f64;
-        let tile_zoom = graph_zoom_to_tile_zoom(graph_zoom);
-
         let view = navi.visible_rect();
-
-        let center_screen = view.center();
-        let (center_x, center_y) = navi.screen_pos_to_xy(center_screen);
-        let Wgs84LonLat {
-            lon: center_lon,
-            lat: center_lat,
-        } = XyPos::new(center_x, center_y).into();
-        let map_center = walkers::lon_lat(center_lon, center_lat);
-        let map_center_projected = mercator::project(map_center, tile_zoom);
-
-        self.visited.clear();
-        self.stack.clear();
-        self.stack.push(root_tile_id(
-            map_center_projected.x(),
-            map_center_projected.y(),
-            tile_zoom,
-            tiles.tile_size(),
-        ));
-        let corrected_tile_size = corrected_tile_size(tiles.tile_size(), tile_zoom);
-        let clip = painter.clip_rect();
-
-        while let Some(tile_id) = self.stack.pop() {
-            if !self.visited.insert(tile_id) {
-                // already contains tile_id
-                continue;
-            }
-
-            let tile_rect = tile_rect(
-                tile_id,
-                corrected_tile_size,
-                map_center_projected.x(),
-                map_center_projected.y(),
-                clip,
-            );
-
-            if !clip.intersects(tile_rect) {
-                continue;
-            }
-
-            if let Some(tile_piece) = tiles.at(tile_id) {
-                draw_tile_piece(&painter, tile_piece, tile_rect);
-            }
-
-            for next in [
-                tile_id.north(),
-                tile_id.east(),
-                tile_id.south(),
-                tile_id.west(),
-            ]
-            .into_iter()
-            .flatten()
-            {
-                if !self.visited.contains(&next) {
-                    self.stack.push(next);
+        let zoom = navi.zoom_x() as f64;
+        let spacing = 10.0_f64.powf((80.0 / zoom).log10().round());
+        let stroke = Stroke::new(0.5, ui.visuals().weak_text_color().gamma_multiply(0.25));
+        for i in 0..=(view.width() as f64 / (spacing * zoom)).ceil() as usize + 1 {
+            let x = ((navi.offset_x() / spacing).floor() + i as f64) * spacing;
+            painter.vline(navi.logical_x_to_screen_x(x), view.y_range(), stroke);
+        }
+        for i in 0..=(view.height() as f64 / (spacing * zoom)).ceil() as usize + 1 {
+            let y = ((navi.offset_y() / spacing).floor() + i as f64) * spacing;
+            painter.hline(view.x_range(), navi.logical_y_to_screen_y(y), stroke);
+        }
+        let attribution = self.tile_type.attribution()?;
+        egui_extras::install_image_loaders(ui.ctx());
+        const WORLD: f64 = 40_075_016.685_578_49;
+        let z = (zoom * WORLD / 256.0).log2().round().clamp(0.0, 19.0) as i32;
+        let count = 1_i32 << z;
+        let tile_metres = WORLD / count as f64;
+        let xr = navi.visible_x();
+        let yr = navi.visible_y();
+        let index = |v: f64| ((v + WORLD / 2.0) / tile_metres).floor() as i32;
+        let clip = ui.clip_rect();
+        ui.set_clip_rect(view.intersect(clip));
+        for x in index(xr.start).max(0)..=index(xr.end).min(count - 1) {
+            for y in index(yr.start).max(0)..=index(yr.end).min(count - 1) {
+                let url = self.tile_type.url(z, x, y);
+                let min = navi.xy_to_screen_pos(
+                    x as f64 * tile_metres - WORLD / 2.0,
+                    y as f64 * tile_metres - WORLD / 2.0,
+                );
+                let rect = Rect::from_min_size(min, egui::Vec2::splat((tile_metres * zoom) as f32));
+                egui::Image::new(url.clone()).show_loading_spinner(false).paint_at(ui, rect);
+                if let Some(i) = self.recent.iter().position(|u| u == &url) {
+                    self.recent.remove(i);
                 }
+                self.recent.push_back(url);
             }
         }
-        Some(tiles.attribution())
-    }
-}
-
-fn draw_world_grid(painter: &Painter, viewport: Rect, offset_x: f32, offset_y: f32, zoom: f32) {
-    if zoom <= 0.0 {
-        return;
-    }
-
-    const MIN_WIDTH: f32 = 32.0;
-    const MAX_WIDTH: f32 = 120.0;
-    let base_color = egui::Color32::from_gray(160);
-
-    for p in ((-5)..=5).rev() {
-        let spacing = 10.0f32.powi(p);
-        let screen_spacing = spacing * zoom;
-        let strength =
-            ((screen_spacing * 1.5 - MIN_WIDTH) / (MAX_WIDTH - MIN_WIDTH)).clamp(0.0, 1.0);
-        if strength <= 0.0 {
-            continue;
-        }
-
-        let stroke = Stroke::new(0.6, base_color.gamma_multiply(strength));
-
-        let mut n = (offset_x / spacing).floor();
-        loop {
-            let world_x = n * spacing;
-            let screen_x_rel = (world_x - offset_x) * zoom;
-            if screen_x_rel > viewport.width() {
-                break;
+        ui.set_clip_rect(clip);
+        while self.recent.len() > 256 {
+            if let Some(url) = self.recent.pop_front() {
+                ui.ctx().forget_image(&url);
             }
-            if screen_x_rel >= 0.0 {
-                painter.vline(viewport.left() + screen_x_rel, viewport.y_range(), stroke);
-            }
-            n += 1.0;
         }
-
-        let mut m = (offset_y / spacing).floor();
-        loop {
-            let world_y = m * spacing;
-            let screen_y_rel = (world_y - offset_y) * zoom;
-            if screen_y_rel > viewport.height() {
-                break;
-            }
-            if screen_y_rel >= 0.0 {
-                painter.hline(viewport.x_range(), viewport.top() + screen_y_rel, stroke);
-            }
-            m += 1.0;
-        }
-    }
-}
-
-fn graph_zoom_to_tile_zoom(graph_zoom: f64) -> f64 {
-    const TILE_SIZE: f64 = 256.0;
-    let XyPos { x: x0, y: _ } = Wgs84LonLat::new(-180.0, 0.0).into();
-    let XyPos { x: x1, y: _ } = Wgs84LonLat::new(180.0, 0.0).into();
-    let world_meters = (x1 - x0).abs();
-    (graph_zoom * world_meters / TILE_SIZE)
-        .log2()
-        .clamp(0.0, 26.0)
-}
-
-fn corrected_tile_size(source_tile_size: u32, zoom: f64) -> f64 {
-    source_tile_size as f64 * 2f64.powf(zoom - zoom.round())
-}
-
-fn root_tile_id(center_px_x: f64, center_px_y: f64, zoom: f64, source_tile_size: u32) -> TileId {
-    let rounded_zoom = zoom.round().clamp(0.0, 26.0) as i32;
-    let zoom_offset = ((source_tile_size as f64) / 256.0).log2() as i32;
-    let tile_zoom = (rounded_zoom - zoom_offset).clamp(0, 26) as u8;
-    let tile_size_px = corrected_tile_size(source_tile_size, zoom);
-    let max_index = (2u32.pow(tile_zoom as u32).saturating_sub(1)) as i64;
-
-    let x = ((center_px_x / tile_size_px).floor() as i64).clamp(0, max_index) as u32;
-    let y = ((center_px_y / tile_size_px).floor() as i64).clamp(0, max_index) as u32;
-
-    TileId {
-        x,
-        y,
-        zoom: tile_zoom,
-    }
-}
-
-fn tile_rect(
-    tile_id: TileId,
-    corrected_tile_size: f64,
-    center_px_x: f64,
-    center_px_y: f64,
-    clip: Rect,
-) -> Rect {
-    let tile_px_x = tile_id.x as f64 * corrected_tile_size;
-    let tile_px_y = tile_id.y as f64 * corrected_tile_size;
-
-    let screen_x = clip.center().x as f64 + (tile_px_x - center_px_x);
-    let screen_y = clip.center().y as f64 + (tile_px_y - center_px_y);
-
-    Rect::from_min_max(
-        pos2(screen_x as f32, screen_y as f32),
-        pos2(
-            (screen_x + corrected_tile_size) as f32,
-            (screen_y + corrected_tile_size) as f32,
-        ),
-    )
-}
-
-// TODO: handle vector pieces?
-fn draw_tile_piece(painter: &Painter, tile_piece: walkers::TilePiece, rect: Rect) {
-    match tile_piece.tile {
-        Tile::Raster(texture_handle) => {
-            let mut mesh = Mesh::with_texture(texture_handle.id());
-            mesh.add_rect_with_uv(rect, tile_piece.uv, egui::Color32::WHITE);
-            painter.add(Shape::mesh(mesh));
-        }
-        _ => {}
+        Some(attribution)
     }
 }

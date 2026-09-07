@@ -53,7 +53,9 @@ macro_rules! impl_get_before_after {
                     // we are at the end of the journey!
                     for operation in operations {
                         self.ops.push(
-                            operation.try_into().expect("failed to parse operation at leaf node"),
+                            operation
+                                .try_into()
+                                .expect("failed to parse operation at leaf node"),
                         );
                     }
                     return;
@@ -62,7 +64,8 @@ macro_rules! impl_get_before_after {
                 match index {
                     BeforeAfter::B(i) => {
                         if i >= self.befores.len() {
-                            self.befores.resize_with(i + 1, BeforeOperationTree::default);
+                            self.befores
+                                .resize_with(i + 1, BeforeOperationTree::default);
                         }
                         self.befores[i].insert_operations(hierarchy, operations)
                     }
@@ -448,10 +451,11 @@ where
 {
     let s = parse_non_empty(value.get(idx).copied().flatten())
         .ok_or(OperationParseError::MissingRequiredParam { field: field_name })?;
-    s.parse::<T>().map_err(|e| OperationParseError::InvalidField {
-        field: field_name,
-        message: e.to_string(),
-    })
+    s.parse::<T>()
+        .map_err(|e| OperationParseError::InvalidField {
+            field: field_name,
+            message: e.to_string(),
+        })
 }
 
 fn parse_optional<T: std::str::FromStr>(
@@ -464,10 +468,12 @@ where
     let Some(s) = parse_non_empty(value.get(idx).copied().flatten()) else {
         return Ok(None);
     };
-    let parsed = s.parse::<T>().map_err(|e| OperationParseError::InvalidOptionalParam {
-        idx,
-        message: e.to_string(),
-    })?;
+    let parsed = s
+        .parse::<T>()
+        .map_err(|e| OperationParseError::InvalidOptionalParam {
+            idx,
+            message: e.to_string(),
+        })?;
     Ok(Some(parsed))
 }
 
@@ -475,10 +481,12 @@ fn parse_time_opt(s: Option<&str>) -> Result<Option<Time>, OperationParseError> 
     let Some(s) = parse_non_empty(s) else {
         return Ok(None);
     };
-    Time::from_oud_str(s).map(Some).map_err(|source| OperationParseError::InvalidOudTime {
-        value: s.to_string(),
-        source,
-    })
+    Time::from_oud_str(s)
+        .map(Some)
+        .map_err(|source| OperationParseError::InvalidOudTime {
+            value: s.to_string(),
+            source,
+        })
 }
 
 fn parse_bool_raw(s: &str) -> Result<bool, OperationParseError> {
@@ -642,8 +650,10 @@ mod test {
     #[test]
     fn comprehend_operations() -> E {
         let s = include_str!("../test/sample.oud2");
-        for (key, vals) in
-            s.lines().filter(|e| e.starts_with("Operation")).map(|s| s.split_once('=').unwrap())
+        for (key, vals) in s
+            .lines()
+            .filter(|e| e.starts_with("Operation"))
+            .map(|s| s.split_once('=').unwrap())
         {
             if let Err(_) = OperationParser::parse(Rule::operation_key, key) {
                 continue;
@@ -651,7 +661,10 @@ mod test {
             let vals = vals
                 .split(',')
                 .map(|it| {
-                    OperationParser::parse(Rule::raw_operation, it).unwrap().single().unwrap()
+                    OperationParser::parse(Rule::raw_operation, it)
+                        .unwrap()
+                        .single()
+                        .unwrap()
                 })
                 .map(|n| OperationParser::raw_operation(n).unwrap());
             if key.ends_with('B') {

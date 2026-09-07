@@ -18,7 +18,8 @@ ecow.workspace = true
 eframe.workspace = true
 egui.workspace = true
 egui_commonmark = "0.23.0"
-egui_extras.workspace = true
+egui_extras = { workspace = true, features = ["http", "image"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 egui-i18n.workspace = true
 egui_material_icons.workspace = true
 egui_tiles.workspace = true
@@ -47,7 +48,6 @@ rfd.workspace = true
 serde.workspace = true
 smallvec.workspace = true
 vec1.workspace = true
-walkers = { version = "0.53.0", features = ["mvt"] }
 web-time.workspace = true
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]

@@ -375,14 +375,26 @@ fn removing_trip_cleans_vehicle_cache() {
     });
 
     // Removing the trip drops it from the serving vehicle's cache.
-    let inv = world.apply_command(Command::RemoveTrip { key: trip }).unwrap();
-    assert!(world.vehicles.query(vehicle, |v| v.trips.clone()).unwrap().is_empty());
+    let inv = world
+        .apply_command(Command::RemoveTrip { key: trip })
+        .unwrap();
+    assert!(
+        world
+            .vehicles
+            .query(vehicle, |v| v.trips.clone())
+            .unwrap()
+            .is_empty()
+    );
 
     // Undo restores the trip and re-populates the vehicle cache.
     let _ = world.apply_command(inv).unwrap();
     assert!(world.trips.contains_key(trip));
     assert_eq!(
-        world.vehicles.query(vehicle, |v| v.trips.clone()).unwrap().as_slice(),
+        world
+            .vehicles
+            .query(vehicle, |v| v.trips.clone())
+            .unwrap()
+            .as_slice(),
         &[trip]
     );
 }
@@ -412,11 +424,21 @@ fn rebuild_vehicle_trip_cache() {
             view.trips.get_mut().clear();
         });
     }
-    assert!(world.vehicles.query(vehicle, |v| v.trips.clone()).unwrap().is_empty());
+    assert!(
+        world
+            .vehicles
+            .query(vehicle, |v| v.trips.clone())
+            .unwrap()
+            .is_empty()
+    );
 
     world.rebuild_vehicle_trip_cache();
     assert_eq!(
-        world.vehicles.query(vehicle, |v| v.trips.clone()).unwrap().as_slice(),
+        world
+            .vehicles
+            .query(vehicle, |v| v.trips.clone())
+            .unwrap()
+            .as_slice(),
         &[trip]
     );
 }
@@ -427,12 +449,22 @@ fn interval_maintains_world_graph() {
     let source = NodeKey::new();
     let target = NodeKey::new();
     for node in [source, target] {
+        let parent = StationKey::new();
+        world
+            .apply_command(Command::AddStation {
+                key: parent,
+                info: StationInfo {
+                    name: "S".into(),
+                    pos: LonLat::ZERO,
+                },
+            })
+            .unwrap();
         world
             .apply_command(Command::AddNode {
                 key: node,
                 info: NodeInfo {
                     name: "".into(),
-                    parent: StationKey::new(),
+                    parent,
                     pos: LonLat::ZERO,
                     is_platform: false,
                 },
@@ -480,12 +512,22 @@ fn graph_keeps_opposite_edges_distinct() {
     let a = NodeKey::new();
     let b = NodeKey::new();
     for node in [a, b] {
+        let parent = StationKey::new();
+        world
+            .apply_command(Command::AddStation {
+                key: parent,
+                info: StationInfo {
+                    name: "S".into(),
+                    pos: LonLat::ZERO,
+                },
+            })
+            .unwrap();
         world
             .apply_command(Command::AddNode {
                 key: node,
                 info: NodeInfo {
                     name: "".into(),
-                    parent: StationKey::new(),
+                    parent,
                     pos: LonLat::ZERO,
                     is_platform: false,
                 },
@@ -512,7 +554,9 @@ fn graph_keeps_opposite_edges_distinct() {
     assert!(world.route_between_nodes(b, a).is_some());
 
     // Removing one edge leaves the other intact.
-    let inv = world.apply_command(Command::RemoveInterval { key: ab }).unwrap();
+    let inv = world
+        .apply_command(Command::RemoveInterval { key: ab })
+        .unwrap();
     assert!(world.route_between_nodes(a, b).is_none());
     assert!(world.route_between_nodes(b, a).is_some());
     let _ = world.apply_command(inv).unwrap();
@@ -534,4 +578,463 @@ fn macro_rolls_back_on_failure() {
     ]);
     assert!(world.apply_command(Command::Macro(commands)).is_none());
     assert!(!world.trips.contains_key(key));
+}
+
+fn network_fixture() -> (Source, StationKey, StationKey, NodeKey, NodeKey, TripKey) {
+    use crate::trip::{TEntry, TravelMode};
+    let mut source = Source::new();
+    let (s1, s2) = (StationKey::new(), StationKey::new());
+    let (a, b) = (NodeKey::new(), NodeKey::new());
+    let trip = TripKey::new();
+    for (station, node, lon) in [(s1, a, 0.0), (s2, b, 0.01)] {
+        let pos = Wgs84LonLat::new(lon, 45.0).into();
+        assert!(source.apply_command(Command::AddStation {
+            key: station,
+            info: StationInfo {
+                name: "S".into(),
+                pos
+            }
+        }));
+        assert!(source.apply_command(Command::AddNode {
+            key: node,
+            info: NodeInfo {
+                name: "1".into(),
+                parent: station,
+                pos,
+                is_platform: true
+            }
+        }));
+    }
+    assert!(source.apply_command(Command::AddInterval {
+        key: (a, b),
+        info: Interval {
+            nodes: eco_vec![],
+            length: NonZeroU32::new(1000),
+            trips: eco_vec![]
+        }
+    }));
+    let schedule = TripSchedule::new(
+        [(a, 86_100), (b, 86_700)]
+            .into_iter()
+            .map(|(node, t)| TEntry::PinnedNonStop {
+                node,
+                pass: TravelMode::At(time::TimetableTime(t)),
+                external: false,
+                id: TEntryId::new(),
+            })
+            .collect(),
+    );
+    assert!(source.apply_command(Command::AddTrip {
+        key: trip,
+        info: TripInfo {
+            name: "Overnight".into(),
+            schedule,
+            service_class: None,
+            vehicles: SmallVec::new()
+        }
+    }));
+    (source, s1, s2, a, b, trip)
+}
+
+#[test]
+fn entry_edits_update_usage_and_are_reversible() {
+    let (mut source, _, _, a, b, trip) = network_fixture();
+    let entries = source
+        .trips
+        .query(trip, |v| v.schedule.entries().to_vec())
+        .unwrap();
+    assert_eq!(
+        source.intervals.get((a, b)).unwrap().trips.as_slice(),
+        &[trip]
+    );
+    assert!(source.apply_command(Command::RemoveTripEntry {
+        key: trip,
+        id: entries[1].id()
+    }));
+    assert!(source.intervals.get((a, b)).unwrap().trips.is_empty());
+    assert!(source.undo());
+    assert_eq!(
+        source.intervals.get((a, b)).unwrap().trips.as_slice(),
+        &[trip]
+    );
+    assert!(source.redo());
+    assert!(source.apply_command(Command::InsertTripEntry {
+        key: trip,
+        entry: entries[1],
+        pos: 1
+    }));
+    assert!(!source.apply_command(Command::InsertTripEntry {
+        key: trip,
+        entry: entries[1],
+        pos: 1
+    }));
+    assert!(!source.apply_command(Command::InsertTripEntry {
+        key: trip,
+        entry: entries[0],
+        pos: 99
+    }));
+    let mut replacement = entries[1];
+    if let trip::TEntry::PinnedNonStop { ref mut node, .. } = replacement {
+        *node = a;
+    }
+    assert!(source.apply_command(Command::ChangeTripEntry {
+        key: trip,
+        id: replacement.id(),
+        new_entry: replacement
+    }));
+    assert!(source.intervals.get((a, b)).unwrap().trips.is_empty());
+    assert!(source.undo());
+    assert_eq!(
+        source
+            .trips
+            .query(trip, |v| v.schedule.entries().to_vec())
+            .unwrap(),
+        entries
+    );
+}
+
+#[test]
+fn serialized_world_rebuilds_all_relationships_and_source_geometry() {
+    let (source, s1, _, a, b, trip) = network_fixture();
+    let bytes = cbor4ii::serde::to_vec(Vec::new(), &SaveFile::from(source.snap().clone())).unwrap();
+    let save: SaveFile = cbor4ii::serde::from_slice(&bytes).unwrap();
+    let loaded = Source::try_from(save).unwrap();
+    assert_eq!(
+        loaded
+            .stations
+            .query(s1, |v| v.nodes.clone())
+            .unwrap()
+            .as_slice(),
+        &[a]
+    );
+    assert_eq!(
+        loaded
+            .nodes
+            .query(a, |v| v.outgoing.clone())
+            .unwrap()
+            .as_slice(),
+        &[b]
+    );
+    assert_eq!(
+        loaded.intervals.get((a, b)).unwrap().trips.as_slice(),
+        &[trip]
+    );
+    assert_eq!(
+        loaded
+            .graph_cache()
+            .nodes([i32::MIN; 2], [i32::MAX; 2])
+            .count(),
+        2
+    );
+    assert!(
+        !loaded
+            .graph_cache()
+            .trips([i32::MIN; 2], [i32::MAX; 2], 0.0, 86400.0)
+            .is_empty()
+    );
+}
+
+#[test]
+fn node_move_reparent_and_undo_restore_geometry_and_membership() {
+    let (mut source, s1, s2, a, b, _) = network_fixture();
+    let old = source.nodes.query(a, |v| *v.pos).unwrap();
+    let original_edge = source.intervals.get((a, b)).unwrap().clone();
+    let pos = Wgs84LonLat::new(0.005, 45.01).into();
+    assert!(source.apply_command(Command::ChangeNode {
+        key: a,
+        info: NodeInfo {
+            name: "2".into(),
+            parent: s2,
+            pos,
+            is_platform: false
+        }
+    }));
+    assert!(source.stations.query(s1, |v| v.nodes.is_empty()).unwrap());
+    assert!(source.stations.query(s2, |v| v.nodes.contains(&a)).unwrap());
+    assert_eq!(source.intervals.get((a, b)).unwrap().nodes[0], pos);
+    let p = [pos.lon, pos.lat];
+    assert!(source.graph_cache().nodes(p, p).any(|n| n.key == a));
+    assert!(source.undo());
+    assert_eq!(source.nodes.query(a, |v| *v.pos).unwrap(), old);
+    assert_eq!(source.intervals.get((a, b)).unwrap(), &original_edge);
+    assert_eq!(
+        source
+            .stations
+            .query(s1, |v| v.nodes.clone())
+            .unwrap()
+            .as_slice(),
+        &[a]
+    );
+    assert!(source.redo());
+    assert_eq!(source.nodes.query(a, |v| *v.pos).unwrap(), pos);
+}
+
+#[test]
+fn deleting_vehicle_restores_assignments_including_order() {
+    let (mut source, _, _, _, _, trip) = network_fixture();
+    let (a, b) = (VehicleKey::new(), VehicleKey::new());
+    for key in [a, b] {
+        assert!(source.apply_command(Command::AddVehicle {
+            key,
+            name: "V".into()
+        }));
+    }
+    assert!(source.apply_command(Command::ChangeTripVehicles {
+        key: trip,
+        vehicles: smallvec::smallvec![a, b]
+    }));
+    assert!(source.apply_command(Command::RemoveVehicle { key: a }));
+    assert!(source.undo());
+    assert_eq!(
+        source
+            .trips
+            .query(trip, |v| v.vehicles.clone())
+            .unwrap()
+            .as_slice(),
+        &[a, b]
+    );
+    assert_eq!(
+        source
+            .vehicles
+            .query(a, |v| v.trips.clone())
+            .unwrap()
+            .as_slice(),
+        &[trip]
+    );
+    assert!(source.redo());
+    assert_eq!(
+        source
+            .trips
+            .query(trip, |v| v.vehicles.clone())
+            .unwrap()
+            .as_slice(),
+        &[b]
+    );
+}
+
+#[test]
+fn failed_macro_preserves_relationships_and_spatial_cache() {
+    let (mut source, s1, _, a, _, _) = network_fixture();
+    let pos = source.nodes.query(a, |v| *v.pos).unwrap();
+    assert!(!source.apply_command(Command::Macro(Box::new([
+        Command::ChangeNode {
+            key: a,
+            info: NodeInfo {
+                name: "changed".into(),
+                parent: s1,
+                pos: LonLat::ZERO,
+                is_platform: true
+            }
+        },
+        Command::RemoveStation { key: s1 },
+    ]))));
+    assert_eq!(source.nodes.query(a, |v| *v.pos).unwrap(), pos);
+    let p = [pos.lon, pos.lat];
+    assert!(source.graph_cache().nodes(p, p).any(|n| n.key == a));
+    assert!(!source.apply_command(Command::AddNode {
+        key: NodeKey::new(),
+        info: NodeInfo {
+            name: "bad".into(),
+            parent: StationKey::new(),
+            pos,
+            is_platform: true
+        }
+    }));
+}
+
+#[test]
+fn overnight_spatial_samples_interpolate_and_timing_edits_invalidate() {
+    let (mut source, _, _, a, b, trip) = network_fixture();
+    let low = [i32::MIN; 2];
+    let high = [i32::MAX; 2];
+    let graph_cache = source.graph_cache();
+    let samples = graph_cache.trips(low, high, 0.0, 86400.0);
+    let (s, t) = samples.iter().find(|(s, _)| s.from < s.until).unwrap();
+    let p = XyPosF64::from(s.position_and_angle(*t).unwrap().0);
+    let pa = source.nodes.query(a, |v| spatial::project(*v.pos)).unwrap();
+    let pb = source.nodes.query(b, |v| spatial::project(*v.pos)).unwrap();
+    assert!((p.x - (pa[0] + pb[0]) / 2.0).abs() <= 0.01);
+    let id = source
+        .trips
+        .query(trip, |v| v.schedule.entries()[1].id())
+        .unwrap();
+    assert!(source.apply_command(Command::ShiftTripEntryArrOrPass {
+        key: trip,
+        id,
+        dur: time::TDuration::from_hms(0, 10, 0)
+    }));
+    assert!(
+        !source
+            .graph_cache()
+            .trips(low, high, 87100.0, 0.0)
+            .is_empty()
+    );
+    assert!(source.undo());
+    assert!(
+        source
+            .graph_cache()
+            .trips(low, high, 87100.0, 0.0)
+            .is_empty()
+    );
+    assert!(source.apply_command(Command::UnloadWorld));
+    assert_eq!(source.graph_cache().nodes(low, high).count(), 0);
+    assert!(source.undo());
+    assert_eq!(source.graph_cache().nodes(low, high).count(), 2);
+}
+
+#[test]
+fn loading_entry_ids_advances_the_allocator() {
+    let saved: TEntryId = serde_json::from_str("100000000").unwrap();
+    let generated = TEntryId::new();
+    assert_ne!(saved, generated);
+    let value: u32 = serde_json::from_str(&serde_json::to_string(&generated).unwrap()).unwrap();
+    assert!(value > 100000000);
+}
+
+#[test]
+fn oudia_import_is_an_applicable_reversible_batch() {
+    let bytes = include_bytes!("../../paiagram-oudia/test/sample.oud2");
+    let command = import::generate_commands(bytes, import::ImportType::OuDiaSecond).unwrap();
+    let mut source = Source::new();
+    assert!(source.apply_command(command));
+    assert!(source.nodes.len() > 0);
+    for node in source.nodes.iter() {
+        assert!(
+            source
+                .stations
+                .query(*node.parent, |s| s.nodes.contains(&node.key))
+                .unwrap()
+        );
+    }
+    for trip in source.trips.iter() {
+        assert!(
+            trip.service_class
+                .is_none_or(|k| source.service_classes.contains_key(k))
+        );
+    }
+    assert!(source.undo());
+    assert_eq!(source.nodes.len(), 0);
+    assert!(source.redo());
+}
+
+#[test]
+fn route_records_keep_intermediate_switches_and_reject_invalid_subsets() {
+    let (mut source, s1, s2, a, b, _) = network_fixture();
+    let middle = NodeKey::new();
+    assert!(source.apply_command(Command::AddNode {
+        key: middle,
+        info: NodeInfo {
+            name: "switch".into(),
+            parent: s1,
+            pos: LonLat::ZERO,
+            is_platform: false
+        }
+    }));
+    for edge in [(a, middle), (middle, b)] {
+        assert!(source.apply_command(Command::AddInterval {
+            key: edge,
+            info: Interval {
+                nodes: eco_vec![],
+                length: NonZeroU32::new(10),
+                trips: eco_vec![]
+            }
+        }));
+    }
+    let records = eco_vec![
+        RouteStationRecord::for_station(source.snap(), s1, None),
+        RouteStationRecord::for_station(source.snap(), s2, Some(s1))
+    ];
+    assert!(records[1].prev_curr_nodes.contains(&middle));
+    let route = RouteKey::new();
+    assert!(source.apply_command(Command::AddRoute {
+        key: route,
+        info: RouteInfo {
+            name: "R".into(),
+            stations: records.clone()
+        }
+    }));
+    let mut edited = records.clone();
+    edited.make_mut()[1].milestone = Some(Distance(1234));
+    assert!(source.apply_command(Command::ChangeRouteStations {
+        key: route,
+        stations: edited
+    }));
+    assert!(source.undo());
+    assert_eq!(
+        source.routes.query(route, |v| v.stations.clone()).unwrap(),
+        records
+    );
+    let mut invalid = records;
+    invalid.make_mut()[0].stn = StationRecord::Some(eco_vec![middle]);
+    assert!(!source.apply_command(Command::ChangeRouteStations {
+        key: route,
+        stations: invalid
+    }));
+}
+
+#[test]
+fn external_entries_do_not_break_internal_interval_usage() {
+    let (mut source, _, _, a, b, trip) = network_fixture();
+    let external = trip::TEntry::PinnedNonStop {
+        node: a,
+        pass: trip::TravelMode::Flexible,
+        external: true,
+        id: TEntryId::new(),
+    };
+    assert!(source.apply_command(Command::InsertTripEntry {
+        key: trip,
+        entry: external,
+        pos: 1
+    }));
+    assert_eq!(
+        source.intervals.get((a, b)).unwrap().trips.as_slice(),
+        &[trip]
+    );
+    assert!(
+        !source
+            .graph_cache()
+            .trips([i32::MIN; 2], [i32::MAX; 2], 86400.0, 0.0)
+            .is_empty()
+    );
+}
+
+#[test]
+fn route_progress_ignores_unreachable_platforms_and_filters_branches() {
+    let (mut source, s1, s2, a, b, _) = network_fixture();
+    let isolated = NodeKey::new();
+    let middle = NodeKey::new();
+    for (key, platform) in [(isolated, true), (middle, false)] {
+        assert!(source.apply_command(Command::AddNode {
+            key,
+            info: NodeInfo {
+                name: "N".into(),
+                parent: s1,
+                pos: LonLat::ZERO,
+                is_platform: platform
+            }
+        }));
+    }
+    for key in [(a, middle), (middle, b)] {
+        assert!(source.apply_command(Command::AddInterval {
+            key,
+            info: Interval {
+                nodes: eco_vec![],
+                length: NonZeroU32::new(100),
+                trips: eco_vec![]
+            }
+        }));
+    }
+    let route = RouteInfo {
+        name: "R".into(),
+        stations: eco_vec![
+            RouteStationRecord::for_station(source.snap(), s1, None),
+            RouteStationRecord::for_station(source.snap(), s2, Some(s1))
+        ],
+    };
+    let progress = route.gen_progresses(source.snap());
+    assert_eq!(progress.len(), 1);
+    assert!((progress[0].0[0].unwrap().to_ratio() - 0.5).abs() < 0.001);
+    let mut excluded = route;
+    excluded.stations.make_mut()[1].prev_curr_nodes = eco_vec![isolated];
+    assert_eq!(excluded.gen_progresses(source.snap())[0].0[0], None);
 }

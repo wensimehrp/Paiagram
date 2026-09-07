@@ -216,7 +216,11 @@ pub(super) fn parse_pyetgr(data: &[u8]) -> Option<Command> {
                 ))
             })
             .collect();
-        super::normalize_times(times.iter_mut().flat_map(|(_, arr, dep)| [arr, dep].into_iter()));
+        super::normalize_times(
+            times
+                .iter_mut()
+                .flat_map(|(_, arr, dep)| [arr, dep].into_iter()),
+        );
         let entries: EcoVec<_> = times
             .into_iter()
             .filter_map(|(node, arr, dep)| {
