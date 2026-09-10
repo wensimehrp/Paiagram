@@ -5,7 +5,7 @@ use egui::{
 use egui_i18n::tr;
 use paiagram_core::time::TimetableTime;
 use paiagram_core::trip::TravelMode::{At, Flexible, For};
-use paiagram_core::trip::{TEntry, TEstimate, TravelMode, TripSchedule};
+use paiagram_core::trip::{TEntry, TEstimate, TripSchedule};
 use paiagram_core::{Command, Source, TripKey};
 use serde::{Deserialize, Serialize};
 

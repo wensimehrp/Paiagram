@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 
 use super::Tab;
 use crate::App;
-use crate::tabs::trip::TripTab;
 use crate::widgets::{LOGO_COORDINATES, LogoStroke};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Default)]

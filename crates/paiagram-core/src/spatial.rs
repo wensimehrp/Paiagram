@@ -3,7 +3,6 @@
 //! Stations and intervals retain the snapshot's i32 longitude/latitude coordinates.
 //! Trip geometry is projected once per interval to i32 XY coordinates with u32 progress,
 //! then cheaply cloned into every trip using that interval. R-tree envelopes widen to i64.
-use rayon::prelude::*;
 use rstar::{AABB, RTree, RTreeObject};
 
 use crate::*;
@@ -13,6 +12,7 @@ pub struct MapPoint<K> {
     pub key: K,
     pub point: LonLat,
 }
+
 impl<K> RTreeObject for MapPoint<K> {
     type Envelope = AABB<[i64; 2]>;
     fn envelope(&self) -> Self::Envelope {
@@ -73,16 +73,11 @@ impl TEntrySpatialEntry {
         // nonzero segment so a duplicate final vertex does not erase the heading.
         let (index, next) = if progress == u32::MAX {
             let last = self.points.len() - 1;
-            let index = self.points[..last]
-                .iter()
-                .rposition(|(p, _)| *p < u32::MAX)
-                .unwrap_or(0);
+            let index = self.points[..last].iter().rposition(|(p, _)| *p < u32::MAX).unwrap_or(0);
             (index, last)
         } else {
-            let next = self
-                .points
-                .partition_point(|(p, _)| *p <= progress)
-                .min(self.points.len() - 1);
+            let next =
+                self.points.partition_point(|(p, _)| *p <= progress).min(self.points.len() - 1);
             (next.saturating_sub(1), next)
         };
         let (p0, a) = self.points[index];
@@ -162,10 +157,8 @@ fn point_bounds(mut points: impl Iterator<Item = [i32; 2]>) -> AABB<[i64; 2]> {
     bounds(lo, hi)
 }
 fn project_polyline(points: &[LonLat]) -> EcoVec<(u32, XyPos)> {
-    let mut projected: EcoVec<_> = points
-        .iter()
-        .map(|p| (0, XyPos::from(XyPosF64::from(Wgs84LonLat::from(*p)))))
-        .collect();
+    let mut projected: EcoVec<_> =
+        points.iter().map(|p| (0, XyPos::from(XyPosF64::from(Wgs84LonLat::from(*p))))).collect();
     let distance = |a: XyPos, b: XyPos| {
         ((i64::from(b.x) - i64::from(a.x)) as f64).hypot((i64::from(b.y) - i64::from(a.y)) as f64)
     };
@@ -275,10 +268,8 @@ impl SpatialCache {
                 }
             });
         }
-        let time_range = samples
-            .iter()
-            .map(|s| (s.from, s.until))
-            .reduce(|a, b| (a.0.min(b.0), a.1.max(b.1)));
+        let time_range =
+            samples.iter().map(|s| (s.from, s.until)).reduce(|a, b| (a.0.min(b.0), a.1.max(b.1)));
         Self {
             stations,
             nodes,
@@ -293,13 +284,11 @@ impl SpatialCache {
         min: [i32; 2],
         max: [i32; 2],
     ) -> impl Iterator<Item = &MapPoint<StationKey>> {
-        self.stations
-            .locate_in_envelope_intersecting(&bounds(min, max))
+        self.stations.locate_in_envelope_intersecting(&bounds(min, max))
     }
     /// Bounds are i32 longitude/latitude units, matching LonLat.
     pub fn nodes(&self, min: [i32; 2], max: [i32; 2]) -> impl Iterator<Item = &MapPoint<NodeKey>> {
-        self.nodes
-            .locate_in_envelope_intersecting(&bounds(min, max))
+        self.nodes.locate_in_envelope_intersecting(&bounds(min, max))
     }
     /// One hit per interval, with every vertex retained. Bounds use LonLat units.
     pub fn intervals(
@@ -307,8 +296,7 @@ impl SpatialCache {
         min: [i32; 2],
         max: [i32; 2],
     ) -> impl Iterator<Item = &IntervalSpatialEntry> {
-        self.intervals
-            .locate_in_envelope_intersecting(&bounds(min, max))
+        self.intervals.locate_in_envelope_intersecting(&bounds(min, max))
     }
     /// Bounds use i32 XyPos units. Absolute times allow overnight/repeated services.
     pub fn trips(
@@ -463,9 +451,7 @@ mod tests {
         assert_eq!(interval.projected[2], saved);
         let bend = interval.points[2];
         assert_eq!(
-            cache
-                .intervals([bend.lon, bend.lat], [bend.lon, bend.lat])
-                .count(),
+            cache.intervals([bend.lon, bend.lat], [bend.lon, bend.lat]).count(),
             1
         );
         let (progress, xy) = interval.projected[2];
@@ -591,16 +577,8 @@ mod tests {
         assert!(angle.is_finite());
         let (world, _, _) = curved_world();
         let cache = SpatialCache::build(&world);
-        assert!(
-            cache
-                .trips([i32::MIN; 2], [i32::MAX; 2], 99.5, 0.0)
-                .is_empty()
-        );
-        assert!(
-            cache
-                .trips([i32::MIN; 2], [i32::MAX; 2], 200.5, 0.0)
-                .is_empty()
-        );
+        assert!(cache.trips([i32::MIN; 2], [i32::MAX; 2], 99.5, 0.0).is_empty());
+        assert!(cache.trips([i32::MIN; 2], [i32::MAX; 2], 200.5, 0.0).is_empty());
         assert_eq!(
             cache.trips([i32::MIN; 2], [i32::MAX; 2], 150.5, 0.0).len(),
             2
@@ -626,20 +604,12 @@ mod tests {
             .unwrap();
         assert!(source.apply_command(Command::ChangeNode { key: key.0, info }));
         let graph_cache = source.graph_cache();
-        let entry = graph_cache
-            .intervals([i32::MIN; 2], [i32::MAX; 2])
-            .next()
-            .unwrap();
+        let entry = graph_cache.intervals([i32::MIN; 2], [i32::MAX; 2]).next().unwrap();
         assert_eq!(entry.points.len(), 5);
         assert_eq!(&entry.points[1..], &old[1..]);
         assert!(source.undo());
         assert_eq!(
-            source
-                .graph_cache()
-                .intervals([i32::MIN; 2], [i32::MAX; 2])
-                .next()
-                .unwrap()
-                .points,
+            source.graph_cache().intervals([i32::MIN; 2], [i32::MAX; 2]).next().unwrap().points,
             old
         );
     }
