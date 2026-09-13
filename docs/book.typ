@@ -17,14 +17,11 @@
     ),
     extra-head-content: {
       // tracking script
-      html.elem(
-        "script",
-        attrs: (
-          defer: "",
-          src: "https://cloud.umami.is/script.js",
-          data-website-id: "067cd05f-b395-4813-916c-2063c383685f",
-        ),
-      )
+      html.elem("script", attrs: (
+        defer: "",
+        src: "https://cloud.umami.is/script.js",
+        data-website-id: "067cd05f-b395-4813-916c-2063c383685f",
+      ))
       // icon font
       html.link(
         rel: "stylesheet",
@@ -39,6 +36,7 @@
     chapter-path("tutorial"),
     [= Model],
     chapter-path("model/network"),
+    chapter-path("model/route"),
     chapter-path("model/trips-vehicles"),
     [= User Interface],
     chapter-path("panels/index"),
