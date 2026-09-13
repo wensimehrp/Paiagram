@@ -1499,7 +1499,6 @@ checksum = "1e651e08ddf6bb8bfd964ad70e33bc721c093f2b77ab59580e7140c008dab68c"
 dependencies = [
  "ahash",
  "egui 0.36.1",
- "ehttp",
  "enum-map",
  "image",
  "itertools 0.15.0",

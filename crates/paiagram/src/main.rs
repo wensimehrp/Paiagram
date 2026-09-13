@@ -16,7 +16,6 @@ struct PaiagramApp {
 
 impl PaiagramApp {
     fn new(cc: &eframe::CreationContext) -> Self {
-        // egui_extras::install_image_loaders(&cc.egui_ctx);
         // set styles
         cc.egui_ctx.global_style_mut(|style| {
             style.spacing.window_margin = egui::Margin::same(2);

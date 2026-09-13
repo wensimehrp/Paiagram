@@ -363,7 +363,7 @@ mod tests {
         for (node, pos) in [(a, coordinates[0]), (b, *coordinates.last().unwrap())] {
             let station = StationKey::new();
             world
-                .apply_command(Command::AddStation {
+                .apply_command(Command::StationAdd {
                     key: station,
                     info: StationInfo {
                         name: "S".into(),
@@ -372,7 +372,7 @@ mod tests {
                 })
                 .unwrap();
             world
-                .apply_command(Command::AddNode {
+                .apply_command(Command::NodeAdd {
                     key: node,
                     info: NodeInfo {
                         name: "1".into(),
@@ -384,7 +384,7 @@ mod tests {
                 .unwrap();
         }
         world
-            .apply_command(Command::AddInterval {
+            .apply_command(Command::IntervalAdd {
                 key: (a, b),
                 info: Interval {
                     nodes: coordinates,
@@ -405,7 +405,7 @@ mod tests {
                 })
                 .collect();
             world
-                .apply_command(Command::AddTrip {
+                .apply_command(Command::TripAdd {
                     key,
                     info: TripInfo {
                         name: "T".into(),
@@ -589,7 +589,7 @@ mod tests {
     fn moving_an_endpoint_preserves_bends_and_undo_restores_every_vertex() {
         let (world, key, _) = curved_world();
         let mut source = Source::new();
-        assert!(source.apply_command(Command::LoadWorld {
+        assert!(source.apply_command(Command::WorldLoad {
             snapshot: Box::new(world)
         }));
         let old = source.intervals.get(key).unwrap().nodes.clone();
@@ -602,7 +602,7 @@ mod tests {
                 is_platform: *n.is_platform,
             })
             .unwrap();
-        assert!(source.apply_command(Command::ChangeNode { key: key.0, info }));
+        assert!(source.apply_command(Command::NodeChange { key: key.0, info }));
         let graph_cache = source.graph_cache();
         let entry = graph_cache.intervals([i32::MIN; 2], [i32::MAX; 2]).next().unwrap();
         assert_eq!(entry.points.len(), 5);

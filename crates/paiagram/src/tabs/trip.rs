@@ -4,7 +4,7 @@ use egui::{
 };
 use egui_i18n::tr;
 use paiagram_core::time::TimetableTime;
-use paiagram_core::trip::TravelMode::{At, Flexible, For};
+use paiagram_core::trip::TravelMode::{self, At, Flexible, For};
 use paiagram_core::trip::{TEntry, TEstimate, TripSchedule};
 use paiagram_core::{Command, Source, TripKey};
 use serde::{Deserialize, Serialize};
@@ -52,7 +52,7 @@ fn show_trip(tab: &mut TripTab, app: &mut App, ui: &mut Ui) {
                 let res = ui.text_edit_singleline(buf);
                 res.request_focus();
                 if res.lost_focus() {
-                    app.command_queue.push(Command::RenameTrip {
+                    app.command_queue.push(Command::TripRename {
                         key: tab.trip,
                         name: buf.as_str().into(),
                     });
@@ -114,7 +114,7 @@ fn row_ui(
             text = text.weak();
         }
         if ui.button(text.atom_align(Align2::LEFT_CENTER)).clicked() {
-            // ui_queue.push(OpenOrFocus(MainTab::Trip(())));
+            // TODO: push station
         };
     });
     let mut wide_size = BTN_SIZE;
@@ -139,19 +139,19 @@ fn row_ui(
             ),
             TEntry::Pinned { arr, dep, .. } => (
                 match arr {
-                    For(mut d) => ui.add_sized(BTN_SIZE, DurationDragValue(&mut d)),
+                    For(d) => ui.add_sized(BTN_SIZE, DurationDragValue(d, &mut arr_pass_dur)),
                     At(t) => ui.add_sized(BTN_SIZE, TimeDragValue(t, &mut arr_pass_dur)),
                     Flexible => ui.add_sized(BTN_SIZE, Button::new(fmt_str(|e| e.arr, "--:--:--"))),
                 },
                 Some(match dep {
-                    For(mut d) => ui.add_sized(BTN_SIZE, DurationDragValue(&mut d)),
+                    For(d) => ui.add_sized(BTN_SIZE, DurationDragValue(d, &mut dep_dur)),
                     At(t) => ui.add_sized(BTN_SIZE, TimeDragValue(t, &mut dep_dur)),
                     Flexible => ui.add_sized(BTN_SIZE, Button::new(fmt_str(|e| e.dep, "--:--:--"))),
                 }),
             ),
             TEntry::PinnedNonStop { pass, .. } => (
                 match pass {
-                    For(mut d) => ui.add_sized(wide_size, DurationDragValue(&mut d)),
+                    For(d) => ui.add_sized(wide_size, DurationDragValue(d, &mut arr_pass_dur)),
                     At(t) => ui.add_sized(wide_size, TimeDragValue(t, &mut arr_pass_dur)),
                     Flexible => ui.add_sized(wide_size, Button::new(fmt_str(|e| e.arr, "||"))),
                 },
@@ -161,7 +161,7 @@ fn row_ui(
         .inner;
 
     if let Some(dur) = arr_pass_dur {
-        cmd_queue.push(Command::ShiftTripEntryArrOrPass {
+        cmd_queue.push(Command::TripEntryShiftArrOrPass {
             key: trip_key,
             id: entry.id(),
             dur,
@@ -169,7 +169,7 @@ fn row_ui(
     }
 
     if let Some(dur) = dep_dur {
-        cmd_queue.push(Command::ShiftTripEntryDep {
+        cmd_queue.push(Command::TripEntryShiftDep {
             key: trip_key,
             id: entry.id(),
             dur,
@@ -195,31 +195,55 @@ fn row_ui(
             // do something
         }
         let t = estimate.map(|e| e.arr).unwrap_or_default();
-        let mut d = schedule.arr_to_dur(estimates, entry.id()).unwrap_or_default();
+        let d = schedule.arr_to_dur(estimates, entry.id()).unwrap_or_default();
+        let mut new_mode = None;
         if ui.add(TimeDragValue(t, &mut None)).clicked() {
-            // do something
+            new_mode = Some(TravelMode::At(t));
         };
-        if ui.add(DurationDragValue(&mut d)).clicked() {
-            // do something
+        if ui.add(DurationDragValue(d, &mut None)).clicked() {
+            new_mode = Some(TravelMode::For(d));
         };
         if ui.button("Flexible").clicked() {
-            // do something
+            new_mode = Some(TravelMode::Flexible);
         };
+        let mut new_entry = entry;
+        if let Some(mode) = new_mode
+            && let Some(arr_pass_mode) = new_entry.arr_or_pass_mut()
+        {
+            *arr_pass_mode = mode;
+            cmd_queue.push(Command::TripEntryChange {
+                key: trip_key,
+                id: new_entry.id(),
+                new_entry,
+            });
+        }
     });
     let Some(res2) = res2 else {
         return;
     };
     Popup::menu(&res2).align(RectAlign::RIGHT).show(|ui| {
         let t = estimate.map(|e| e.arr).unwrap_or_default();
-        let mut d = estimate.map(|e| e.duration()).unwrap_or_default();
+        let d = estimate.map(|e| e.duration()).unwrap_or_default();
+        let mut new_mode = None;
         if ui.add(TimeDragValue(t, &mut None)).clicked() {
-            // do something
+            new_mode = Some(TravelMode::At(t));
         };
-        if ui.add(DurationDragValue(&mut d)).clicked() {
-            // do something
+        if ui.add(DurationDragValue(d, &mut None)).clicked() {
+            new_mode = Some(TravelMode::For(d));
         };
         if ui.button("Flexible").clicked() {
-            // do something
+            new_mode = Some(TravelMode::Flexible);
         };
+        let mut new_entry = entry;
+        if let Some(mode) = new_mode
+            && let Some(dep_mode) = new_entry.dep_mut()
+        {
+            *dep_mode = mode;
+            cmd_queue.push(Command::TripEntryChange {
+                key: trip_key,
+                id: new_entry.id(),
+                new_entry,
+            });
+        }
     });
 }

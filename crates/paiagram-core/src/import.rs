@@ -2,7 +2,6 @@
 //! Handles foreign formats such as GTFS Static, qETRC/pyETRC, and OuDiaSecond.
 
 use std::io;
-use std::path::PathBuf;
 
 use crate::Command;
 use crate::time::TimetableDuration;
@@ -21,16 +20,6 @@ fn normalize_times<'a>(mut time_iter: impl Iterator<Item = &'a mut TimetableTime
         }
         previous_time = *time;
     }
-}
-
-fn infer_path_from_url(url: &str) -> Option<PathBuf> {
-    let no_query = url.split('?').next().unwrap_or(url);
-    let no_fragment = no_query.split('#').next().unwrap_or(no_query);
-    let filename = no_fragment.rsplit('/').next().unwrap_or_default().trim();
-    if filename.is_empty() {
-        return None;
-    }
-    Some(PathBuf::from(filename))
 }
 
 #[derive(Clone, Copy)]

@@ -104,13 +104,7 @@ fn calc_node_min_distance_batch(
         .iter()
         .filter_map(|&source| {
             bidirectional_dijkstra(&graph, source, node, |e| {
-                world
-                    .intervals
-                    .get((e.source(), e.target()))
-                    .unwrap()
-                    .length()
-                    .0
-                    .max(0) as u64
+                world.intervals.get((e.source(), e.target())).unwrap().length().0.max(0) as u64
             })
         })
         .min();
@@ -118,13 +112,7 @@ fn calc_node_min_distance_batch(
         .iter()
         .filter_map(|&target| {
             bidirectional_dijkstra(&graph, node, target, |e| {
-                world
-                    .intervals
-                    .get((e.source(), e.target()))
-                    .unwrap()
-                    .length()
-                    .0
-                    .max(0) as u64
+                world.intervals.get((e.source(), e.target())).unwrap().length().0.max(0) as u64
             })
         })
         .min();

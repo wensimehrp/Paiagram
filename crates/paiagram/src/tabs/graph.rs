@@ -107,9 +107,6 @@ impl Tab for GraphTab {
     fn title(&self) -> WidgetText {
         egui_i18n::tr!("tab-graph").into()
     }
-    fn scroll_bars(&self) -> [bool; 2] {
-        [false, false]
-    }
     fn main_display(&mut self, app: &mut App, ui: &mut Ui) {
         let mut is_open = self.panel_is_open || ui.memory(|mem| mem.everything_is_visible());
         self.panel_is_open = is_open;

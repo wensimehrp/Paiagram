@@ -222,42 +222,6 @@ pub(crate) trait Tab {
     const NAME: &'static str;
     /// The main display of the tab.
     fn main_display(&mut self, app: &mut App, ui: &mut Ui);
-    /// The edit display
-    fn edit_display(&mut self, _app: &mut App, ui: &mut Ui) {
-        ui.label(self.title());
-        ui.label(tr!("side-panel-edit-fallback-1"));
-        ui.label(tr!("side-panel-edit-fallback-2"));
-    }
-    /// The display display
-    fn display_display(&mut self, _app: &mut App, ui: &mut Ui) {
-        ui.label(self.title());
-        ui.label(tr!("side-panel-details-fallback-1"));
-        ui.label(tr!("side-panel-details-fallback-2"));
-    }
-    /// The export display
-    fn export_display(&mut self, _app: &mut App, ui: &mut Ui) {
-        ui.label(self.title());
-        ui.label(tr!("side-panel-export-fallback-1"));
-        ui.label(tr!("side-panel-export-fallback-2"));
-    }
     /// The title of the tab
     fn title(&self) -> WidgetText;
-    /// What to do with the tab button
-    fn on_tab_button(&self, _app: &mut App, _response: &Response) {}
-    /// The id of the tab
-    fn id(&self) -> Id {
-        Id::new(Self::NAME)
-    }
-    /// Whether if the tab allows scrolling
-    fn scroll_bars(&self) -> [bool; 2] {
-        [true; 2]
-    }
-    /// The frame of the tab
-    fn frame(&self) -> egui::Frame {
-        egui::Frame::default().inner_margin(egui::Margin::same(6))
-    }
-    /// The icon of the tab
-    fn icon(&self) -> Cow<'static, str> {
-        "🖳".into()
-    }
 }

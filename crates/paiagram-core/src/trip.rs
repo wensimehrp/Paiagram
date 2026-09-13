@@ -100,14 +100,14 @@ impl TEntry {
             Self::PinnedNonStop { id, .. } => *id,
         }
     }
-    pub(crate) fn arr_or_pass_mut(&mut self) -> Option<&mut TravelMode> {
+    pub fn arr_or_pass_mut(&mut self) -> Option<&mut TravelMode> {
         match self {
             Self::Derived { .. } => None,
             Self::Pinned { arr, .. } => Some(arr),
             Self::PinnedNonStop { pass, .. } => Some(pass),
         }
     }
-    pub(crate) fn dep_mut(&mut self) -> Option<&mut TravelMode> {
+    pub fn dep_mut(&mut self) -> Option<&mut TravelMode> {
         let Self::Pinned { dep, .. } = self else {
             return None;
         };

@@ -56,52 +56,63 @@ impl<'a> egui::Widget for TimeDragValue<'a> {
     }
 }
 
-/// [`DragValue`] for [`TimetableTime`], in Japanese timetable style.
-pub(crate) struct TimeDragValueOud<'a>(pub &'a mut TimetableTime, pub bool);
-
-impl<'a> egui::Widget for TimeDragValueOud<'a> {
-    fn ui(self, ui: &mut egui::Ui) -> egui::Response {
-        let display_second = self.1;
-        let shift_pressed = ui.input(|r| r.modifiers.shift_only());
-        ui.add(
-            DragValue::from_get_set(|v| {
-                if let Some(v) = v {
-                    if shift_pressed && display_second {
-                        *self.0 = TimetableTime::from_f64(v);
-                    } else {
-                        *self.0 = TimetableTime::from_hms(0, (v / 60.0).round() as i32, 0);
-                    }
-                }
-                self.0.to_f64()
-            })
-            .custom_formatter(|v, _| TimetableTime::from_f64(v).to_oud2_str(display_second))
-            .custom_parser(|s| TimetableTime::from_oud2_str(s).map(TimetableTime::to_f64)),
-        )
-    }
-}
-
 /// [`DragValue`] for [`Duration`].
-pub(crate) struct DurationDragValue<'a>(pub &'a mut TDuration);
+///
+/// Like [`TimeDragValue`], this takes the value to display and an output slot that receives the
+/// total change once a drag finishes.
+pub(crate) struct DurationDragValue<'a>(pub TDuration, pub &'a mut Option<TDuration>);
+
+#[derive(Default, Clone, Copy)]
+enum DurationDragValueStates {
+    #[default]
+    NotDragging,
+    Dragging(TDuration),
+}
 
 impl<'a> egui::Widget for DurationDragValue<'a> {
     fn ui(self, ui: &mut egui::Ui) -> egui::Response {
+        let id = ui.next_auto_id().with("duration drag value");
+        let mut current_state: DurationDragValueStates =
+            ui.data_mut(|w| w.remove_temp(id)).unwrap_or_default();
+        let mut new = match current_state {
+            DurationDragValueStates::NotDragging => self.0,
+            DurationDragValueStates::Dragging(d) => d,
+        };
         ui.style_mut().drag_value_text_style = TIMETABLTE_TEXT_STYLE.clone();
         let shift_pressed = ui.input(|r| r.modifiers.shift_only());
-        ui.add(
+        let res = ui.add(
             DragValue::from_get_set(|v| {
                 if let Some(v) = v {
                     if shift_pressed {
-                        *self.0 = TDuration::from_f64(v);
+                        new = TDuration::from_f64(v);
                     } else {
-                        *self.0 = TDuration::from_hms(0, (v / 60.0).round() as i32, 0);
+                        new = TDuration::from_hms(0, (v / 60.0).round() as i32, 0);
                     }
                 }
-                self.0.to_f64()
+                new.to_f64()
             })
             .prefix("→ ")
             .custom_formatter(|v, _| TDuration::from_f64(v).to_string_no_arrow())
             .custom_parser(|s| TDuration::from_str(s).map(TDuration::to_f64)),
-        )
+        );
+        match current_state {
+            DurationDragValueStates::NotDragging => {
+                *self.1 = None;
+                if res.dragged() {
+                    current_state = DurationDragValueStates::Dragging(new);
+                }
+            }
+            DurationDragValueStates::Dragging(..) => {
+                current_state = DurationDragValueStates::Dragging(new);
+                if !res.dragged() {
+                    let dd = new - self.0;
+                    *self.1 = Some(dd);
+                    current_state = DurationDragValueStates::NotDragging;
+                }
+            }
+        }
+        ui.data_mut(|w| w.insert_temp(id, current_state));
+        res
     }
 }
 

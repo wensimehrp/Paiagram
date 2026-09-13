@@ -155,7 +155,7 @@ pub(super) fn parse_pyetgr(data: &[u8]) -> Option<Command> {
             },
         };
         service_class_map.insert(&*name, key);
-        ret.push(Command::AddServiceClass { key, info });
+        ret.push(Command::ServiceClassAdd { key, info });
     }
     for line in [&root.line].into_iter().chain(root.lines.iter()) {
         for station in &line.stations {
@@ -174,11 +174,11 @@ pub(super) fn parse_pyetgr(data: &[u8]) -> Option<Command> {
                 pos: LonLat::ZERO,
                 is_platform: true,
             };
-            ret.push(Command::AddStation {
+            ret.push(Command::StationAdd {
                 key: stn_key,
                 info: stn_info,
             });
-            ret.push(Command::AddNode {
+            ret.push(Command::NodeAdd {
                 key: node_key,
                 info: node_info,
             });
@@ -194,7 +194,7 @@ pub(super) fn parse_pyetgr(data: &[u8]) -> Option<Command> {
         {
             let length = curr_stn.distance_km - prev_stn.distance_km;
             let length = Distance::from_km(length).0;
-            ret.push(Command::AddInterval {
+            ret.push(Command::IntervalAdd {
                 key: (prev_key, curr_key),
                 info: Interval {
                     nodes: eco_vec![],
@@ -242,7 +242,7 @@ pub(super) fn parse_pyetgr(data: &[u8]) -> Option<Command> {
                 }
             })
             .collect();
-        ret.push(Command::AddTrip {
+        ret.push(Command::TripAdd {
             key: TripKey::new(),
             info: TripInfo {
                 name: trip.trip_number[0].to_eco_string(),

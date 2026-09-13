@@ -131,7 +131,7 @@ impl DiagramTab {
                 let key = TripKey::new();
                 let entries = draft_entries(app, self.route, &self.draft).unwrap();
                 self.selected = entries.first().map(|e| (key, e.id()));
-                app.command_queue.push(Command::AddTrip {
+                app.command_queue.push(Command::TripAdd {
                     key,
                     info: TripInfo {
                         name: "New trip".into(),
@@ -204,14 +204,14 @@ impl DiagramTab {
             }
         }
         if changed {
-            app.command_queue.push(Command::ChangeTripEntry {
+            app.command_queue.push(Command::TripEntryChange {
                 key,
                 id,
                 new_entry: entry,
             });
         }
         if ui.button("Remove timetable entry").clicked() {
-            app.command_queue.push(Command::RemoveTripEntry { key, id });
+            app.command_queue.push(Command::TripEntryRemove { key, id });
             self.selected = None;
         }
     }
@@ -225,12 +225,6 @@ impl Tab for DiagramTab {
             .map(|(_, d)| format!("Diagram · {}", d.name))
             .unwrap_or_else(|| "Diagram".into())
             .into()
-    }
-    fn id(&self) -> Id {
-        Id::new((Self::NAME, self.route))
-    }
-    fn scroll_bars(&self) -> [bool; 2] {
-        [false; 2]
     }
     fn main_display(&mut self, app: &mut App, ui: &mut Ui) {
         let revision = app.source.revision();
@@ -651,7 +645,7 @@ fn drag_command(drag: &Drag) -> Option<Command> {
             };
         }
     }
-    Some(Command::ChangeTripEntry {
+    Some(Command::TripEntryChange {
         key: drag.trip,
         id: entry.id(),
         new_entry: entry,

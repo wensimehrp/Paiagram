@@ -18,7 +18,7 @@ ecow.workspace = true
 eframe.workspace = true
 egui.workspace = true
 egui_commonmark = "0.23.0"
-egui_extras = { workspace = true, features = ["http", "image"] }
+egui_extras.workspace = true
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 egui-i18n.workspace = true
 egui_material_icons.workspace = true

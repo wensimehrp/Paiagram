@@ -10,8 +10,8 @@ use smallvec::SmallVec;
 use crate::time::TimetableTime;
 use crate::trip::{TEntry, TEntryId, TravelMode, TripSchedule};
 use crate::{
-    Command, Distance, Interval, LonLat, NodeInfo, NodeKey, ServiceClassKey, StationInfo,
-    StationKey, TripInfo, TripKey,
+    Command, Interval, LonLat, NodeInfo, NodeKey, ServiceClassKey, StationInfo, StationKey,
+    TripInfo, TripKey,
 };
 
 pub(super) enum OudFileType<'a> {
@@ -33,14 +33,14 @@ pub(crate) fn parse_oudia(stream: OudFileType) -> Result<Command, Box<dyn std::e
         let stn_key = StationKey::new();
         stn_to_node_key.insert(node as *const Station, node_key);
         cmd_buf.extend_from_slice(&[
-            Command::AddStation {
+            Command::StationAdd {
                 key: stn_key,
                 info: StationInfo {
                     name: node.name.clone().into(),
                     pos: LonLat::ZERO,
                 },
             },
-            Command::AddNode {
+            Command::NodeAdd {
                 key: node_key,
                 info: NodeInfo {
                     name: "".into(),
@@ -62,7 +62,7 @@ pub(crate) fn parse_oudia(stream: OudFileType) -> Result<Command, Box<dyn std::e
         )
     }) {
         cmd_buf.extend_from_slice(&[
-            Command::AddInterval {
+            Command::IntervalAdd {
                 key: (source, target),
                 info: Interval {
                     nodes: eco_vec![],
@@ -70,7 +70,7 @@ pub(crate) fn parse_oudia(stream: OudFileType) -> Result<Command, Box<dyn std::e
                     trips: eco_vec![],
                 },
             },
-            Command::AddInterval {
+            Command::IntervalAdd {
                 key: (target, source),
                 info: Interval {
                     nodes: eco_vec![],
@@ -86,7 +86,7 @@ pub(crate) fn parse_oudia(stream: OudFileType) -> Result<Command, Box<dyn std::e
         .map(|cls| (cls.name.as_str(), ServiceClassKey::new(), 0u32))
         .collect::<Vec<_>>();
     for (cls, (_, key, _)) in route.classes.iter().zip(&service_classes) {
-        cmd_buf.push(Command::AddServiceClass {
+        cmd_buf.push(Command::ServiceClassAdd {
             key: *key,
             info: crate::ServiceClassInfo {
                 name: cls.name.clone().into(),
@@ -161,7 +161,7 @@ pub(crate) fn parse_oudia(stream: OudFileType) -> Result<Command, Box<dyn std::e
                 || ("Unknown Class", None, &mut unknown_class_counter),
                 |(s, key, count)| (*s, Some(*key), count),
             );
-        cmd_buf.push(Command::AddTrip {
+        cmd_buf.push(Command::TripAdd {
             key: TripKey::new(),
             info: TripInfo {
                 name: trip.name.as_ref().map_or_else(

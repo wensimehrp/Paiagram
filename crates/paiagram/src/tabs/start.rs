@@ -77,9 +77,6 @@ impl Tab for StartTab {
     fn title(&self) -> egui::WidgetText {
         tr!("tab-start").into()
     }
-    fn scroll_bars(&self) -> [bool; 2] {
-        [false, true]
-    }
 }
 
 /// Extends `start` in the direction away from `other` until it reaches the

@@ -5,142 +5,142 @@ use crate::trip::{TEntry, TEntryId};
 #[derive(Clone, Debug)]
 pub enum Command {
     // trips
-    AddTrip {
+    TripAdd {
         key: TripKey,
         info: TripInfo,
     },
-    RenameTrip {
+    TripRename {
         key: TripKey,
         name: EcoString,
     },
-    ChangeTripClass {
+    TripClassChange {
         key: TripKey,
         class: Option<ServiceClassKey>,
     },
-    RemoveTrip {
+    TripRemove {
         key: TripKey,
     },
     // trip entry
-    ShiftTripEntryArrOrPass {
+    TripEntryShiftArrOrPass {
         key: TripKey,
         id: TEntryId,
         dur: TDuration,
     },
-    ShiftTripEntryDep {
+    TripEntryShiftDep {
         key: TripKey,
         id: TEntryId,
         dur: TDuration,
     },
-    ChangeTripEntry {
+    TripEntryChange {
         key: TripKey,
         id: TEntryId,
         new_entry: TEntry,
     },
-    RemoveTripEntry {
+    TripEntryRemove {
         key: TripKey,
         id: TEntryId,
     },
-    InsertTripEntry {
+    TripEntryInsert {
         key: TripKey,
         entry: TEntry,
         pos: usize,
     },
     // vehicles
-    AddVehicle {
+    VehicleAdd {
         key: VehicleKey,
         name: EcoString,
     },
-    RenameVehicle {
+    VehicleRename {
         key: VehicleKey,
         name: EcoString,
     },
-    RemoveVehicle {
+    VehicleRemove {
         key: VehicleKey,
     },
     // Stations
-    AddStation {
+    StationAdd {
         key: StationKey,
         info: StationInfo,
     },
-    RenameStation {
+    StationRename {
         key: StationKey,
         name: EcoString,
     },
-    RemoveStation {
+    StationRemove {
         key: StationKey,
     },
     // nodes
-    AddNode {
+    NodeAdd {
         key: NodeKey,
         info: NodeInfo,
     },
-    RenameNode {
+    NodeRename {
         key: NodeKey,
         name: EcoString,
     },
-    RemoveNode {
+    NodeRemove {
         key: NodeKey,
     },
     // classes
-    AddServiceClass {
+    ServiceClassAdd {
         key: ServiceClassKey,
         info: ServiceClassInfo,
     },
-    RenameServiceClass {
+    ServiceClassRename {
         key: ServiceClassKey,
         name: EcoString,
     },
-    RemoveServiceClass {
+    ServiceClassRemove {
         key: ServiceClassKey,
     },
     // route
-    AddRoute {
+    RouteAdd {
         key: RouteKey,
         info: RouteInfo,
     },
-    RenameRoute {
+    RouteRename {
         key: RouteKey,
         name: EcoString,
     },
-    RemoveRoute {
+    RouteRemove {
         key: RouteKey,
     },
     // interval
-    AddInterval {
+    IntervalAdd {
         key: IntervalKey,
         info: Interval,
     },
-    RemoveInterval {
+    IntervalRemove {
         key: IntervalKey,
     },
     /// Change the vehicles that serve a trip.
-    ChangeTripVehicles {
+    TripVehiclesChange {
         key: TripKey,
         vehicles: SmallVec<[VehicleKey; 1]>,
     },
-    ChangeStation {
+    StationChange {
         key: StationKey,
         info: StationInfo,
     },
-    ChangeNode {
+    NodeChange {
         key: NodeKey,
         info: NodeInfo,
     },
-    ChangeRouteStations {
+    RouteStationsChange {
         key: RouteKey,
         stations: EcoVec<RouteStationRecord>,
     },
-    ChangeInterval {
+    IntervalChange {
         key: IntervalKey,
         info: Interval,
     },
-    ChangeServiceClassStyle {
+    ServiceClassStyleChange {
         key: ServiceClassKey,
         style: StrokeStyle,
     },
     // World related stuff
-    UnloadWorld,
-    LoadWorld {
+    WorldUnload,
+    WorldLoad {
         snapshot: Box<WorldSnapshot>,
     },
     /// A user-defined macro.
@@ -161,14 +161,11 @@ impl Command {
 
 impl WorldSnapshot {
     fn valid_trip(&self, info: &TripInfo) -> bool {
-        info.service_class
-            .is_none_or(|k| self.service_classes.contains_key(k))
+        info.service_class.is_none_or(|k| self.service_classes.contains_key(k))
             && info.vehicles.iter().all(|k| self.vehicles.contains_key(*k))
             && info.schedule.entries().iter().enumerate().all(|(i, e)| {
                 self.nodes.contains_key(e.node_key())
-                    && !info.schedule.entries()[..i]
-                        .iter()
-                        .any(|prev| prev.id() == e.id())
+                    && !info.schedule.entries()[..i].iter().any(|prev| prev.id() == e.id())
             })
     }
 
@@ -177,9 +174,9 @@ impl WorldSnapshot {
         records.iter().enumerate().all(|(index, r)| {
             let station = match &r.stn {
                 StationRecord::All(k) => Some(*k),
-                StationRecord::Some(nodes) => nodes
-                    .first()
-                    .and_then(|k| self.nodes.query(*k, |v| *v.parent)),
+                StationRecord::Some(nodes) => {
+                    nodes.first().and_then(|k| self.nodes.query(*k, |v| *v.parent))
+                }
             };
             let Some(station) = station else {
                 return false;
@@ -190,9 +187,7 @@ impl WorldSnapshot {
                 return false;
             }
             seen.push(station);
-            if r.canvas_length
-                .is_some_and(|n| !n.0.is_finite() || n.0 <= 0.0)
-            {
+            if r.canvas_length.is_some_and(|n| !n.0.is_finite() || n.0 <= 0.0) {
                 return false;
             }
 
@@ -232,24 +227,24 @@ impl WorldSnapshot {
 
     fn apply_command_inner(&mut self, cmd: Command) -> Option<Command> {
         match cmd {
-            Command::AddTrip { key, info } => {
+            Command::TripAdd { key, info } => {
                 (!self.trips.contains_key(key) && self.valid_trip(&info)).then(|| {
                     self.cache_trip(key, &info.vehicles);
                     self.trips.insert(key, info.into());
-                    Command::RemoveTrip { key }
+                    Command::TripRemove { key }
                 })
             }
-            Command::RenameTrip {
+            Command::TripRename {
                 key,
                 name: mut new_name,
             } => self.trips.update(key, |mut view| {
                 std::mem::swap(view.name.get_mut(), &mut new_name);
-                Command::RenameTrip {
+                Command::TripRename {
                     key,
                     name: new_name,
                 }
             }),
-            Command::ChangeTripClass {
+            Command::TripClassChange {
                 key,
                 class: mut new_class,
             } => {
@@ -258,41 +253,41 @@ impl WorldSnapshot {
                 }
                 self.trips.update(key, |mut view| {
                     std::mem::swap(view.service_class.get_mut(), &mut new_class);
-                    Command::ChangeTripClass {
+                    Command::TripClassChange {
                         key,
                         class: new_class,
                     }
                 })
             }
-            Command::RemoveTrip { key } => self.trips.remove(key).map(|view| {
+            Command::TripRemove { key } => self.trips.remove(key).map(|view| {
                 // Drop the trip from the serving vehicles' caches.
                 self.uncache_trip(key, &view.vehicles);
-                Command::AddTrip {
+                Command::TripAdd {
                     key,
                     info: view.into(),
                 }
             }),
-            Command::ShiftTripEntryArrOrPass { key, id, dur } => self
+            Command::TripEntryShiftArrOrPass { key, id, dur } => self
                 .trips
                 .update(key, |mut v| {
                     let sch = v.schedule.get_mut().entries_mut();
                     let entry = sch.make_mut().iter_mut().find(|ent| ent.id() == id)?;
                     let mode = entry.arr_or_pass_mut()?;
                     *mode = mode.shifted_by(dur);
-                    Some(Command::ShiftTripEntryArrOrPass { key, id, dur: -dur })
+                    Some(Command::TripEntryShiftArrOrPass { key, id, dur: -dur })
                 })
                 .flatten(),
-            Command::ShiftTripEntryDep { key, id, dur } => self
+            Command::TripEntryShiftDep { key, id, dur } => self
                 .trips
                 .update(key, |mut v| {
                     let sch = v.schedule.get_mut().entries_mut();
                     let entry = sch.make_mut().iter_mut().find(|ent| ent.id() == id)?;
                     let mode = entry.dep_mut()?;
                     *mode = mode.shifted_by(dur);
-                    Some(Command::ShiftTripEntryDep { key, id, dur: -dur })
+                    Some(Command::TripEntryShiftDep { key, id, dur: -dur })
                 })
                 .flatten(),
-            Command::ChangeTripEntry { key, id, new_entry } => {
+            Command::TripEntryChange { key, id, new_entry } => {
                 if new_entry.id() != id || !self.nodes.contains_key(new_entry.node_key()) {
                     return None;
                 }
@@ -301,7 +296,7 @@ impl WorldSnapshot {
                         let entries = v.schedule.get_mut().entries_mut();
                         let pos = entries.iter().position(|e| e.id() == id)?;
                         let old = std::mem::replace(&mut entries.make_mut()[pos], new_entry);
-                        Some(Command::ChangeTripEntry {
+                        Some(Command::TripEntryChange {
                             key,
                             id,
                             new_entry: old,
@@ -309,16 +304,16 @@ impl WorldSnapshot {
                     })
                     .flatten()
             }
-            Command::RemoveTripEntry { key, id } => self
+            Command::TripEntryRemove { key, id } => self
                 .trips
                 .update(key, |mut v| {
                     let entries = v.schedule.get_mut().entries_mut();
                     let pos = entries.iter().position(|e| e.id() == id)?;
                     let entry = entries.remove(pos);
-                    Some(Command::InsertTripEntry { key, entry, pos })
+                    Some(Command::TripEntryInsert { key, entry, pos })
                 })
                 .flatten(),
-            Command::InsertTripEntry { key, entry, pos } => {
+            Command::TripEntryInsert { key, entry, pos } => {
                 if !self.nodes.contains_key(entry.node_key()) {
                     return None;
                 }
@@ -329,14 +324,14 @@ impl WorldSnapshot {
                             return None;
                         }
                         entries.insert(pos, entry);
-                        Some(Command::RemoveTripEntry {
+                        Some(Command::TripEntryRemove {
                             key,
                             id: entry.id(),
                         })
                     })
                     .flatten()
             }
-            Command::AddVehicle { key, name } => (!self.vehicles.contains_key(key)).then(|| {
+            Command::VehicleAdd { key, name } => (!self.vehicles.contains_key(key)).then(|| {
                 self.vehicles.insert(
                     key,
                     VehicleView {
@@ -344,22 +339,22 @@ impl WorldSnapshot {
                         trips: EcoVec::new(),
                     },
                 );
-                Command::RemoveVehicle { key }
+                Command::VehicleRemove { key }
             }),
-            Command::RenameVehicle {
+            Command::VehicleRename {
                 key,
                 name: mut new_name,
             } => self.vehicles.update(key, |mut view| {
                 std::mem::swap(view.name.get_mut(), &mut new_name);
-                Command::RenameVehicle {
+                Command::VehicleRename {
                     key,
                     name: new_name,
                 }
             }),
-            Command::RemoveVehicle { key } => {
+            Command::VehicleRemove { key } => {
                 let mut restore = Vec::new();
                 let vehicle = self.vehicles.remove(key)?;
-                restore.push(Command::AddVehicle {
+                restore.push(Command::VehicleAdd {
                     key,
                     name: vehicle.name,
                 });
@@ -371,7 +366,7 @@ impl WorldSnapshot {
                     .collect();
                 for trip in trips {
                     self.trips.update(trip, |mut v| {
-                        restore.push(Command::ChangeTripVehicles {
+                        restore.push(Command::TripVehiclesChange {
                             key: trip,
                             vehicles: v.vehicles.get().clone(),
                         });
@@ -380,21 +375,21 @@ impl WorldSnapshot {
                 }
                 Some(Command::Macro(restore.into_boxed_slice()))
             }
-            Command::AddStation { key, info } => (!self.stations.contains_key(key)).then(|| {
+            Command::StationAdd { key, info } => (!self.stations.contains_key(key)).then(|| {
                 self.stations.insert(key, info.into());
-                Command::RemoveStation { key }
+                Command::StationRemove { key }
             }),
-            Command::RenameStation {
+            Command::StationRename {
                 key,
                 name: mut new_name,
             } => self.stations.update(key, |mut view| {
                 std::mem::swap(view.name.get_mut(), &mut new_name);
-                Command::RenameStation {
+                Command::StationRename {
                     key,
                     name: new_name,
                 }
             }),
-            Command::RemoveStation { key } => {
+            Command::StationRemove { key } => {
                 if self.nodes.iter().any(|v| *v.parent == key)
                     || self.routes.iter().any(|v| {
                         v.stations
@@ -404,91 +399,85 @@ impl WorldSnapshot {
                 {
                     return None;
                 }
-                self.stations.remove(key).map(|view| Command::AddStation {
+                self.stations.remove(key).map(|view| Command::StationAdd {
                     key,
                     info: view.into(),
                 })
             }
-            Command::AddNode { key, info } => (!self.nodes.contains_key(key)
+            Command::NodeAdd { key, info } => (!self.nodes.contains_key(key)
                 && self.stations.contains_key(info.parent))
             .then(|| {
                 self.nodes.insert(key, info.into());
-                Command::RemoveNode { key }
+                Command::NodeRemove { key }
             }),
-            Command::RenameNode {
+            Command::NodeRename {
                 key,
                 name: mut new_name,
             } => self.nodes.update(key, |mut view| {
                 std::mem::swap(view.name.get_mut(), &mut new_name);
-                Command::RenameNode {
+                Command::NodeRename {
                     key,
                     name: new_name,
                 }
             }),
-            Command::RemoveNode { key } => {
+            Command::NodeRemove { key } => {
                 // Edges cannot exist without their endpoint nodes, so a node that
                 // still has incident intervals cannot be removed.
-                if self
-                    .intervals
-                    .keys()
-                    .any(|&(source, target)| source == key || target == key)
-                {
+                if self.intervals.keys().any(|&(source, target)| source == key || target == key) {
                     return None;
                 }
                 if self.trips.iter().any(|v| v.schedule.entries().iter().any(|e| e.node_key() == key))
                     || self.routes.iter().any(|v| v.stations.iter().any(|r| r.prev_curr_nodes.contains(&key) || r.curr_prev_nodes.contains(&key) || matches!(&r.stn, StationRecord::Some(nodes) if nodes.contains(&key)))) { return None; }
-                self.nodes.remove(key).map(|view| Command::AddNode {
+                self.nodes.remove(key).map(|view| Command::NodeAdd {
                     key,
                     info: view.into(),
                 })
             }
-            Command::AddServiceClass { key, info } => (!self.service_classes.contains_key(key))
+            Command::ServiceClassAdd { key, info } => (!self.service_classes.contains_key(key))
                 .then(|| {
                     self.service_classes.insert(key, info.into());
-                    Command::RemoveServiceClass { key }
+                    Command::ServiceClassRemove { key }
                 }),
-            Command::RenameServiceClass {
+            Command::ServiceClassRename {
                 key,
                 name: mut new_name,
             } => self.service_classes.update(key, |mut view| {
                 std::mem::swap(view.name.get_mut(), &mut new_name);
-                Command::RenameServiceClass {
+                Command::ServiceClassRename {
                     key,
                     name: new_name,
                 }
             }),
-            Command::RemoveServiceClass { key } => {
+            Command::ServiceClassRemove { key } => {
                 if self.trips.iter().any(|v| *v.service_class == Some(key)) {
                     return None;
                 }
-                self.service_classes
-                    .remove(key)
-                    .map(|view| Command::AddServiceClass {
-                        key,
-                        info: view.into(),
-                    })
+                self.service_classes.remove(key).map(|view| Command::ServiceClassAdd {
+                    key,
+                    info: view.into(),
+                })
             }
-            Command::AddRoute { key, info } => (!self.routes.contains_key(key)
+            Command::RouteAdd { key, info } => (!self.routes.contains_key(key)
                 && self.valid_route_stations(&info.stations))
             .then(|| {
                 self.routes.insert(key, info.into());
-                Command::RemoveRoute { key }
+                Command::RouteRemove { key }
             }),
-            Command::RenameRoute {
+            Command::RouteRename {
                 key,
                 name: mut new_name,
             } => self.routes.update(key, |mut view| {
                 std::mem::swap(view.name.get_mut(), &mut new_name);
-                Command::RenameRoute {
+                Command::RouteRename {
                     key,
                     name: new_name,
                 }
             }),
-            Command::RemoveRoute { key } => self.routes.remove(key).map(|view| Command::AddRoute {
+            Command::RouteRemove { key } => self.routes.remove(key).map(|view| Command::RouteAdd {
                 key,
                 info: view.into(),
             }),
-            Command::AddInterval { key, info } => {
+            Command::IntervalAdd { key, info } => {
                 let (source, target) = key;
                 // An interval is an edge, so both endpoints must exist and the
                 // ordered pair must not already have an interval (no parallel edges).
@@ -506,9 +495,9 @@ impl WorldSnapshot {
                 self.nodes.update(target, |mut view| {
                     view.incoming.get_mut().push(source);
                 });
-                Some(Command::RemoveInterval { key })
+                Some(Command::IntervalRemove { key })
             }
-            Command::RemoveInterval { key } => {
+            Command::IntervalRemove { key } => {
                 let Some(Interval {
                     nodes,
                     length,
@@ -524,7 +513,7 @@ impl WorldSnapshot {
                 self.nodes.update(target, |mut view| {
                     view.incoming.get_mut().retain(|n| *n != source);
                 });
-                Some(Command::AddInterval {
+                Some(Command::IntervalAdd {
                     key,
                     info: Interval {
                         nodes,
@@ -533,7 +522,7 @@ impl WorldSnapshot {
                     },
                 })
             }
-            Command::ChangeTripVehicles { key, mut vehicles } => {
+            Command::TripVehiclesChange { key, mut vehicles } => {
                 if !self.trips.contains_key(key)
                     || vehicles.iter().any(|k| !self.vehicles.contains_key(*k))
                 {
@@ -543,23 +532,21 @@ impl WorldSnapshot {
                     std::mem::swap(view.vehicles.get_mut(), &mut vehicles);
                 });
                 self.uncache_trip(key, &vehicles);
-                let new_vehicles = self
-                    .trips
-                    .query(key, |view| view.vehicles.clone())
-                    .unwrap_or_default();
+                let new_vehicles =
+                    self.trips.query(key, |view| view.vehicles.clone()).unwrap_or_default();
                 self.cache_trip(key, &new_vehicles);
-                Some(Command::ChangeTripVehicles { key, vehicles })
+                Some(Command::TripVehiclesChange { key, vehicles })
             }
-            Command::ChangeStation { key, info } => self.stations.update(key, |mut v| {
+            Command::StationChange { key, info } => self.stations.update(key, |mut v| {
                 let old = StationInfo {
                     name: v.name.get().clone(),
                     pos: *v.pos.get(),
                 };
                 *v.name.get_mut() = info.name;
                 *v.pos.get_mut() = info.pos;
-                Command::ChangeStation { key, info: old }
+                Command::StationChange { key, info: old }
             }),
-            Command::ChangeNode { key, info } => {
+            Command::NodeChange { key, info } => {
                 if !self.stations.contains_key(info.parent) {
                     return None;
                 }
@@ -608,7 +595,7 @@ impl WorldSnapshot {
                             new.nodes.make_mut()[last] = info.pos;
                         }
                         self.intervals.insert(edge, new);
-                        restore.push(Command::ChangeInterval {
+                        restore.push(Command::IntervalChange {
                             key: edge,
                             info: old,
                         });
@@ -625,30 +612,30 @@ impl WorldSnapshot {
                     *v.parent.get_mut() = info.parent;
                     *v.pos.get_mut() = info.pos;
                     *v.is_platform.get_mut() = info.is_platform;
-                    Command::ChangeNode { key, info: old }
+                    Command::NodeChange { key, info: old }
                 })?;
                 restore.insert(0, inverse);
                 Some(Command::Macro(restore.into_boxed_slice()))
             }
-            Command::ChangeRouteStations { key, mut stations } => {
+            Command::RouteStationsChange { key, mut stations } => {
                 if !self.valid_route_stations(&stations) {
                     return None;
                 }
                 self.routes.update(key, |mut v| {
                     std::mem::swap(v.stations.get_mut(), &mut stations);
-                    Command::ChangeRouteStations { key, stations }
+                    Command::RouteStationsChange { key, stations }
                 })
             }
-            Command::ChangeInterval { key, mut info } => {
+            Command::IntervalChange { key, mut info } => {
                 let old = self.intervals.get(key)?.clone();
                 info.trips = old.trips.clone();
                 self.intervals.insert(key, info);
-                Some(Command::ChangeInterval { key, info: old })
+                Some(Command::IntervalChange { key, info: old })
             }
-            Command::ChangeServiceClassStyle { key, mut style } => {
+            Command::ServiceClassStyleChange { key, mut style } => {
                 self.service_classes.update(key, |mut v| {
                     std::mem::swap(v.style.get_mut(), &mut style);
-                    Command::ChangeServiceClassStyle { key, style }
+                    Command::ServiceClassStyleChange { key, style }
                 })
             }
             Command::Macro(commands) => {
@@ -668,15 +655,15 @@ impl WorldSnapshot {
                 inverses.reverse();
                 Some(Command::Macro(inverses.into_boxed_slice()))
             }
-            Command::UnloadWorld => {
+            Command::WorldUnload => {
                 let old = std::mem::take(self);
-                Some(Command::LoadWorld {
+                Some(Command::WorldLoad {
                     snapshot: Box::new(old),
                 })
             }
-            Command::LoadWorld { snapshot: mut new } => {
+            Command::WorldLoad { snapshot: mut new } => {
                 std::mem::swap(self, &mut *new);
-                Some(Command::LoadWorld { snapshot: new })
+                Some(Command::WorldLoad { snapshot: new })
             }
         }
     }

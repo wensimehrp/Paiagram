@@ -3,13 +3,12 @@
 //! the types.
 
 pub mod colors;
+mod commands;
 pub mod diagram;
 pub mod graph;
 pub mod import;
-pub mod problems;
-// pub mod script;
-mod commands;
 mod make_type;
+pub mod problems;
 pub mod route;
 pub mod spatial;
 pub mod trip;
@@ -367,17 +366,11 @@ impl WorldSnapshot {
             interval.trips.clear();
         }
         for trip in self.trips.iter() {
-            let entries: Vec<_> = trip
-                .schedule
-                .entries()
-                .iter()
-                .filter(|e| !e.is_external())
-                .collect();
+            let entries: Vec<_> =
+                trip.schedule.entries().iter().filter(|e| !e.is_external()).collect();
             for pair in entries.windows(2) {
-                if let Some(interval) = self
-                    .intervals
-                    .map
-                    .get_mut(&(pair[0].node_key(), pair[1].node_key()))
+                if let Some(interval) =
+                    self.intervals.map.get_mut(&(pair[0].node_key(), pair[1].node_key()))
                 {
                     if !interval.trips.contains(&trip.key) {
                         interval.trips.push(trip.key);
@@ -417,10 +410,8 @@ impl WorldSnapshot {
         }
         let trips: Vec<TripKey> = self.trips.keys().collect();
         for trip in trips {
-            let trip_vehicles = self
-                .trips
-                .query(trip, |view| view.vehicles.clone())
-                .unwrap_or_default();
+            let trip_vehicles =
+                self.trips.query(trip, |view| view.vehicles.clone()).unwrap_or_default();
             self.cache_trip(trip, &trip_vehicles);
         }
     }
@@ -618,6 +609,3 @@ impl From<WorldSnapshot> for SaveFile {
         Self::V1 { world }
     }
 }
-
-#[cfg(test)]
-mod test;

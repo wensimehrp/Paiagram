@@ -79,7 +79,7 @@ macro_rules! generate_rhai_world_module {
                 pub fn replace_with(world: &mut World, new_world: World) {
                     let inner_ref = new_world.0.borrow();
                     let snapshot = Box::new(inner_ref.world.clone());
-                    world.apply_command(Command::LoadWorld { snapshot });
+                    world.apply_command(Command::WorldLoad { snapshot });
                 }
 
                 /// Makes sure that all commands are covered
@@ -90,7 +90,7 @@ macro_rules! generate_rhai_world_module {
                         $(
                             Command::$cmd_variant { .. } => {}
                         )*
-                        Command::UnloadWorld => {}
+                        Command::WorldUnload => {}
                         Command::Macro(_) => {}
                         _ => {}
                     }
@@ -124,7 +124,7 @@ generate_rhai_world_module!(
         type RouteKey = crate::RouteKey;
     }
     commands {
-        AddTrip(key: TripKey, name: ImmutableString, class: Dynamic) {
+        TripAdd(key: TripKey, name: ImmutableString, class: Dynamic) {
             key: key,
             view: TripView {
                 name: EcoString::from(name.as_str()),
@@ -132,7 +132,7 @@ generate_rhai_world_module!(
                 class: extract_class(class)?,
             }
         }
-        RenameTrip(key: TripKey, name: ImmutableString) {
+        TripRename(key: TripKey, name: ImmutableString) {
             key: key,
             name: EcoString::from(name.as_str())
         }
@@ -140,7 +140,7 @@ generate_rhai_world_module!(
             key: key,
             entries: extract_entries(entries)?
         }
-        ChangeTripClass(key: TripKey, class: Dynamic) {
+        TripClassChange(key: TripKey, class: Dynamic) {
             key: key,
             class: extract_class(class)?
         }

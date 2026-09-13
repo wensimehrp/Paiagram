@@ -337,7 +337,7 @@ mod tests {
         let mut w = WorldSnapshot::default();
         let stations = [StationKey::new(), StationKey::new()];
         for (i, &key) in stations.iter().enumerate() {
-            w.apply_command(Command::AddStation {
+            w.apply_command(Command::StationAdd {
                 key,
                 info: StationInfo {
                     name: format!("Station {i}").into(),
@@ -348,7 +348,7 @@ mod tests {
         }
         let nodes = [NodeKey::new(), NodeKey::new(), NodeKey::new()];
         for (i, &key) in nodes.iter().enumerate() {
-            w.apply_command(Command::AddNode {
+            w.apply_command(Command::NodeAdd {
                 key,
                 info: NodeInfo {
                     name: format!("Node {i}").into(),
@@ -360,7 +360,7 @@ mod tests {
             .unwrap();
         }
         for (a, b, length) in [(0, 1, 100), (1, 2, 300), (2, 1, 300), (1, 0, 100)] {
-            w.apply_command(Command::AddInterval {
+            w.apply_command(Command::IntervalAdd {
                 key: (nodes[a], nodes[b]),
                 info: Interval {
                     nodes: eco_vec![LonLat::ZERO, LonLat::ZERO, LonLat::ZERO],
@@ -373,7 +373,7 @@ mod tests {
         let key = RouteKey::new();
         let mut second = RouteStationRecord::for_station(&w, stations[1], Some(stations[0]));
         second.canvas_length = Some(CanvasLength::from_pts(100.0));
-        w.apply_command(Command::AddRoute {
+        w.apply_command(Command::RouteAdd {
             key,
             info: RouteInfo {
                 name: "Line".into(),
@@ -389,7 +389,7 @@ mod tests {
 
     fn add_trip(w: &mut WorldSnapshot, entries: EcoVec<TEntry>) -> TripKey {
         let key = TripKey::new();
-        w.apply_command(Command::AddTrip {
+        w.apply_command(Command::TripAdd {
             key,
             info: TripInfo {
                 name: "Train".into(),
@@ -454,7 +454,7 @@ mod tests {
         // A valid subset is tested using a second platform, since empty records are rejected.
         let other = NodeKey::new();
         let station = w.nodes.query(n[0], |n| *n.parent).unwrap();
-        w.apply_command(Command::AddNode {
+        w.apply_command(Command::NodeAdd {
             key: other,
             info: NodeInfo {
                 name: "Other".into(),
@@ -465,7 +465,7 @@ mod tests {
         })
         .unwrap();
         records.make_mut()[0].stn = StationRecord::Some(eco_vec![other]);
-        w.apply_command(Command::ChangeRouteStations {
+        w.apply_command(Command::RouteStationsChange {
             key: route,
             stations: records,
         })
@@ -488,7 +488,7 @@ mod tests {
         let mut last = RouteStationRecord::for_station(&w, stations[0], Some(stations[1]));
         last.canvas_length = Some(CanvasLength::from_pts(100.0));
         records.push(last);
-        w.apply_command(Command::ChangeRouteStations {
+        w.apply_command(Command::RouteStationsChange {
             key: route,
             stations: records,
         })
@@ -562,7 +562,7 @@ mod tests {
         );
         let mut records = w.routes.query(route, |r| r.stations.clone()).unwrap();
         records.make_mut()[1].milestone = Some(Distance(10000));
-        w.apply_command(Command::ChangeRouteStations {
+        w.apply_command(Command::RouteStationsChange {
             key: route,
             stations: records.clone(),
         })
@@ -571,7 +571,7 @@ mod tests {
         assert_eq!(d.rows[1].milestone, Some(10000.0));
         assert!((d.rows[1].position - 100.0).abs() < 0.001);
         records.make_mut()[1].canvas_length = Some(CanvasLength::from_pts(200.0));
-        w.apply_command(Command::ChangeRouteStations {
+        w.apply_command(Command::RouteStationsChange {
             key: route,
             stations: records,
         })
@@ -602,7 +602,7 @@ mod tests {
         let before = source.revision();
         assert!(!source.undo());
         assert_eq!(source.revision(), before);
-        assert!(source.apply_command(Command::RenameRoute {
+        assert!(source.apply_command(Command::RouteRename {
             key: route,
             name: "Renamed".into()
         }));
@@ -622,7 +622,7 @@ mod tests {
             Diagram::build(source.snap(), route).unwrap().name,
             "Renamed"
         );
-        assert!(!source.apply_command(Command::RenameRoute {
+        assert!(!source.apply_command(Command::RouteRename {
             key: RouteKey::new(),
             name: "Missing".into()
         }));
