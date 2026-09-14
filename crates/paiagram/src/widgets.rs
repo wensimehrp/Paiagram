@@ -1,6 +1,6 @@
 use egui::DragValue;
 use egui::emath::Numeric;
-use paiagram_core::time::{TDuration, TTime, TimetableTime};
+use paiagram_core::time::{TDuration, TTime};
 
 use crate::font::TIMETABLTE_TEXT_STYLE;
 

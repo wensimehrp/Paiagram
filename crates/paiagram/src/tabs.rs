@@ -1,7 +1,4 @@
-use std::borrow::Cow;
-
-use egui::{Id, Key, NumExt, Response, Ui, Vec2, WidgetText, emath, vec2};
-use egui_i18n::tr;
+use egui::{Key, NumExt, Response, Ui, Vec2, WidgetText, emath, vec2};
 use serde::{Deserialize, Serialize};
 
 use crate::App;
@@ -35,7 +32,7 @@ define_tabs!(
     // classes;
     diagram;
     graph;
-    // route_timetable;
+    route_timetable;
     config;
     start;
     station;
