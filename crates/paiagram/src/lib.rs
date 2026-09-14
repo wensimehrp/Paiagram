@@ -234,9 +234,7 @@ impl<'a> MainTabViewer<'a> {
         }
         for (s, t) in tab_definitions {
             if ui.button(*s).clicked() {
-                self.app
-                    .ui_action_queue
-                    .push(UiCommand::OpenOrFocus(t.clone()));
+                self.app.ui_action_queue.push(UiCommand::OpenOrFocus(t.clone()));
                 ui.close();
             }
         }
@@ -248,8 +246,7 @@ impl<'w> Behavior<MainTab> for MainTabViewer<'w> {
         for_all_tabs!(pane, p, p.title())
     }
     fn pane_ui(&mut self, ui: &mut Ui, _tile_id: TileId, tab: &mut MainTab) -> UiResponse {
-        ui.painter()
-            .rect_filled(ui.available_rect_before_wrap(), 0, ui.visuals().panel_fill);
+        ui.painter().rect_filled(ui.available_rect_before_wrap(), 0, ui.visuals().panel_fill);
         for_all_tabs!(tab, t, t.main_display(self.app, ui));
 
         Default::default()
@@ -310,10 +307,7 @@ pub fn show_ui(
     Panel::top("top panel").exact_size(32.0).show(ui, |ui| {
         ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
             Popup::menu(&ui.button("App")).show(|ui| {
-                if ui
-                    .add(Button::new("Command Palette").shortcut_text("Ctrl+P"))
-                    .clicked()
-                {
+                if ui.add(Button::new("Command Palette").shortcut_text("Ctrl+P")).clicked() {
                     ui_state.command_palette.visible ^= true;
                 }
                 #[cfg(not(target_arch = "wasm32"))]
@@ -368,31 +362,41 @@ pub fn show_ui(
                     }
                     .write_to_file::<false>(app.file_write_state.clone());
                 }
+                ui.separator();
+                #[cfg(debug_assertions)]
+                if ui.button("Load sample.oud2").clicked() {
+                    app.command_queue.push(
+                        generate_commands(
+                            include_bytes!("../../paiagram-oudia/test/sample.oud2"),
+                            ImportType::OuDiaSecond,
+                        )
+                        .unwrap_or(Command::new_empty()),
+                    );
+                }
+                // TODO: remove
+                if ui.button("Open route timetable").clicked() {
+                    app.ui_action_queue.push(UiCommand::OpenOrFocus(MainTab::RouteTimetable(
+                        RouteTimetableTab::default(),
+                    )));
+                }
             });
             Popup::menu(&ui.button(tr!("menu-about"))).show(|ui| {
                 if ui.button(tr!("menu-documentation")).clicked() {
-                    ui.ctx()
-                        .open_url(OpenUrl::new_tab(if cfg!(target_arch = "wasm32") {
-                            "/docs"
-                        } else {
-                            "https://paiagram.com/docs"
-                        }));
+                    ui.ctx().open_url(OpenUrl::new_tab(if cfg!(target_arch = "wasm32") {
+                        "/docs"
+                    } else {
+                        "https://paiagram.com/docs"
+                    }));
                 }
                 if cfg!(target_arch = "wasm32") && ui.button(tr!("menu-legal")).clicked() {
                     ui.ctx().open_url(OpenUrl::new_tab("./license.html"));
                 }
             });
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui
-                    .add_enabled(app.source.redoable(), Button::new("Redo"))
-                    .clicked()
-                {
+                if ui.add_enabled(app.source.redoable(), Button::new("Redo")).clicked() {
                     app.source.redo();
                 }
-                if ui
-                    .add_enabled(app.source.undoable(), Button::new("Undo"))
-                    .clicked()
-                {
+                if ui.add_enabled(app.source.undoable(), Button::new("Undo")).clicked() {
                     app.source.undo();
                 }
                 const GIT_REV_SHORT: &str = git_version::git_version!(fallback = "unknown");
@@ -405,45 +409,39 @@ pub fn show_ui(
             });
         })
     });
-    Panel::bottom("bottom panel")
-        .exact_size(24.0)
-        .show(ui, |ui| {
-            ui.horizontal_centered(|ui| {
-                let time = app.timer.ticks().to_timetable_time();
-                ui.add_enabled(
-                    !app.timer.sync_to_real_time,
-                    egui::Checkbox::new(&mut app.timer.animation_playing, ""),
+    Panel::bottom("bottom panel").exact_size(24.0).show(ui, |ui| {
+        ui.horizontal_centered(|ui| {
+            let time = app.timer.ticks().to_timetable_time();
+            ui.add_enabled(
+                !app.timer.sync_to_real_time,
+                egui::Checkbox::new(&mut app.timer.animation_playing, ""),
+            );
+            let time_response = ui.add(TimeDragValue(time, &mut None));
+            ui.add_enabled(
+                !app.timer.sync_to_real_time,
+                egui::DragValue::new(&mut app.timer.animation_speed).fixed_decimals(1).suffix("×"),
+            );
+            egui::Popup::menu(&time_response).show(|ui| {
+                ui.checkbox(
+                    &mut app.timer.sync_to_real_time,
+                    tr!("menu-sync-system-clock"),
                 );
-                let time_response = ui.add(TimeDragValue(time, &mut None));
-                ui.add_enabled(
-                    !app.timer.sync_to_real_time,
-                    egui::DragValue::new(&mut app.timer.animation_speed)
-                        .fixed_decimals(1)
-                        .suffix("×"),
-                );
-                egui::Popup::menu(&time_response).show(|ui| {
-                    ui.checkbox(
-                        &mut app.timer.sync_to_real_time,
-                        tr!("menu-sync-system-clock"),
-                    );
-                });
-                if !app.timer.sync_to_real_time
-                    && time_response.dragged()
-                    && let Some(key) = app.timer.try_lock()
-                {
-                    *app.timer.ticks_mut(&key) = Tick::from_timetable_time(time);
-                    app.timer.unlock(key);
-                }
-                if app.timer.animation_playing || app.timer.sync_to_real_time {
-                    ui.ctx().request_repaint();
-                }
-                app.timer.march(delta_time.as_secs_f64());
-            })
-        });
-    egui::CentralPanel::default()
-        .frame(Frame::default())
-        .show(ui, |ui| {
-            let mut tab_viewer = MainTabViewer { app };
-            ui_state.mus.tree.ui(&mut tab_viewer, ui);
-        });
+            });
+            if !app.timer.sync_to_real_time
+                && time_response.dragged()
+                && let Some(key) = app.timer.try_lock()
+            {
+                *app.timer.ticks_mut(&key) = Tick::from_timetable_time(time);
+                app.timer.unlock(key);
+            }
+            if app.timer.animation_playing || app.timer.sync_to_real_time {
+                ui.ctx().request_repaint();
+            }
+            app.timer.march(delta_time.as_secs_f64());
+        })
+    });
+    egui::CentralPanel::default().frame(Frame::default()).show(ui, |ui| {
+        let mut tab_viewer = MainTabViewer { app };
+        ui_state.mus.tree.ui(&mut tab_viewer, ui);
+    });
 }
