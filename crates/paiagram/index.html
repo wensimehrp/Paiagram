@@ -147,13 +147,47 @@
         <!-- Force refresh (Ctrl + F5) to load the latest files instead of cached files  -->
         <script>
             // We disable caching during development so that we always view the latest version.
-            if (
-                "serviceWorker" in navigator &&
-                window.location.hash !== "#dev"
-            ) {
-                window.addEventListener("load", function () {
-                    navigator.serviceWorker.register("sw.js");
-                });
+            if ("serviceWorker" in navigator) {
+                if (window.location.hash === "#dev") {
+                    // Dev mode: unregister any existing service worker and clear
+                    // its caches so we always fetch the latest files.
+                    navigator.serviceWorker
+                        .getRegistrations()
+                        .then(function (regs) {
+                            return Promise.all(
+                                regs.map(function (r) {
+                                    return r.unregister();
+                                }),
+                            );
+                        })
+                        .then(function () {
+                            if (!("caches" in window)) return;
+                            return caches.keys().then(function (keys) {
+                                return Promise.all(
+                                    keys.map(function (k) {
+                                        return caches.delete(k);
+                                    }),
+                                );
+                            });
+                        })
+                        .then(function () {
+                            // If an old worker was controlling this page, this load
+                            // already came from its cache. Reload once to get fresh files.
+                            if (
+                                navigator.serviceWorker.controller &&
+                                sessionStorage.getItem("dev-reloaded") !== "1"
+                            ) {
+                                sessionStorage.setItem("dev-reloaded", "1");
+                                window.location.reload();
+                            } else {
+                                sessionStorage.removeItem("dev-reloaded");
+                            }
+                        });
+                } else {
+                    window.addEventListener("load", function () {
+                        navigator.serviceWorker.register("sw.js");
+                    });
+                }
             }
         </script>
     </body>
