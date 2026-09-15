@@ -373,6 +373,12 @@ pub fn show_ui(
                         .unwrap_or(Command::new_empty()),
                     );
                 }
+                #[cfg(debug_assertions)]
+                if ui.button("Open Diagram").clicked() {
+                    app.ui_action_queue.push(UiCommand::OpenOrFocus(MainTab::Diagram(
+                        DiagramTab::new(RouteKey::new()),
+                    )));
+                }
                 // TODO: remove
                 if ui.button("Open route timetable").clicked() {
                     app.ui_action_queue.push(UiCommand::OpenOrFocus(MainTab::RouteTimetable(

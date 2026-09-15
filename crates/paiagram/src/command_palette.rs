@@ -86,9 +86,7 @@ impl CommandPalette {
         let candidates_iter = panel_info
             .into_iter()
             .chain(app.trips.iter().map(|v| (v.name.clone(), MatchedType::Trip(v.key))))
-            .chain(app.stations.iter().map(|v| (v.name.clone(), MatchedType::Station(v.key))));
-
-        let candidates_iter = candidates_iter
+            .chain(app.stations.iter().map(|v| (v.name.clone(), MatchedType::Station(v.key))))
             .chain(app.routes.iter().map(|v| (v.name.clone(), MatchedType::Route(v.key))));
 
         if text_response.changed() {

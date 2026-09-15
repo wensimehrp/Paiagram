@@ -112,7 +112,7 @@ impl Diagram {
             let label_milestone = record.milestone.map(|d| d.0 as f64).or(milestone);
             let height = record
                 .canvas_length
-                .map(|v| v.to_pts())
+                .map(|v| v.to_postscript_pts())
                 .filter(|v| v.is_finite() && *v > 0.0)
                 .unwrap_or_else(|| 40.0 + distance.unwrap_or(1000.0).ln_1p() * 8.0);
             let position = result.rows.last().map_or(0.0, |r| r.position + height);
@@ -372,7 +372,7 @@ mod tests {
         }
         let key = RouteKey::new();
         let mut second = RouteStationRecord::for_station(&w, stations[1], Some(stations[0]));
-        second.canvas_length = Some(CanvasLength::from_pts(100.0));
+        second.canvas_length = Some(CanvasLength::from_postscript_pts(100.0));
         w.apply_command(Command::RouteAdd {
             key,
             info: RouteInfo {
@@ -486,7 +486,7 @@ mod tests {
         let (mut w, route, n, stations) = fixture();
         let mut records = w.routes.query(route, |r| r.stations.clone()).unwrap();
         let mut last = RouteStationRecord::for_station(&w, stations[0], Some(stations[1]));
-        last.canvas_length = Some(CanvasLength::from_pts(100.0));
+        last.canvas_length = Some(CanvasLength::from_postscript_pts(100.0));
         records.push(last);
         w.apply_command(Command::RouteStationsChange {
             key: route,
@@ -570,7 +570,7 @@ mod tests {
         let d = Diagram::build(&w, route).unwrap();
         assert_eq!(d.rows[1].milestone, Some(10000.0));
         assert!((d.rows[1].position - 100.0).abs() < 0.001);
-        records.make_mut()[1].canvas_length = Some(CanvasLength::from_pts(200.0));
+        records.make_mut()[1].canvas_length = Some(CanvasLength::from_postscript_pts(200.0));
         w.apply_command(Command::RouteStationsChange {
             key: route,
             stations: records,
