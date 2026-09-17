@@ -105,8 +105,8 @@ impl super::Tab for RouteTimetableTab {
                                     for entry in trip.schedule.entries().iter().take(total_rows) {
                                         let disp = match match entry {
                                             TEntry::Derived { .. } => TravelMode::Flexible,
-                                            TEntry::Pinned { dep, .. } => *dep,
-                                            TEntry::PinnedNonStop { pass, .. } => *pass,
+                                            TEntry::PinnedStop { dep, .. } => *dep,
+                                            TEntry::PinnedPass { pass, .. } => *pass,
                                         } {
                                             TravelMode::Flexible => "..".into(),
                                             TravelMode::At(t) => t.to_oud2_str(false),

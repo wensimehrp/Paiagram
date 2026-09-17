@@ -62,7 +62,7 @@ pub enum TEntry {
     Derived { node: NodeKey, id: TEntryId },
     /// A pinned station. The trip must visit this station.
     /// This requires runtime checks to make sure that the start and end are valid.
-    Pinned {
+    PinnedStop {
         node: NodeKey,
         arr: TravelMode,
         dep: TravelMode,
@@ -71,7 +71,7 @@ pub enum TEntry {
     },
     /// A pinned station. The trip must visit this station,
     /// but the vehicle does not stop at the station.
-    PinnedNonStop {
+    PinnedPass {
         node: NodeKey,
         pass: TravelMode,
         external: bool,
@@ -83,32 +83,32 @@ impl TEntry {
     pub fn is_external(&self) -> bool {
         matches!(
             self,
-            Self::Pinned { external: true, .. } | Self::PinnedNonStop { external: true, .. }
+            Self::PinnedStop { external: true, .. } | Self::PinnedPass { external: true, .. }
         )
     }
     pub fn node_key(&self) -> NodeKey {
         match self {
             Self::Derived { node, .. } => *node,
-            Self::Pinned { node, .. } => *node,
-            Self::PinnedNonStop { node, .. } => *node,
+            Self::PinnedStop { node, .. } => *node,
+            Self::PinnedPass { node, .. } => *node,
         }
     }
     pub fn id(&self) -> TEntryId {
         match self {
             Self::Derived { id, .. } => *id,
-            Self::Pinned { id, .. } => *id,
-            Self::PinnedNonStop { id, .. } => *id,
+            Self::PinnedStop { id, .. } => *id,
+            Self::PinnedPass { id, .. } => *id,
         }
     }
     pub fn arr_or_pass_mut(&mut self) -> Option<&mut TravelMode> {
         match self {
             Self::Derived { .. } => None,
-            Self::Pinned { arr, .. } => Some(arr),
-            Self::PinnedNonStop { pass, .. } => Some(pass),
+            Self::PinnedStop { arr, .. } => Some(arr),
+            Self::PinnedPass { pass, .. } => Some(pass),
         }
     }
     pub fn dep_mut(&mut self) -> Option<&mut TravelMode> {
-        let Self::Pinned { dep, .. } = self else {
+        let Self::PinnedStop { dep, .. } = self else {
             return None;
         };
         Some(dep)
@@ -366,9 +366,9 @@ fn make_se(entry: TEntry) -> StackElem {
     use TravelMode as Tm;
     match entry {
         TEntry::Derived { node, .. } => Se::In(node, TDuration::ZERO),
-        TEntry::Pinned { external, .. } if external => Se::Ignored,
-        TEntry::PinnedNonStop { external, .. } if external => Se::Ignored,
-        TEntry::Pinned { node, arr, dep, .. } => match (arr, dep) {
+        TEntry::PinnedStop { external, .. } if external => Se::Ignored,
+        TEntry::PinnedPass { external, .. } if external => Se::Ignored,
+        TEntry::PinnedStop { node, arr, dep, .. } => match (arr, dep) {
             (Tm::At(at), Tm::At(dt)) => Se::AtAt(node, at, dt),
             (Tm::At(at), Tm::For(dd)) => Se::AtAt(node, at, at + dd),
             (Tm::At(at), Tm::Flexible) => Se::AtAt(node, at, at),
@@ -379,7 +379,7 @@ fn make_se(entry: TEntry) -> StackElem {
             (Tm::Flexible, Tm::For(dd)) => Se::In(node, dd),
             (Tm::Flexible, Tm::Flexible) => Se::In(node, TDuration::ZERO),
         },
-        TEntry::PinnedNonStop { node, pass, .. } => match pass {
+        TEntry::PinnedPass { node, pass, .. } => match pass {
             Tm::At(dt) => Se::AtAt(node, dt, dt),
             Tm::For(dd) => Se::ForFor(node, dd, TDuration::ZERO),
             Tm::Flexible => Se::In(node, TDuration::ZERO),

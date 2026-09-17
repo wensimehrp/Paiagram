@@ -397,7 +397,7 @@ mod tests {
         for key in trips {
             let entries = [(a, 100), (b, 200)]
                 .into_iter()
-                .map(|(node, t)| TEntry::PinnedNonStop {
+                .map(|(node, t)| TEntry::PinnedPass {
                     node,
                     pass: TravelMode::At(TimetableTime(t)),
                     external: false,

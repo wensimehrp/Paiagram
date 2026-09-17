@@ -137,7 +137,7 @@ fn row_ui(
                 ui.add_sized(wide_size, Button::new(fmt_str(|e| e.arr, "||"))),
                 None,
             ),
-            TEntry::Pinned { arr, dep, .. } => (
+            TEntry::PinnedStop { arr, dep, .. } => (
                 match arr {
                     For(d) => ui.add_sized(BTN_SIZE, DurationDragValue(d, &mut arr_pass_dur)),
                     At(t) => ui.add_sized(BTN_SIZE, TimeDragValue(t, &mut arr_pass_dur)),
@@ -149,7 +149,7 @@ fn row_ui(
                     Flexible => ui.add_sized(BTN_SIZE, Button::new(fmt_str(|e| e.dep, "--:--:--"))),
                 }),
             ),
-            TEntry::PinnedNonStop { pass, .. } => (
+            TEntry::PinnedPass { pass, .. } => (
                 match pass {
                     For(d) => ui.add_sized(wide_size, DurationDragValue(d, &mut arr_pass_dur)),
                     At(t) => ui.add_sized(wide_size, TimeDragValue(t, &mut arr_pass_dur)),
@@ -176,7 +176,7 @@ fn row_ui(
         });
     }
 
-    let res1_align = if matches!(entry, TEntry::Pinned { .. }) {
+    let res1_align = if matches!(entry, TEntry::PinnedStop { .. }) {
         RectAlign::LEFT
     } else {
         RectAlign::RIGHT
@@ -187,8 +187,8 @@ fn row_ui(
         if ui
             .button(match entry {
                 TEntry::Derived { .. } => "Pin",
-                TEntry::Pinned { .. } => "Make Non-stop",
-                TEntry::PinnedNonStop { .. } => "Make stop",
+                TEntry::PinnedStop { .. } => "Make Non-stop",
+                TEntry::PinnedPass { .. } => "Make stop",
             })
             .clicked()
         {

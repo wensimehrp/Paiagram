@@ -225,14 +225,14 @@ pub(super) fn parse_pyetgr(data: &[u8]) -> Option<Command> {
             .into_iter()
             .filter_map(|(node, arr, dep)| {
                 if arr == dep {
-                    Some(TEntry::PinnedNonStop {
+                    Some(TEntry::PinnedPass {
                         node,
                         pass: TravelMode::At(arr),
                         external: false,
                         id: TEntryId::new(),
                     })
                 } else {
-                    Some(TEntry::Pinned {
+                    Some(TEntry::PinnedStop {
                         node,
                         arr: TravelMode::At(arr),
                         dep: TravelMode::At(dep),

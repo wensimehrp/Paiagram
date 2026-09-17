@@ -402,7 +402,7 @@ mod tests {
         key
     }
     fn pass(node: NodeKey, time: i32) -> TEntry {
-        TEntry::PinnedNonStop {
+        TEntry::PinnedPass {
             node,
             id: TEntryId::new(),
             pass: TravelMode::At(time::TimetableTime(time)),
@@ -439,7 +439,7 @@ mod tests {
     fn excluded_platforms_and_disconnections_break_paths() {
         let (mut w, route, n, _) = fixture();
         let mut external = pass(n[1], 100);
-        if let TEntry::PinnedNonStop { external: flag, .. } = &mut external {
+        if let TEntry::PinnedPass { external: flag, .. } = &mut external {
             *flag = true;
         }
         add_trip(&mut w, eco_vec![pass(n[0], 0), external, pass(n[2], 200)]);
@@ -541,7 +541,7 @@ mod tests {
     fn external_annotations_do_not_interrupt_the_internal_trip() {
         let (mut w, route, n, _) = fixture();
         let mut external = pass(n[2], 9999);
-        if let TEntry::PinnedNonStop { external: flag, .. } = &mut external {
+        if let TEntry::PinnedPass { external: flag, .. } = &mut external {
             *flag = true;
         }
         add_trip(

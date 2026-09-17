@@ -115,14 +115,14 @@ pub(crate) fn parse_oudia(stream: OudFileType) -> Result<Command, Box<dyn std::e
             let id = TEntryId::new();
             let external = false;
             buf.push(match (entry.arrival_time, entry.departure_time) {
-                (Some(at), Some(dt)) => TEntry::Pinned {
+                (Some(at), Some(dt)) => TEntry::PinnedStop {
                     node,
                     arr: TravelMode::At(TimetableTime::from_hms(0, 0, at.seconds())),
                     dep: TravelMode::At(TimetableTime::from_hms(0, 0, dt.seconds())),
                     external,
                     id,
                 },
-                (Some(at), None) => TEntry::Pinned {
+                (Some(at), None) => TEntry::PinnedStop {
                     node,
                     arr: TravelMode::At(TimetableTime::from_hms(0, 0, at.seconds())),
                     dep: TravelMode::Flexible,
@@ -132,7 +132,7 @@ pub(crate) fn parse_oudia(stream: OudFileType) -> Result<Command, Box<dyn std::e
                 (None, Some(dt)) => {
                     let mode = TravelMode::At(TimetableTime::from_hms(0, 0, dt.seconds()));
                     if idx == 0 {
-                        TEntry::Pinned {
+                        TEntry::PinnedStop {
                             node,
                             arr: TravelMode::Flexible,
                             dep: mode,
@@ -140,7 +140,7 @@ pub(crate) fn parse_oudia(stream: OudFileType) -> Result<Command, Box<dyn std::e
                             id,
                         }
                     } else {
-                        TEntry::PinnedNonStop {
+                        TEntry::PinnedPass {
                             node,
                             pass: mode,
                             external,
@@ -148,7 +148,7 @@ pub(crate) fn parse_oudia(stream: OudFileType) -> Result<Command, Box<dyn std::e
                         }
                     }
                 }
-                (None, None) => TEntry::PinnedNonStop {
+                (None, None) => TEntry::PinnedPass {
                     node,
                     pass: TravelMode::Flexible,
                     external,
