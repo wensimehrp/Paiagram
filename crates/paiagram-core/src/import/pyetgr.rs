@@ -17,8 +17,9 @@ use crate::time::{TTime, TimetableTime};
 use crate::trip::{TEntry, TEntryId, TravelMode, TripSchedule};
 use crate::units::distance::Distance;
 use crate::{
-    Command, Interval, LonLat, NodeInfo, NodeKey, ServiceClassInfo, ServiceClassKey, StationInfo,
-    StationKey, StrokeStyle, TripInfo, TripKey,
+    Interval, LonLat, Node, NodeKey, Route, RouteKey, RouteStationRecord, ServiceClass,
+    ServiceClassKey, Station as PaiagramStation, StationKey, StationRecord, StrokeStyle,
+    Trip as PaiagramTrip, TripKey, Wfc, WorldSnapshot,
 };
 
 /// The root structure of the qETRC JSON data
@@ -127,7 +128,8 @@ struct Config<'a> {
     default_colors: FxHashMap<Cow<'a, str>, &'a str>,
 }
 
-pub(super) fn parse_pyetgr(data: &[u8]) -> Option<Command> {
+pub(super) fn parse_pyetgr(data: &[u8]) -> Option<WorldSnapshot> {
+    let mut world = WorldSnapshot::default();
     let root: Root = match serde_json::from_slice(data) {
         Ok(r) => r,
         Err(e) => {
@@ -135,55 +137,65 @@ pub(super) fn parse_pyetgr(data: &[u8]) -> Option<Command> {
             return None;
         }
     };
-    let mut ret = Vec::new();
     let mut station_node_map: FxHashMap<&str, NodeKey> = FxHashMap::default();
     let mut service_class_map: FxHashMap<&str, ServiceClassKey> = FxHashMap::default();
     for (name, color) in &root.config.default_colors {
         // #RRGGBB
         // 0123456
         let (r, g, b) = (
-            u8::from_str_radix(&color[1..=2], 16).unwrap(),
             u8::from_str_radix(&color[3..=4], 16).unwrap(),
+            u8::from_str_radix(&color[1..=2], 16).unwrap(),
             u8::from_str_radix(&color[5..=6], 16).unwrap(),
         );
         let key = ServiceClassKey::new();
-        let info = ServiceClassInfo {
-            name: name.to_eco_string(),
-            style: StrokeStyle {
-                color: Color32::from_rgb(r, g, b),
-                width: 1,
-            },
-        };
         service_class_map.insert(&*name, key);
-        ret.push(Command::ServiceClassAdd { key, info });
+        world.service_classes.insert(
+            key,
+            Wfc::new(ServiceClass {
+                name: name.to_eco_string(),
+                style: StrokeStyle {
+                    color: Color32::from_rgb(r, g, b),
+                    width: 1,
+                },
+            }),
+        );
     }
     for line in [&root.line].into_iter().chain(root.lines.iter()) {
+        let mut stations = EcoVec::with_capacity(line.stations.len());
         for station in &line.stations {
             if station_node_map.contains_key(&*station.name) {
                 continue;
             }
             let stn_key = StationKey::new();
-            let stn_info = StationInfo {
+            let stn_info = PaiagramStation {
                 name: station.name.to_eco_string(),
                 pos: LonLat::ZERO,
             };
             let node_key = NodeKey::new();
-            let node_info = NodeInfo {
+            let node_info = Node {
                 name: "".into(),
                 parent: stn_key,
                 pos: LonLat::ZERO,
                 is_platform: true,
             };
-            ret.push(Command::StationAdd {
-                key: stn_key,
-                info: stn_info,
+            stations.push(RouteStationRecord {
+                stn: StationRecord::All(stn_key),
+                milestone: None,
+                canvas_length: None,
+                prev_curr_nodes: EcoVec::new(),
+                curr_prev_nodes: EcoVec::new(),
             });
-            ret.push(Command::NodeAdd {
-                key: node_key,
-                info: node_info,
-            });
+            world.stations.insert(stn_key, Wfc::new(stn_info));
+            world.nodes.insert(node_key, Wfc::new(node_info));
             station_node_map.insert(&station.name, node_key);
         }
+        world.routes.insert(
+            RouteKey::new(),
+            Wfc::new(Route {
+                name: line.name.to_eco_string(),
+                stations,
+            }),
+        );
     }
     for line in [&root.line].into_iter().chain(root.lines.iter()) {
         for ((prev_stn, &prev_key), (curr_stn, &curr_key)) in line
@@ -194,14 +206,13 @@ pub(super) fn parse_pyetgr(data: &[u8]) -> Option<Command> {
         {
             let length = curr_stn.distance_km - prev_stn.distance_km;
             let length = Distance::from_km(length).0;
-            ret.push(Command::IntervalAdd {
-                key: (prev_key, curr_key),
-                info: Interval {
+            world.intervals.insert(
+                (prev_key, curr_key),
+                Wfc::new(Interval {
                     nodes: eco_vec![],
                     length: NonZeroU32::new(length as u32),
-                    trips: eco_vec![],
-                },
-            });
+                }),
+            );
         }
     }
     for trip in root.trips {
@@ -238,15 +249,15 @@ pub(super) fn parse_pyetgr(data: &[u8]) -> Option<Command> {
                 }
             })
             .collect();
-        ret.push(Command::TripAdd {
-            key: TripKey::new(),
-            info: TripInfo {
+        world.trips.insert(
+            TripKey::new(),
+            Wfc::new(PaiagramTrip {
                 name: trip.trip_number[0].to_eco_string(),
                 schedule: TripSchedule::new(entries),
                 service_class: None,
                 vehicles: SmallVec::new(),
-            },
-        });
+            }),
+        );
     }
-    Some(Command::Macro(ret.into_boxed_slice()))
+    Some(world)
 }

@@ -1,21 +1,10 @@
 use egui::*;
-use paiagram_core::diagram::DiagramPoint;
 use paiagram_core::time::{Tick, TimetableTime};
 use paiagram_core::{CanvasLength, RouteKey, TripKey};
 use serde::{Deserialize, Serialize};
 
 use super::{Navigatable, Tab};
 use crate::App;
-
-#[derive(Clone)]
-struct Drag {
-    trip: TripKey,
-    point: DiagramPoint,
-    departure: bool,
-    seconds: i32,
-    origin_x: f32,
-    revision: u64,
-}
 
 /// Navigation is saved with the tab; geometry and in-progress edits are transient.
 #[derive(Clone, Serialize, Deserialize)]
@@ -252,7 +241,7 @@ fn main_display(tab: &mut DiagramTab, app: &mut App, ui: &mut Ui) {
     tab.navi.handle_navigation(ui, &response);
     draw_time_lines(&mut painter, &tab.navi);
     // TODO: make it actually work and stop using dummy data
-    for trip in app.trips.iter() {
+    for (_, trip) in app.trips.iter() {
         let stroke = Stroke::new(1.0, Color32::GREEN);
         let mut points: Vec<Pos2> = Vec::with_capacity(trip.schedule.entries().len());
         trip.schedule.estimates(&app.intervals, |estimates| {

@@ -1,12 +1,12 @@
 use egui::{
-    Align2, AtomExt, Button, Color32, FontFamily, FontId, Popup, RectAlign, RichText, Ui, Vec2,
-    WidgetText, vec2,
+    Align2, AtomExt, Button, Color32, FontFamily, FontId, Layout, Popup, RectAlign, RichText, Ui,
+    Vec2, WidgetText, vec2,
 };
 use egui_i18n::tr;
 use paiagram_core::time::TimetableTime;
 use paiagram_core::trip::TravelMode::{self, At, Flexible, For};
 use paiagram_core::trip::{TEntry, TEstimate, TripSchedule};
-use paiagram_core::{Command, Source, TripKey};
+use paiagram_core::{Source, TripKey, WorldSnapshot};
 use serde::{Deserialize, Serialize};
 
 use super::Tab;
@@ -15,7 +15,7 @@ use crate::{App, UiCommand};
 
 #[derive(Serialize, Deserialize, Clone, PartialEq)]
 pub(crate) struct TripTab {
-    trip: TripKey,
+    trip_key: TripKey,
     show_derived: bool,
     name_edit_buf: Option<String>,
 }
@@ -31,9 +31,9 @@ impl Tab for TripTab {
 }
 
 impl TripTab {
-    pub(crate) fn new(trip: TripKey) -> Self {
+    pub(crate) fn new(trip_key: TripKey) -> Self {
         Self {
-            trip,
+            trip_key,
             show_derived: false,
             name_edit_buf: None,
         }
@@ -41,28 +41,12 @@ impl TripTab {
 }
 
 fn show_trip(tab: &mut TripTab, app: &mut App, ui: &mut Ui) {
-    let Some((name, schedule)) =
-        app.trips.query(tab.trip, |view| (view.name.clone(), view.schedule.clone()))
-    else {
+    let ui_queue = &mut app.ui_action_queue;
+    let snap = &app.source.snap;
+    let Some(trip) = snap.trips.get(&tab.trip_key) else {
         return;
     };
-    egui::Frame::new().inner_margin(6.0).show(ui, |ui| {
-        ui.horizontal(|ui| {
-            if let Some(buf) = tab.name_edit_buf.as_mut() {
-                let res = ui.text_edit_singleline(buf);
-                res.request_focus();
-                if res.lost_focus() {
-                    app.command_queue.push(Command::TripRename {
-                        key: tab.trip,
-                        name: buf.as_str().into(),
-                    });
-                    tab.name_edit_buf = None;
-                }
-            } else if ui.button(RichText::new(name.as_str()).size(24.0)).clicked() {
-                tab.name_edit_buf = Some(String::from(name));
-            }
-        })
-    });
+    ui.heading(trip.name.as_str());
     egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
         egui::Frame::new().inner_margin(6.0).show(ui, |ui| {
             egui::Grid::new(ui.id().with("trip ui")).num_columns(2).striped(true).show(ui, |ui| {
@@ -71,17 +55,16 @@ fn show_trip(tab: &mut TripTab, app: &mut App, ui: &mut Ui) {
                 ui.end_row();
                 // Remove button background
                 ui.visuals_mut().widgets.inactive.weak_bg_fill = Color32::TRANSPARENT;
-                schedule.estimates(&app.source.intervals, |estimates| {
+                trip.schedule.estimates(&snap.intervals, |estimates| {
                     for (estimate, entry) in estimates.into_iter().copied() {
                         row_ui(
-                            tab.trip,
-                            &schedule,
+                            tab.trip_key,
+                            &trip.schedule,
                             estimates,
                             estimate,
                             entry,
-                            &app.source,
-                            &mut app.ui_action_queue,
-                            &mut app.command_queue,
+                            snap,
+                            ui_queue,
                             ui,
                         );
                         ui.end_row();
@@ -98,25 +81,26 @@ fn row_ui(
     estimates: &[(Option<TEstimate>, TEntry)],
     estimate: Option<TEstimate>,
     entry: TEntry,
-    source: &Source,
+    snap: &WorldSnapshot,
     ui_queue: &mut Vec<UiCommand>,
-    cmd_queue: &mut Vec<Command>,
     ui: &mut Ui,
 ) {
     const BTN_SIZE: Vec2 = vec2(70.0, 18.0);
-    let Some(station) = source.nodes.query(entry.node_key(), |view| *view.parent) else {
+    let Some(node) = snap.nodes.get(&entry.node_key()) else {
         ui.label("No station");
         return;
     };
-    source.stations.query(station, |view| {
-        let mut text = RichText::new(view.name.as_str());
+    if let Some(stn) = snap.stations.get(&node.parent) {
+        let mut text = RichText::new(stn.name.as_str());
         if matches!(entry, TEntry::Derived { .. }) {
             text = text.weak();
         }
-        if ui.button(text.atom_align(Align2::LEFT_CENTER)).clicked() {
+        if ui.button(text).clicked() {
             // TODO: push station
         };
-    });
+    } else {
+        ui.colored_label(Color32::RED, "Invalid Station");
+    };
     let mut wide_size = BTN_SIZE;
     wide_size.x *= 2.0;
     wide_size.x += ui.spacing().item_spacing.x;
@@ -160,21 +144,21 @@ fn row_ui(
         })
         .inner;
 
-    if let Some(dur) = arr_pass_dur {
-        cmd_queue.push(Command::TripEntryShiftArrOrPass {
-            key: trip_key,
-            id: entry.id(),
-            dur,
-        });
-    }
+    // if let Some(dur) = arr_pass_dur {
+    //     cmd_queue.push(Command::TripEntryShiftArrOrPass {
+    //         key: trip_key,
+    //         id: entry.id(),
+    //         dur,
+    //     });
+    // }
 
-    if let Some(dur) = dep_dur {
-        cmd_queue.push(Command::TripEntryShiftDep {
-            key: trip_key,
-            id: entry.id(),
-            dur,
-        });
-    }
+    // if let Some(dur) = dep_dur {
+    //     cmd_queue.push(Command::TripEntryShiftDep {
+    //         key: trip_key,
+    //         id: entry.id(),
+    //         dur,
+    //     });
+    // }
 
     let res1_align = if matches!(entry, TEntry::PinnedStop { .. }) {
         RectAlign::LEFT
@@ -211,11 +195,11 @@ fn row_ui(
             && let Some(arr_pass_mode) = new_entry.arr_or_pass_mut()
         {
             *arr_pass_mode = mode;
-            cmd_queue.push(Command::TripEntryChange {
-                key: trip_key,
-                id: new_entry.id(),
-                new_entry,
-            });
+            // cmd_queue.push(Command::TripEntryChange {
+            //     key: trip_key,
+            //     id: new_entry.id(),
+            //     new_entry,
+            // });
         }
     });
     let Some(res2) = res2 else {
@@ -239,11 +223,11 @@ fn row_ui(
             && let Some(dep_mode) = new_entry.dep_mut()
         {
             *dep_mode = mode;
-            cmd_queue.push(Command::TripEntryChange {
-                key: trip_key,
-                id: new_entry.id(),
-                new_entry,
-            });
+            // cmd_queue.push(Command::TripEntryChange {
+            //     key: trip_key,
+            //     id: new_entry.id(),
+            //     new_entry,
+            // });
         }
     });
 }

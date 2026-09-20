@@ -16,6 +16,8 @@ pub mod operation;
 pub mod time;
 pub mod timetable;
 
+pub use petgraph;
+
 #[macro_export]
 macro_rules! structure {
     // start recursive accumulation

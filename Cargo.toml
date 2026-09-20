@@ -63,7 +63,7 @@ futures-lite = "2.6.1"
 getrandom = { version = "0.3", features = ["wasm_js"] }
 git-version = "0.3.9"
 ib-matcher = { version = "0.4.3", features = ["pinyin", "romaji"] }
-imbl = { version = "7.0.2", features = ["serde"] }
+imbl = { version = "7.0.2", features = ["debug", "serde"] }
 indexmap = "2.14.0"
 itertools = "0.14.0"
 itoa = "1.0.18"

@@ -1,5 +1,4 @@
 use egui::*;
-use paiagram_core::RouteKey;
 use paiagram_core::trip::{TEntry, TravelMode};
 use serde::{Deserialize, Serialize};
 
@@ -68,7 +67,7 @@ impl super::Tab for RouteTimetableTab {
                 .horizontal_scroll_offset(scroll.x)
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
-                        for trip in app.trips.iter() {
+                        for (key, trip) in &app.trips {
                             ui.add_sized(cell_size, Label::new(trip.name.as_str()).truncate());
                         }
                     })
@@ -100,7 +99,7 @@ impl super::Tab for RouteTimetableTab {
 
                     ui.scope_builder(UiBuilder::new().max_rect(rect), |ui| {
                         ui.horizontal_top(|ui| {
-                            for trip in app.trips.iter().skip(min_col).take(max_col) {
+                            for (key, trip) in app.trips.iter().skip(min_col).take(max_col) {
                                 ui.vertical(|ui| {
                                     for entry in trip.schedule.entries().iter().take(total_rows) {
                                         let disp = match match entry {

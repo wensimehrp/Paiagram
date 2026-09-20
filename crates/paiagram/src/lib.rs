@@ -4,26 +4,28 @@
 mod command_palette;
 mod config;
 mod font;
+mod load;
 mod selection;
 mod tabs;
 mod timer;
 mod widgets;
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 pub use config::AppLanguage;
-use egui::{Button, Context, Frame, OpenUrl, Panel, Popup, Ui};
+use egui::{Button, Frame, OpenUrl, Panel, Popup, Ui};
 use egui_i18n::tr;
 use egui_material_icons::icons;
 use egui_tiles::{
     Behavior, ContainerKind, SimplificationOptions, Tile, TileId, Tiles, Tree, UiResponse,
 };
 use log::{info, warn};
-use paiagram_core::import::{ImportType, generate_commands};
+use paiagram_core::import::{ImportType, make_snapshot};
 use paiagram_core::time::Tick;
-use paiagram_core::{Command, RouteKey, SaveFile, Source};
+use paiagram_core::{RouteKey, SaveFile, Source};
 use paiagram_export::ExportOuDia;
 use paiagram_rw::{ExportObject, FileWriteState};
+use parking_lot::Mutex;
 use rfd::AsyncFileDialog;
 use serde::{Deserialize, Serialize};
 use tabs::all_tabs::*;
@@ -32,54 +34,10 @@ use tabs::{MainTab, Tab, for_all_tabs};
 pub use wasm_bindgen_rayon::init_thread_pool;
 
 use crate::command_palette::CommandPalette;
+use crate::load::FileLoadState;
 use crate::selection::SelectedItems;
 use crate::timer::GlobalTimer;
 use crate::widgets::TimeDragValue;
-
-fn load_file(
-    dialog: AsyncFileDialog,
-    import_type: ImportType,
-    state: Arc<Mutex<FileLoadState>>,
-    ctx: Context,
-) {
-    *state.lock().unwrap() = FileLoadState::Reading { progress: None };
-    let process = async move {
-        let data = dialog.pick_file().await;
-        let Some(data) = data else {
-            *state.lock().unwrap() = FileLoadState::Idle;
-            return;
-        };
-        *state.lock().unwrap() = FileLoadState::Processing { progress: None };
-        let data = data.read().await;
-        let (tx, rx) = futures_channel::oneshot::channel();
-        // for some reason egui's Context doesn't implement Send on wasm32. This means it can't be
-        // send to the rayon thread.
-        // Use a tx rx pair from futures_channel instead.
-        rayon::spawn(move || {
-            let commands = generate_commands(&data, import_type).map_err(|e| e.to_string());
-            *state.lock().unwrap() = FileLoadState::Done(commands);
-            let _ = tx.send(());
-        });
-        let _ = rx.await;
-        ctx.request_repaint();
-    };
-    #[cfg(target_arch = "wasm32")]
-    {
-        wasm_bindgen_futures::spawn_local(process);
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let _ = std::thread::spawn(move || pollster::block_on(process));
-    }
-}
-
-#[derive(Clone)]
-enum FileLoadState {
-    Idle,
-    Reading { progress: Option<f32> },
-    Processing { progress: Option<f32> },
-    Done(Result<Command, String>),
-}
 
 pub struct App {
     source: Source,
@@ -87,7 +45,6 @@ pub struct App {
     preferences: config::Preferences,
     settings: config::Settings,
     ui_action_queue: Vec<UiCommand>,
-    command_queue: Vec<Command>,
     command_error: Option<String>,
     selected_items: SelectedItems,
     file_load_state: Arc<Mutex<FileLoadState>>,
@@ -108,7 +65,6 @@ impl App {
             preferences: config::Preferences::new(ctx),
             settings: config::Settings::default(),
             ui_action_queue: Vec::with_capacity(100),
-            command_queue: Vec::with_capacity(100),
             command_error: None,
             selected_items: SelectedItems::None,
             file_load_state: Arc::new(Mutex::new(FileLoadState::Idle)),
@@ -120,16 +76,6 @@ impl App {
         for cmd in self.ui_action_queue.drain(..) {
             match cmd {
                 UiCommand::OpenOrFocus(tab) => mus.open_or_focus(tab),
-            }
-        }
-    }
-    /// Clear the command queue and apply queued commands to the source
-    fn apply_commands(&mut self) {
-        for cmd in self.command_queue.drain(..) {
-            // TODO: warn about fails in GUI;
-            if !self.source.apply_command(cmd.clone()) {
-                warn!("Failed to apply command {:?}", cmd);
-                self.command_error = Some("This edit could not be applied. Check that referenced items still exist and remove dependent routes, trips, or intervals before deleting an item.".into());
             }
         }
     }
@@ -216,31 +162,6 @@ struct MainTabViewer<'a> {
     app: &'a mut App,
 }
 
-impl<'a> MainTabViewer<'a> {
-    fn add_popup(&mut self, ui: &mut Ui) {
-        let tab_definitions: &[(&str, MainTab)] = &[
-            // (&tr!("tab-start"), MainTab::Start(StartTab::default())),
-            // (&tr!("tab-settings"), MainTab::Settings(SettingsTab)),
-            // (&tr!("tab-classes"), MainTab::Classes(ClassesTab::default())),
-            (&tr!("tab-graph"), MainTab::Graph(GraphTab::default())),
-        ];
-        for route in self.app.source.routes.iter() {
-            if ui.button(format!("Diagram · {}", route.name)).clicked() {
-                self.app.ui_action_queue.push(UiCommand::OpenOrFocus(MainTab::Diagram(
-                    DiagramTab::new(route.key),
-                )));
-                ui.close();
-            }
-        }
-        for (s, t) in tab_definitions {
-            if ui.button(*s).clicked() {
-                self.app.ui_action_queue.push(UiCommand::OpenOrFocus(t.clone()));
-                ui.close();
-            }
-        }
-    }
-}
-
 impl<'w> Behavior<MainTab> for MainTabViewer<'w> {
     fn tab_title_for_pane(&mut self, pane: &MainTab) -> egui::WidgetText {
         for_all_tabs!(pane, p, p.title())
@@ -277,9 +198,7 @@ impl<'w> Behavior<MainTab> for MainTabViewer<'w> {
         _tile_id: TileId,
         _tabs: &egui_tiles::Tabs,
     ) {
-        ui.menu_button(icons::ICON_ADD, |ui| {
-            self.add_popup(ui);
-        });
+        ui.menu_button(icons::ICON_ADD, |ui| ui.label("Hi!"));
     }
 }
 
@@ -291,18 +210,15 @@ pub fn show_ui(
 ) {
     ui_state.command_palette.show(ui.ctx(), app);
     app.apply_ui_commands(&mut ui_state.mus);
-    app.apply_commands();
-    if let Ok(mut cmd) = app.file_load_state.try_lock()
-        && matches!(*cmd, FileLoadState::Done(..))
-        && let FileLoadState::Done(res) = std::mem::replace(&mut *cmd, FileLoadState::Idle)
+    if let Some(mut lock) = app.file_load_state.try_lock()
+        && let FileLoadState::Done(world) = std::mem::take(&mut *lock)
     {
-        let _result = match res {
-            Ok(cmd) => app.source.apply_command(cmd),
-            Err(s) => {
-                warn!("{s}");
-                false
+        match world {
+            Ok(world) => {
+                app.source.update(|_| Ok(world));
             }
-        };
+            Err(s) => {}
+        }
     }
     Panel::top("top panel").exact_size(32.0).show(ui, |ui| {
         ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
@@ -333,6 +249,8 @@ pub fn show_ui(
                     ("Import OuDiaSecond", "OuDiaSecond", ImportType::OuDiaSecond),
                     ("Import OuDia", "OuDia", ImportType::OuDia),
                     ("Import qETRC/pyETRC", "pyetgr", ImportType::Pyetgr),
+                    #[cfg(debug_assertions)]
+                    ("Import sample.oud2", "OuDiaSecond", ImportType::BuiltinOud2),
                 ] {
                     if !ui.button(button_display).clicked() {
                         continue;
@@ -341,7 +259,7 @@ pub fn show_ui(
                     let dialog = AsyncFileDialog::new()
                         .set_title(button_display)
                         .add_filter(category, import_type.file_extensions());
-                    load_file(
+                    load::load_file(
                         dialog,
                         import_type,
                         app.file_load_state.clone(),
@@ -350,29 +268,19 @@ pub fn show_ui(
                 }
                 ui.separator();
                 if ui.button("Save .paia").clicked() {
-                    let new_file: SaveFile = app.source.snap().clone().into();
+                    let new_file: SaveFile = app.snap.clone().into();
                     new_file.write_to_file::<true>(app.file_write_state.clone());
                 }
                 ui.separator();
                 if ui.button("Export .oud").clicked() {
                     ExportOuDia {
-                        world: app.source.snap().clone(),
+                        world: app.snap.clone(),
                         route: RouteKey::new(),
                         is_oudia_second: false,
                     }
                     .write_to_file::<false>(app.file_write_state.clone());
                 }
                 ui.separator();
-                #[cfg(debug_assertions)]
-                if ui.button("Load sample.oud2").clicked() {
-                    app.command_queue.push(
-                        generate_commands(
-                            include_bytes!("../../paiagram-oudia/test/sample.oud2"),
-                            ImportType::OuDiaSecond,
-                        )
-                        .unwrap_or(Command::new_empty()),
-                    );
-                }
                 #[cfg(debug_assertions)]
                 if ui.button("Open Diagram").clicked() {
                     app.ui_action_queue.push(UiCommand::OpenOrFocus(MainTab::Diagram(

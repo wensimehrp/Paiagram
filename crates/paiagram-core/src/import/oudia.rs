@@ -1,17 +1,18 @@
 use std::collections::HashMap;
 use std::num::NonZeroU32;
 
-use ecow::{EcoVec, eco_vec};
-use paiagram_oudia::{Station, StationToGraph, parse_oud_to_ir, parse_oud2_to_ir};
-use petgraph::visit::EdgeRef;
+use ecow::EcoVec;
+use ecow::string::ToEcoString;
+use paiagram_oudia::petgraph::visit::EdgeRef;
+use paiagram_oudia::{Station as OudStation, StationToGraph, parse_oud_to_ir, parse_oud2_to_ir};
 use rustc_hash::FxBuildHasher;
 use smallvec::SmallVec;
 
 use crate::time::TimetableTime;
 use crate::trip::{TEntry, TEntryId, TravelMode, TripSchedule};
 use crate::{
-    Command, Interval, LonLat, NodeInfo, NodeKey, ServiceClassKey, StationInfo, StationKey,
-    TripInfo, TripKey,
+    Interval, LonLat, Node, NodeKey, ServiceClass, ServiceClassKey, Station, StationKey,
+    StrokeStyle, Trip, TripKey, Wfc, WorldSnapshot,
 };
 
 pub(super) enum OudFileType<'a> {
@@ -19,87 +20,91 @@ pub(super) enum OudFileType<'a> {
     OuDia(&'a [u8]),
 }
 
-pub(crate) fn parse_oudia(stream: OudFileType) -> Result<Command, Box<dyn std::error::Error>> {
+pub(crate) fn parse_oudia(
+    stream: OudFileType,
+) -> Result<WorldSnapshot, Box<dyn std::error::Error>> {
+    let mut world = WorldSnapshot::default();
     let root = match stream {
         OudFileType::OuDiaSecond(s) => parse_oud2_to_ir(s)?,
         OudFileType::OuDia(buf) => parse_oud_to_ir(buf)?,
     };
     let route = root.route;
-    let mut cmd_buf: Vec<Command> = Vec::with_capacity(512);
     let graph = route.stations.to_graph();
     let mut stn_to_node_key = HashMap::with_capacity_and_hasher(graph.node_count(), FxBuildHasher);
     for node in graph.node_weights().copied() {
         let node_key = NodeKey::new();
         let stn_key = StationKey::new();
-        stn_to_node_key.insert(node as *const Station, node_key);
-        cmd_buf.extend_from_slice(&[
-            Command::StationAdd {
-                key: stn_key,
-                info: StationInfo {
-                    name: node.name.clone().into(),
-                    pos: LonLat::ZERO,
-                },
-            },
-            Command::NodeAdd {
-                key: node_key,
-                info: NodeInfo {
-                    name: "".into(),
-                    parent: stn_key,
-                    pos: LonLat::ZERO,
-                    is_platform: true,
-                },
-            },
-        ]);
+        stn_to_node_key.insert(node as *const OudStation, node_key);
+        world.stations.insert(
+            stn_key,
+            Wfc::new(Station {
+                name: node.name.clone().into(),
+                pos: LonLat::ZERO,
+            }),
+        );
+        world.nodes.insert(
+            node_key,
+            Wfc::new(Node {
+                name: "Platform 1".into(),
+                parent: stn_key,
+                pos: LonLat::ZERO,
+                is_platform: true,
+            }),
+        );
+        world.nodes.insert(
+            node_key,
+            Wfc::new(Node {
+                name: "Platform 2".into(),
+                parent: stn_key,
+                pos: LonLat::ZERO,
+                is_platform: true,
+            }),
+        );
     }
-    for (source, target) in graph.edge_references().map(|e| {
-        (
-            *stn_to_node_key
-                .get(&(*graph.node_weight(e.source()).unwrap() as *const Station))
-                .unwrap(),
-            *stn_to_node_key
-                .get(&(*graph.node_weight(e.target()).unwrap() as *const Station))
-                .unwrap(),
-        )
-    }) {
-        cmd_buf.extend_from_slice(&[
-            Command::IntervalAdd {
-                key: (source, target),
-                info: Interval {
-                    nodes: eco_vec![],
-                    length: NonZeroU32::new(1000),
-                    trips: eco_vec![],
-                },
-            },
-            Command::IntervalAdd {
-                key: (target, source),
-                info: Interval {
-                    nodes: eco_vec![],
-                    length: NonZeroU32::new(1000),
-                    trips: eco_vec![],
-                },
-            },
-        ]);
+    for edge_ref in graph.edge_references() {
+        let source = (*graph.node_weight(edge_ref.source()).unwrap()) as *const OudStation;
+        let target = (*graph.node_weight(edge_ref.target()).unwrap()) as *const OudStation;
+        let source = *stn_to_node_key.get(&source).unwrap();
+        let target = *stn_to_node_key.get(&target).unwrap();
+        world.intervals.insert(
+            (source, target),
+            Wfc::new(Interval {
+                nodes: EcoVec::new(),
+                length: NonZeroU32::new(1000),
+            }),
+        );
+        world.intervals.insert(
+            (target, source),
+            Wfc::new(Interval {
+                nodes: EcoVec::new(),
+                length: NonZeroU32::new(1000),
+            }),
+        );
     }
     let mut service_classes = route
         .classes
         .iter()
-        .map(|cls| (cls.name.as_str(), ServiceClassKey::new(), 0u32))
+        .map(|cls| {
+            (
+                cls.name.as_str(),
+                ServiceClassKey::new(),
+                0u32,
+                cls.diagram_line_color.clone(),
+            )
+        })
         .collect::<Vec<_>>();
-    for (cls, (_, key, _)) in route.classes.iter().zip(&service_classes) {
-        cmd_buf.push(Command::ServiceClassAdd {
-            key: *key,
-            info: crate::ServiceClassInfo {
-                name: cls.name.clone().into(),
-                style: crate::StrokeStyle {
-                    color: egui::Color32::from_rgb(
-                        cls.diagram_line_color.r(),
-                        cls.diagram_line_color.g(),
-                        cls.diagram_line_color.b(),
-                    ),
-                    width: 1,
-                },
-            },
-        });
+    for (name, key, _, color) in &service_classes {
+        let style = StrokeStyle {
+            color: egui::Color32::from_rgb(color.r(), color.g(), color.b()),
+            width: 1,
+        };
+        world.service_classes.insert(
+            *key,
+            Wfc::new(ServiceClass {
+                name: name.to_eco_string(),
+                style,
+            }),
+        );
     }
     let mut unknown_class_counter = 0u32;
     let Some(diagram) = route.diagrams.get(0) else {
@@ -111,7 +116,7 @@ pub(crate) fn parse_oudia(stream: OudFileType) -> Result<Command, Box<dyn std::e
     for (trip, schedule) in diagram.trip_station_times(&deduplicated) {
         let mut buf = EcoVec::new();
         for (idx, (stn, entry)) in schedule.enumerate() {
-            let node = *stn_to_node_key.get(&(stn as *const Station)).unwrap();
+            let node = *stn_to_node_key.get(&(stn as *const OudStation)).unwrap();
             let id = TEntryId::new();
             let external = false;
             buf.push(match (entry.arrival_time, entry.departure_time) {
@@ -159,28 +164,29 @@ pub(crate) fn parse_oudia(stream: OudFileType) -> Result<Command, Box<dyn std::e
         let (cls_name, cls_key, cls_counter) =
             service_classes.get_mut(trip.class_index).map_or_else(
                 || ("Unknown Class", None, &mut unknown_class_counter),
-                |(s, key, count)| (*s, Some(*key), count),
+                |(s, key, count, _)| (*s, Some(*key), count),
             );
-        cmd_buf.push(Command::TripAdd {
-            key: TripKey::new(),
-            info: TripInfo {
-                name: trip.name.as_ref().map_or_else(
-                    || {
-                        format!("{} ({})", cls_name, {
-                            *cls_counter += 1;
-                            cls_counter
-                        })
-                        .into()
-                    },
-                    |n| n.into(),
-                ),
+        let name = trip.name.as_ref().map_or_else(
+            || {
+                format!("{} ({})", cls_name, {
+                    *cls_counter += 1;
+                    cls_counter
+                })
+                .into()
+            },
+            |n| n.into(),
+        );
+        world.trips.insert(
+            TripKey::new(),
+            Wfc::new(Trip {
+                name,
                 schedule: TripSchedule::new(buf),
                 service_class: cls_key,
                 vehicles: SmallVec::new(),
-            },
-        });
+            }),
+        );
     }
-    Ok(Command::Macro(cmd_buf.into_boxed_slice()))
+    Ok(world)
 }
 
 #[cfg(test)]

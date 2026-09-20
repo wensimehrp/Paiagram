@@ -13,6 +13,7 @@ categories.workspace = true
 
 [dependencies]
 log.workspace = true
+parking_lot.workspace = true
 pollster.workspace = true
 rayon.workspace = true
 rfd.workspace = true

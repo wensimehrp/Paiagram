@@ -3,7 +3,9 @@
 
 use std::io;
 
-use crate::Command;
+use crate::WorldSnapshot;
+#[cfg(debug_assertions)]
+use crate::import::oudia::OudFileType;
 use crate::time::TimetableDuration;
 use crate::units::time::TimetableTime;
 
@@ -36,6 +38,9 @@ pub enum ImportType {
     PaiagramPaia,
     /// Paiagram's debug RON format
     PaiagramRon,
+    /// For debugging
+    #[cfg(debug_assertions)]
+    BuiltinOud2,
 }
 
 impl ImportType {
@@ -47,24 +52,30 @@ impl ImportType {
             Self::Gtfs => &["zip"],
             Self::PaiagramPaia => &["paia"],
             Self::PaiagramRon => &["ron"],
+            #[cfg(debug_assertions)]
+            Self::BuiltinOud2 => &[],
         }
     }
 }
 
-pub fn generate_commands(
+pub fn make_snapshot(
     data: &[u8],
     import_content: ImportType,
-) -> Result<Command, Box<dyn std::error::Error>> {
+) -> Result<WorldSnapshot, Box<dyn std::error::Error>> {
     match import_content {
         ImportType::Pyetgr => {
             pyetgr::parse_pyetgr(data).ok_or(Box::new(io::Error::other("Failed!")))
         }
-        ImportType::OuDia => oudia::parse_oudia(oudia::OudFileType::OuDia(data)),
+        ImportType::OuDia => oudia::parse_oudia(OudFileType::OuDia(data)),
         ImportType::OuDiaSecond => {
-            oudia::parse_oudia(oudia::OudFileType::OuDiaSecond(&str::from_utf8(data)?))
+            oudia::parse_oudia(OudFileType::OuDiaSecond(&str::from_utf8(data)?))
         }
         ImportType::Gtfs => todo!(),
         ImportType::PaiagramPaia => todo!(),
         ImportType::PaiagramRon => todo!(),
+        #[cfg(debug_assertions)]
+        ImportType::BuiltinOud2 => oudia::parse_oudia(OudFileType::OuDiaSecond(include_str!(
+            "../../paiagram-oudia/test/sample.oud2"
+        ))),
     }
 }

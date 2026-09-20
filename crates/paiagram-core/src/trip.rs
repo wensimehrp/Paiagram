@@ -7,7 +7,7 @@ use ecow::EcoVec;
 use serde::{Deserialize, Serialize};
 
 use crate::time::{TDuration, TTime, TimetableTime};
-use crate::{Distance, Interval, IntervalCollection, NodeKey};
+use crate::{Distance, IntervalCollection, NodeKey};
 
 /// Travel mode. Travel mode defines how the vehicle travels.
 #[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq)]
@@ -30,6 +30,7 @@ impl TravelMode {
 #[derive(Clone, Serialize, Copy, Debug, PartialEq)]
 pub struct TEntryId(u32);
 static NEXT_ENTRY_ID: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
+
 impl<'de> Deserialize<'de> for TEntryId {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let value = u32::deserialize(deserializer)?;
@@ -358,7 +359,7 @@ fn interval_length(itv: &IntervalCollection, a: NodeKey, b: NodeKey) -> Option<D
     if a == b {
         return Some(Distance::ZERO);
     }
-    itv.get((a, b)).map(Interval::length)
+    itv.get(&(a, b)).map(|e| e.length())
 }
 
 fn make_se(entry: TEntry) -> StackElem {

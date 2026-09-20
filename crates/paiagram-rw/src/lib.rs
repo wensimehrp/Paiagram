@@ -3,9 +3,10 @@ pub mod save;
 pub mod write;
 
 use std::io::{self, Write};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use log::{info, warn};
+use parking_lot::Mutex;
 #[cfg(target_arch = "wasm32")]
 use web_sys::js_sys::{Array, Uint8Array};
 #[cfg(target_arch = "wasm32")]
@@ -44,7 +45,7 @@ pub trait ExportObject: Sized + Send + 'static {
             let (tx, rx) = futures_channel::oneshot::channel::<io::Result<Vec<u8>>>();
 
             info!("Preparing to download `{}`", filename);
-            *state.lock().unwrap_or_else(|e| e.into_inner()) = FileWriteState::Processing;
+            *state.lock() = FileWriteState::Processing;
 
             // Serialize on the rayon thread pool and send the buffer back over a
             // oneshot channel, so the DOM is only touched here on the main thread.
@@ -67,19 +68,17 @@ pub trait ExportObject: Sized + Send + 'static {
                         let res = download_file(&filename, &buffer).map_err(|e| {
                             io::Error::other(format!("Error while downloading file: {:?}", e))
                         });
-                        *state.lock().unwrap_or_else(|e| e.into_inner()) =
-                            FileWriteState::Done(res);
+                        *state.lock() = FileWriteState::Done(res);
                     }
                     Ok(Err(e)) => {
                         warn!("Failed to serialize: {}", e);
-                        *state.lock().unwrap_or_else(|e| e.into_inner()) =
-                            FileWriteState::Done(io::Result::Err(e));
+                        *state.lock() = FileWriteState::Done(io::Result::Err(e));
                     }
                     Err(_) => {
                         warn!("Serialization task was dropped before sending a result");
-                        *state.lock().unwrap_or_else(|e| e.into_inner()) = FileWriteState::Done(
-                            Err(io::Error::other("serialization task was cancelled")),
-                        );
+                        *state.lock() = FileWriteState::Done(Err(io::Error::other(
+                            "serialization task was cancelled",
+                        )));
                     }
                 }
             });
@@ -105,7 +104,7 @@ pub trait ExportObject: Sized + Send + 'static {
                         }
                     }
                 };
-                *state.lock().unwrap_or_else(|e| e.into_inner()) = FileWriteState::Processing;
+                *state.lock() = FileWriteState::Processing;
                 let res = if COMPRESS {
                     let mut writer = zrip::FrameEncoder::new(&mut buffer, 4).unwrap();
                     let r = self.write_content(&mut writer);
@@ -116,12 +115,11 @@ pub trait ExportObject: Sized + Send + 'static {
                 };
                 if let Err(e) = res {
                     warn!("Failed to serialize: {}", e);
-                    *state.lock().unwrap_or_else(|e| e.into_inner()) =
-                        FileWriteState::Done(io::Result::Err(e));
+                    *state.lock() = FileWriteState::Done(io::Result::Err(e));
                     return;
                 }
                 info!("Successfully wrote `{}`", filename);
-                *state.lock().unwrap_or_else(|e| e.into_inner()) = FileWriteState::Done(Ok(()));
+                *state.lock() = FileWriteState::Done(Ok(()));
             });
         }
     }

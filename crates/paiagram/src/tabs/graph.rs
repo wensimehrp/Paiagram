@@ -2,7 +2,6 @@
 use std::sync::Arc;
 
 use egui::{Color32, Frame, Pos2, Rect, Sense, Stroke, Ui, WidgetText};
-use paiagram_core::spatial::project;
 use paiagram_core::*;
 use serde::{Deserialize, Serialize};
 
@@ -110,89 +109,8 @@ impl Tab for GraphTab {
     fn main_display(&mut self, app: &mut App, ui: &mut Ui) {
         let mut is_open = self.panel_is_open || ui.memory(|mem| mem.everything_is_visible());
         self.panel_is_open = is_open;
-        egui::CentralPanel::default()
-            .frame(Frame::new().inner_margin(0))
-            .show(ui, |ui| self.map(app, ui));
-    }
-}
-
-impl GraphTab {
-    fn fit(&mut self, world: &WorldSnapshot) {
-        let mut points = world
-            .stations
-            .iter()
-            .map(|s| project(*s.pos))
-            .chain(world.nodes.iter().map(|n| project(*n.pos)))
-            .chain(
-                world
-                    .intervals
-                    .iter()
-                    .flat_map(|(_, interval)| interval.nodes.iter().copied().map(project)),
-            );
-        let Some(first) = points.next() else {
-            return;
-        };
-        let (mut min, mut max) = (first, first);
-        for point in points {
-            for i in 0..2 {
-                min[i] = min[i].min(point[i]);
-                max[i] = max[i].max(point[i]);
-            }
-        }
-        let width = self.navi.visible.width().max(100.0) as f64;
-        let height = self.navi.visible.height().max(100.0) as f64;
-        self.navi.zoom = ((width - 70.0) / (max[0] - min[0]).max(500.0))
-            .min((height - 70.0) / (max[1] - min[1]).max(500.0))
-            .clamp(0.00001, 20.0) as f32;
-        self.navi.x_offset = (min[0] + max[0]) / 2.0 - width / (2.0 * self.navi.zoom as f64);
-        self.navi.y_offset = (min[1] + max[1]) / 2.0 - height / (2.0 * self.navi.zoom as f64);
-    }
-
-    fn map(&mut self, app: &mut App, ui: &mut Ui) {
-        ui.horizontal(|ui| {
-            if ui.button("Fit network").clicked() {
-                self.fit(app.snap());
-            }
-        });
-        let (response, mut painter) =
-            ui.allocate_painter(ui.available_size_before_wrap(), Sense::click_and_drag());
-        self.navi.visible = response.rect;
-        self.navi.handle_navigation(ui, &response);
-        let attribution = {
-            let mut underlay = self.underlay.lock();
-            underlay.update_tile_type(Some(self.underlay_tile_type));
-            underlay.draw_underlay(&mut painter, &self.navi, ui)
-        };
-        let pad = 20.0 / self.navi.zoom as f64;
-        let xr = self.navi.visible_x();
-        let yr = self.navi.visible_y();
-        let min = [xr.start - pad, yr.start - pad];
-        let max = [xr.end + pad, yr.end + pad];
-        let (geo_min, geo_max) = paiagram_core::spatial::geographic_bounds(min, max);
-        let (xy_min, xy_max) = paiagram_core::spatial::projected_bounds(min, max);
-        for edge in app.source.graph_cache().intervals(geo_min, geo_max) {
-            painter.line(
-                edge.projected
-                    .iter()
-                    .map(|(_, pos)| {
-                        let XyPosF64 { x, y } = (*pos).into();
-                        self.navi.xy_to_screen_pos(x, y)
-                    })
-                    .collect(),
-                Stroke::new(1.0, Color32::BLACK),
-            );
-        }
-        for station in app.source.graph_cache().stations(geo_min, geo_max) {
-            let [x, y] = project(station.point);
-            let pos = self.navi.xy_to_screen_pos(x, y);
-            painter.circle_filled(pos, 1.0, Color32::BLACK);
-        }
-        for node in app.source.graph_cache().nodes(geo_min, geo_max) {}
-        for (sample, time) in app.source.graph_cache().trips(
-            xy_min,
-            xy_max,
-            app.timer.ticks().as_seconds_f64(),
-            app.settings.repeat_frequency.0 as f64,
-        ) {}
+        // egui::CentralPanel::default()
+        //     .frame(Frame::new().inner_margin(0))
+        //     .show(ui, |ui| self.map(app, ui));
     }
 }
