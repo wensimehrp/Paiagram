@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-#![doc = include_str!("trip/doc.md")]
+#![doc = include_str!("trip/README.md")]
 
 use std::cell::RefCell;
 

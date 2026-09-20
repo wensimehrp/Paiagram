@@ -90,9 +90,8 @@ fn load_sarasa_cl(ctx: Context, font_name: Arc<Mutex<String>>) {
                 res.status
             );
         }
-        let face_id = FONT_DATABASE
-            .write()
-            .load_font_source(fontdb::Source::Binary(Arc::new(res.bytes)))[0];
+        let face_id =
+            FONT_DATABASE.write().load_font_source(fontdb::Source::Binary(Arc::new(res.bytes)))[0];
         load_font_to_egui(
             face_id,
             ctx.clone(),
@@ -103,10 +102,8 @@ fn load_sarasa_cl(ctx: Context, font_name: Arc<Mutex<String>>) {
 }
 
 fn load_font_name(face_id: ID, font_name: Arc<Mutex<String>>) {
-    let post_script_name = FONT_DATABASE
-        .read()
-        .face(face_id)
-        .map_or("UNNAMED FONT".to_string(), |info| {
+    let post_script_name =
+        FONT_DATABASE.read().face(face_id).map_or("UNNAMED FONT".to_string(), |info| {
             info.post_script_name.to_string()
         });
     *font_name.lock() = post_script_name;
@@ -118,9 +115,8 @@ pub(crate) fn load_font_to_egui(
     font_name: Arc<Mutex<String>>,
     mut definitions: FontDefinitions,
 ) {
-    let Some(bytes) = FONT_DATABASE
-        .read()
-        .with_face_data(face_id, |font_bytes, _index| font_bytes.to_owned())
+    let Some(bytes) =
+        FONT_DATABASE.read().with_face_data(face_id, |font_bytes, _index| font_bytes.to_owned())
     else {
         warn!("Couldn't load font!");
         return;

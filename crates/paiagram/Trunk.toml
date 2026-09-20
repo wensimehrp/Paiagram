@@ -1,5 +1,6 @@
 [build]
 filehash = false
 
+# these headings are required for multithreading
 [serve]
 headers = { "Cross-Origin-Opener-Policy" = "same-origin", "Cross-Origin-Embedder-Policy" = "require-corp" }

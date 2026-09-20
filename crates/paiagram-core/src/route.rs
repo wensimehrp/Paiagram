@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-#![doc = include_str!("route/doc.md")]
-
-//! Implementation of the route progress model described above.
+#![doc = include_str!("route/README.md")]
 
 use petgraph::algo::bidirectional_dijkstra;
 use petgraph::visit::EdgeRef;

@@ -21,6 +21,7 @@ use arc_swap::ArcSwap;
 pub use commands::Command;
 use ecow::{EcoString, EcoVec};
 use egui::Color32;
+use imbl::OrdMap;
 use make_type::make_type;
 use nohash_hasher::BuildNoHashHasher;
 use paiagram_rw::ExportObject;
@@ -608,4 +609,30 @@ impl From<WorldSnapshot> for SaveFile {
     fn from(world: WorldSnapshot) -> Self {
         Self::V1 { world }
     }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct Train {
+    name: EcoString,
+    class: Option<u32>,
+    vehicles: Vec<u32>,
+    schedule: Vec<(u32, u32, u32)>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct WorldFieldContainer<D, C> {
+    #[serde(flatten)]
+    data: D,
+    #[serde(skip)]
+    cache: C,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct World {
+    trains: OrdMap<u32, WorldFieldContainer<Train, ()>>,
+}
+
+struct SSSSource {
+    world: World,
+    history: Vec<World>,
 }

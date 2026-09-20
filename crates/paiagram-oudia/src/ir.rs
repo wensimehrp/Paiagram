@@ -526,16 +526,12 @@ fn parse_timetable_entries(
         _ => None,
     }) {
         let hierarchy = parse_to_operation_hierarchy(key)?;
-        let operations = operations
-            .iter()
-            .map(|s| parse_to_raw_operation(s))
-            .collect::<Result<Vec<_>, _>>()?;
+        let operations =
+            operations.iter().map(|s| parse_to_raw_operation(s)).collect::<Result<Vec<_>, _>>()?;
         times.insert_operations(hierarchy, operations);
     }
     normalize_times(times.iter_mut().flat_map(|ent| {
-        [ent.arrival_time.as_mut(), ent.departure_time.as_mut()]
-            .into_iter()
-            .flatten()
+        [ent.arrival_time.as_mut(), ent.departure_time.as_mut()].into_iter().flatten()
     }));
     Ok(times)
 }

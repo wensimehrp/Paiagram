@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+#![doc = include_str!("units/README.md")]
+
 pub mod coordinates;
 pub mod distance;
 pub mod speed;

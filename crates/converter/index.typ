@@ -7,7 +7,8 @@ case "$1" in
 esac
 exit 0
 ```
-#import "@local/typhoon:0.2.0": *
+#import "@preview/typhoon:0.2.0": *
+
 #import html: *
 #html(lang: "en", {
   head({
@@ -23,7 +24,11 @@ exit 0
       </text>
     </svg>
     ```.text
-    link(rel: "icon", type: "image/svg+xml", href: "data:image/svg+xml;base64," + base64.encode(svg-icon))
+    link(
+      rel: "icon",
+      type: "image/svg+xml",
+      href: "data:image/svg+xml;base64," + base64.encode(svg-icon),
+    )
     context { style(tailwind-css()) }
     elem("base", attrs: (data-trunk-public-url: ""))
     elem("link", attrs: (data-trunk: "", rel: "rust", data-bin: "converter"))
@@ -47,7 +52,13 @@ exit 0
           option(value: "ron")[RON]
         })
         elem("label", attrs: ("for": "file-upload"))[Load File]
-        input(class: "hidden", type: "file", id: "file-upload", name: "File to convert", accept: ".oud,.oud2")
+        input(
+          class: "hidden",
+          type: "file",
+          id: "file-upload",
+          name: "File to convert",
+          accept: ".oud,.oud2",
+        )
         button(id: "copy-output")[Copy Output]
         button(id: "download-output")[Download Output]
       },

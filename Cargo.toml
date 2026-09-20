@@ -17,6 +17,7 @@ keywords = ["diagram", "scheduler", "timetabling", "web"]
 categories = ["visualization"]
 
 [workspace.dependencies]
+arc-swap = "1.9.2"
 async-executor = "1.14.0"
 # WGSL data communication
 bytemuck = { version = "1.23.2", features = ["extern_crate_alloc"] }
@@ -62,10 +63,10 @@ futures-lite = "2.6.1"
 getrandom = { version = "0.3", features = ["wasm_js"] }
 git-version = "0.3.9"
 ib-matcher = { version = "0.4.3", features = ["pinyin", "romaji"] }
+imbl = { version = "7.0.2", features = ["serde"] }
 indexmap = "2.14.0"
 itertools = "0.14.0"
 itoa = "1.0.18"
-arc-swap = "1.9.2"
 jiff = "0.2.29"
 js-sys = "0.3"
 krilla = "0.8.2"
@@ -85,6 +86,7 @@ rayon = "1.12.0"
 rfd = "0.17.2"
 rhai = "1.25.1"
 ron = "0.12.0"
+rstar = "0.12.2"
 rustc-hash = "2.1.2"
 serde = { version = "1.0.228", features = ["derive", "rc"] }
 serde_json = "1.0.145"

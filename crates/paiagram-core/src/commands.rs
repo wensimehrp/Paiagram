@@ -2,6 +2,16 @@ use super::*;
 use crate::time::TDuration;
 use crate::trip::{TEntry, TEntryId};
 
+/// Errors that might occur when applying a command
+pub struct CommandError {}
+
+/// Describes how to execute a command
+trait Execute {
+    /// Applies the command. Returns the modified world and the inverse of the command if the
+    /// application succeeds. Returns a [`CommandError`] if it fails.
+    fn apply(self, snap: WorldSnapshot) -> Result<(WorldSnapshot, Command), CommandError>;
+}
+
 #[derive(Clone, Debug)]
 pub enum Command {
     // trips

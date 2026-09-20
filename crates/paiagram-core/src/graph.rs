@@ -65,9 +65,7 @@ impl WorldSnapshot {
             source,
             |node| node == target,
             |edge| {
-                let Some(length) = self
-                    .intervals
-                    .query(edge.id(), |interval| interval.length())
+                let Some(length) = self.intervals.query(edge.id(), |interval| interval.length())
                 else {
                     return i32::MAX;
                 };
