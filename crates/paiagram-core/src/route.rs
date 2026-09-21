@@ -66,6 +66,9 @@ fn gen_progress(
     interval_nodes: &[NodeKey],
     next_stn_nodes: &[NodeKey],
 ) -> Option<f32> {
+    let is_part_of_interval = |key: &NodeKey| {
+        curr_stn_nodes.contains(key) || interval_nodes.contains(key) || next_stn_nodes.contains(key)
+    };
     // roughly the same as the implementation in graph.rs
     let neighbors = |source: &NodeKey| {
         let neighbors_slice =
@@ -78,7 +81,7 @@ fn gen_progress(
                 // checks if the node is a part of the interval.
                 // typically enough for our case since nobody would tuck
                 // 100000 nodes inside an interval.
-                    && interval_nodes.contains(target)
+                    && is_part_of_interval(target)
                 {
                     Some(*target)
                 } else {
