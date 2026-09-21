@@ -13,14 +13,14 @@ mod widgets;
 use std::sync::Arc;
 
 pub use config::AppLanguage;
-use egui::{Button, Frame, OpenUrl, Panel, Popup, Ui};
+use egui::{Button, Frame, Id, OpenUrl, Panel, Popup, Ui};
 use egui_i18n::tr;
 use egui_material_icons::icons;
 use egui_tiles::{
     Behavior, ContainerKind, SimplificationOptions, Tile, TileId, Tiles, Tree, UiResponse,
 };
-use log::{info, warn};
-use paiagram_core::import::{ImportType, make_snapshot};
+use log::info;
+use paiagram_core::import::ImportType;
 use paiagram_core::time::Tick;
 use paiagram_core::{RouteKey, SaveFile, Source};
 use paiagram_export::ExportOuDia;
@@ -210,14 +210,28 @@ pub fn show_ui(
 ) {
     ui_state.command_palette.show(ui.ctx(), app);
     app.apply_ui_commands(&mut ui_state.mus);
-    if let Some(mut lock) = app.file_load_state.try_lock()
-        && let FileLoadState::Done(world) = std::mem::take(&mut *lock)
-    {
-        match world {
-            Ok(world) => {
-                app.source.update(|_| Ok(world));
+    if let Some(mut lock) = app.file_load_state.try_lock() {
+        match &*lock {
+            FileLoadState::Idle => {}
+            FileLoadState::Processing => {
+                egui::Modal::new(Id::new("write modal")).show(ui.ctx(), |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label("Loading data...");
+                        ui.spinner();
+                    })
+                });
             }
-            Err(s) => {}
+            FileLoadState::Done(_) => {
+                let FileLoadState::Done(world) = std::mem::take(&mut *lock) else {
+                    unreachable!();
+                };
+                match world {
+                    Ok(world) => {
+                        app.source.update(|_| Ok(world));
+                    }
+                    Err(s) => {}
+                }
+            }
         }
     }
     Panel::top("top panel").exact_size(32.0).show(ui, |ui| {
@@ -285,12 +299,6 @@ pub fn show_ui(
                 if ui.button("Open Diagram").clicked() {
                     app.ui_action_queue.push(UiCommand::OpenOrFocus(MainTab::Diagram(
                         DiagramTab::new(RouteKey::new()),
-                    )));
-                }
-                // TODO: remove
-                if ui.button("Open route timetable").clicked() {
-                    app.ui_action_queue.push(UiCommand::OpenOrFocus(MainTab::RouteTimetable(
-                        RouteTimetableTab::default(),
                     )));
                 }
             });

@@ -13,28 +13,21 @@ Despite the fact that most traffic networks are 3d (since they are in our
 three-dimensional world), They can be almost always expressed in 2d form, with
 the height information discarded. Marey charts take a step further by
 compressing the 2d space into 1d space. In other words, coordinates are
-simplified to milestones on a route. Of course, this model couldn't cover the
-case where the network is very complex, where there might be multiple routes
-connecting stations A and B, and an intersection between two trip lines might
-not even mean the vehicles meet on a physical track (and this is why collision
-detection has its separate processor in the intervals section.)
+simplified to milestones on a route.
 
-The route model in Paiagram is designed around Marey chart's model. Each
-[`crate::RouteInfo`] has these components:
+Traditional implementations (or, at least implementations I've seen) don't
+account for the case where the network is very complicated, where there might be
+[multiple routes](https://en.wikipedia.org/wiki/Quadruple-track_railway)
+connecting stations, or massive
+[station throats](https://en.wiktionary.org/wiki/station_throat). Paiagram's
+route model is designed to work around those limitations. It is designed around
+Marey chart's model, but with significant extensions.
 
-- name: The name of the route
-- station records: A list of [`crate::RouteStationRecord`], and each station
-  record contains:
-  - The platforms in this record; either all or some platforms in the station
-  - The milestone since the origin of the route; This is only for displaying the
-    distance on the canvas. The canvas displays the shortest-path length if this
-    field is not present.
-  - Canvas length. Used for determining how tall (or long) the interval from the
-    previous record to the current record should be on the canvas. The canvas
-    length is calculated automatically using a log-based function if not
-    provided.
-  - Nodes included in the interval from the previous record to the current
-    record.
+Paiagram's route model is intended for **displaying** info, and each
+[`Route`] has these components:
+
+- name, for obvious reasons,
+- intervals, which is defined in [`RouteIntervals`].
 
 ## Milestone (Nominal Distance)
 

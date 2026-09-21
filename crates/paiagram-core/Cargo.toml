@@ -30,6 +30,7 @@ nohash-hasher = "0.2.0"
 paiagram-oudia.workspace = true
 paiagram-rw.workspace = true
 paste.workspace = true
+pathfinding = "4.16.0"
 rayon.workspace = true
 rhai.workspace = true
 rstar.workspace = true

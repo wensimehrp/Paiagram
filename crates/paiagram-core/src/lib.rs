@@ -3,6 +3,7 @@
 //! the types.
 
 pub mod colors;
+mod graph;
 pub mod import;
 mod interval;
 mod make_type;
@@ -19,6 +20,7 @@ use egui::Color32;
 use make_type::make_type;
 use nohash_hasher::BuildNoHashHasher;
 use paiagram_rw::ExportObject;
+use route::RouteIntervals;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 pub use units::*;
@@ -113,8 +115,8 @@ make_type! {
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum NodeNeighbor {
-    Incoming(StationKey),
-    Outgoing(StationKey),
+    Incoming(NodeKey),
+    Outgoing(NodeKey),
 }
 
 // better make some type-level guarantee that this
@@ -152,70 +154,15 @@ make_type! {
     cache { }
 }
 
-/// What to include in this case
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
-pub enum StationRecord {
-    All(StationKey),
-    Some(EcoVec<NodeKey>),
-}
-
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
-pub struct RouteStationRecord {
-    pub stn: StationRecord,
-    pub milestone: Option<Distance>,
-    pub canvas_length: Option<CanvasLength>,
-    pub prev_curr_nodes: EcoVec<NodeKey>,
-    pub curr_prev_nodes: EcoVec<NodeKey>,
-}
-
-/// The progress of a node within a single interval of a route.
-///
-/// `0` marks the start of the interval and [`u16::MAX`] marks its end.
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
-pub struct IntervalProgress(u16);
-
-impl IntervalProgress {
-    /// Create a progress from a ratio in `0.0..=1.0`. Values outside the range
-    /// are clamped.
-    pub fn from_ratio(ratio: f64) -> Self {
-        let clamped = ratio.clamp(0.0, 1.0);
-        Self((clamped * u16::MAX as f64).round() as u16)
-    }
-
-    /// The progress as a ratio in `0.0..=1.0`.
-    pub fn to_ratio(self) -> f64 {
-        self.0 as f64 / u16::MAX as f64
-    }
-
-    /// The raw progress value in `0..=u16::MAX`.
-    pub fn get(self) -> u16 {
-        self.0
-    }
-
-    /// Whether this marks the start of an interval.
-    pub fn is_start(self) -> bool {
-        self.0 == 0
-    }
-
-    /// Whether this marks the end of an interval.
-    pub fn is_end(self) -> bool {
-        self.0 == u16::MAX
-    }
-}
-
 make_type! {
-    /// A route. A route must be strictly linear, with the only exception being
-    /// the first station can also be the last station. A route contains multiple
-    /// entries, and each entry contains either all platforms in the station, or
-    /// a subset of platforms in the station.
+    /// The route.
     Route,
     data {
         /// The name of the route.
         name: EcoString,
-        /// List of stations in the route.
-        stations: EcoVec<RouteStationRecord>,
+        intervals: RouteIntervals,
     }
-    cache {}
+    cache { }
 }
 
 make_type! {

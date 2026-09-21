@@ -13,13 +13,14 @@ use serde::Deserialize;
 use serde_json;
 use smallvec::SmallVec;
 
+use crate::route::{RouteInterval, RouteIntervals, StationRecord};
 use crate::time::{TTime, TimetableTime};
 use crate::trip::{TEntry, TEntryId, TravelMode, TripSchedule};
 use crate::units::distance::Distance;
 use crate::{
-    Interval, LonLat, Node, NodeKey, Route, RouteKey, RouteStationRecord, ServiceClass,
-    ServiceClassKey, Station as PaiagramStation, StationKey, StationRecord, StrokeStyle,
-    Trip as PaiagramTrip, TripKey, Wfc, WorldSnapshot,
+    Interval, LonLat, Node, NodeKey, Route, RouteKey, ServiceClass, ServiceClassKey,
+    Station as PaiagramStation, StationKey, StrokeStyle, Trip as PaiagramTrip, TripKey, Wfc,
+    WorldSnapshot,
 };
 
 /// The root structure of the qETRC JSON data
@@ -161,7 +162,7 @@ pub(super) fn parse_pyetgr(data: &[u8]) -> Option<WorldSnapshot> {
         );
     }
     for line in [&root.line].into_iter().chain(root.lines.iter()) {
-        let mut stations = EcoVec::with_capacity(line.stations.len());
+        let mut route_intervals = Vec::with_capacity(line.stations.len());
         for station in &line.stations {
             if station_node_map.contains_key(&*station.name) {
                 continue;
@@ -178,12 +179,11 @@ pub(super) fn parse_pyetgr(data: &[u8]) -> Option<WorldSnapshot> {
                 pos: LonLat::ZERO,
                 is_platform: true,
             };
-            stations.push(RouteStationRecord {
-                stn: StationRecord::All(stn_key),
-                milestone: None,
+            route_intervals.push(RouteInterval {
+                station_record: StationRecord::All(stn_key),
+                milestone: Some(Distance::from_km(station.distance_km)),
                 canvas_length: None,
-                prev_curr_nodes: EcoVec::new(),
-                curr_prev_nodes: EcoVec::new(),
+                nodes: EcoVec::new(),
             });
             world.stations.insert(stn_key, Wfc::new(stn_info));
             world.nodes.insert(node_key, Wfc::new(node_info));
@@ -193,7 +193,7 @@ pub(super) fn parse_pyetgr(data: &[u8]) -> Option<WorldSnapshot> {
             RouteKey::new(),
             Wfc::new(Route {
                 name: line.name.to_eco_string(),
-                stations,
+                intervals: RouteIntervals(route_intervals),
             }),
         );
     }

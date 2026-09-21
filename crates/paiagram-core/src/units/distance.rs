@@ -1,4 +1,5 @@
 use derive_more::{Add, AddAssign, Sub, SubAssign};
+use pathfinding::num_traits::Zero;
 use serde::{Deserialize, Serialize};
 
 /// The length or distance represented in metres
@@ -30,6 +31,15 @@ impl Distance {
     #[inline]
     pub fn from_m(m: i32) -> Self {
         Distance(m)
+    }
+}
+
+impl Zero for Distance {
+    fn zero() -> Self {
+        Self(0)
+    }
+    fn is_zero(&self) -> bool {
+        *self == Self::ZERO
     }
 }
 

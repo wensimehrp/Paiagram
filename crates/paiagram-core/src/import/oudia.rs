@@ -197,8 +197,8 @@ mod test {
     #[test]
     fn test_generate() -> V {
         let test_str = include_str!("../../../paiagram-oudia/test/sample.oud2");
-        let commands = parse_oudia(OudFileType::OuDiaSecond(test_str))?;
-        dbg!(commands);
+        let snap = parse_oudia(OudFileType::OuDiaSecond(test_str))?;
+        dbg!(snap);
         Ok(())
     }
 }

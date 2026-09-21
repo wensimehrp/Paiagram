@@ -1,4 +1,6 @@
+use egui::scroll_area::ScrollBarVisibility;
 use egui::*;
+use paiagram_core::RouteKey;
 use paiagram_core::trip::{TEntry, TravelMode};
 use serde::{Deserialize, Serialize};
 
@@ -8,28 +10,35 @@ use crate::font::TIMETABLTE_TEXT_STYLE;
 pub(crate) struct RouteTimetableTab {
     /// Scroll offset shared by the row header, column header and main grid.
     scroll: Vec2,
+    route_key: RouteKey,
 }
 
-impl Default for RouteTimetableTab {
-    fn default() -> Self {
-        Self { scroll: Vec2::ZERO }
+impl RouteTimetableTab {
+    fn new(route_key: RouteKey) -> Self {
+        Self {
+            scroll: Vec2::ZERO,
+            route_key,
+        }
     }
 }
 
 impl super::Tab for RouteTimetableTab {
     const NAME: &'static str = "Route timetable";
     fn main_display(&mut self, app: &mut crate::App, ui: &mut Ui) {
-        let cell_size: Vec2 = vec2(45.0, 20.0);
+        let Some(route) = app.routes.get(&self.route_key) else {
+            ui.centered_and_justified(|ui| ui.heading("Route does not exist"));
+            return;
+        };
+        let cell_size: Vec2 = vec2(45.0, 18.0);
         let total_rows: usize = 100;
         let total_cols: usize = app.trips.len();
 
         // Like `ScrollArea::show_rows`, but for the columns: only the visible columns are laid
         // out. Each cell has the same size, so we can jump straight to the visible range.
         ui.spacing_mut().item_spacing = Vec2::ZERO;
-        let spacing = ui.spacing().item_spacing;
-        let col_pitch = cell_size.x + spacing.x;
-        let row_pitch = cell_size.y + spacing.y;
-        let grid_height = row_pitch * total_rows as f32 - spacing.y;
+        let col_pitch = cell_size.x;
+        let row_pitch = cell_size.y;
+        let grid_height = row_pitch * total_rows as f32;
 
         // All three scroll areas share this offset. Each starts from it, and whichever one the
         // user scrolled reports back an updated offset for the others to follow.
@@ -59,6 +68,8 @@ impl super::Tab for RouteTimetableTab {
             });
         scroll.y = left.inner.state.offset.y;
 
+        // let trip_iter = route.trips.filter_map(|k| app.trips.get(k).map(|t| (*k, t)));
+
         // Column header: follows the grid's horizontal scroll.
         let top = Panel::top(ui.id().with("top panel")).frame(Frame::NONE).show(ui, |ui| {
             ScrollArea::horizontal()
@@ -76,11 +87,15 @@ impl super::Tab for RouteTimetableTab {
         scroll.x = top.inner.state.offset.x;
 
         // Main grid: scrolls both ways; whichever area moved last wins for the next frame.
+        ui.global_style_mut(|s| {
+            s.spacing.scroll.floating = false;
+        });
         let center = CentralPanel::no_frame().show(ui, |ui| {
             ScrollArea::both()
                 .auto_shrink(false)
                 .vertical_scroll_offset(scroll.y)
                 .horizontal_scroll_offset(scroll.x)
+                .scroll_bar_visibility(ScrollBarVisibility::AlwaysVisible)
                 .show_viewport(ui, |ui, viewport| {
                     ui.set_height(grid_height);
                     ui.set_width(col_pitch * total_cols as f32);
