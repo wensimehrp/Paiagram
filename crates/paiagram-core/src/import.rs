@@ -4,7 +4,6 @@
 use std::io;
 
 use crate::WorldSnapshot;
-#[cfg(debug_assertions)]
 use crate::import::oudia::OudFileType;
 use crate::time::TimetableDuration;
 use crate::units::time::TimetableTime;
