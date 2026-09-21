@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Definitions for the user interface.
+#![doc = include_str!("../README.md")]
 
 mod command_palette;
 mod config;
