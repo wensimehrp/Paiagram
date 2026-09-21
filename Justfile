@@ -22,7 +22,11 @@ watch-wasm-app:
 # Build WASM binary
 build-wasm-app:
     rm -rf dist/app
-    trunk --config ./crates/paiagram build --cargo-profile wasm-release -M -d $PWD/dist/app --public-url .
+    trunk \
+        --config ./crates/paiagram \
+        build --release \
+        --minify \
+        -d $PWD/dist/app --public-url .
 
 release-wasm-app: build-wasm-app rust-docs
     du -sh target/wasm32-unknown-unknown/wasm-release/paiagram.wasm | sort -hr

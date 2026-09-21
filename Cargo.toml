@@ -145,10 +145,5 @@ codegen-units = 1
 
 # Profile for converter. For some reason the converter requires strip to be debuginfo
 [profile.converter]
-inherits = "wasm-release"
-strip = "debuginfo"
-
-# Optimize for size in the wasm-release profile to reduce load times and bandwidth usage on web.
-[profile.wasm-release]
 inherits = "release"
-opt-level = "s"
+strip = "debuginfo"
