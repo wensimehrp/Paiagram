@@ -11,6 +11,7 @@ pub mod problems;
 pub mod route;
 pub mod trip;
 pub mod units;
+mod world;
 use std::num::NonZeroU32;
 use std::ops::{Deref, DerefMut};
 use std::sync::atomic::AtomicU16;
@@ -113,12 +114,6 @@ make_type! {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub enum NodeNeighbor {
-    Incoming(NodeKey),
-    Outgoing(NodeKey),
-}
-
 // better make some type-level guarantee that this
 make_type! {
     /// A node in the network. A node can be either of two types:
@@ -135,10 +130,19 @@ make_type! {
         /// If the station is a platform
         is_platform: bool,
     }
-    cache {
-        /// Both incoming and outgoing neighbors. This field is for speeding up
-        /// queries
-        neighbors: SmallVec<[NodeNeighbor; 2]>,
+    cache { }
+}
+
+impl NodeKey {
+    const MIN: Self = Self(std::num::NonZeroU64::new(1).unwrap());
+    const MAX: Self = Self(std::num::NonZeroU64::new(u64::MAX).unwrap());
+    pub fn outgoing_intervals<'a>(
+        self,
+        intervals: &'a IntervalCollection,
+    ) -> impl Iterator<Item = (&'a IntervalKey, &'a Wfc<Interval, IntervalCache>)> + 'a {
+        let min = (self, NodeKey::MIN);
+        let max = (self, NodeKey::MAX);
+        intervals.range(min..=max)
     }
 }
 
@@ -296,7 +300,7 @@ impl ExportObject for SaveFile {
     fn extension(&self) -> impl AsRef<str> {
         ".paia"
     }
-    fn write_content<W: std::io::prelude::Write>(&mut self, writer: &mut W) -> std::io::Result<()> {
+    fn write_content<W: std::io::Write>(&mut self, writer: &mut W) -> std::io::Result<()> {
         cbor4ii::serde::to_writer(writer, &self).map_err(std::io::Error::other)
     }
 }
