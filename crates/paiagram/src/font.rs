@@ -26,7 +26,7 @@ fn load_browser_fonts(db: &mut Database) -> Option<()> {
     Some(())
 }
 
-pub(crate) const TIMETABLTE_TEXT_STYLE: LazyLock<TextStyle> =
+pub(crate) static TIMETABLTE_TEXT_STYLE: LazyLock<TextStyle> =
     LazyLock::new(|| TextStyle::Name("timetable font".into()));
 
 pub(crate) fn load_default_font(ctx: Context, font_name: Arc<Mutex<String>>) {
