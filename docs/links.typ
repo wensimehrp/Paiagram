@@ -1,5 +1,5 @@
 #let links = (
-  repo: "https://github.com/WenSimEHRP/Paiagram",
+  repo: "https://github.com/wensimehrp/Paiagram",
   app: "https://paiagram.com/nightly",
   converter: "https://wensimehrp.github.io/Paiagram-oudia/",
   discussions: "https://github.com/WenSimEHRP/Paiagram/discussions",

@@ -55,15 +55,14 @@
     chapter-path("misc/web"),
     chapter("docs/changelog", content: [
       #title[Changelog]
-      #cmarker.render(label-prefix: "changelog-", read("../CHANGELOG.md"))
+      #cmarker.render(label-prefix: "changelog-", read("../CHANGELOG.md"), h1-level: 0)
     ]),
     chapter("docs/license", content: [
-      #title[License]
+      #title[License] <software-license>
 
       This is the License of Paiagram #links.paiagram-version.
 
       #cmarker.render(label-prefix: "license-", read("../LICENSE.md"))
     ]),
-    chapter-path("building"),
   ),
 )

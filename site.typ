@@ -27,16 +27,22 @@ exit 0
 
 // the real interesting stuff
 #show html.elem: typhoon.update-elem
-#import html: *
+#import html as h
+#import "@preview/based:0.2.0"
+#import "docs/links.typ": links
+
+#let icon-base64 = based.encode64(read("crates/paiagram/assets/paiagram-adaptive-no-bg.svg"))
 
 #context [#asset("main-styles.css", typhoon.tailwind-css()) <main-styles>]
 
-#document("index.html", html(lang: "en")[
-  #head[
-    #realize(<main-styles>, href => link(rel: "stylesheet", href: href))
-    #meta(charset: "utf-8")
-    #meta(name: "viewport", content: "width=device-width, initial-scale=1")
-    #style(
+#document("index.html", h.html(lang: "en")[
+  #h.head[
+    #realize(<main-styles>, href => h.link(rel: "stylesheet", href: href))
+    #h.meta(charset: "utf-8")
+    #h.meta(name: "viewport", content: "width=device-width, initial-scale=1")
+    #h.link(rel: "icon", type: "image/svg+xml", href: "data:image/svg+xml;base64," + icon-base64)
+    #h.title("Paiagram")
+    #h.style(
       ```css
       @import url('https://fonts.googleapis.com/css2?family=Lato:ital,wght@0,100;0,300;0,400;0,700;0,900;1,100;1,300;1,400;1,700;1,900&display=swap');
       :root {
@@ -45,48 +51,52 @@ exit 0
       ```.text,
     )
   ]
-  #body(class: "relative")[
+  #h.body(class: "bg-white dark:bg-neutral-800")[
     // First section
-    #section(
-      class: "w-full p-5 -z-50 bg-gray-900",
-      style: ```css
-      background-image: url('https://raw.githubusercontent.com/wensimehrp/WenSimEHRP/refs/heads/main/_MG_3019.avif');
-      background-size: cover;
-      background-position: center;
-      background-repeat: no-repeat;
-      ```.text,
-      div(
+    #h.section(
+      class: "w-full p-5 -z-50 bg-emerald-700 dark:bg-emerald-900",
+      h.div(
         class: {
           "mx-auto flex flex-col md:grid md:grid-cols-[0.7fr_1fr] text-white gap-10 p-5 md:p-10"
           " max-w-6xl"
         },
         {
-          div(class: "text-5xl md:text-6xl font-bold flex flex-col justify-center gap-3")[
-            #span(class: "text-shadow-sm")[Marey charts, reimagined.]
+          h.div(class: "text-5xl md:text-6xl font-bold flex flex-col justify-center gap-3")[
+            #h.span(class: "text-shadow-sm")[Marey charts, reimagined.]
             #let base-classes = {
               "py-3 px-6 bg-gray-300/50 rounded-sm backdrop-blur-sm text-2xl w-full"
               " shadow-sm hover:shadow-lg hover:bg-black/30 transition-all"
               " flex flex-col [&>small]:text-sm"
             }
-            #a(href: "https://example.com", class: base-classes, {
-              [Try it online]
-              small[Run the latest version]
+            #h.a(href: "https://example.com", class: base-classes, {
+              h.span[Try it Online]
+              h.small[Run the latest version]
             })
-            #a(href: "docs/index.html", class: base-classes, {
-              [Read the Docs]
-              small[Read the online documentation]
+            #h.a(href: "docs/index.html", class: base-classes, {
+              h.span[Read the Docs]
+              h.small[Read the online documentation]
+            })
+            #h.a(href: links.repo, class: base-classes, {
+              h.span[See the Source]
+              h.small[Browse the source code]
             })
           ]
-          div(class: "flex justify-center items-center", image("crates/paiagram/assets/paiagram.svg"))
+          h.div(
+            class: "flex justify-center items-center",
+            image(bytes(
+              read("crates/paiagram/assets/paiagram-no-bg.svg").replace(
+                "stroke=\"#000\"",
+                "stroke=\"#fff\"",
+              ),
+            )),
+          )
         },
       ),
     )
     // Explanation
-    #article(class: "prose mx-auto my-10 max-w-5xl p-5 md:p-10")[
-      #div(class: "flex justify-center")[
-        The rest of the site is still under construction...\
-        Come back later...
-      ]
+    #h.article(class: "prose prose-neutral dark:prose-invert mx-auto my-10 max-w-3xl p-5 md:p-10")[
+      #import "@preview/cmarker:0.1.10"
+      #cmarker.render(read("README.md"), h1-level: 0)
     ]
   ]
 ])
