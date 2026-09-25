@@ -12,8 +12,9 @@
   authors: ("Jeremy Gao",),
   lang: "en",
   html-renderer: new-hamber.html-renderer.with(
-    sidebar-image: html.img(
-      src: "https://upload.wikimedia.org/wikipedia/commons/8/88/Thecanadiannearjasper.jpg",
+    sidebar-image: html.div(
+      class: "p-6",
+      image("../crates/paiagram/assets/paiagram-adaptive-no-bg.svg"),
     ),
     extra-head-content: {
       // tracking script

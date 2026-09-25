@@ -26,11 +26,11 @@ _A fictional railway network featuring mixed services_
 > Paiagram is still in development. Don't expect it to be ready for production use right now.
 > Come back by late 2026 to see how it is going. I guarantee you that there would be lots of new commits.
 
-<!--typst-end-exclude-->
-
 Paiagram is a marey chart editor and timetable visualizer that runs on any modern potatoes.
 
 For context: It runs on some very bad hardware.
+
+<!--typst-end-exclude-->
 
 ## Features
 
@@ -54,7 +54,10 @@ For context: It runs on some very bad hardware.
 
 ## Contributing
 
-See [Contributor Notes](CONTRIBUTING.md)
+We welcome any sort of contributions, as long as they are helpful. Please read the
+[Contributor Notes](CONTRIBUTING.md) before starting.
+
+You can also check out `README.md` files in `./crates`.
 
 <!--typst-end-exclude-->
 

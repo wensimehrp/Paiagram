@@ -51,7 +51,7 @@ exit 0
       ```.text,
     )
   ]
-  #h.body(class: "bg-white dark:bg-neutral-800")[
+  #h.body(class: "bg-white dark:bg-zinc-900")[
     // First section
     #h.section(
       class: "w-full p-5 -z-50 bg-emerald-700 dark:bg-emerald-900",
@@ -94,7 +94,7 @@ exit 0
       ),
     )
     // Explanation
-    #h.article(class: "prose prose-neutral dark:prose-invert mx-auto my-10 max-w-3xl p-5 md:p-10")[
+    #h.article(class: "prose prose-zinc dark:prose-invert mx-auto my-10 max-w-3xl p-5 md:p-10")[
       #import "@preview/cmarker:0.1.10"
       #cmarker.render(read("README.md"), h1-level: 0)
     ]

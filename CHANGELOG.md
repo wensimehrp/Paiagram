@@ -4,7 +4,29 @@
 
 <!--typst-end-exclude-->
 
-This is the changelog for Paiagram. Visit <https://paiagram.com> for the latest version and documentation.
+This is the changelog for Paiagram. Visit <https://paiagram.com> for the latest version and
+documentation. This changelog includes changes to the following:
+
+- the Paiagram application
+- <https://paiagram.com> website
+- Paiagram's documentation
+
+## Unreleased
+
+### Added
+
+- Added Undo/redo system
+- The application now runs multi-threaded on both native and web.
+  Now the app doesn't freeze when processing data.
+
+### Changed
+
+- Redesigned <https://paiagram.com> website.
+- Updated `egui` UI framework to version `0.36.2`.
+
+### Removed
+
+- Removed LLT Import.
 
 ## 0.1.3 (May. 29, 2026)
 
@@ -53,7 +75,7 @@ This is the changelog for Paiagram. Visit <https://paiagram.com> for the latest 
 - Saving issues that could prevent writing changes.
 - Multiple OuDia import issues (including train/time handling).
 
-### Breaking
+### Removed
 
 - Dropped WebGL support.
 
