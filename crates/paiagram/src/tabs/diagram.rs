@@ -244,7 +244,7 @@ fn main_display(tab: &mut DiagramTab, app: &mut App, ui: &mut Ui) {
     for (_, trip) in app.trips.iter() {
         let stroke = Stroke::new(1.0, Color32::GREEN);
         let mut points: Vec<Pos2> = Vec::with_capacity(trip.schedule.entries().len());
-        trip.schedule.estimates(&app.intervals, |estimates| {
+        trip.schedule.estimates(&app.graph, |estimates| {
             for (idx, (estimate, entry)) in estimates.iter().enumerate() {
                 let Some(e) = estimate else { continue };
                 let x1 = tab.navi.logical_x_to_screen_x(e.arr.to_ticks());

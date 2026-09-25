@@ -6,8 +6,9 @@ use std::cell::RefCell;
 use ecow::EcoVec;
 use serde::{Deserialize, Serialize};
 
+use crate::graph::Graph;
 use crate::time::{TDuration, TTime, TimetableTime};
-use crate::{Distance, IntervalCollection, NodeKey};
+use crate::{Distance, IntervalCollection, IntervalKey, NodeKey};
 
 /// Travel mode. Travel mode defines how the vehicle travels.
 #[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq)]
@@ -27,20 +28,9 @@ impl TravelMode {
     }
 }
 
-#[derive(Clone, Serialize, Copy, Debug, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, Copy, Debug, PartialEq)]
 pub struct TEntryId(u32);
 static NEXT_ENTRY_ID: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
-
-impl<'de> Deserialize<'de> for TEntryId {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = u32::deserialize(deserializer)?;
-        if value == u32::MAX {
-            return Err(serde::de::Error::custom("Timetable entry ID exhausted"));
-        }
-        NEXT_ENTRY_ID.fetch_max(value + 1, std::sync::atomic::Ordering::Relaxed);
-        Ok(Self(value))
-    }
-}
 
 impl TEntryId {
     /// Create a new unique entry ID.
@@ -58,62 +48,15 @@ impl TEntryId {
 /// `derived` and `pinned` entries have different semantics. A derived entry may or may not visit
 /// the station, while a pinned entry must visit the station. Each pinned entry has an ID.
 #[derive(Clone, Serialize, Deserialize, Copy, Debug, PartialEq)]
-pub enum TEntry {
-    /// A derived state. this is calculated by the system.
-    Derived { node: NodeKey, id: TEntryId },
-    /// A pinned station. The trip must visit this station.
-    /// This requires runtime checks to make sure that the start and end are valid.
-    PinnedStop {
-        node: NodeKey,
-        arr: TravelMode,
-        dep: TravelMode,
-        external: bool,
-        id: TEntryId,
-    },
-    /// A pinned station. The trip must visit this station,
-    /// but the vehicle does not stop at the station.
-    PinnedPass {
-        node: NodeKey,
-        pass: TravelMode,
-        external: bool,
-        id: TEntryId,
-    },
-}
-
-impl TEntry {
-    pub fn is_external(&self) -> bool {
-        matches!(
-            self,
-            Self::PinnedStop { external: true, .. } | Self::PinnedPass { external: true, .. }
-        )
-    }
-    pub fn node_key(&self) -> NodeKey {
-        match self {
-            Self::Derived { node, .. } => *node,
-            Self::PinnedStop { node, .. } => *node,
-            Self::PinnedPass { node, .. } => *node,
-        }
-    }
-    pub fn id(&self) -> TEntryId {
-        match self {
-            Self::Derived { id, .. } => *id,
-            Self::PinnedStop { id, .. } => *id,
-            Self::PinnedPass { id, .. } => *id,
-        }
-    }
-    pub fn arr_or_pass_mut(&mut self) -> Option<&mut TravelMode> {
-        match self {
-            Self::Derived { .. } => None,
-            Self::PinnedStop { arr, .. } => Some(arr),
-            Self::PinnedPass { pass, .. } => Some(pass),
-        }
-    }
-    pub fn dep_mut(&mut self) -> Option<&mut TravelMode> {
-        let Self::PinnedStop { dep, .. } = self else {
-            return None;
-        };
-        Some(dep)
-    }
+pub struct TEntry {
+    /// Which node does the trip visit?
+    pub node: NodeKey,
+    /// How does the trip arrive at, or pass the node?
+    pub arr_or_pass: TravelMode,
+    /// How does the trip leave the node?
+    pub dep: Option<TravelMode>,
+    /// Id of the trip
+    pub id: TEntryId,
 }
 
 /// The trip's schedule.
@@ -139,10 +82,13 @@ impl TripSchedule {
 
     pub fn arr_to_dur(
         &self,
-        estimates: &[(Option<TEstimate>, TEntry)],
+        estimates: &[(Option<TEstimate>, EstimateEntry)],
         id: TEntryId,
     ) -> Option<TDuration> {
-        let Some(pos) = estimates.iter().position(|it| it.1.id() == id) else {
+        let Some(pos) = estimates
+            .iter()
+            .position(|(_, it)| matches!(it, EstimateEntry::Pinned(entry) if entry.id == id))
+        else {
             return None;
         };
         let e1 = estimates[pos].0?.arr;
@@ -172,6 +118,21 @@ impl TEstimate {
     }
 }
 
+#[derive(Clone, Copy)]
+pub enum EstimateEntry {
+    Pinned(TEntry),
+    Derived(NodeKey),
+}
+
+impl EstimateEntry {
+    pub fn node_key(&self) -> NodeKey {
+        match self {
+            Self::Pinned(entry) => entry.node,
+            Self::Derived(node) => *node,
+        }
+    }
+}
+
 /// A pending flexible entry, whose exact timepoint is only known once the next
 /// stable timepoint shows up.
 struct EstimateSketch {
@@ -183,14 +144,14 @@ struct EstimateSketch {
     dur: TDuration,
 }
 
-// stupid design to avoid allocations...
+type OutputInner = (Option<TEstimate>, EstimateEntry);
+
 thread_local! {
     static ESTIMATE_BUFFER: RefCell<Vec<EstimateSketch>> = RefCell::new(Vec::with_capacity(100));
-    static OUTPUT_BUFFER: RefCell<Vec<(Option<TEstimate>, TEntry)>> = RefCell::new(Vec::with_capacity(100));
+    static OUTPUT_BUFFER: RefCell<Vec<OutputInner>> = RefCell::new(Vec::with_capacity(100));
 }
 
 enum StackElem {
-    Ignored,
     In(NodeKey, TDuration),
     AtAt(NodeKey, TTime, TTime),
     ForAt(NodeKey, TDuration, TTime),
@@ -199,9 +160,9 @@ enum StackElem {
 
 impl TripSchedule {
     /// Output the estimates of the trip at all places
-    pub fn estimates<F, R>(&self, intervals: &IntervalCollection, f: F) -> R
+    pub fn estimates<F, R>(&self, graph: &Graph, f: F) -> R
     where
-        F: FnMut(&[(Option<TEstimate>, TEntry)]) -> R,
+        F: FnMut(&[OutputInner]) -> R,
     {
         ESTIMATE_BUFFER.with(|r| {
             let mut estimate_buf = r.borrow_mut();
@@ -209,35 +170,51 @@ impl TripSchedule {
             OUTPUT_BUFFER.with(|r| {
                 let mut output_buf = r.borrow_mut();
                 output_buf.clear();
-                self.estimates_inner(intervals, &mut estimate_buf, &mut output_buf, f)
+                self.estimates_inner(&graph, &mut estimate_buf, &mut output_buf, f)
             })
         })
     }
 
+    pub fn full_route<'a>(&'a self, graph: &'a Graph) -> impl Iterator<Item = EstimateEntry> + 'a {
+        self.entries
+            .array_windows()
+            .flat_map(|[curr, next]| {
+                let dijkstra_path = graph
+                    .dijkstra(curr.node, next.node)
+                    .map_or_default(|(mut nodes, _)| {
+                        nodes.pop(); // cut the end
+                        nodes
+                    })
+                    .into_iter()
+                    .skip(1) // cut the start
+                    .map(EstimateEntry::Derived);
+                std::iter::chain([EstimateEntry::Pinned(*curr)], dijkstra_path)
+            })
+            .chain(self.entries.last().copied().map(EstimateEntry::Pinned))
+    }
+
     fn estimates_inner<F, R>(
         &self,
-        itv: &IntervalCollection,
+        graph: &Graph,
         esb: &mut Vec<EstimateSketch>,
-        otb: &mut Vec<(Option<TEstimate>, TEntry)>,
+        otb: &mut Vec<OutputInner>,
         mut f: F,
     ) -> R
     where
-        F: FnMut(&[(Option<TEstimate>, TEntry)]) -> R,
+        F: FnMut(&[OutputInner]) -> R,
     {
         // The departure time and node of the last stable timepoint. `For` modes are
         // relative to it, and it anchors the distance-based estimates.
+        let itv = &graph.intervals;
         let mut prev_stable: Option<(TTime, NodeKey)> = None;
-        for entry in &self.entries {
-            let se = make_se(*entry);
+        for entry in self.full_route(graph) {
+            let se = make_se(entry);
             match se {
-                StackElem::Ignored => {
-                    otb.push((None, *entry));
-                }
                 StackElem::In(node, dur) => {
                     // The estimate depends on the next stable timepoint, so only push
                     // a placeholder for now and record where it lives.
                     let slot = otb.len();
-                    otb.push((None, *entry));
+                    otb.push((None, entry));
                     esb.push(EstimateSketch { node, slot, dur });
                 }
                 // A stable timepoint unwinds all pending flexible entries.
@@ -247,7 +224,7 @@ impl TripSchedule {
                     } else {
                         esb.clear();
                     }
-                    otb.push((Some(TEstimate { arr: at, dep: dt }), *entry));
+                    otb.push((Some(TEstimate { arr: at, dep: dt }), entry));
                     prev_stable = Some((dt, node));
                 }
                 StackElem::ForAt(node, ad, dt) => {
@@ -258,11 +235,11 @@ impl TripSchedule {
                                 arr: prev_t + ad,
                                 dep: dt,
                             }),
-                            *entry,
+                            entry,
                         ));
                     } else {
                         esb.clear();
-                        otb.push((None, *entry));
+                        otb.push((None, entry));
                     }
                     // `dt` is absolute, so this entry still anchors the next segment
                     // even if its own estimate could not be resolved.
@@ -274,14 +251,14 @@ impl TripSchedule {
                         if ok {
                             let arr = prev_t + ad;
                             let dep = arr + dd;
-                            otb.push((Some(TEstimate { arr, dep }), *entry));
+                            otb.push((Some(TEstimate { arr, dep }), entry));
                             prev_stable = Some((dep, node));
                         } else {
-                            otb.push((None, *entry));
+                            otb.push((None, entry));
                         }
                     } else {
                         esb.clear();
-                        otb.push((None, *entry));
+                        otb.push((None, entry));
                     }
                 }
             };
@@ -303,12 +280,19 @@ impl TripSchedule {
 fn unwind(
     itv: &IntervalCollection,
     esb: &mut Vec<EstimateSketch>,
-    otb: &mut Vec<(Option<TEstimate>, TEntry)>,
+    otb: &mut Vec<OutputInner>,
     prev_t: TTime,
     prev_n: NodeKey,
     curr_n: NodeKey,
     total: TDuration,
 ) -> bool {
+    let interval_length = |a: NodeKey, b: NodeKey| -> Option<Distance> {
+        if a == b {
+            return Some(Distance::ZERO);
+        }
+        let key = IntervalKey::new(a, b);
+        itv.get(&key).map(|e| e.length())
+    };
     // Dwelling does not count towards the average velocity.
     let stop_dur: TDuration = esb.iter().map(|s| s.dur).sum();
     let travel_dur = total - stop_dur;
@@ -317,14 +301,14 @@ fn unwind(
     let mut total_dis = 0i64;
     let mut cur = prev_n;
     for s in esb.iter() {
-        let Some(dis) = interval_length(itv, cur, s.node) else {
+        let Some(dis) = interval_length(cur, s.node) else {
             esb.clear();
             return false;
         };
         total_dis += dis.0 as i64;
         cur = s.node;
     }
-    let Some(dis) = interval_length(itv, cur, curr_n) else {
+    let Some(dis) = interval_length(cur, curr_n) else {
         esb.clear();
         return false;
     };
@@ -337,7 +321,7 @@ fn unwind(
     let mut t_f = prev_t.0 as f64;
     let mut cur = prev_n;
     for s in esb.drain(..) {
-        let dis = interval_length(itv, cur, s.node).unwrap().0 as f64;
+        let dis = interval_length(cur, s.node).unwrap().0 as f64;
         let leg = if total_dis_f == 0.0 {
             0.0
         } else {
@@ -353,37 +337,31 @@ fn unwind(
     true
 }
 
-/// The length of the interval from `a` to `b` in metres. A node is trivially at
-/// distance zero from itself; otherwise the interval must exist in the collection.
-fn interval_length(itv: &IntervalCollection, a: NodeKey, b: NodeKey) -> Option<Distance> {
-    if a == b {
-        return Some(Distance::ZERO);
-    }
-    itv.get(&(a, b)).map(|e| e.length())
-}
-
-fn make_se(entry: TEntry) -> StackElem {
+fn make_se(estimate_entry: EstimateEntry) -> StackElem {
     use StackElem as Se;
     use TravelMode as Tm;
-    match entry {
-        TEntry::Derived { node, .. } => Se::In(node, TDuration::ZERO),
-        TEntry::PinnedStop { external, .. } if external => Se::Ignored,
-        TEntry::PinnedPass { external, .. } if external => Se::Ignored,
-        TEntry::PinnedStop { node, arr, dep, .. } => match (arr, dep) {
-            (Tm::At(at), Tm::At(dt)) => Se::AtAt(node, at, dt),
-            (Tm::At(at), Tm::For(dd)) => Se::AtAt(node, at, at + dd),
-            (Tm::At(at), Tm::Flexible) => Se::AtAt(node, at, at),
-            (Tm::For(ad), Tm::At(dt)) => Se::ForAt(node, ad, dt),
-            (Tm::For(ad), Tm::For(dd)) => Se::ForFor(node, ad, dd),
-            (Tm::For(ad), Tm::Flexible) => Se::ForFor(node, ad, TDuration::ZERO),
-            (Tm::Flexible, Tm::At(dt)) => Se::AtAt(node, dt, dt),
-            (Tm::Flexible, Tm::For(dd)) => Se::In(node, dd),
-            (Tm::Flexible, Tm::Flexible) => Se::In(node, TDuration::ZERO),
+    let node = estimate_entry.node_key();
+    let match_entry = match estimate_entry {
+        EstimateEntry::Pinned(tentry) => tentry,
+        EstimateEntry::Derived(node) => TEntry {
+            node,
+            arr_or_pass: TravelMode::Flexible,
+            dep: None,
+            id: TEntryId(0),
         },
-        TEntry::PinnedPass { node, pass, .. } => match pass {
-            Tm::At(dt) => Se::AtAt(node, dt, dt),
-            Tm::For(dd) => Se::ForFor(node, dd, TDuration::ZERO),
-            Tm::Flexible => Se::In(node, TDuration::ZERO),
-        },
+    };
+    match (
+        match_entry.arr_or_pass,
+        match_entry.dep.unwrap_or(Tm::Flexible),
+    ) {
+        (Tm::At(at), Tm::At(dt)) => Se::AtAt(node, at, dt),
+        (Tm::At(at), Tm::For(dd)) => Se::AtAt(node, at, at + dd),
+        (Tm::At(at), Tm::Flexible) => Se::AtAt(node, at, at),
+        (Tm::For(ad), Tm::At(dt)) => Se::ForAt(node, ad, dt),
+        (Tm::For(ad), Tm::For(dd)) => Se::ForFor(node, ad, dd),
+        (Tm::For(ad), Tm::Flexible) => Se::ForFor(node, ad, TDuration::ZERO),
+        (Tm::Flexible, Tm::At(dt)) => Se::AtAt(node, dt, dt),
+        (Tm::Flexible, Tm::For(dd)) => Se::In(node, dd),
+        (Tm::Flexible, Tm::Flexible) => Se::In(node, TDuration::ZERO),
     }
 }

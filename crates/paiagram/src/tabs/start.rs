@@ -68,7 +68,7 @@ impl Tab for StartTab {
                     ui.label(app.stations.len().to_string());
                     ui.end_row();
                     ui.label(tr!("tab-start-amount-intervals"));
-                    ui.label(app.intervals.len().to_string());
+                    ui.label(app.graph.intervals().len().to_string());
                     ui.end_row();
                 });
             })

@@ -117,14 +117,16 @@ impl super::Tab for RouteTimetableTab {
                             for (key, trip) in app.trips.iter().skip(min_col).take(max_col) {
                                 ui.vertical(|ui| {
                                     for entry in trip.schedule.entries().iter().take(total_rows) {
-                                        let disp = match match entry {
-                                            TEntry::Derived { .. } => TravelMode::Flexible,
-                                            TEntry::PinnedStop { dep, .. } => *dep,
-                                            TEntry::PinnedPass { pass, .. } => *pass,
-                                        } {
-                                            TravelMode::Flexible => "..".into(),
-                                            TravelMode::At(t) => t.to_oud2_str(false),
-                                            TravelMode::For(d) => d.to_string_no_arrow(),
+                                        fn format_travel_mode(mode: TravelMode) -> String {
+                                            match mode {
+                                                TravelMode::Flexible => "..".into(),
+                                                TravelMode::At(t) => t.to_oud2_str(false),
+                                                TravelMode::For(d) => d.to_string_no_arrow(),
+                                            }
+                                        }
+                                        let disp = match entry.dep {
+                                            Some(mode) => format_travel_mode(mode),
+                                            None => format_travel_mode(entry.arr_or_pass),
                                         };
                                         ui.add_sized(
                                             cell_size,

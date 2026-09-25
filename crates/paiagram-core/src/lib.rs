@@ -121,29 +121,12 @@ make_type! {
     /// or pass, or a _switch_, which is a railway switch or traffic junction.
     Node,
     data {
-        /// The name of the node, e.g. I, II, III and 1, 2, 3 for China Railway
-        name: EcoString,
-        /// The parent station of the node
-        parent: StationKey,
         /// The position of the node
+        name: EcoString,
+        parent: StationKey,
         pos: LonLat,
-        /// If the station is a platform
-        is_platform: bool,
     }
     cache { }
-}
-
-impl NodeKey {
-    const MIN: Self = Self(std::num::NonZeroU64::new(1).unwrap());
-    const MAX: Self = Self(std::num::NonZeroU64::new(u64::MAX).unwrap());
-    pub fn outgoing_intervals<'a>(
-        self,
-        intervals: &'a IntervalCollection,
-    ) -> impl Iterator<Item = (&'a IntervalKey, &'a Wfc<Interval, IntervalCache>)> + 'a {
-        let min = (self, NodeKey::MIN);
-        let max = (self, NodeKey::MAX);
-        intervals.range(min..=max)
-    }
 }
 
 make_type! {
@@ -173,7 +156,7 @@ make_type! {
     /// An interval is a directed edge, so the ordered pair of
     /// its endpoints, [`IntervalKey`], uniquely identifies it. Parallel edges are not allowed.
     Interval,
-    key = (NodeKey, NodeKey),
+    key = graph::SortedKey,
     data {
         /// The nodes at and between the two nodes this interval connects.
         /// This includes the starting and ending nodes.
@@ -182,6 +165,7 @@ make_type! {
         nodes: EcoVec<LonLat>,
         /// The length of the interval. If the length is None, then it is calculated from nodes.
         length: Option<NonZeroU32>,
+        direction: graph::IntervalDirection,
     }
     cache {
         /// trips passing this interval
@@ -201,10 +185,9 @@ pub struct WorldSnapshot {
     pub trips: TripCollection,
     pub vehicles: VehicleCollection,
     pub stations: StationCollection,
-    pub intervals: IntervalCollection,
+    pub graph: graph::Graph,
     pub service_classes: ServiceClassCollection,
     pub routes: RouteCollection,
-    pub nodes: NodeCollection,
 }
 
 /// The truth of the application. This structure holds a write-only log and a set of undos and

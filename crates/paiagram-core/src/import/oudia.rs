@@ -8,6 +8,7 @@ use paiagram_oudia::{Station as OudStation, StationToGraph, parse_oud_to_ir, par
 use rustc_hash::FxBuildHasher;
 use smallvec::SmallVec;
 
+use crate::graph::IntervalDirection;
 use crate::time::TimetableTime;
 use crate::trip::{TEntry, TEntryId, TravelMode, TripSchedule};
 use crate::{
@@ -42,23 +43,13 @@ pub(crate) fn parse_oudia(
                 pos: LonLat::ZERO,
             }),
         );
-        world.nodes.insert(
+        world.graph.insert_node(
             node_key,
-            Wfc::new(Node {
+            Node {
                 name: "Platform 1".into(),
                 parent: stn_key,
                 pos: LonLat::ZERO,
-                is_platform: true,
-            }),
-        );
-        world.nodes.insert(
-            node_key,
-            Wfc::new(Node {
-                name: "Platform 2".into(),
-                parent: stn_key,
-                pos: LonLat::ZERO,
-                is_platform: true,
-            }),
+            },
         );
     }
     for edge_ref in graph.edge_references() {
@@ -66,19 +57,13 @@ pub(crate) fn parse_oudia(
         let target = (*graph.node_weight(edge_ref.target()).unwrap()) as *const OudStation;
         let source = *stn_to_node_key.get(&source).unwrap();
         let target = *stn_to_node_key.get(&target).unwrap();
-        world.intervals.insert(
+        world.graph.insert_interval(
             (source, target),
-            Wfc::new(Interval {
+            Interval {
                 nodes: EcoVec::new(),
                 length: NonZeroU32::new(1000),
-            }),
-        );
-        world.intervals.insert(
-            (target, source),
-            Wfc::new(Interval {
-                nodes: EcoVec::new(),
-                length: NonZeroU32::new(1000),
-            }),
+                direction: IntervalDirection::Both,
+            },
         );
     }
     let mut service_classes = route
@@ -118,48 +103,38 @@ pub(crate) fn parse_oudia(
         for (idx, (stn, entry)) in schedule.enumerate() {
             let node = *stn_to_node_key.get(&(stn as *const OudStation)).unwrap();
             let id = TEntryId::new();
-            let external = false;
-            buf.push(match (entry.arrival_time, entry.departure_time) {
-                (Some(at), Some(dt)) => TEntry::PinnedStop {
-                    node,
-                    arr: TravelMode::At(TimetableTime::from_hms(0, 0, at.seconds())),
-                    dep: TravelMode::At(TimetableTime::from_hms(0, 0, dt.seconds())),
-                    external,
-                    id,
-                },
-                (Some(at), None) => TEntry::PinnedStop {
-                    node,
-                    arr: TravelMode::At(TimetableTime::from_hms(0, 0, at.seconds())),
-                    dep: TravelMode::Flexible,
-                    external,
-                    id,
-                },
+            let arr_or_pass: TravelMode;
+            let dep: Option<TravelMode>;
+            match (entry.arrival_time, entry.departure_time) {
+                (Some(at), Some(dt)) => {
+                    arr_or_pass = TravelMode::At(TimetableTime::from_hms(0, 0, at.seconds()));
+                    dep = Some(TravelMode::At(TimetableTime::from_hms(0, 0, dt.seconds())));
+                }
+                (Some(at), None) => {
+                    arr_or_pass = TravelMode::At(TimetableTime::from_hms(0, 0, at.seconds()));
+                    dep = None;
+                }
                 (None, Some(dt)) => {
                     let mode = TravelMode::At(TimetableTime::from_hms(0, 0, dt.seconds()));
                     if idx == 0 {
-                        TEntry::PinnedStop {
-                            node,
-                            arr: TravelMode::Flexible,
-                            dep: mode,
-                            external,
-                            id,
-                        }
+                        arr_or_pass = TravelMode::Flexible;
+                        dep = Some(mode);
                     } else {
-                        TEntry::PinnedPass {
-                            node,
-                            pass: mode,
-                            external,
-                            id,
-                        }
+                        arr_or_pass = mode;
+                        dep = None;
                     }
                 }
-                (None, None) => TEntry::PinnedPass {
-                    node,
-                    pass: TravelMode::Flexible,
-                    external,
-                    id,
-                },
-            })
+                (None, None) => {
+                    arr_or_pass = TravelMode::Flexible;
+                    dep = None;
+                }
+            };
+            buf.push(TEntry {
+                node,
+                arr_or_pass,
+                dep,
+                id,
+            });
         }
         let (cls_name, cls_key, cls_counter) =
             service_classes.get_mut(trip.class_index).map_or_else(

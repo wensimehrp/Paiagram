@@ -5,7 +5,7 @@ use egui::{
 use egui_i18n::tr;
 use paiagram_core::time::TimetableTime;
 use paiagram_core::trip::TravelMode::{self, At, Flexible, For};
-use paiagram_core::trip::{TEntry, TEstimate, TripSchedule};
+use paiagram_core::trip::{EstimateEntry, TEntry, TEstimate, TripSchedule};
 use paiagram_core::{Source, TripKey, WorldSnapshot};
 use serde::{Deserialize, Serialize};
 
@@ -55,7 +55,7 @@ fn show_trip(tab: &mut TripTab, app: &mut App, ui: &mut Ui) {
                 ui.end_row();
                 // Remove button background
                 ui.visuals_mut().widgets.inactive.weak_bg_fill = Color32::TRANSPARENT;
-                trip.schedule.estimates(&snap.intervals, |estimates| {
+                trip.schedule.estimates(&snap.graph, |estimates| {
                     for (estimate, entry) in estimates.into_iter().copied() {
                         row_ui(
                             tab.trip_key,
@@ -78,21 +78,21 @@ fn show_trip(tab: &mut TripTab, app: &mut App, ui: &mut Ui) {
 fn row_ui(
     trip_key: TripKey,
     schedule: &TripSchedule,
-    estimates: &[(Option<TEstimate>, TEntry)],
+    estimates: &[(Option<TEstimate>, EstimateEntry)],
     estimate: Option<TEstimate>,
-    entry: TEntry,
+    entry: EstimateEntry,
     snap: &WorldSnapshot,
     ui_queue: &mut Vec<UiCommand>,
     ui: &mut Ui,
 ) {
     const BTN_SIZE: Vec2 = vec2(70.0, 18.0);
-    let Some(node) = snap.nodes.get(&entry.node_key()) else {
+    let Some(node) = snap.graph.nodes().get(&entry.node_key()) else {
         ui.label("No station");
         return;
     };
     if let Some(stn) = snap.stations.get(&node.parent) {
         let mut text = RichText::new(stn.name.as_str());
-        if matches!(entry, TEntry::Derived { .. }) {
+        if matches!(entry, EstimateEntry::Derived(..)) {
             text = text.weak();
         }
         if ui.button(text).clicked() {
@@ -117,29 +117,21 @@ fn row_ui(
     };
     let (res1, res2) = ui
         .horizontal(|ui| match entry {
-            TEntry::Derived { .. } => (
+            EstimateEntry::Derived(..) => (
                 ui.add_sized(wide_size, Button::new(fmt_str(|e| e.arr, "||"))),
                 None,
             ),
-            TEntry::PinnedStop { arr, dep, .. } => (
-                match arr {
+            EstimateEntry::Pinned(entry) => (
+                match entry.arr_or_pass {
                     For(d) => ui.add_sized(BTN_SIZE, DurationDragValue(d, &mut arr_pass_dur)),
                     At(t) => ui.add_sized(BTN_SIZE, TimeDragValue(t, &mut arr_pass_dur)),
                     Flexible => ui.add_sized(BTN_SIZE, Button::new(fmt_str(|e| e.arr, "--:--:--"))),
                 },
-                Some(match dep {
+                entry.dep.map(|dep| match dep {
                     For(d) => ui.add_sized(BTN_SIZE, DurationDragValue(d, &mut dep_dur)),
                     At(t) => ui.add_sized(BTN_SIZE, TimeDragValue(t, &mut dep_dur)),
                     Flexible => ui.add_sized(BTN_SIZE, Button::new(fmt_str(|e| e.dep, "--:--:--"))),
                 }),
-            ),
-            TEntry::PinnedPass { pass, .. } => (
-                match pass {
-                    For(d) => ui.add_sized(wide_size, DurationDragValue(d, &mut arr_pass_dur)),
-                    At(t) => ui.add_sized(wide_size, TimeDragValue(t, &mut arr_pass_dur)),
-                    Flexible => ui.add_sized(wide_size, Button::new(fmt_str(|e| e.arr, "||"))),
-                },
-                None,
             ),
         })
         .inner;
@@ -160,26 +152,20 @@ fn row_ui(
     //     });
     // }
 
-    let res1_align = if matches!(entry, TEntry::PinnedStop { .. }) {
+    let res1_align = if matches!(entry, EstimateEntry::Pinned(entry) if entry.dep.is_none()) {
         RectAlign::LEFT
     } else {
         RectAlign::RIGHT
     };
 
     Popup::menu(&res1).align(res1_align).show(|ui| {
+        let EstimateEntry::Pinned(entry) = entry else {
+            ui.button("Insert");
+            return;
+        };
         // display departure stuff and change mode
-        if ui
-            .button(match entry {
-                TEntry::Derived { .. } => "Pin",
-                TEntry::PinnedStop { .. } => "Make Non-stop",
-                TEntry::PinnedPass { .. } => "Make stop",
-            })
-            .clicked()
-        {
-            // do something
-        }
         let t = estimate.map(|e| e.arr).unwrap_or_default();
-        let d = schedule.arr_to_dur(estimates, entry.id()).unwrap_or_default();
+        let d = schedule.arr_to_dur(estimates, entry.id).unwrap_or_default();
         let mut new_mode = None;
         if ui.add(TimeDragValue(t, &mut None)).clicked() {
             new_mode = Some(TravelMode::At(t));
@@ -191,10 +177,8 @@ fn row_ui(
             new_mode = Some(TravelMode::Flexible);
         };
         let mut new_entry = entry;
-        if let Some(mode) = new_mode
-            && let Some(arr_pass_mode) = new_entry.arr_or_pass_mut()
-        {
-            *arr_pass_mode = mode;
+        if let Some(mode) = new_mode {
+            new_entry.arr_or_pass = mode;
             // cmd_queue.push(Command::TripEntryChange {
             //     key: trip_key,
             //     id: new_entry.id(),
@@ -206,23 +190,24 @@ fn row_ui(
         return;
     };
     Popup::menu(&res2).align(RectAlign::RIGHT).show(|ui| {
+        let EstimateEntry::Pinned(entry) = entry else {
+            return;
+        };
         let t = estimate.map(|e| e.arr).unwrap_or_default();
         let d = estimate.map(|e| e.duration()).unwrap_or_default();
         let mut new_mode = None;
         if ui.add(TimeDragValue(t, &mut None)).clicked() {
-            new_mode = Some(TravelMode::At(t));
+            new_mode = Some(Some(TravelMode::At(t)));
         };
         if ui.add(DurationDragValue(d, &mut None)).clicked() {
-            new_mode = Some(TravelMode::For(d));
+            new_mode = Some(Some(TravelMode::For(d)));
         };
         if ui.button("Flexible").clicked() {
-            new_mode = Some(TravelMode::Flexible);
+            new_mode = Some(Some(TravelMode::Flexible));
         };
         let mut new_entry = entry;
-        if let Some(mode) = new_mode
-            && let Some(dep_mode) = new_entry.dep_mut()
-        {
-            *dep_mode = mode;
+        if let Some(mode) = new_mode {
+            new_entry.dep = mode;
             // cmd_queue.push(Command::TripEntryChange {
             //     key: trip_key,
             //     id: new_entry.id(),

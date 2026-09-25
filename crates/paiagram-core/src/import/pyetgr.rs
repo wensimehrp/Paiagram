@@ -13,6 +13,7 @@ use serde::Deserialize;
 use serde_json;
 use smallvec::SmallVec;
 
+use crate::graph::IntervalDirection;
 use crate::route::{RouteInterval, RouteIntervals, StationRecord};
 use crate::time::{TTime, TimetableTime};
 use crate::trip::{TEntry, TEntryId, TravelMode, TripSchedule};
@@ -63,10 +64,10 @@ struct Line<'a> {
 
 #[derive(Deserialize)]
 struct Station<'a> {
-    /// Station name
+    /// Station name. Chinese: 站名
     #[serde(rename = "zhanming")]
     name: Cow<'a, str>,
-    /// Distance from the start of the line, in kilometers
+    /// Distance from the start of the line, in kilometers. Chinese: 里程
     #[serde(rename = "licheng")]
     distance_km: f32,
 }
@@ -75,8 +76,8 @@ struct Station<'a> {
 struct Trip<'a> {
     /// Each trip may have multiple service numbers.
     /// In qETRC's case, the first service number is always the main one, and we
-    /// use that one in Paiagram.
-    #[serde(rename = "checi")] // checi is 车次
+    /// use that one in Paiagram. Chinese: 车次
+    #[serde(rename = "checi")]
     trip_number: Vec<Cow<'a, str>>,
     #[serde(rename = "type")]
     service_class: Cow<'a, str>,
@@ -91,15 +92,13 @@ struct TimetableEntry<'a> {
     /// the station.
     #[serde(rename = "business")]
     would_stop: Option<bool>,
-    /// Arrival time in "HH:MM:SS" format. "ddsj" in the original qETRC data refers
-    /// to "到达时间".
+    /// Arrival time in "HH:MM:SS" format. Chinese: "到达时间".
     #[serde(rename = "ddsj")]
     arr: &'a str,
-    /// Departure time in "HH:MM:SS" format. "cfsj" in the original qETRC data
-    /// refers to "出发时间".
+    /// Departure time in "HH:MM:SS" format. Chinese: "出发时间".
     #[serde(rename = "cfsj")]
     dep: &'a str,
-    /// Station name
+    /// Station name. Chinese: 站名
     #[serde(rename = "zhanming")]
     station_name: Cow<'a, str>,
 }
@@ -118,7 +117,7 @@ struct Vehicle<'a> {
 
 #[derive(Deserialize)]
 struct VehicleServiceEntry<'a> {
-    /// Service number of the service
+    /// Service number of the service. Chinese: 车次
     #[serde(rename = "checi")]
     service_number: Cow<'a, str>,
 }
@@ -177,7 +176,6 @@ pub(super) fn parse_pyetgr(data: &[u8]) -> Option<WorldSnapshot> {
                 name: "".into(),
                 parent: stn_key,
                 pos: LonLat::ZERO,
-                is_platform: true,
             };
             route_intervals.push(RouteInterval {
                 station_record: StationRecord::All(stn_key),
@@ -186,7 +184,7 @@ pub(super) fn parse_pyetgr(data: &[u8]) -> Option<WorldSnapshot> {
                 nodes: EcoVec::new(),
             });
             world.stations.insert(stn_key, Wfc::new(stn_info));
-            world.nodes.insert(node_key, Wfc::new(node_info));
+            world.graph.insert_node(node_key, node_info);
             station_node_map.insert(&station.name, node_key);
         }
         world.routes.insert(
@@ -206,12 +204,13 @@ pub(super) fn parse_pyetgr(data: &[u8]) -> Option<WorldSnapshot> {
         {
             let length = curr_stn.distance_km - prev_stn.distance_km;
             let length = Distance::from_km(length).0;
-            world.intervals.insert(
+            world.graph.insert_interval(
                 (prev_key, curr_key),
-                Wfc::new(Interval {
+                Interval {
                     nodes: eco_vec![],
                     length: NonZeroU32::new(length as u32),
-                }),
+                    direction: IntervalDirection::Both,
+                },
             );
         }
     }
@@ -230,22 +229,21 @@ pub(super) fn parse_pyetgr(data: &[u8]) -> Option<WorldSnapshot> {
         super::normalize_times(times.iter_mut().flat_map(|(_, arr, dep)| [arr, dep].into_iter()));
         let entries: EcoVec<_> = times
             .into_iter()
-            .filter_map(|(node, arr, dep)| {
-                if arr == dep {
-                    Some(TEntry::PinnedPass {
-                        node,
-                        pass: TravelMode::At(arr),
-                        external: false,
-                        id: TEntryId::new(),
-                    })
+            .map(|(node, arr_time, dep_time)| {
+                let arr_or_pass: TravelMode;
+                let dep: Option<TravelMode>;
+                if arr_time == dep_time {
+                    arr_or_pass = TravelMode::At(arr_time);
+                    dep = None;
                 } else {
-                    Some(TEntry::PinnedStop {
-                        node,
-                        arr: TravelMode::At(arr),
-                        dep: TravelMode::At(dep),
-                        external: false,
-                        id: TEntryId::new(),
-                    })
+                    arr_or_pass = TravelMode::At(arr_time);
+                    dep = Some(TravelMode::At(dep_time));
+                }
+                TEntry {
+                    node,
+                    arr_or_pass,
+                    dep,
+                    id: TEntryId::new(),
                 }
             })
             .collect();
