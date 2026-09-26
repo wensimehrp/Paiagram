@@ -6,7 +6,7 @@ repository.workspace = true
 license.workspace = true
 
 [dependencies]
-js-sys = "0.3.81"
+js-sys.workspace = true
 paiagram-oudia = { workspace = true, features = ["serde"] }
 ron.workspace = true
 serde_json.workspace = true
