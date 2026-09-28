@@ -3,7 +3,7 @@
 
 use eframe::egui_wgpu::{self, wgpu};
 use paiagram_core::route::DiagramCache;
-use paiagram_core::{RouteKey, RouteKeyHashMap};
+use paiagram_core::{RouteKey, RouteKeyHashMap, Source};
 
 use super::gpu_trip::{ShaderEntry, gpu_trip};
 use crate::tabs::Navigatable;
@@ -27,13 +27,26 @@ impl DiagramCallback {
         }
     }
 
-    pub fn populate(&mut self, cache: &DiagramCache) {
+    pub fn populate(&mut self, cache: &DiagramCache, source: &Source) {
         self.entry_segments.clear();
         self.stations.clear();
         for idx in 0..100 {
             self.stations.push(gpu_trip::CanvasLength::new(idx as f32 * 10.0));
         }
         for (trip_key, segments) in &cache.0 {
+            let Some(trip) = source.trips.get(trip_key) else {
+                continue;
+            };
+            let style = trip.service_class.and_then(|key| source.service_classes.get(&key)).map_or(
+                gpu_trip::Style {
+                    thickness: 1.0,
+                    fill_rgba: 0x808080ff,
+                },
+                |class| gpu_trip::Style {
+                    thickness: class.style.width as f32 * 1.0,
+                    fill_rgba: u32::from_be_bytes(class.style.color.to_array()),
+                },
+            );
             for &[
                 (curr_time_seconds, curr_index, curr_progress),
                 (next_time_seconds, next_index, next_progress),
@@ -46,10 +59,7 @@ impl DiagramCallback {
                     next_time_seconds: next_time_seconds.0,
                     next_index,
                     next_progress,
-                    style: gpu_trip::Style {
-                        thickness: 1.0,
-                        fill_rgba: 0x808080ff,
-                    },
+                    style,
                 });
             }
         }

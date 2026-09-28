@@ -178,7 +178,7 @@ impl Tab for DiagramTab {
             } else {
                 self.cache.0.clear();
             }
-            self.callback.populate(&self.cache);
+            self.callback.populate(&self.cache, &app.source);
         }
         Frame::canvas(ui.style())
             .inner_margin(Margin::ZERO)
