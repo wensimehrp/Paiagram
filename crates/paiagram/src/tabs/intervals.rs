@@ -49,16 +49,18 @@ impl super::Tab for IntervalsTab {
                                     .nodes()
                                     .get(&lo)
                                     .map_or("Unknown", |wfc| wfc.name.as_str());
-                                let direction_text = match interval.direction {
+                                let di_text = match interval.direction {
                                     IntervalDirection::Both => "<=>",
                                     IntervalDirection::HiToLo => "->",
                                     IntervalDirection::LoToHi => "<-",
                                 };
-                                let button = egui::Button::selectable(
+                                let response = Button::selectable(
                                     self.focused == Some(interval_key),
-                                    format!("{hi_text} {direction_text} {lo_text}"),
-                                );
-                                if ui.add(button.truncate()).clicked() {
+                                    format!("{hi_text} {di_text} {lo_text}"),
+                                )
+                                .truncate()
+                                .atom_ui(ui);
+                                if response.clicked() {
                                     self.focused = Some(interval_key);
                                 }
                             }

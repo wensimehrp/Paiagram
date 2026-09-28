@@ -39,7 +39,7 @@ impl Tab for ServiceClassesTab {
                             {
                                 let service_class_str = service_class.name.as_str();
                                 let atom_id = ui.id().with(service_class_str);
-                                let atom = Atom::custom(atom_id, Vec2::new(40.0, 15.0));
+                                let atom = Atom::custom(atom_id, Vec2::new(35.0, 15.0));
                                 let button = egui::Button::selectable(
                                     self.selected_class == Some(service_class_key),
                                     (atom, service_class_str),
@@ -55,10 +55,10 @@ impl Tab for ServiceClassesTab {
                                         [rect.left_center(), rect.right_center()],
                                         stroke,
                                     );
-                                    ui.painter().circle_filled(
-                                        rect.left_center() + Vec2::new(2.0, 0.0),
-                                        3.0,
-                                        stroke.color,
+                                    let stroke = Stroke::new(2.0, service_class.style.color);
+                                    ui.painter().line_segment(
+                                        [rect.left_top(), rect.left_bottom()],
+                                        stroke,
                                     );
                                 };
                                 if button.clicked() {

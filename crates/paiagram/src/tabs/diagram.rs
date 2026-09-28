@@ -1,7 +1,7 @@
 use egui::*;
 use paiagram_core::route::DiagramCache;
 use paiagram_core::time::{Tick, TimetableTime};
-use paiagram_core::{CanvasLength, RouteKey};
+use paiagram_core::{CanvasLength, RouteKey, TripKey};
 use serde::{Deserialize, Serialize};
 
 pub(crate) mod gpu_draw;
@@ -9,6 +9,7 @@ mod gpu_trip;
 
 use super::{Navigatable, Tab};
 use crate::App;
+use crate::selection::{SelectedItem, SelectedItems};
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(into = "DiagramTabNoCache", from = "DiagramTabNoCache")]
@@ -285,5 +286,115 @@ fn main_display(tab: &mut DiagramTab, app: &mut App, ui: &mut Ui) {
     tab.callback.populate_uniforms(&tab.navi, response.rect);
     painter.add(tab.callback.clone().paint_callback(response.rect));
 
+    // selected item overlay
+    let animation_progress = ui.animate_bool_responsive(
+        ui.id().with("ui animation progress"),
+        !matches!(app.selected_items, SelectedItems::None),
+    );
+    painter.rect_filled(
+        response.rect,
+        0,
+        Color32::WHITE.gamma_multiply(lerp(0.0..=0.5, animation_progress)),
+    );
+
     // interactive zone
+    if response.clicked()
+        && let Some(pos) = response.interact_pointer_pos()
+        && matches!(app.selected_items.take(), SelectedItems::None)
+    {
+        if let Some(trip_key) = select_trip_from_pos(tab, pos) {
+            app.selected_items.replace(SelectedItem::Trip(trip_key));
+        }
+    }
+
+    // display zone
+    if let SelectedItems::Trips(trips) = &app.selected_items {
+        for trip_key in trips {
+            let Some(trip) = app.source.trips.get(trip_key) else {
+                continue;
+            };
+            let stroke =
+                trip.service_class.and_then(|key| app.source.service_classes.get(&key)).map_or(
+                    Stroke::new(lerp(1.0..=5.0, animation_progress), Color32::GRAY),
+                    |class| {
+                        Stroke::new(
+                            lerp((class.style.width as f32 * 1.0)..=5.0, animation_progress),
+                            class.style.color,
+                        )
+                    },
+                );
+            let Some(segments) = tab.cache.0.get(trip_key) else {
+                continue;
+            };
+            for &[
+                (curr_time, curr_idx, curr_progress),
+                (next_time, next_idx, next_progress),
+            ] in segments
+            {
+                // translate the segments to xy
+                let x1 = tab.navi.logical_x_to_screen_x(curr_time.to_ticks());
+                let x2 = tab.navi.logical_x_to_screen_x(next_time.to_ticks());
+                // TODO: use practical values for curr idx and next idx station heights
+                let curr_station_h =
+                    tab.navi.logical_y_to_screen_y(CanvasLength::from_cm(1.0 * curr_idx as f64));
+                let next_station_h =
+                    tab.navi.logical_y_to_screen_y(CanvasLength::from_cm(1.0 * next_idx as f64));
+                let next_next_station_h = tab
+                    .navi
+                    .logical_y_to_screen_y(CanvasLength::from_cm(1.0 * (next_idx + 1) as f64));
+                let y1 = lerp(curr_station_h..=next_station_h, curr_progress);
+                let y2 = lerp(next_station_h..=next_next_station_h, next_progress);
+                let p1 = Pos2::new(x1, y1);
+                let p2 = Pos2::new(x2, y2);
+                painter.line_segment([p1, p2], stroke);
+                painter.circle_filled(p1, stroke.width / 2.0, stroke.color);
+                painter.circle_filled(p2, stroke.width / 2.0, stroke.color);
+            }
+        }
+    }
+}
+
+fn select_trip_from_pos(tab: &DiagramTab, pos: Pos2) -> Option<TripKey> {
+    // TODO: store the available entries in a sorted vector...
+    let _ticks = tab.navi.screen_x_to_logical_x(pos.x);
+    for (
+        trip_key,
+        &[
+            (curr_time, curr_idx, curr_progress),
+            (next_time, next_idx, next_progress),
+        ],
+    ) in tab
+        .cache
+        .0
+        .iter()
+        .flat_map(|(key, segments)| std::iter::zip(std::iter::repeat(key), segments))
+    {
+        // translate the segments to xy
+        let x1 = tab.navi.logical_x_to_screen_x(curr_time.to_ticks());
+        let x2 = tab.navi.logical_x_to_screen_x(next_time.to_ticks());
+        // TODO: use practical values for curr idx and next idx station heights
+        let curr_station_h =
+            tab.navi.logical_y_to_screen_y(CanvasLength::from_cm(1.0 * curr_idx as f64));
+        let next_station_h =
+            tab.navi.logical_y_to_screen_y(CanvasLength::from_cm(1.0 * next_idx as f64));
+        let next_next_station_h =
+            tab.navi.logical_y_to_screen_y(CanvasLength::from_cm(1.0 * (next_idx + 1) as f64));
+        const SELECT_RADIUS: f32 = 7.0;
+        let y1 = lerp(curr_station_h..=next_station_h, curr_progress);
+        let y2 = lerp(next_station_h..=next_next_station_h, next_progress);
+        let p1 = Pos2::new(x1, y1);
+        let p2 = Pos2::new(x2, y2);
+        let diff = p2 - p1;
+        let len_sq = diff.length_sq();
+        let t = if len_sq > 0.0 {
+            ((pos - p1).dot(diff) / len_sq).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        let closest = p1 + t * diff;
+        if (closest - pos).length_sq() <= SELECT_RADIUS * SELECT_RADIUS {
+            return Some(*trip_key);
+        }
+    }
+    None
 }
