@@ -214,6 +214,11 @@ impl<'w> Behavior<MainTab> for MainTabViewer<'w> {
                         IntervalsTab::default(),
                     )));
                 }
+                if ui.button("ServiceClasses").clicked() {
+                    ui_action_queue.push(UiCommand::OpenOrFocus(MainTab::ServiceClasses(
+                        ServiceClassesTab::default(),
+                    )));
+                }
                 for (route_key, info) in &self.app.snap.routes {
                     if ui.button(info.name.as_str()).clicked() {
                         ui_action_queue.push(UiCommand::OpenOrFocus(MainTab::Diagram(
