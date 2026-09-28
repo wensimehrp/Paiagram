@@ -9,11 +9,12 @@ use rustc_hash::FxBuildHasher;
 use smallvec::SmallVec;
 
 use crate::graph::IntervalDirection;
+use crate::route::{RouteInterval, RouteIntervals, StationRecord};
 use crate::time::TimetableTime;
 use crate::trip::{TEntry, TEntryId, TravelMode, TripSchedule};
 use crate::{
-    Interval, LonLat, Node, NodeKey, ServiceClass, ServiceClassKey, Station, StationKey,
-    StrokeStyle, Trip, TripKey, Wfc, WorldSnapshot,
+    Interval, LonLat, Node, NodeKey, Route, RouteKey, ServiceClass, ServiceClassKey, Station,
+    StationKey, StrokeStyle, Trip, TripKey, Wfc, WorldSnapshot,
 };
 
 pub(super) enum OudFileType<'a> {
@@ -31,32 +32,49 @@ pub(crate) fn parse_oudia(
     };
     let route = root.route;
     let graph = route.stations.to_graph();
-    let mut stn_to_node_key = HashMap::with_capacity_and_hasher(graph.node_count(), FxBuildHasher);
-    for node in graph.node_weights().copied() {
-        let node_key = NodeKey::new();
-        let stn_key = StationKey::new();
-        stn_to_node_key.insert(node as *const OudStation, node_key);
+    let stations_on_route = route.stations.merge_duplicate();
+    let mut route_intervals = Vec::with_capacity(stations_on_route.len());
+    let mut stn_to_node_key: HashMap<*const OudStation, (NodeKey, StationKey), _> =
+        HashMap::with_capacity_and_hasher(graph.node_count(), FxBuildHasher);
+    for station in stations_on_route {
+        let (node_key, station_key) = stn_to_node_key
+            .entry(station as *const OudStation)
+            .or_insert((NodeKey::new(), StationKey::new()));
+        route_intervals.push(RouteInterval {
+            station_record: StationRecord::All(*station_key),
+            milestone: None,
+            canvas_length: None,
+            nodes: EcoVec::new(),
+        });
+        let station_name = station.name.clone().to_eco_string();
         world.stations.insert(
-            stn_key,
+            *station_key,
             Wfc::new(Station {
-                name: node.name.clone().into(),
+                name: station_name.clone(),
                 pos: LonLat::ZERO,
             }),
         );
         world.graph.insert_node(
-            node_key,
+            *node_key,
             Node {
-                name: "Platform 1".into(),
-                parent: stn_key,
+                name: station_name,
+                parent: *station_key,
                 pos: LonLat::ZERO,
             },
         );
     }
+    world.routes.insert(
+        RouteKey::new(),
+        Wfc::new(Route {
+            name: route.name.to_eco_string(),
+            intervals: RouteIntervals(route_intervals),
+        }),
+    );
     for edge_ref in graph.edge_references() {
         let source = (*graph.node_weight(edge_ref.source()).unwrap()) as *const OudStation;
         let target = (*graph.node_weight(edge_ref.target()).unwrap()) as *const OudStation;
-        let source = *stn_to_node_key.get(&source).unwrap();
-        let target = *stn_to_node_key.get(&target).unwrap();
+        let (source, _) = *stn_to_node_key.get(&source).unwrap();
+        let (target, _) = *stn_to_node_key.get(&target).unwrap();
         world.graph.insert_interval(
             (source, target),
             Interval {
@@ -101,7 +119,7 @@ pub(crate) fn parse_oudia(
     for (trip, schedule) in diagram.trip_station_times(&deduplicated) {
         let mut buf = EcoVec::new();
         for (idx, (stn, entry)) in schedule.enumerate() {
-            let node = *stn_to_node_key.get(&(stn as *const OudStation)).unwrap();
+            let (node, _) = *stn_to_node_key.get(&(stn as *const OudStation)).unwrap();
             let id = TEntryId::new();
             let arr_or_pass: TravelMode;
             let dep: Option<TravelMode>;
@@ -174,6 +192,18 @@ mod test {
         let test_str = include_str!("../../../paiagram-oudia/test/sample.oud2");
         let snap = parse_oudia(OudFileType::OuDiaSecond(test_str))?;
         dbg!(snap);
+        Ok(())
+    }
+
+    #[test]
+    fn sample_applies_cleanly() -> V {
+        let test_str = include_str!("../../../paiagram-oudia/test/sample.oud2");
+        let snap = parse_oudia(OudFileType::OuDiaSecond(test_str))?;
+        assert!(!snap.trips.is_empty(), "sample should contain trips");
+        // Applying the imported world is what runs `update_diff`, which looks up the
+        // interval between each pair of consecutive trip entries.
+        let mut world = crate::WorldSnapshot::default();
+        world.mutate(|_| snap.clone());
         Ok(())
     }
 }

@@ -40,8 +40,8 @@ pub(crate) fn load_file(
         // send to the rayon thread.
         // Use a tx rx pair from futures_channel instead.
         rayon::spawn(move || {
-            let commands = make_snapshot(&data, import_type).map_err(|e| e.to_string());
-            *state.lock() = FileLoadState::Done(commands);
+            let new_world = make_snapshot(&data, import_type).map_err(|e| e.to_string());
+            *state.lock() = FileLoadState::Done(new_world);
             let _ = tx.send(());
         });
         let _ = rx.await;

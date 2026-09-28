@@ -178,36 +178,52 @@ pub trait StationToGraph {
     fn to_graph<'a>(&'a self) -> petgraph::graph::UnGraph<&'a Station, ()>;
 }
 
+/// Resolves every station to the index of the station it is merged into, following
+/// branch/loop links transitively (union-find with path compression).
+fn representatives(stations: &[Station]) -> Vec<usize> {
+    fn find(rep: &mut [usize], mut i: usize) -> usize {
+        while rep[i] != i {
+            rep[i] = rep[rep[i]];
+            i = rep[i];
+        }
+        i
+    }
+    let mut rep: Vec<usize> = (0..stations.len()).collect();
+    for i in 0..stations.len() {
+        let Some(ext) = stations[i].branch_index.or(stations[i].loop_index) else {
+            continue;
+        };
+        if ext < stations.len() && ext != i {
+            let a = find(&mut rep, i);
+            let b = find(&mut rep, ext);
+            rep[a] = b;
+        }
+    }
+    for i in 0..stations.len() {
+        find(&mut rep, i);
+    }
+    rep
+}
+
 impl StationToGraph for [Station] {
     fn merge_duplicate(&self) -> Vec<&Station> {
-        let mut ret: Vec<&Station> = self.iter().collect();
-        for curr in 0..ret.len() {
-            let Some(ext) = ret[curr].branch_index.or(ret[curr].loop_index) else {
-                continue;
-            };
-            if let Some(stn) = ret.get(ext).copied() {
-                ret[curr] = stn;
-            }
-        }
-        ret
+        let rep = representatives(self);
+        (0..self.len()).map(|i| &self[rep[i]]).collect()
     }
+
     fn to_graph<'a>(&'a self) -> petgraph::graph::UnGraph<&'a Station, ()> {
-        // only merge stations based on branch index and loop index
+        let rep = representatives(self);
         let mut graph = petgraph::graph::UnGraph::new_undirected();
-        let mut idxs: Vec<_> = self.iter().map(|stn| graph.add_node(stn)).collect();
-        for curr in 0..idxs.len() {
-            let Some(ext) = self[curr].branch_index.or(self[curr].loop_index) else {
-                continue;
-            };
-            if let Some(node_idx) = idxs.get(ext).copied() {
-                let old_idx = idxs[curr];
-                idxs[curr] = node_idx;
-                graph.remove_node(old_idx);
+        let mut node_of: Vec<Option<petgraph::graph::NodeIndex>> = vec![None; self.len()];
+        for i in 0..self.len() {
+            let r = rep[i];
+            if node_of[r].is_none() {
+                node_of[r] = Some(graph.add_node(&self[r]));
             }
         }
-        for [prev, next] in idxs.array_windows::<2>().copied() {
-            if graph.node_weight(prev).is_some() && graph.node_weight(next).is_some() {
-                graph.update_edge(prev, next, ());
+        for [a, b] in rep.array_windows::<2>() {
+            if a != b {
+                graph.update_edge(node_of[*a].unwrap(), node_of[*b].unwrap(), ());
             }
         }
         graph

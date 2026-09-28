@@ -22,10 +22,12 @@ pub struct SortedKey {
 
 impl SortedKey {
     pub fn other(&self, node_key: NodeKey) -> NodeKey {
-        if self.hi == node_key {
+        if node_key == self.hi {
             self.lo
-        } else {
+        } else if node_key == self.lo {
             self.hi
+        } else {
+            panic!("{node_key:?} is not an endpoint of interval {self:?}");
         }
     }
     pub fn new(v1: NodeKey, v2: NodeKey) -> Self {
@@ -96,7 +98,7 @@ impl Graph {
     ) -> impl Iterator<Item = (IntervalKey, &'a Wfc<Interval, IntervalCache>)> + 'a {
         let min_key = (node_key, NodeKey::MIN);
         let max_key = (node_key, NodeKey::MAX);
-        self.adjacency.range(min_key..max_key).copied().filter_map(|(source, target)| {
+        self.adjacency.range(min_key..=max_key).copied().filter_map(|(source, target)| {
             let key = SortedKey::new(source, target);
             self.intervals.get(&key).map(|interval| (key, interval))
         })
@@ -134,5 +136,16 @@ impl Graph {
 
     pub fn insert_interval(&mut self, (a, b): (NodeKey, NodeKey), interval: Interval) {
         self.intervals.insert(IntervalKey::new(a, b), Wfc::new(interval));
+        self.adjacency.insert((a, b));
+        self.adjacency.insert((b, a));
+    }
+
+    pub fn remove_interval(
+        &mut self,
+        (a, b): (NodeKey, NodeKey),
+    ) -> Option<Wfc<Interval, IntervalCache>> {
+        self.adjacency.remove(&(a, b))?;
+        self.adjacency.remove(&(b, a))?;
+        self.intervals.remove(&IntervalKey::new(a, b))
     }
 }

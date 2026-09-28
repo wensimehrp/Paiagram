@@ -13,7 +13,7 @@ mod widgets;
 use std::sync::Arc;
 
 pub use config::AppLanguage;
-use egui::{Button, Frame, Id, OpenUrl, Panel, Popup, Ui};
+use egui::{Button, Frame, Id, OpenUrl, Panel, Popup, ScrollArea, Ui};
 use egui_i18n::tr;
 use egui_material_icons::icons;
 use egui_tiles::{
@@ -70,6 +70,13 @@ impl App {
             file_load_state: Arc::new(Mutex::new(FileLoadState::Idle)),
             file_write_state: Arc::new(Mutex::new(FileWriteState::Idle)),
         }
+    }
+    /// Initializes the custom WGPU resources used by the diagram tab's render callback.
+    ///
+    /// Call once at startup, once the WGPU backend exists. `msaa_samples` must match the render
+    /// pass egui uses (eframe's `NativeOptions::multisampling`).
+    pub fn init_gpu(&mut self, render_state: &eframe::egui_wgpu::RenderState, msaa_samples: u32) {
+        crate::tabs::diagram::gpu_draw::init(render_state, msaa_samples);
     }
     /// Apply UI commands and change the main ui state
     fn apply_ui_commands(&mut self, mus: &mut MainUiState) {
@@ -198,7 +205,26 @@ impl<'w> Behavior<MainTab> for MainTabViewer<'w> {
         _tile_id: TileId,
         _tabs: &egui_tiles::Tabs,
     ) {
-        ui.menu_button(icons::ICON_ADD, |ui| ui.label("Hi!"));
+        // wtf???
+        let mut ui_action_queue = std::mem::take(&mut self.app.ui_action_queue);
+        ui.menu_button(icons::ICON_ADD, |ui| {
+            ScrollArea::vertical().show(ui, |ui| {
+                if ui.button("Intervals").clicked() {
+                    ui_action_queue.push(UiCommand::OpenOrFocus(MainTab::Intervals(
+                        IntervalsTab::default(),
+                    )));
+                }
+                for (route_key, info) in &self.app.snap.routes {
+                    if ui.button(info.name.as_str()).clicked() {
+                        ui_action_queue.push(UiCommand::OpenOrFocus(MainTab::Diagram(
+                            DiagramTab::new(*route_key),
+                        )));
+                    }
+                }
+                ui.separator();
+            })
+        });
+        self.app.ui_action_queue = ui_action_queue;
     }
 }
 
@@ -226,8 +252,8 @@ pub fn show_ui(
                     unreachable!();
                 };
                 match world {
-                    Ok(world) => {
-                        app.source.update(|_| Ok(world));
+                    Ok(new_world) => {
+                        app.source.mutate(|_old_world| Ok(new_world));
                     }
                     Err(s) => {}
                 }
@@ -293,13 +319,6 @@ pub fn show_ui(
                         is_oudia_second: false,
                     }
                     .write_to_file::<false>(app.file_write_state.clone());
-                }
-                ui.separator();
-                #[cfg(debug_assertions)]
-                if ui.button("Open Diagram").clicked() {
-                    app.ui_action_queue.push(UiCommand::OpenOrFocus(MainTab::Diagram(
-                        DiagramTab::new(RouteKey::new()),
-                    )));
                 }
             });
             Popup::menu(&ui.button(tr!("menu-about"))).show(|ui| {

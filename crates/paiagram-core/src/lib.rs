@@ -18,6 +18,7 @@ use std::sync::atomic::AtomicU16;
 
 use ecow::{EcoString, EcoVec};
 use egui::Color32;
+pub use graph::IntervalDirection;
 use make_type::make_type;
 use nohash_hasher::BuildNoHashHasher;
 use paiagram_rw::ExportObject;
@@ -208,12 +209,12 @@ impl Source {
     pub fn revision(&self) -> u64 {
         self.revision
     }
-    /// Updates the world and makes a backup
-    pub fn update(
+    /// Mutates the world and makes a backup
+    pub fn mutate(
         &mut self,
         f: impl FnOnce(WorldSnapshot) -> Result<WorldSnapshot, String>,
     ) -> Result<(), String> {
-        let new_snap = f(self.snap.clone())?;
+        let new_world = f(self.snap.clone())?;
 
         if self.redo_len > 0 {
             let active_len = self.history.len() - self.redo_len;
@@ -221,8 +222,9 @@ impl Source {
             self.redo_len = 0;
         }
 
-        let old = std::mem::replace(&mut self.snap, new_snap);
+        let old = self.snap.clone();
         self.history.push(old);
+        self.snap.mutate(|_old_world| new_world);
         self.revision += 1;
         Ok(())
     }

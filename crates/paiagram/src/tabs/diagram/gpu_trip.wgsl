@@ -1,240 +1,146 @@
+// SPDX-License-Identifier: MPL-2.0
+
 struct Uniforms {
-    ticks_min: i32,
-    y_min: f32,
     screen_size: vec2<f32>,
-    x_per_unit: f32,
-    y_per_unit: f32,
-    screen_origin: vec2<f32>,
-    repeat_interval_ticks: i32,
-    repeat_from: i32,
-    repeat_count: u32,
-    source_instance_count: u32,
-    visible_entry_min_index: u32,
-    feathering_radius: f32,
-    lod_stride: u32,
-    visible_entry_count: u32,
-    styles: array<vec4<u32>, 256>,
+    ticks_min: i32,
+    canvas_length_min: f32,
+    x_per_tick: f32,
+    entry_segment_count: u32,
+    y_per_canvas_length: f32,
+    pixels_per_point: f32,
 };
 
-/// field0: .......C AAAAAAAA AAAAAAAA AAAAAAAA
-/// field1: IIIIIIII DDDDDDDD DDDDDDDD DDDDDDDD
-/// field2: SSSSSSSS SSSSSSSS TTTTTTTT TTTTTTTT
-///
-/// C: This bit is set if the entry connects to the next entry
-/// A: arrival seconds (signed). 2^24 ~= 194 days (97 days on each side)
-/// D: departure seconds (signed). Same as arrival seconds.
-/// S: station index
-/// T: track index
-/// I: style table index (8-bit, 0..=255).
-///    style data (width + colour) is stored in uniform buffer.
-struct Entry {
-    field0: u32,
-    field1: u32,
-    field2: u32,
+struct Tick {
+    value: i32,
 }
 
-fn entry_connects_to_next_entry(e: Entry) -> bool {
-    return ((e.field0 >> 24) & 1u) != 0;
+struct CanvasLength {
+    value: f32,
 }
 
-fn entry_arrival_seconds(e: Entry) -> i32 {
-    return bitcast<i32>((e.field0 & 0x00ffffffu) << 8u) >> 8;
+struct EntrySegment {
+    curr_time_seconds: i32,
+    curr_index: u32,
+    curr_progress: f32,
+    next_time_seconds: i32,
+    next_index: u32,
+    next_progress: f32,
+    style: Style,
 }
 
-fn entry_departure_seconds(e: Entry) -> i32 {
-    return bitcast<i32>((e.field1 & 0x00ffffffu) << 8u) >> 8;
+struct Style {
+    thickness: f32,
+    fill_rgba: u32,
 }
 
-fn entry_style_index(e: Entry) -> u32 {
-    return e.field1 >> 24;
-}
-
-fn entry_station_index(e: Entry) -> u32 {
-    return e.field2 >> 16;
-}
-
-fn entry_track_index(e: Entry) -> u32 {
-    return e.field2 & 0x0000ffffu;
-}
+/// Uniform buffers for general info
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+/// Storage for all entries
+@group(0) @binding(1) var<storage, read> entry_segments: array<EntrySegment>;
+/// Storage for stations
+@group(0) @binding(2) var<storage, read> stations: array<CanvasLength>;
 
 struct SegmentMeshVertex {
+    /// Position along line length
     along: f32,
+    /// Offset along line normal.
+    /// -1.0 = Left edge, +1.0 = Right edge
     side: f32,
-    outer: f32,
 };
 
-struct SegmentOut {
-    p0: vec2<f32>,
-    p1: vec2<f32>,
-    half_width: f32,
-    nx: f32,
-    ny: f32,
-    _pad0: f32,
-    color: vec4<f32>,
-};
-
-@group(0) @binding(0) var<uniform> uniforms: Uniforms;
-@group(0) @binding(1) var<storage, read> entries: array<Entry>;
-@group(0) @binding(2) var<storage, read> stations: array<f32>;
-@group(0) @binding(3) var<storage, read_write> segments: array<SegmentOut>;
-@group(0) @binding(4) var<storage, read> render_segments: array<SegmentOut>;
-
-const SEGMENT_MESH_VERTICES: array<SegmentMeshVertex, 8> = array<SegmentMeshVertex, 8>(
-    SegmentMeshVertex(0.0, 1.0, 0.0),
-    SegmentMeshVertex(0.0, -1.0, 0.0),
-    SegmentMeshVertex(1.0, 1.0, 0.0),
-    SegmentMeshVertex(1.0, -1.0, 0.0),
-    SegmentMeshVertex(0.0, 1.0, 1.0),
-    SegmentMeshVertex(1.0, 1.0, 1.0),
-    SegmentMeshVertex(0.0, -1.0, 1.0),
-    SegmentMeshVertex(1.0, -1.0, 1.0),
+const SEGMENT_MESH_VERTICES: array<SegmentMeshVertex, 4> = array<SegmentMeshVertex, 4>(
+    SegmentMeshVertex(0.0, 1.0),  // 0, Start-Left
+    SegmentMeshVertex(0.0, -1.0), // 1, Start-Right
+    SegmentMeshVertex(1.0, 1.0),  // 2, End-Left
+    SegmentMeshVertex(1.0, -1.0), // 3, End-Right
 );
 
-const SEGMENT_MESH_INDICES: array<u32, 18> = array<u32, 18>(
-    0u, 1u, 2u, 1u, 3u, 2u,
-    4u, 0u, 5u, 0u, 2u, 5u,
-    1u, 6u, 3u, 6u, 7u, 3u,
+const SEGMENT_MESH_LENGTH: u32 = 6;
+
+const SEGMENT_MESH_INDICES: array<u32, 6> = array<u32, 6>(
+    0u, 1u, 2u,
+    1u, 3u, 2u,
 );
+
+const FEATHER_WIDTH_PX: f32 = 2.0;
 
 const TICKS_PER_SECOND: i32 = 100;
-const COMPUTE_WORKGROUP_SIZE: u32 = 64u;
 
-fn seconds_to_screen_x(secs: i32, repeat: i32) -> f32 {
-    let repeat_offset_ticks = repeat * uniforms.repeat_interval_ticks;
-    let ticks = secs * TICKS_PER_SECOND + repeat_offset_ticks;
-    return f32(ticks - uniforms.ticks_min) / uniforms.x_per_unit;
+fn seconds_to_screen_x(secs: i32) -> f32 {
+    // let repeat_offset_ticks = repeat * uniforms.repeat_interval_ticks;
+    let ticks = secs * TICKS_PER_SECOND;
+    return f32(ticks - uniforms.ticks_min) / uniforms.x_per_tick;
 }
 
-fn height_to_screen_y(height: f32) -> f32 {
-    return (height - uniforms.y_min) / uniforms.y_per_unit;
-}
-
-fn make_segment(entry: Entry, seg_a: vec2<f32>, seg_b: vec2<f32>) -> SegmentOut {
-    let style_index = entry_style_index(entry);
-    let style = uniforms.styles[style_index].x;
-    let width_steps = (style >> 24u) & 0xFFu;
-    let width_px = max(f32(width_steps) * 0.25, 1.0);
-
-    let packed_color = style & 0x00ffffffu;
-    let color = vec4<f32>(
-        f32((packed_color >> 0u) & 0xFFu) / 255.0,
-        f32((packed_color >> 8u) & 0xFFu) / 255.0,
-        f32((packed_color >> 16u) & 0xFFu) / 255.0,
-        1.0,
-    );
-
-    // Cursed linear algebra which I don't understand
-    // I only know trigs!
-    let dx = seg_b.x - seg_a.x;
-    let dy = seg_b.y - seg_a.y;
-    let inv_len = inverseSqrt(max(dx * dx + dy * dy, 1e-12));
-    let nx = -dy * inv_len;
-    let ny = dx * inv_len;
-
-    return SegmentOut(
-        seg_a,
-        seg_b,
-        width_px * 0.5,
-        nx,
-        ny,
-        0.0,
-        color,
-    );
-}
-
-fn invalid_segment() -> SegmentOut {
-    return SegmentOut(
-        vec2<f32>(1.0e9, 1.0e9),
-        vec2<f32>(1.0e9, 1.0e9),
-        1.0,
-        0.0,
-        0.0,
-        0.0,
-        vec4<f32>(0.0, 0.0, 0.0, 0.0),
-    );
-}
-
-@compute @workgroup_size(COMPUTE_WORKGROUP_SIZE)
-fn cs_main(@builtin(global_invocation_id) global_id: vec3<u32>) {
-    let source_count = uniforms.source_instance_count;
-    let visible_offset = global_id.x * uniforms.lod_stride;
-    if source_count == 0u || visible_offset >= uniforms.visible_entry_count {
-        return;
-    }
-
-    let entry_index = (uniforms.visible_entry_min_index + visible_offset) % source_count;
-    let pair_index = global_id.x * 2u;
-
-    let entry = entries[entry_index];
-    let connects_to_next = entry_connects_to_next_entry(entry);
-    let has_visible_next = visible_offset + uniforms.lod_stride < uniforms.visible_entry_count;
-    let can_connect =
-        connects_to_next && has_visible_next && (entry_index + uniforms.lod_stride < source_count);
-
-    let arr_secs = entry_arrival_seconds(entry);
-    let dep_secs = entry_departure_seconds(entry);
-    let station_index = entry_station_index(entry);
-    // currently no track index
-    let y = height_to_screen_y(stations[station_index]);
-
-    let seg_0 = vec2<f32>(seconds_to_screen_x(arr_secs, 0), y);
-    let seg_1 = vec2<f32>(seconds_to_screen_x(dep_secs, 0), y);
-    segments[pair_index] = make_segment(entry, seg_0, seg_1);
-
-    if !can_connect {
-        segments[pair_index + 1] = invalid_segment();
-        return;
-    }
-
-    let next_entry = entries[entry_index + uniforms.lod_stride];
-    let next_station_index = entry_station_index(next_entry);
-    let next_arr_secs = entry_arrival_seconds(next_entry);
-    let next_y = height_to_screen_y(stations[next_station_index]);
-
-    let seg_2 = vec2<f32>(seconds_to_screen_x(next_arr_secs, 0), next_y);
-    segments[pair_index + 1] = make_segment(entry, seg_1, seg_2);
+fn height_to_screen_y(height: CanvasLength) -> f32 {
+    return (height.value - uniforms.canvas_length_min) / uniforms.y_per_canvas_length;
 }
 
 struct VertexOut {
     @location(0) color: vec4<f32>,
-    @location(1) feather_alpha: f32,
+    /// Signed distance in screen points from the centre line
+    @location(1) offset: f32,
+    /// Half the line thickness in screen points
+    @location(2) half_width: f32,
     @builtin(position) position: vec4<f32>,
 };
 
 @vertex
 fn vs_main(@builtin(vertex_index) vertex_index: u32, @builtin(instance_index) instance_index: u32) -> VertexOut {
-    let visible_entry_count = uniforms.visible_entry_count;
-    let logical_entry_count = (visible_entry_count + uniforms.lod_stride - 1u) / uniforms.lod_stride;
-    let base_segment_count = max(logical_entry_count * 2u, 1u);
-    let repeat_index = instance_index / base_segment_count;
-    let segment_index = instance_index % base_segment_count;
-    let repeat = uniforms.repeat_from + i32(repeat_index);
-    let repeat_offset_x = f32(repeat * uniforms.repeat_interval_ticks) / uniforms.x_per_unit;
+    let entry = entry_segments[instance_index];
 
-    let segment = render_segments[segment_index];
-    let seg_a = segment.p0 + vec2<f32>(repeat_offset_x, 0.0);
-    let seg_b = segment.p1 + vec2<f32>(repeat_offset_x, 0.0);
+    let y0_source = height_to_screen_y(stations[entry.curr_index]);
+    let y0_target = height_to_screen_y(stations[entry.curr_index + 1]);
+    let y0 = mix(y0_source, y0_target, entry.curr_progress);
+    let y1_source = height_to_screen_y(stations[entry.next_index]);
+    let y1_target = height_to_screen_y(stations[entry.next_index]);
+    let y1 = mix(y1_source, y1_target, entry.next_progress);
+    let x0 = seconds_to_screen_x(entry.curr_time_seconds);
+    let x1 = seconds_to_screen_x(entry.next_time_seconds);
 
+    let p0 = vec2<f32>(x0, y0);
+    let p1 = vec2<f32>(x1, y1);
+
+    // Compute normal
+    let dir = p1 - p0;
+    let inv_len = inverseSqrt(max(dot(dir, dir), 1e-12));
+    let normal = vec2<f32>(-dir.y * inv_len, dir.x * inv_len);
+
+    // Expand mesh quad vertex
     let mesh_index = SEGMENT_MESH_INDICES[vertex_index];
     let mesh = SEGMENT_MESH_VERTICES[mesh_index];
 
-    let half = max(segment.half_width - uniforms.feathering_radius * 0.5, 0.01);
-    // Expand the segment on both sides so alpha can smoothly fade at the edges.
-    let dist = half + mesh.outer * uniforms.feathering_radius;
-    let normal_offset = vec2<f32>(segment.nx, segment.ny) * (mesh.side * dist);
-    let base_pos = seg_a + (seg_b - seg_a) * mesh.along;
-    let pos = base_pos + normal_offset;
-    let feather_alpha = 1.0 - mesh.outer;
+    // `thickness` is in egui points; the feather band is a fixed number of hardware pixels, so
+    // convert it to points using the device's pixels-per-point.
+    let feather = FEATHER_WIDTH_PX / max(uniforms.pixels_per_point, 1e-6);
+    let half_width = entry.style.thickness * 0.5;
+    // Expand the quad by half the feather so the 50%-coverage contour sits exactly on the
+    // nominal edge, i.e. the line keeps its requested width.
+    let offset = mesh.side * (half_width + feather * 0.5);
+    let base_pos = mix(p0, p1, mesh.along);
+    let world_pos = base_pos + normal * offset;
 
-    let screen_pos = pos + uniforms.screen_origin;
-    let x = screen_pos.x / uniforms.screen_size.x * 2.0 - 1.0;
-    let y = 1.0 - screen_pos.y / uniforms.screen_size.y * 2.0;
-    return VertexOut(segment.color, feather_alpha, vec4<f32>(x, y, 0.0, 1.0));
+    let clip_x = (world_pos.x / uniforms.screen_size.x) * 2.0 - 1.0;
+    let clip_y = 1.0 - (world_pos.y / uniforms.screen_size.y) * 2.0;
+
+    let rgba = entry.style.fill_rgba;
+    let color = vec4<f32>(
+        f32((rgba >> 24u) & 0xFFu) / 255.0,
+        f32((rgba >> 16u) & 0xFFu) / 255.0,
+        f32((rgba >> 8u) & 0xFFu) / 255.0,
+        f32(rgba & 0xFFu) / 255.0
+    );
+
+    return VertexOut(color, offset, half_width, vec4<f32>(clip_x, clip_y, 0.0, 1.0));
 }
 
 @fragment
-fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
-    // maybe use smoothstep in this case?
-    // let feather = smoothstep(0.0, 1.0, input.feather_alpha);
-    return vec4<f32>(input.color.rgb, input.feather_alpha);
+fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
+    let feather = FEATHER_WIDTH_PX / max(uniforms.pixels_per_point, 1e-6);
+    let alpha = 1.0 - smoothstep(
+        in.half_width - feather * 0.5,
+        in.half_width + feather * 0.5,
+        abs(in.offset),
+    );
+    return vec4<f32>(in.color.rgb, in.color.a * alpha);
 }

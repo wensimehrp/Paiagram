@@ -15,14 +15,18 @@ struct PaiagramApp {
 }
 
 impl PaiagramApp {
-    fn new(cc: &eframe::CreationContext) -> Self {
+    fn new(cc: &eframe::CreationContext, msaa_samples: u32) -> Self {
         // set styles
         cc.egui_ctx.global_style_mut(|style| {
             style.spacing.window_margin = egui::Margin::same(2);
             style.interaction.selectable_labels = false;
         });
+        let mut app = App::new(&cc.egui_ctx);
+        if let Some(render_state) = &cc.wgpu_render_state {
+            app.init_gpu(render_state, msaa_samples);
+        }
         Self {
-            app: App::new(&cc.egui_ctx),
+            app,
             ui_state: UiState::default(),
             prev_time: Instant::now(),
         }
@@ -91,10 +95,11 @@ fn main() -> eframe::Result<()> {
         ..Default::default()
     };
     let args = Arguments::parse();
+    let msaa_samples = native_options.multisampling.max(1) as u32;
     eframe::run_native(
         "Paiagram Drawer",
         native_options,
-        Box::new(|cc| Ok(Box::new(PaiagramApp::new(cc)))),
+        Box::new(move |cc| Ok(Box::new(PaiagramApp::new(cc, msaa_samples)))),
     )
 }
 
@@ -130,7 +135,7 @@ fn main() {
             .start(
                 canvas,
                 web_options,
-                Box::new(|cc| Ok(Box::new(PaiagramApp::new(cc)))),
+                Box::new(|cc| Ok(Box::new(PaiagramApp::new(cc, 1)))),
             )
             .await;
 

@@ -1,4 +1,4 @@
-use egui::{Frame, Margin, Rangef, ScrollArea, Ui};
+use egui::{Frame, Margin, ScrollArea, Ui};
 use egui_extras::{Size, StripBuilder};
 use egui_i18n::tr;
 use serde::{Deserialize, Serialize};

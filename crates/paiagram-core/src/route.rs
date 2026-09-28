@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 use crate::graph::Graph;
 use crate::time::TimetableTime;
 use crate::{
-    CanvasLength, Distance, NodeKey, NodeKeyHashMap, StationCollection, StationKey, TripKeyHashMap,
-    WorldSnapshot,
+    CanvasLength, Distance, NodeKey, NodeKeyHashMap, StationCollection, StationKey, TripKey,
+    TripKeyHashMap, WorldSnapshot,
 };
 
 /// What to account as a part of the station
@@ -55,8 +55,8 @@ impl RouteInterval {
                 gen_progress(
                     node_key,
                     &snap.graph,
-                    curr_stn_nodes,
                     &self.nodes,
+                    curr_stn_nodes,
                     next_stn_nodes,
                 ),
             )
@@ -101,8 +101,8 @@ fn gen_progress(
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub struct RouteIntervals(pub Vec<RouteInterval>);
 
-#[derive(Default)]
-pub struct RouteCache(TripKeyHashMap<Vec<(TimetableTime, u32, f32)>>);
+#[derive(Clone, Default, Debug)]
+pub struct DiagramCache(pub TripKeyHashMap<Vec<[(TimetableTime, u32, f32); 2]>>);
 
 impl RouteIntervals {
     fn progresses<'a>(
@@ -114,20 +114,28 @@ impl RouteIntervals {
             curr.progresses(snap, next_stn_nodes)
         })
     }
-    pub fn populate_trips(&self, snap: &WorldSnapshot, cache: &mut RouteCache) {
+    pub fn populate_trips(&self, snap: &WorldSnapshot, cache: &mut DiagramCache) {
         // suboptimal implementation but cache is cached anyways
+        cache.0.clear();
         let mut node_lookup: NodeKeyHashMap<Vec<(u32, f32)>> = NodeKeyHashMap::default();
         for (key, progress) in self.progresses(snap).enumerate().flat_map(|(idx, it)| {
             it.filter_map(move |(key, distance)| Some((key, (idx as u32, distance?))))
         }) {
             match node_lookup.get_mut(&key) {
-                Some(entries) => entries.push(progress),
+                Some(entries) => {
+                    if !entries.contains(&progress) {
+                        entries.push(progress);
+                    }
+                }
                 None => {
                     node_lookup.insert(key, vec![progress]);
                 }
             }
         }
-        for (trip, trip_key) in self
+        // The same trip is reachable through several route nodes/intervals, so collect and
+        // deduplicate the trip keys first; otherwise every segment would be pushed once per
+        // discovery.
+        let mut trip_keys: Vec<TripKey> = self
             .0
             .iter()
             .flat_map(|route_interval| {
@@ -138,12 +146,46 @@ impl RouteIntervals {
             })
             .flat_map(|node_key| snap.graph.outgoing_intervals(*node_key))
             .flat_map(|(_, wfc)| &wfc.cache.trips)
-            .filter_map(|trip_key| snap.trips.get(trip_key).map(|trip| (trip, trip_key)))
-        {
+            .copied()
+            .collect();
+        trip_keys.sort_unstable();
+        trip_keys.dedup();
+
+        for trip_key in trip_keys {
+            let Some(trip) = snap.trips.get(&trip_key) else {
+                continue;
+            };
+            let entry = cache.0.entry(trip_key).or_default();
             trip.schedule.estimates(&snap.graph, |entries| {
                 for [(curr_estimate, curr_entry), (next_estimate, next_entry)] in
                     entries.array_windows()
-                {}
+                {
+                    let Some(curr_estimate) = curr_estimate else {
+                        continue;
+                    };
+                    let Some(next_estimate) = next_estimate else {
+                        continue;
+                    };
+                    for &(curr_idx, curr_progress) in
+                        node_lookup.get(&curr_entry.node_key()).unwrap()
+                    {
+                        entry.push([
+                            (curr_estimate.arr, curr_idx, curr_progress),
+                            (curr_estimate.dep, curr_idx, curr_progress),
+                        ]);
+                        for &(next_idx, next_progress) in
+                            node_lookup.get(&next_entry.node_key()).unwrap()
+                        {
+                            if curr_idx.abs_diff(next_idx) > 1 {
+                                continue;
+                            }
+                            entry.push([
+                                (curr_estimate.dep, curr_idx, curr_progress),
+                                (next_estimate.arr, next_idx, next_progress),
+                            ]);
+                        }
+                    }
+                }
             })
         }
     }

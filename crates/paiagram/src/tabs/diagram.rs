@@ -1,16 +1,46 @@
 use egui::*;
+use paiagram_core::route::DiagramCache;
 use paiagram_core::time::{Tick, TimetableTime};
-use paiagram_core::{CanvasLength, RouteKey, TripKey};
+use paiagram_core::{CanvasLength, RouteKey};
 use serde::{Deserialize, Serialize};
+
+pub(crate) mod gpu_draw;
+mod gpu_trip;
 
 use super::{Navigatable, Tab};
 use crate::App;
 
-/// Navigation is saved with the tab; geometry and in-progress edits are transient.
 #[derive(Clone, Serialize, Deserialize)]
+#[serde(into = "DiagramTabNoCache", from = "DiagramTabNoCache")]
 pub(crate) struct DiagramTab {
     key: RouteKey,
     navi: DiagramTabNavigation,
+    cache: DiagramCache,
+    callback: gpu_draw::DiagramCallback,
+}
+
+/// [`DiagramTab`] w/o cache for serde
+#[derive(Clone, Serialize, Deserialize)]
+struct DiagramTabNoCache {
+    key: RouteKey,
+    navi: DiagramTabNavigation,
+}
+
+impl From<DiagramTab> for DiagramTabNoCache {
+    fn from(DiagramTab { key, navi, .. }: DiagramTab) -> Self {
+        Self { key, navi }
+    }
+}
+
+impl From<DiagramTabNoCache> for DiagramTab {
+    fn from(DiagramTabNoCache { key, navi }: DiagramTabNoCache) -> Self {
+        Self {
+            key,
+            navi,
+            cache: DiagramCache::default(),
+            callback: gpu_draw::DiagramCallback::new(key),
+        }
+    }
 }
 
 impl DiagramTab {
@@ -18,6 +48,8 @@ impl DiagramTab {
         Self {
             key,
             navi: DiagramTabNavigation::default(),
+            cache: DiagramCache::default(),
+            callback: gpu_draw::DiagramCallback::new(key),
         }
     }
 }
@@ -140,6 +172,14 @@ impl Tab for DiagramTab {
         "Diagram".into()
     }
     fn main_display(&mut self, app: &mut App, ui: &mut Ui) {
+        if ui.button("Update cache").clicked() {
+            if let Some(route) = app.routes.get(&self.key) {
+                route.intervals.populate_trips(&app.snap, &mut self.cache);
+            } else {
+                self.cache.0.clear();
+            }
+            self.callback.populate(&self.cache);
+        }
         Frame::canvas(ui.style())
             .inner_margin(Margin::ZERO)
             .outer_margin(Margin::ZERO)
@@ -240,23 +280,10 @@ fn main_display(tab: &mut DiagramTab, app: &mut App, ui: &mut Ui) {
     tab.navi.max_height = CanvasLength::from_cm(100.0);
     tab.navi.handle_navigation(ui, &response);
     draw_time_lines(&mut painter, &tab.navi);
-    // TODO: make it actually work and stop using dummy data
-    for (_, trip) in app.trips.iter() {
-        let stroke = Stroke::new(1.0, Color32::GREEN);
-        let mut points: Vec<Pos2> = Vec::with_capacity(trip.schedule.entries().len());
-        trip.schedule.estimates(&app.graph, |estimates| {
-            for (idx, (estimate, entry)) in estimates.iter().enumerate() {
-                let Some(e) = estimate else { continue };
-                let x1 = tab.navi.logical_x_to_screen_x(e.arr.to_ticks());
-                let y = tab.navi.logical_y_to_screen_y(CanvasLength::from_cm(idx as f64));
-                points.push(Pos2::new(x1, y));
-                if e.arr == e.dep {
-                    continue;
-                }
-                let x2 = tab.navi.logical_x_to_screen_x(e.dep.to_ticks());
-                points.push(Pos2::new(x2, y));
-            }
-        });
-        painter.line(points, stroke);
-    }
+
+    // paint the lines
+    tab.callback.populate_uniforms(&tab.navi, response.rect);
+    painter.add(tab.callback.clone().paint_callback(response.rect));
+
+    // interactive zone
 }

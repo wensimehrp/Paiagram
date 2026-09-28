@@ -37,6 +37,7 @@ define_tabs!(
     start;
     station;
     trip;
+    intervals;
 );
 
 fn handle_keyboard_navigation(ui: &Ui) -> Vec2 {
@@ -217,8 +218,8 @@ pub(crate) trait Tab {
     /// static string. The actual displayed name could be different based on
     /// e.g. the localization or other contents.
     const NAME: &'static str;
-    /// The main display of the tab.
-    fn main_display(&mut self, app: &mut App, ui: &mut Ui);
     /// The title of the tab
     fn title(&self) -> WidgetText;
+    /// The main display of the tab.
+    fn main_display(&mut self, app: &mut App, ui: &mut Ui);
 }

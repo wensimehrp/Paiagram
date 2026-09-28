@@ -122,6 +122,7 @@ web-sys = {
   ]
 }
 web-time = "1.1.0"
+wgsl_bindgen = "0.23"
 zrip = "0.8.7"
 
 [patch.crates-io]

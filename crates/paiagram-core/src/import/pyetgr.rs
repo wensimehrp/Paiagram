@@ -167,13 +167,14 @@ pub(super) fn parse_pyetgr(data: &[u8]) -> Option<WorldSnapshot> {
                 continue;
             }
             let stn_key = StationKey::new();
+            let station_name = station.name.to_eco_string();
             let stn_info = PaiagramStation {
-                name: station.name.to_eco_string(),
+                name: station_name.clone(),
                 pos: LonLat::ZERO,
             };
             let node_key = NodeKey::new();
             let node_info = Node {
-                name: "".into(),
+                name: station_name,
                 parent: stn_key,
                 pos: LonLat::ZERO,
             };
