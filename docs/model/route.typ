@@ -9,5 +9,5 @@ The route model is a bit complicated...
 The progress is calculated using the following formula:
 
 $
-  P = D_s / (D_s + D_t)
+  "Progress" = D_s / (D_s + D_t)
 $

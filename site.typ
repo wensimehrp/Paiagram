@@ -99,4 +99,4 @@ exit 0
       #cmarker.render(read("README.md"), h1-level: 0)
     ]
   ]
-])
+]) <index>

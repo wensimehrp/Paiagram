@@ -5,6 +5,8 @@
 // temporary workaround so I don't need to write so many include statements
 #let chapter-path(path) = chapter("docs/" + path, content: include path + ".typ")
 
+#let other(..args) = (kind: "other", ..args.named())
+
 #book(
   title: "Paiagram " + links.paiagram-version + " Documentation",
   description: "Paiagram user documentation",
@@ -31,28 +33,32 @@
       )
     },
   ),
-  debug: true,
   tree: (
     chapter-path("index"),
     chapter-path("tutorial"),
-    [= Model],
-    chapter-path("model/network"),
-    chapter-path("model/route"),
-    chapter-path("model/trips-vehicles"),
-    [= User Interface],
-    chapter-path("panels/index"),
-    chapter-path("panels/diagram"),
-    chapter-path("panels/map"),
-    chapter-path("panels/station"),
-    [= Importing],
-    chapter-path("import/qetrc"),
-    chapter-path("import/oudia"),
-    chapter-path("import/gtfs"),
-    [= Exporting],
-    chapter-path("export/paia"),
-    chapter-path("export/oudia"),
-    chapter-path("export/typst-diagram"),
+    other(content: [= Model], children: (
+      chapter-path("model/network"),
+      chapter-path("model/route"),
+      chapter-path("model/trips-vehicles"),
+    )),
+    other(content: [= User Interface], children: (
+      chapter-path("panels/index"),
+      chapter-path("panels/diagram"),
+      chapter-path("panels/map"),
+      chapter-path("panels/station"),
+    )),
+    other(content: [= Importing], children: (
+      chapter-path("import/qetrc"),
+      chapter-path("import/oudia"),
+      chapter-path("import/gtfs"),
+    )),
+    other(content: [= Exporting], children: (
+      chapter-path("export/paia"),
+      chapter-path("export/oudia"),
+      chapter-path("export/typst-diagram"),
+    )),
     divider(),
+    chapter-path("misc/extensions"),
     chapter-path("misc/web"),
     chapter("docs/changelog", content: [
       #title[Changelog]
