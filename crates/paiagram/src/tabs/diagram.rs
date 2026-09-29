@@ -294,7 +294,7 @@ fn main_display(tab: &mut DiagramTab, app: &mut App, ui: &mut Ui) {
     painter.rect_filled(
         response.rect,
         0,
-        Color32::WHITE.gamma_multiply(lerp(0.0..=0.5, animation_progress)),
+        ui.visuals().extreme_bg_color.gamma_multiply(lerp(0.0..=0.5, animation_progress)),
     );
 
     // interactive zone

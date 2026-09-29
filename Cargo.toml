@@ -19,6 +19,7 @@ categories = ["visualization"]
 [workspace.dependencies]
 arc-swap = "1.9.2"
 async-executor = "1.14.0"
+bitflags = "2.13.2"
 # WGSL data communication
 bytemuck = { version = "1.23.2", features = ["extern_crate_alloc"] }
 cbor4ii = { version = "1.2.2", features = ["serde1", "use_alloc", "use_std"] }

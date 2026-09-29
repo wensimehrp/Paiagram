@@ -96,6 +96,7 @@ fn main() -> eframe::Result<()> {
     };
     let args = Arguments::parse();
     let msaa_samples = native_options.multisampling.max(1) as u32;
+    info!("Initialized application");
     eframe::run_native(
         "Paiagram Drawer",
         native_options,

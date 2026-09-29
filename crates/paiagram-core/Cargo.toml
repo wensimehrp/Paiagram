@@ -13,6 +13,7 @@ categories.workspace = true
 
 [dependencies]
 arc-swap.workspace = true
+bitflags.workspace = true
 cbor4ii.workspace = true
 derive_more = { version = "2.1.0", features = ["full"] }
 ecow.workspace = true
@@ -38,9 +39,7 @@ rustc-hash.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 smallvec.workspace = true
-strsim = "0.11.1"
 urlencoding.workspace = true
-visgraph = "0.1.0"
 web-time.workspace = true
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
