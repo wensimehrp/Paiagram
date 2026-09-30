@@ -4,9 +4,12 @@
 use ecow::EcoVec;
 use pathfinding::prelude::dijkstra;
 use serde::{Deserialize, Serialize};
+use smallvec::SmallVec;
+
+mod prep_segments;
 
 use crate::graph::Graph;
-use crate::time::TimetableTime;
+use crate::trip::{EstimateEntry, TEstimate};
 use crate::{
     CanvasLength, Distance, NodeKey, NodeKeyHashMap, StationCollection, StationKey, TripKey,
     TripKeyHashMap, WorldSnapshot,
@@ -102,7 +105,9 @@ fn gen_progress(
 pub struct RouteIntervals(pub Vec<RouteInterval>);
 
 #[derive(Clone, Default, Debug)]
-pub struct DiagramCache(pub TripKeyHashMap<Vec<[(TimetableTime, u32, f32); 2]>>);
+pub struct DiagramCache {
+    pub map: TripKeyHashMap<SmallVec<[Vec<(TEstimate, EstimateEntry, u32, f32)>; 1]>>,
+}
 
 impl RouteIntervals {
     fn progresses<'a>(
@@ -115,8 +120,7 @@ impl RouteIntervals {
         })
     }
     pub fn populate_trips(&self, snap: &WorldSnapshot, cache: &mut DiagramCache) {
-        // suboptimal implementation but cache is cached anyways
-        cache.0.clear();
+        // Where each graph node sits on the diagram: every `(line index, progress)` placement.
         let mut node_lookup: NodeKeyHashMap<Vec<(u32, f32)>> = NodeKeyHashMap::default();
         for (key, progress) in self.progresses(snap).enumerate().flat_map(|(idx, it)| {
             it.filter_map(move |(key, distance)| Some((key, (idx as u32, distance?))))
@@ -151,42 +155,7 @@ impl RouteIntervals {
         trip_keys.sort_unstable();
         trip_keys.dedup();
 
-        for trip_key in trip_keys {
-            let Some(trip) = snap.trips.get(&trip_key) else {
-                continue;
-            };
-            let entry = cache.0.entry(trip_key).or_default();
-            trip.schedule.estimates(&snap.graph, |entries| {
-                for [(curr_estimate, curr_entry), (next_estimate, next_entry)] in
-                    entries.array_windows()
-                {
-                    let Some(curr_estimate) = curr_estimate else {
-                        continue;
-                    };
-                    let Some(next_estimate) = next_estimate else {
-                        continue;
-                    };
-                    for &(curr_idx, curr_progress) in
-                        node_lookup.get(&curr_entry.node_key()).unwrap()
-                    {
-                        entry.push([
-                            (curr_estimate.arr, curr_idx, curr_progress),
-                            (curr_estimate.dep, curr_idx, curr_progress),
-                        ]);
-                        for &(next_idx, next_progress) in
-                            node_lookup.get(&next_entry.node_key()).unwrap()
-                        {
-                            if curr_idx.abs_diff(next_idx) > 1 {
-                                continue;
-                            }
-                            entry.push([
-                                (curr_estimate.dep, curr_idx, curr_progress),
-                                (next_estimate.arr, next_idx, next_progress),
-                            ]);
-                        }
-                    }
-                }
-            })
-        }
+        cache.map.clear();
+        prep_segments::calc(cache, trip_keys.into_iter(), snap, &node_lookup);
     }
 }

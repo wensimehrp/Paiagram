@@ -8,9 +8,6 @@ use crate::tabs::all_tabs::*;
 use crate::widgets::search::build_matcher;
 use crate::{App, UiCommand};
 
-// TODO: make this based on settings
-// TODO: make this a resource instead?
-
 #[derive(Default)]
 pub(crate) struct CommandPalette {
     pub visible: bool,

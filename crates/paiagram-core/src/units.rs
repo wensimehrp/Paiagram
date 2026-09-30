@@ -28,6 +28,7 @@ impl From<CanvasLength> for f64 {
 
 impl CanvasLength {
     const EGUI_POINTS_PER_IN: f64 = 96.0;
+    pub const ZERO: Self = Self(0.0);
 
     /// How many egui points make up one millimetre.
     pub fn egui_pts_per_mm() -> f64 {

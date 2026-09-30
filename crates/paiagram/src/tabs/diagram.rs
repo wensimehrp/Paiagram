@@ -1,6 +1,7 @@
 use egui::*;
-use paiagram_core::route::DiagramCache;
+use paiagram_core::route::{DiagramCache, StationRecord};
 use paiagram_core::time::{Tick, TimetableTime};
+use paiagram_core::trip::TEstimate;
 use paiagram_core::{CanvasLength, RouteKey, TripKey};
 use serde::{Deserialize, Serialize};
 
@@ -10,6 +11,7 @@ mod gpu_trip;
 use super::{Navigatable, Tab};
 use crate::App;
 use crate::selection::{SelectedItem, SelectedItems};
+use crate::tabs::station;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(into = "DiagramTabNoCache", from = "DiagramTabNoCache")]
@@ -177,9 +179,9 @@ impl Tab for DiagramTab {
             if let Some(route) = app.routes.get(&self.key) {
                 route.intervals.populate_trips(&app.snap, &mut self.cache);
             } else {
-                self.cache.0.clear();
+                self.cache.map.clear();
             }
-            self.callback.populate(&self.cache, &app.source);
+            self.callback.populate_entry_segments(&self.cache, &app.source);
         }
         Frame::canvas(ui.style())
             .inner_margin(Margin::ZERO)
@@ -278,11 +280,55 @@ fn main_display(tab: &mut DiagramTab, app: &mut App, ui: &mut Ui) {
     let (response, mut painter) =
         ui.allocate_painter(ui.available_size_before_wrap(), Sense::click_and_drag());
     tab.navi.visible_rect = response.rect;
-    tab.navi.max_height = CanvasLength::from_cm(100.0);
     tab.navi.handle_navigation(ui, &response);
     draw_time_lines(&mut painter, &tab.navi);
 
-    // paint the lines
+    let Some(route) = app.source.routes.get(&tab.key) else {
+        return;
+    };
+
+    let mut station_height_so_far = CanvasLength::ZERO;
+    let mut station_heights = Vec::with_capacity(route.intervals.0.len());
+    let station_line_stroke = Stroke {
+        width: 0.6,
+        color: Color32::GRAY,
+    };
+
+    for interval in &route.intervals.0 {
+        let Some(station) = (match &interval.station_record {
+            StationRecord::All(key) => Some(*key),
+            StationRecord::Some(nodes) => nodes
+                .first()
+                .and_then(|key| app.source.graph.nodes().get(key))
+                .map(|wfc| wfc.parent),
+        })
+        .and_then(|key| app.source.stations.get(&key)) else {
+            continue;
+        };
+        let mut y = tab.navi.logical_y_to_screen_y(station_height_so_far);
+        station_line_stroke.round_center_to_pixel(ui.pixels_per_point(), &mut y);
+        painter.hline(response.rect.x_range(), y, station_line_stroke);
+        painter.text(
+            Pos2 {
+                x: response.rect.left(),
+                y,
+            },
+            Align2::LEFT_BOTTOM,
+            station.name.as_str(),
+            FontId::proportional(13.0),
+            station_line_stroke.color,
+        );
+        station_heights.push(station_height_so_far);
+        station_height_so_far = CanvasLength(
+            station_height_so_far.0
+                + interval.canvas_length.unwrap_or_else(|| CanvasLength::from_cm(1.5)).0,
+        );
+    }
+
+    tab.navi.max_height = station_height_so_far;
+
+    // paint the station lines and diagram lines
+    tab.callback.populate_stations(station_heights.iter().copied());
     tab.callback.populate_uniforms(&tab.navi, response.rect);
     painter.add(tab.callback.clone().paint_callback(response.rect));
 
@@ -300,10 +346,16 @@ fn main_display(tab: &mut DiagramTab, app: &mut App, ui: &mut Ui) {
     // interactive zone
     if response.clicked()
         && let Some(pos) = response.interact_pointer_pos()
+        // this makes sure that when already selecting item
+        // the next action always deselects the item instead of focusing on new item
         && matches!(app.selected_items.take(), SelectedItems::None)
     {
-        if let Some(trip_key) = select_trip_from_pos(tab, pos) {
+        if let Some(trip_key) = select_trip_from_pos(tab, pos, &station_heights) {
             app.selected_items.replace(SelectedItem::Trip(trip_key));
+        } else if false {
+            // TODO
+        } else if false {
+            // TODO
         }
     }
 
@@ -323,77 +375,62 @@ fn main_display(tab: &mut DiagramTab, app: &mut App, ui: &mut Ui) {
                         )
                     },
                 );
-            let Some(segments) = tab.cache.0.get(trip_key) else {
-                continue;
-            };
-            for &[
-                (curr_time, curr_idx, curr_progress),
-                (next_time, next_idx, next_progress),
-            ] in segments
-            {
-                // translate the segments to xy
-                let x1 = tab.navi.logical_x_to_screen_x(curr_time.to_ticks());
-                let x2 = tab.navi.logical_x_to_screen_x(next_time.to_ticks());
-                // TODO: use practical values for curr idx and next idx station heights
-                let curr_station_h =
-                    tab.navi.logical_y_to_screen_y(CanvasLength::from_cm(1.0 * curr_idx as f64));
-                let next_station_h =
-                    tab.navi.logical_y_to_screen_y(CanvasLength::from_cm(1.0 * next_idx as f64));
-                let next_next_station_h = tab
-                    .navi
-                    .logical_y_to_screen_y(CanvasLength::from_cm(1.0 * (next_idx + 1) as f64));
-                let y1 = lerp(curr_station_h..=next_station_h, curr_progress);
-                let y2 = lerp(next_station_h..=next_next_station_h, next_progress);
-                let p1 = Pos2::new(x1, y1);
-                let p2 = Pos2::new(x2, y2);
-                painter.line_segment([p1, p2], stroke);
-                painter.circle_filled(p1, stroke.width / 2.0, stroke.color);
-                painter.circle_filled(p2, stroke.width / 2.0, stroke.color);
+            for polyline in tab.cache.map.get(trip_key).iter().flat_map(|&it| it) {
+                let points: Vec<_> = polyline
+                    .iter()
+                    .flat_map(|&(estimate, _entry, idx, progress)| {
+                        let x1 = tab.navi.logical_x_to_screen_x(estimate.arr.to_ticks());
+                        let x2 = tab.navi.logical_x_to_screen_x(estimate.dep.to_ticks());
+                        let idx = idx as usize;
+                        let curr_y = tab.navi.logical_y_to_screen_y(station_heights[idx]);
+                        let next_y = tab.navi.logical_y_to_screen_y(station_heights[idx + 1]);
+                        let y = lerp(curr_y..=next_y, progress);
+                        [Pos2::new(x1, y), Pos2::new(x2, y)]
+                    })
+                    .collect();
+                painter.line(points, stroke);
             }
         }
     }
 }
 
-fn select_trip_from_pos(tab: &DiagramTab, pos: Pos2) -> Option<TripKey> {
-    // TODO: store the available entries in a sorted vector...
-    let _ticks = tab.navi.screen_x_to_logical_x(pos.x);
-    for (
-        trip_key,
-        &[
-            (curr_time, curr_idx, curr_progress),
-            (next_time, next_idx, next_progress),
-        ],
-    ) in tab
-        .cache
-        .0
-        .iter()
-        .flat_map(|(key, segments)| std::iter::zip(std::iter::repeat(key), segments))
-    {
-        // translate the segments to xy
-        let x1 = tab.navi.logical_x_to_screen_x(curr_time.to_ticks());
-        let x2 = tab.navi.logical_x_to_screen_x(next_time.to_ticks());
-        // TODO: use practical values for curr idx and next idx station heights
-        let curr_station_h =
-            tab.navi.logical_y_to_screen_y(CanvasLength::from_cm(1.0 * curr_idx as f64));
-        let next_station_h =
-            tab.navi.logical_y_to_screen_y(CanvasLength::from_cm(1.0 * next_idx as f64));
-        let next_next_station_h =
-            tab.navi.logical_y_to_screen_y(CanvasLength::from_cm(1.0 * (next_idx + 1) as f64));
-        const SELECT_RADIUS: f32 = 7.0;
-        let y1 = lerp(curr_station_h..=next_station_h, curr_progress);
-        let y2 = lerp(next_station_h..=next_next_station_h, next_progress);
-        let p1 = Pos2::new(x1, y1);
-        let p2 = Pos2::new(x2, y2);
+fn select_trip_from_pos(
+    tab: &DiagramTab,
+    ptr_pos: Pos2,
+    station_heights: &[CanvasLength],
+) -> Option<TripKey> {
+    const SELECT_RADIUS: f32 = 7.0;
+    // The same point mapping as when drawing (see the display zone in `main_display`), so that
+    // what is selected matches what is drawn. Each entry spans `arr`..`dep` at one placement.
+    let points = |estimate: &TEstimate, idx: u32, progress: f32| {
+        let x1 = tab.navi.logical_x_to_screen_x(estimate.arr.to_ticks());
+        let x2 = tab.navi.logical_x_to_screen_x(estimate.dep.to_ticks());
+        let curr_y = tab.navi.logical_y_to_screen_y(station_heights[idx as usize]);
+        let next_y = tab.navi.logical_y_to_screen_y(station_heights[idx as usize + 1]);
+        let y = lerp(curr_y..=next_y, progress);
+        [Pos2::new(x1, y), Pos2::new(x2, y)]
+    };
+    let hit = |p1: Pos2, p2: Pos2| {
         let diff = p2 - p1;
         let len_sq = diff.length_sq();
         let t = if len_sq > 0.0 {
-            ((pos - p1).dot(diff) / len_sq).clamp(0.0, 1.0)
+            ((ptr_pos - p1).dot(diff) / len_sq).clamp(0.0, 1.0)
         } else {
             0.0
         };
-        let closest = p1 + t * diff;
-        if (closest - pos).length_sq() <= SELECT_RADIUS * SELECT_RADIUS {
-            return Some(*trip_key);
+        (p1 + t * diff - ptr_pos).length_sq() <= SELECT_RADIUS * SELECT_RADIUS
+    };
+    for (trip_key, polyline) in
+        tab.cache.map.iter().flat_map(|(k, v)| std::iter::zip(std::iter::repeat(k), v))
+    {
+        for [curr, next] in polyline.array_windows::<2>() {
+            let [curr_arr, curr_dep] = points(&curr.0, curr.2, curr.3);
+            let [next_arr, next_dep] = points(&next.0, next.2, next.3);
+            // The segments the drawing produces between two consecutive entries: the dwell at
+            // the first, the travel between them, and the dwell at the second.
+            if hit(curr_arr, curr_dep) || hit(curr_dep, next_arr) || hit(next_arr, next_dep) {
+                return Some(*trip_key);
+            }
         }
     }
     None

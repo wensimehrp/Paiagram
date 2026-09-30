@@ -3,7 +3,7 @@
 
 use eframe::egui_wgpu::{self, wgpu};
 use paiagram_core::route::DiagramCache;
-use paiagram_core::{RouteKey, RouteKeyHashMap, Source};
+use paiagram_core::{CanvasLength, RouteKey, RouteKeyHashMap, Source};
 
 use super::gpu_trip::{ShaderEntry, gpu_trip};
 use crate::tabs::Navigatable;
@@ -27,13 +27,34 @@ impl DiagramCallback {
         }
     }
 
-    pub fn populate(&mut self, cache: &DiagramCache, source: &Source) {
+    pub fn populate_uniforms(&mut self, navi: &super::DiagramTabNavigation, rect: egui::Rect) {
+        self.uniforms = gpu_trip::Uniforms::new(
+            [rect.width(), rect.height()],
+            navi.offset_x() as i32,
+            navi.offset_y() as f32,
+            navi.x_per_screen_unit_f64() as f32,
+            self.entry_segments.len() as u32,
+            navi.y_per_screen_unit().0 as f32,
+            1.0, // value always overwritten
+        );
+    }
+
+    pub fn populate_stations(&mut self, station_heights: impl Iterator<Item = CanvasLength>) {
+        self.stations.clear();
+        self.stations.extend(station_heights.map(|h| gpu_trip::CanvasLength::new(h.0 as f32)));
+    }
+
+    pub fn paint_callback(self, rect: egui::Rect) -> egui::PaintCallback {
+        egui_wgpu::Callback::new_paint_callback(rect, self)
+    }
+
+    pub fn populate_entry_segments(&mut self, cache: &DiagramCache, source: &Source) {
         self.entry_segments.clear();
         self.stations.clear();
         for idx in 0..100 {
             self.stations.push(gpu_trip::CanvasLength::new(idx as f32 * 10.0));
         }
-        for (trip_key, segments) in &cache.0 {
+        for (trip_key, polylines) in &cache.map {
             let Some(trip) = source.trips.get(trip_key) else {
                 continue;
             };
@@ -47,36 +68,27 @@ impl DiagramCallback {
                     fill_rgba: u32::from_be_bytes(class.style.color.to_array()),
                 },
             );
-            for &[
-                (curr_time_seconds, curr_index, curr_progress),
-                (next_time_seconds, next_index, next_progress),
-            ] in segments
-            {
-                self.entry_segments.push(gpu_trip::EntrySegment {
-                    curr_time_seconds: curr_time_seconds.0,
-                    curr_index,
-                    curr_progress,
-                    next_time_seconds: next_time_seconds.0,
-                    next_index,
-                    next_progress,
-                    style,
-                });
+            for polyline in polylines {
+                // One entry per point of the polyline.
+                let base = self.entry_segments.len();
+                for &(estimate, _entry, index, progress) in polyline {
+                    self.entry_segments.push(gpu_trip::EntrySegment {
+                        arr_seconds: estimate.arr.0,
+                        dep_seconds: estimate.dep.0,
+                        curr_index: index,
+                        curr_progress: progress,
+                        connects_to_prev: 0,
+                        connects_to_next: 0,
+                        style,
+                    });
+                }
+                // Consecutive points within a polyline are connected to each other.
+                for (i, _) in polyline.array_windows::<2>().enumerate() {
+                    self.entry_segments[base + i].connects_to_next = 1;
+                    self.entry_segments[base + i + 1].connects_to_prev = 1;
+                }
             }
         }
-    }
-    pub fn populate_uniforms(&mut self, navi: &super::DiagramTabNavigation, rect: egui::Rect) {
-        self.uniforms = gpu_trip::Uniforms::new(
-            [rect.width(), rect.height()],
-            navi.offset_x() as i32,
-            navi.offset_y() as f32,
-            navi.x_per_screen_unit_f64() as f32,
-            self.entry_segments.len() as u32,
-            navi.y_per_screen_unit().0 as f32,
-            1.0, // value always overwritten
-        );
-    }
-    pub fn paint_callback(self, rect: egui::Rect) -> egui::PaintCallback {
-        egui_wgpu::Callback::new_paint_callback(rect, self)
     }
 }
 

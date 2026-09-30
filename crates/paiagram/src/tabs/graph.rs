@@ -1,7 +1,7 @@
 //! Geographic network editor backed exclusively by Source commands and spatial caches.
 use std::sync::Arc;
 
-use egui::{Color32, Frame, Pos2, Rect, Sense, Stroke, Ui, WidgetText};
+use egui::{Pos2, Rect, Ui, WidgetText};
 use paiagram_core::*;
 use serde::{Deserialize, Serialize};
 
