@@ -3,5 +3,5 @@
 
 mod graphy;
 mod oudia;
-pub use graphy::ExportGraphy;
+pub use graphy::{ExportGraphy, GraphyFormat};
 pub use oudia::ExportOuDia;

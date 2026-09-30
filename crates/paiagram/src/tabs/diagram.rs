@@ -3,6 +3,8 @@ use paiagram_core::route::{DiagramCache, StationRecord};
 use paiagram_core::time::{Tick, TimetableTime};
 use paiagram_core::trip::TEstimate;
 use paiagram_core::{CanvasLength, RouteKey, TripKey};
+use paiagram_export::GraphyFormat;
+use paiagram_rw::ExportObject;
 use serde::{Deserialize, Serialize};
 
 pub(crate) mod gpu_draw;
@@ -11,7 +13,6 @@ mod gpu_trip;
 use super::{Navigatable, Tab};
 use crate::App;
 use crate::selection::{SelectedItem, SelectedItems};
-use crate::tabs::station;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(into = "DiagramTabNoCache", from = "DiagramTabNoCache")]
@@ -175,14 +176,36 @@ impl Tab for DiagramTab {
         "Diagram".into()
     }
     fn main_display(&mut self, app: &mut App, ui: &mut Ui) {
-        if ui.button("Update cache").clicked() {
-            if let Some(route) = app.routes.get(&self.key) {
-                route.intervals.populate_trips(&app.snap, &mut self.cache);
-            } else {
-                self.cache.map.clear();
+        ui.horizontal(|ui| {
+            if ui.button("Update cache").clicked() {
+                if let Some(route) = app.routes.get(&self.key) {
+                    route.intervals.populate_trips(&app.snap, &mut self.cache);
+                } else {
+                    self.cache.map.clear();
+                }
+                self.callback.populate_entry_segments(&self.cache, &app.source);
             }
-            self.callback.populate_entry_segments(&self.cache, &app.source);
-        }
+            if ui.button("Export PDF").clicked() {
+                let fonts = ui.fonts(|fonts| {
+                    let mut ret = Vec::new();
+                    let defs = fonts.definitions();
+                    if let Some(names) = defs.families.get(&egui::FontFamily::Proportional) {
+                        for name in names {
+                            ret.push(defs.font_data[name].font.clone())
+                        }
+                    }
+                    ret
+                });
+                paiagram_export::ExportGraphy {
+                    snap: app.snap.clone(),
+                    route: self.key,
+                    cache: self.cache.clone(),
+                    format: GraphyFormat::Pdf,
+                    fonts,
+                }
+                .write_to_file::<false>(app.file_write_state.clone());
+            }
+        });
         Frame::canvas(ui.style())
             .inner_margin(Margin::ZERO)
             .outer_margin(Margin::ZERO)
