@@ -259,17 +259,11 @@ fn draw_time_lines(painter: &mut Painter, navi: &DiagramTabNavigation) {
                 }
                 _ => unreachable!(),
             };
-            let label = painter.layout_no_wrap(
+            painter.text(
+                Pos2 { x, y: offset },
+                Align2::CENTER_TOP,
                 text,
-                FontId::new(13.0, egui::FontFamily::Proportional),
-                current_stroke.color,
-            );
-            painter.galley(
-                Pos2 {
-                    x: x - label.size().x / 2.0,
-                    y: offset,
-                },
-                label,
+                FontId::proportional(13.0),
                 current_stroke.color,
             );
         }
