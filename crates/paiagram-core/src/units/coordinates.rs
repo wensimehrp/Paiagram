@@ -30,7 +30,7 @@ impl Wgs84LonLat {
 
         let c = 2.0 * a.sqrt().atan2((1.0 - a).sqrt());
 
-        XyPosF64::EARTH_RADIUS_METERS * c
+        XyPos::EARTH_RADIUS_METERS * c
     }
 }
 
@@ -47,23 +47,11 @@ impl LonLat {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct XyPos {
-    pub x: i32,
-    pub y: i32,
-}
-
-impl XyPos {
-    /// Centimetres: the full Web Mercator world (±20,037,509 m) fits in i32.
-    /// XyPos is derived, not serialized; LonLat remains in degrees * 10^7.
-    pub const UNITS_PER_METRE: f64 = 100.0;
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct XyPosF64 {
     pub x: f64,
     pub y: f64,
 }
 
-impl XyPosF64 {
+impl XyPos {
     pub fn new(x: f64, y: f64) -> Self {
         Self { x, y }
     }
@@ -93,7 +81,7 @@ impl From<LonLat> for Wgs84LonLat {
     }
 }
 
-impl From<Wgs84LonLat> for XyPosF64 {
+impl From<Wgs84LonLat> for XyPos {
     fn from(value: Wgs84LonLat) -> Self {
         let x = Self::EARTH_RADIUS_METERS * value.lon.to_radians();
         let lat = value.lat.clamp(-Self::WEB_MERCATOR_MAX_LAT, Self::WEB_MERCATOR_MAX_LAT);
@@ -104,28 +92,10 @@ impl From<Wgs84LonLat> for XyPosF64 {
     }
 }
 
-impl From<XyPosF64> for XyPos {
-    fn from(value: XyPosF64) -> Self {
-        let x = value.x * Self::UNITS_PER_METRE;
-        let x = x.round() as i32;
-        let y = value.y * Self::UNITS_PER_METRE;
-        let y = y.round() as i32;
-        Self { x, y }
-    }
-}
-
-impl From<XyPos> for XyPosF64 {
+impl From<XyPos> for Wgs84LonLat {
     fn from(value: XyPos) -> Self {
-        let x = value.x as f64 / XyPos::UNITS_PER_METRE;
-        let y = value.y as f64 / XyPos::UNITS_PER_METRE;
-        Self { x, y }
-    }
-}
-
-impl From<XyPosF64> for Wgs84LonLat {
-    fn from(value: XyPosF64) -> Self {
-        let lon = (value.x / XyPosF64::EARTH_RADIUS_METERS).to_degrees();
-        let lat = (2.0 * (-value.y / XyPosF64::EARTH_RADIUS_METERS).exp().atan()
+        let lon = (value.x / XyPos::EARTH_RADIUS_METERS).to_degrees();
+        let lat = (2.0 * (-value.y / XyPos::EARTH_RADIUS_METERS).exp().atan()
             - std::f64::consts::FRAC_PI_2)
             .to_degrees();
         Self { lon, lat }

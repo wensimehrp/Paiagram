@@ -1,14 +1,23 @@
 // SPDX-License-Identifier: MPL-2.0
 
+import package::shaders::draw_lines::{
+    SEGMENT_MESH_INDICES,
+    SEGMENT_MESH_VERTICES,
+    VertexOut,
+    joint_vertex,
+    line_alpha,
+    line_feather,
+    normalize_or
+};
+
 struct Uniforms {
     screen_size: vec2<f32>,
     ticks_min: i32,
     canvas_length_min: f32,
     x_per_tick: f32,
-    entry_segment_count: u32,
     y_per_canvas_length: f32,
     pixels_per_point: f32,
-};
+}
 
 struct Tick {
     value: i32,
@@ -34,35 +43,14 @@ struct Style {
 }
 
 /// Uniform buffers for general info
-@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+@group(0) @binding(0)
+var<uniform> uniforms: Uniforms;
 /// Storage for all entries
-@group(0) @binding(1) var<storage, read> entry_segments: array<EntrySegment>;
+@group(0) @binding(1)
+var<storage, read> entry_segments: array<EntrySegment>;
 /// Storage for stations
-@group(0) @binding(2) var<storage, read> stations: array<CanvasLength>;
-
-struct SegmentMeshVertex {
-    /// Position along line length
-    along: f32,
-    /// Offset along line normal.
-    /// -1.0 = Left edge, +1.0 = Right edge
-    side: f32,
-};
-
-const SEGMENT_MESH_VERTICES: array<SegmentMeshVertex, 4> = array<SegmentMeshVertex, 4>(
-    SegmentMeshVertex(0.0, 1.0),  // 0, Start-Left
-    SegmentMeshVertex(0.0, -1.0), // 1, Start-Right
-    SegmentMeshVertex(1.0, 1.0),  // 2, End-Left
-    SegmentMeshVertex(1.0, -1.0), // 3, End-Right
-);
-
-const SEGMENT_MESH_LENGTH: u32 = 12;
-
-const SEGMENT_MESH_INDICES: array<u32, 12> = array<u32, 12>(
-    0u, 1u, 2u, 1u, 3u, 2u,  // the entry's own (dwell) segment
-    0u, 1u, 2u, 1u, 3u, 2u,  // the segment connecting to the next entry
-);
-
-const FEATHER_WIDTH_PX: f32 = 2.0;
+@group(0) @binding(2)
+var<storage, read> stations: array<CanvasLength>;
 
 const TICKS_PER_SECOND: i32 = 100;
 
@@ -74,18 +62,6 @@ fn seconds_to_screen_x(secs: i32) -> f32 {
 
 fn height_to_screen_y(height: CanvasLength) -> f32 {
     return (height.value - uniforms.canvas_length_min) / uniforms.y_per_canvas_length;
-}
-
-fn normalize_or(v: vec2<f32>, fallback: vec2<f32>) -> vec2<f32> {
-    let len = length(v);
-    if len < 1e-5 {
-        return fallback;
-    }
-    return v / len;
-}
-
-fn left_normal(dir: vec2<f32>) -> vec2<f32> {
-    return vec2<f32>(-dir.y, dir.x);
 }
 
 /// Screen height of the entry's node on the centre line.
@@ -120,32 +96,16 @@ fn outgoing_from_arrival(index: u32) -> vec2<f32> {
     return vec2<f32>(1.0, 0.0);
 }
 
-/// Vertex of a joint: the intersection of the offset lines of the two segments meeting at `p`,
-/// so the two lines bevel into each other instead of overlapping or leaving a notch.
-fn joint_vertex(p: vec2<f32>, dir_in: vec2<f32>, dir_out: vec2<f32>, side: f32, half_width: f32) -> vec2<f32> {
-    let n_in = left_normal(dir_in) * side;
-    let n_out = left_normal(dir_out) * side;
-    // The miter length grows without bound as the turn approaches a reversal.
-    let denom = max(1.0 + dot(dir_in, dir_out), 0.25);
-    return p + half_width * (n_in + n_out) / denom;
-}
-
-struct VertexOut {
-    @location(0) color: vec4<f32>,
-    /// Signed distance in screen points from the centre line
-    @location(1) offset: f32,
-    /// Half the line thickness in screen points
-    @location(2) half_width: f32,
-    @builtin(position) position: vec4<f32>,
-};
-
 @vertex
-fn vs_main(@builtin(vertex_index) vertex_index: u32, @builtin(instance_index) instance_index: u32) -> VertexOut {
+fn vs_main(
+    @builtin(vertex_index) vertex_index: u32,
+    @builtin(instance_index) instance_index: u32,
+) -> VertexOut {
     let entry = entry_segments[instance_index];
     let half_width = entry.style.thickness * 0.5;
     // `thickness` is in egui points; the feather band is a fixed number of hardware pixels, so
     // convert it to points using the device's pixels-per-point.
-    let feather = FEATHER_WIDTH_PX / max(uniforms.pixels_per_point, 1e-6);
+    let feather = line_feather(uniforms.pixels_per_point);
 
     let mesh = SEGMENT_MESH_VERTICES[SEGMENT_MESH_INDICES[vertex_index]];
     let is_end = mesh.along > 0.5;
@@ -223,22 +183,18 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32, @builtin(instance_index) in
 
     let rgba = entry.style.fill_rgba;
     let color = vec4<f32>(
-        f32((rgba >> 24u) & 0xFFu) / 255.0,
-        f32((rgba >> 16u) & 0xFFu) / 255.0,
-        f32((rgba >> 8u) & 0xFFu) / 255.0,
-        f32(rgba & 0xFFu) / 255.0
-    );
+            f32((rgba >> 24u) & 0xFFu) / 255.0,
+            f32((rgba >> 16u) & 0xFFu) / 255.0,
+            f32((rgba >> 8u) & 0xFFu) / 255.0,
+            f32(rgba & 0xFFu) / 255.0,
+        );
 
     return VertexOut(color, offset, half_width, vec4<f32>(clip_x, clip_y, 0.0, 1.0));
 }
 
 @fragment
 fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
-    let feather = FEATHER_WIDTH_PX / max(uniforms.pixels_per_point, 1e-6);
-    let alpha = 1.0 - smoothstep(
-        in.half_width - feather * 0.5,
-        in.half_width + feather * 0.5,
-        abs(in.offset),
-    );
+    let feather = line_feather(uniforms.pixels_per_point);
+    let alpha = line_alpha(in.offset, in.half_width, feather);
     return vec4<f32>(in.color.rgb, in.color.a * alpha);
 }

@@ -2,7 +2,7 @@
 //
 // ^ wgsl_bindgen version 0.23.3
 // Changes made to this file will not be saved.
-// SourceHash: 728db320e98b8acea8943d8e8dab9ec9b55a08edc7c9dbf4f20c1a6839db2ebe
+// SourceHash: dadf1c1cef2baa6d4147a8b3105de9cefe97d6efab06e2c04b81780d5257991e
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ShaderEntry {
@@ -62,9 +62,8 @@ pub mod layout_asserts {
         assert!(std::mem::offset_of!(gpu_trip::Uniforms, ticks_min) == 8);
         assert!(std::mem::offset_of!(gpu_trip::Uniforms, canvas_length_min) == 12);
         assert!(std::mem::offset_of!(gpu_trip::Uniforms, x_per_tick) == 16);
-        assert!(std::mem::offset_of!(gpu_trip::Uniforms, entry_segment_count) == 20);
-        assert!(std::mem::offset_of!(gpu_trip::Uniforms, y_per_canvas_length) == 24);
-        assert!(std::mem::offset_of!(gpu_trip::Uniforms, pixels_per_point) == 28);
+        assert!(std::mem::offset_of!(gpu_trip::Uniforms, y_per_canvas_length) == 20);
+        assert!(std::mem::offset_of!(gpu_trip::Uniforms, pixels_per_point) == 24);
         assert!(std::mem::align_of::<gpu_trip::Uniforms>() == 8);
         assert!(std::mem::size_of::<gpu_trip::Uniforms>() == 32);
     };
@@ -106,12 +105,11 @@ pub mod gpu_trip {
         pub canvas_length_min: f32,
         #[doc = "offset: 16, size: 4, type: `f32`"]
         pub x_per_tick: f32,
-        #[doc = "offset: 20, size: 4, type: `u32`"]
-        pub entry_segment_count: u32,
-        #[doc = "offset: 24, size: 4, type: `f32`"]
+        #[doc = "offset: 20, size: 4, type: `f32`"]
         pub y_per_canvas_length: f32,
-        #[doc = "offset: 28, size: 4, type: `f32`"]
+        #[doc = "offset: 24, size: 4, type: `f32`"]
         pub pixels_per_point: f32,
+        pub _pad_pixels_per_point: [u8; 8 - ::core::mem::size_of::<f32>()],
     }
     impl Uniforms {
         pub const fn new(
@@ -119,7 +117,6 @@ pub mod gpu_trip {
             ticks_min: i32,
             canvas_length_min: f32,
             x_per_tick: f32,
-            entry_segment_count: u32,
             y_per_canvas_length: f32,
             pixels_per_point: f32,
         ) -> Self {
@@ -128,10 +125,38 @@ pub mod gpu_trip {
                 ticks_min,
                 canvas_length_min,
                 x_per_tick,
-                entry_segment_count,
                 y_per_canvas_length,
                 pixels_per_point,
+                _pad_pixels_per_point: [0; 8 - ::core::mem::size_of::<f32>()],
             }
+        }
+    }
+    #[repr(C)]
+    #[derive(Debug, PartialEq, Clone, Copy)]
+    pub struct UniformsInit {
+        pub screen_size: [f32; 2],
+        pub ticks_min: i32,
+        pub canvas_length_min: f32,
+        pub x_per_tick: f32,
+        pub y_per_canvas_length: f32,
+        pub pixels_per_point: f32,
+    }
+    impl UniformsInit {
+        pub fn build(&self) -> Uniforms {
+            Uniforms {
+                screen_size: self.screen_size,
+                ticks_min: self.ticks_min,
+                canvas_length_min: self.canvas_length_min,
+                x_per_tick: self.x_per_tick,
+                y_per_canvas_length: self.y_per_canvas_length,
+                pixels_per_point: self.pixels_per_point,
+                _pad_pixels_per_point: [0; 8 - ::core::mem::size_of::<f32>()],
+            }
+        }
+    }
+    impl From<UniformsInit> for Uniforms {
+        fn from(data: UniformsInit) -> Self {
+            data.build()
         }
     }
     #[repr(C, align(4))]
@@ -200,9 +225,10 @@ pub mod gpu_trip {
             }
         }
     }
-    pub const SEGMENT_MESH_LENGTH: u32 = 12u32;
-    pub const FEATHER_WIDTH_PX: f32 = 2f32;
     pub const TICKS_PER_SECOND: i32 = 100i32;
+    pub const FEATHER_WIDTH_PX: f32 = 2f32;
+    pub const SEGMENT_MESH_LENGTH: u32 = 12u32;
+    pub const SEGMENT_QUAD_LENGTH: u32 = 6u32;
     pub const ENTRY_VS_MAIN: &str = "vs_main";
     pub const ENTRY_FS_MAIN: &str = "fs_main";
     #[derive(Debug)]
@@ -408,7 +434,6 @@ struct Uniforms {
     ticks_min: i32,
     canvas_length_min: f32,
     x_per_tick: f32,
-    entry_segment_count: u32,
     y_per_canvas_length: f32,
     pixels_per_point: f32,
 }
@@ -436,11 +461,6 @@ struct EntrySegment {
     style: Style,
 }
 
-struct SegmentMeshVertex {
-    along: f32,
-    side: f32,
-}
-
 struct VertexOut {
     @location(0) color: vec4<f32>,
     @location(1) offset: f32,
@@ -448,11 +468,18 @@ struct VertexOut {
     @builtin(position) position: vec4<f32>,
 }
 
-const SEGMENT_MESH_VERTICES: array<SegmentMeshVertex, 4> = array<SegmentMeshVertex, 4>(SegmentMeshVertex(0f, 1f), SegmentMeshVertex(0f, -1f), SegmentMeshVertex(1f, 1f), SegmentMeshVertex(1f, -1f));
-const SEGMENT_MESH_LENGTH: u32 = 12u;
-const SEGMENT_MESH_INDICES: array<u32, 12> = array<u32, 12>(0u, 1u, 2u, 1u, 3u, 2u, 0u, 1u, 2u, 1u, 3u, 2u);
-const FEATHER_WIDTH_PX: f32 = 2f;
+struct SegmentMeshVertex {
+    along: f32,
+    side: f32,
+}
+
 const TICKS_PER_SECOND: i32 = 100i;
+const FEATHER_WIDTH_PX: f32 = 2f;
+const SEGMENT_MESH_VERTICES: array<SegmentMeshVertex, 4> = array<SegmentMeshVertex, 4>(SegmentMeshVertex(0f, 1f), SegmentMeshVertex(0f, -1f), SegmentMeshVertex(1f, 1f), SegmentMeshVertex(1f, -1f));
+const SEGMENT_MESH_INDICES: array<u32, 12> = array<u32, 12>(0u, 1u, 2u, 1u, 3u, 2u, 0u, 1u, 2u, 1u, 3u, 2u);
+const SEGMENT_MESH_LENGTH: u32 = 12u;
+const SEGMENT_QUAD_CORNERS: array<vec2<f32>, 6> = array<vec2<f32>, 6>(vec2<f32>(-1f, -1f), vec2<f32>(1f, -1f), vec2<f32>(-1f, 1f), vec2<f32>(-1f, 1f), vec2<f32>(1f, -1f), vec2<f32>(1f, 1f));
+const SEGMENT_QUAD_LENGTH: u32 = 6u;
 
 @group(0) @binding(0) 
 var<uniform> uniforms: Uniforms;
@@ -472,18 +499,6 @@ fn height_to_screen_y(height: CanvasLength) -> f32 {
     let _e4 = uniforms.canvas_length_min;
     let _e8 = uniforms.y_per_canvas_length;
     return ((height.value - _e4) / _e8);
-}
-
-fn normalize_or(v: vec2<f32>, fallback: vec2<f32>) -> vec2<f32> {
-    let len = length(v);
-    if (len < 0.00001f) {
-        return fallback;
-    }
-    return (v / vec2(len));
-}
-
-fn left_normal(dir: vec2<f32>) -> vec2<f32> {
-    return vec2<f32>(-(dir.y), dir.x);
 }
 
 fn entry_height(entry: EntrySegment) -> f32 {
@@ -506,6 +521,14 @@ fn entry_departure(entry_2: EntrySegment) -> vec2<f32> {
     return vec2<f32>(_e2, _e3);
 }
 
+fn normalize_or(v: vec2<f32>, fallback: vec2<f32>) -> vec2<f32> {
+    let len = length(v);
+    if (len < 0.00001f) {
+        return fallback;
+    }
+    return (v / vec2(len));
+}
+
 fn outgoing_from_arrival(index: u32) -> vec2<f32> {
     let entry_3 = entry_segments[index];
     let _e4 = entry_arrival(entry_3);
@@ -523,6 +546,14 @@ fn outgoing_from_arrival(index: u32) -> vec2<f32> {
     return vec2<f32>(1f, 0f);
 }
 
+fn line_feather(pixels_per_point: f32) -> f32 {
+    return (FEATHER_WIDTH_PX / max(pixels_per_point, 0.000001f));
+}
+
+fn left_normal(dir: vec2<f32>) -> vec2<f32> {
+    return vec2<f32>(-(dir.y), dir.x);
+}
+
 fn joint_vertex(p: vec2<f32>, dir_in_1: vec2<f32>, dir_out_1: vec2<f32>, side: f32, half_width: f32) -> vec2<f32> {
     let _e1 = left_normal(dir_in_1);
     let n_in = (_e1 * side);
@@ -530,6 +561,18 @@ fn joint_vertex(p: vec2<f32>, dir_in_1: vec2<f32>, dir_out_1: vec2<f32>, side: f
     let n_out = (_e5 * side);
     let denom = max((1f + dot(dir_in_1, dir_out_1)), 0.25f);
     return (p + ((half_width * (n_in + n_out)) / vec2(denom)));
+}
+
+fn line_alpha(offset: f32, half_width_1: f32, feather: f32) -> f32 {
+    return (1f - smoothstep((half_width_1 - (feather * 0.5f)), (half_width_1 + (feather * 0.5f)), abs(offset)));
+}
+
+fn segment_quad_pos(p0_: vec2<f32>, p1_: vec2<f32>, corner: vec2<f32>, half_extent: f32) -> vec2<f32> {
+    let _e6 = normalize_or((p1_ - p0_), vec2<f32>(1f, 0f));
+    let _e7 = left_normal(_e6);
+    let center = ((p0_ + p1_) * 0.5f);
+    let half_len = (length((p1_ - p0_)) * 0.5f);
+    return ((center + (_e6 * (corner.x * half_len))) + (_e7 * (corner.y * half_extent)));
 }
 
 @vertex 
@@ -546,108 +589,108 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32, @builtin(instance_index) in
     var local_1: bool;
 
     let entry_4 = entry_segments[instance_index];
-    let half_width_1 = (entry_4.style.thickness * 0.5f);
+    let half_width_2 = (entry_4.style.thickness * 0.5f);
     let _e10 = uniforms.pixels_per_point;
-    let feather = (FEATHER_WIDTH_PX / max(_e10, 0.000001f));
+    let _e11 = line_feather(_e10);
     let mesh = SEGMENT_MESH_VERTICES[SEGMENT_MESH_INDICES[vertex_index]];
     let is_end = (mesh.along > 0.5f);
     let is_connect = (vertex_index >= 6u);
-    let _e25 = entry_arrival(entry_4);
-    let _e26 = entry_departure(entry_4);
+    let _e22 = entry_arrival(entry_4);
+    let _e23 = entry_departure(entry_4);
     let is_dwell = (entry_4.arr_seconds != entry_4.dep_seconds);
-    let _e34 = normalize_or((_e26 - _e25), vec2<f32>(1f, 0f));
-    dir_incoming = _e34;
+    let _e31 = normalize_or((_e23 - _e22), vec2<f32>(1f, 0f));
+    dir_incoming = _e31;
     if (entry_4.connects_to_prev != 0u) {
         local = (instance_index > 0u);
     } else {
         local = false;
     }
-    let _e44 = local;
-    if _e44 {
+    let _e41 = local;
+    if _e41 {
         let prev = entry_segments[(instance_index - 1u)];
-        let _e50 = entry_departure(prev);
-        let _e52 = normalize_or((_e25 - _e50), _e34);
-        dir_incoming = _e52;
+        let _e47 = entry_departure(prev);
+        let _e49 = normalize_or((_e22 - _e47), _e31);
+        dir_incoming = _e49;
     }
-    p_connect = _e26;
-    dir_connect = _e34;
-    dir_outgoing = _e34;
+    p_connect = _e23;
+    dir_connect = _e31;
+    dir_outgoing = _e31;
     if (entry_4.connects_to_next != 0u) {
         let next_1 = entry_segments[(instance_index + 1u)];
-        let _e64 = entry_arrival(next_1);
-        p_connect = _e64;
-        let _e65 = p_connect;
-        let _e67 = normalize_or((_e65 - _e26), _e34);
-        dir_connect = _e67;
-        let _e70 = outgoing_from_arrival((instance_index + 1u));
-        dir_outgoing = _e70;
+        let _e61 = entry_arrival(next_1);
+        p_connect = _e61;
+        let _e62 = p_connect;
+        let _e64 = normalize_or((_e62 - _e23), _e31);
+        dir_connect = _e64;
+        let _e67 = outgoing_from_arrival((instance_index + 1u));
+        dir_outgoing = _e67;
     }
-    joint_p = _e25;
-    let _e72 = dir_incoming;
-    dir_in = _e72;
-    dir_out = _e34;
+    joint_p = _e22;
+    let _e69 = dir_incoming;
+    dir_in = _e69;
+    dir_out = _e31;
     if is_connect {
         if is_end {
-            let _e75 = p_connect;
-            joint_p = _e75;
-            let _e76 = dir_connect;
-            dir_in = _e76;
-            let _e77 = dir_outgoing;
-            dir_out = _e77;
+            let _e72 = p_connect;
+            joint_p = _e72;
+            let _e73 = dir_connect;
+            dir_in = _e73;
+            let _e74 = dir_outgoing;
+            dir_out = _e74;
         } else {
-            joint_p = _e26;
-            let _e78 = dir_connect;
-            dir_out = _e78;
-            dir_in = _e34;
+            joint_p = _e23;
+            let _e75 = dir_connect;
+            dir_out = _e75;
+            dir_in = _e31;
             if !(is_dwell) {
-                let _e80 = dir_incoming;
-                dir_in = _e80;
+                let _e77 = dir_incoming;
+                dir_in = _e77;
                 if (entry_4.connects_to_prev == 0u) {
-                    let _e84 = dir_connect;
-                    dir_in = _e84;
+                    let _e81 = dir_connect;
+                    dir_in = _e81;
                 }
             }
         }
     } else {
         if is_end {
-            joint_p = _e26;
-            dir_in = _e34;
-            let _e85 = dir_connect;
-            dir_out = _e85;
+            joint_p = _e23;
+            dir_in = _e31;
+            let _e82 = dir_connect;
+            dir_out = _e82;
         }
     }
-    let offset = (mesh.side * (half_width_1 + (feather * 0.5f)));
-    let _e91 = joint_p;
-    let _e92 = dir_in;
-    let _e93 = dir_out;
-    let _e98 = joint_vertex(_e91, _e92, _e93, mesh.side, (half_width_1 + (feather * 0.5f)));
-    world_pos = _e98;
+    let offset_1 = (mesh.side * (half_width_2 + (_e11 * 0.5f)));
+    let _e88 = joint_p;
+    let _e89 = dir_in;
+    let _e90 = dir_out;
+    let _e95 = joint_vertex(_e88, _e89, _e90, mesh.side, (half_width_2 + (_e11 * 0.5f)));
+    world_pos = _e95;
     if !(is_connect) {
         local_1 = !(is_dwell);
     } else {
         local_1 = false;
     }
-    let _e105 = local_1;
-    if _e105 {
-        world_pos = _e25;
+    let _e102 = local_1;
+    if _e102 {
+        world_pos = _e22;
     }
-    let _e107 = world_pos.x;
-    let _e111 = uniforms.screen_size.x;
-    let clip_x = (((_e107 / _e111) * 2f) - 1f);
-    let _e118 = world_pos.y;
-    let _e122 = uniforms.screen_size.y;
-    let clip_y = (1f - ((_e118 / _e122) * 2f));
+    let _e104 = world_pos.x;
+    let _e108 = uniforms.screen_size.x;
+    let clip_x = (((_e104 / _e108) * 2f) - 1f);
+    let _e115 = world_pos.y;
+    let _e119 = uniforms.screen_size.y;
+    let clip_y = (1f - ((_e115 / _e119) * 2f));
     let rgba = entry_4.style.fill_rgba;
     let color = vec4<f32>((f32(((rgba >> 24u) & 255u)) / 255f), (f32(((rgba >> 16u) & 255u)) / 255f), (f32(((rgba >> 8u) & 255u)) / 255f), (f32((rgba & 255u)) / 255f));
-    return VertexOut(color, offset, half_width_1, vec4<f32>(clip_x, clip_y, 0f, 1f));
+    return VertexOut(color, offset_1, half_width_2, vec4<f32>(clip_x, clip_y, 0f, 1f));
 }
 
 @fragment 
 fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
     let _e2 = uniforms.pixels_per_point;
-    let feather_1 = (FEATHER_WIDTH_PX / max(_e2, 0.000001f));
-    let alpha = (1f - smoothstep((in.half_width - (feather_1 * 0.5f)), (in.half_width + (feather_1 * 0.5f)), abs(in.offset)));
-    return vec4<f32>(in.color.xyz, (in.color.w * alpha));
+    let _e3 = line_feather(_e2);
+    let _e7 = line_alpha(in.offset, in.half_width, _e3);
+    return vec4<f32>(in.color.xyz, (in.color.w * _e7));
 }
 "#;
 }

@@ -33,7 +33,6 @@ impl DiagramCallback {
             navi.offset_x() as i32,
             navi.offset_y() as f32,
             navi.x_per_screen_unit_f64() as f32,
-            self.entry_segments.len() as u32,
             navi.y_per_screen_unit().0 as f32,
             1.0, // value always overwritten
         );
@@ -143,8 +142,8 @@ impl GlobalDiagramRendererResources {
         let device = &render_state.device;
 
         // Everything here comes from wgsl_bindgen: the WGSL entry points, the pipeline layout
-        // derived from `@group`/`@binding` in `gpu_trip.wgsl`, and the reflected vertex/fragment
-        // state.
+        // derived from `@group`/`@binding` in the compiled `gpu_trip.wesl`, and the reflected
+        // vertex/fragment state.
         let shader = ShaderEntry::GpuTrip.create_shader_module_embed_source(device);
         let pipeline_layout = ShaderEntry::GpuTrip.create_pipeline_layout(device);
         let vertex = gpu_trip::vs_main_entry();

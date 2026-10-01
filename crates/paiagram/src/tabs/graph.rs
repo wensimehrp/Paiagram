@@ -1,13 +1,15 @@
 //! Geographic network editor backed exclusively by Source commands and spatial caches.
 use std::sync::Arc;
 
-use egui::{Pos2, Rect, Ui, WidgetText};
+use egui::*;
 use paiagram_core::*;
+use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 
 use super::{Navigatable, Tab};
 use crate::App;
-mod inspector;
+mod gpu_draw;
+mod gpu_graph;
 mod underlay;
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -16,7 +18,8 @@ pub(crate) struct GraphTab {
     navi: GraphNavigation,
     underlay_tile_type: underlay::UnderlayTileType,
     #[serde(skip)]
-    underlay: Arc<egui::mutex::Mutex<underlay::UnderlayPainter>>,
+    underlay: Arc<Mutex<underlay::UnderlayPainter>>,
+    #[serde(skip)]
     panel_is_open: bool,
 }
 
@@ -59,6 +62,7 @@ impl Default for GraphNavigation {
 impl Navigatable for GraphNavigation {
     type XOffset = f64;
     type YOffset = f64;
+
     fn zoom_x(&self) -> f32 {
         self.zoom
     }
@@ -107,10 +111,14 @@ impl Tab for GraphTab {
         egui_i18n::tr!("tab-graph").into()
     }
     fn main_display(&mut self, app: &mut App, ui: &mut Ui) {
-        let mut is_open = self.panel_is_open || ui.memory(|mem| mem.everything_is_visible());
-        self.panel_is_open = is_open;
-        // egui::CentralPanel::default()
-        //     .frame(Frame::new().inner_margin(0))
-        //     .show(ui, |ui| self.map(app, ui));
+        Frame::canvas(ui.style())
+            .inner_margin(Margin::ZERO)
+            .outer_margin(Margin::ZERO)
+            .stroke(Stroke::NONE)
+            .show(ui, |ui| {
+                main_display(self, app, ui);
+            });
     }
 }
+
+fn main_display(tab: &mut GraphTab, app: &mut App, ui: &mut Ui) {}

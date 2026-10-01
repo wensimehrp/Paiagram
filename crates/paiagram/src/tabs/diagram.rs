@@ -119,25 +119,6 @@ impl Navigatable for DiagramTabNavigation {
     fn visible_rect(&self) -> egui::Rect {
         self.visible_rect
     }
-    fn x_per_screen_unit(&self) -> Self::XOffset {
-        Tick((1.0 / self.zoom_x().max(f32::EPSILON) as f64) as i64)
-    }
-    fn visible_x(&self) -> std::ops::Range<Self::XOffset> {
-        let width = self.visible_rect().width() as f64;
-        let ticks_per_screen_unit = 1.0 / self.zoom_x().max(f32::EPSILON) as f64;
-        let start = self.x_offset;
-        let end = Tick(start.0 + (width * ticks_per_screen_unit).ceil() as i64);
-        start..end
-    }
-    fn visible_y(&self) -> std::ops::Range<Self::YOffset> {
-        let height = self.visible_rect.height() as f64;
-        let start = self.offset_y();
-        let end = start + height / self.zoom_y().max(f32::EPSILON) as f64;
-        CanvasLength(start)..CanvasLength(end)
-    }
-    fn y_per_screen_unit(&self) -> Self::YOffset {
-        CanvasLength(1.0 / self.zoom_y().max(f32::EPSILON) as f64)
-    }
     fn allow_axis_zoom(&self) -> bool {
         true
     }

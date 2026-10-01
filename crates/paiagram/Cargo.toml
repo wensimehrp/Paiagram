@@ -52,6 +52,7 @@ web-time.workspace = true
 wgpu = { version = "*" }  # workaround for wgsl_bindgen
 
 [build-dependencies]
+wesl.workspace = true
 wgsl_bindgen.workspace = true
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]

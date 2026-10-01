@@ -123,6 +123,7 @@ web-sys = {
   ]
 }
 web-time = "1.1.0"
+wesl = "0.5.0"
 wgsl_bindgen = "0.23"
 zrip = "0.8.7"
 
