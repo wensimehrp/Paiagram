@@ -96,12 +96,12 @@ impl GraphNavigation {
         self.xy_to_screen_pos(p[0], p[1])
     }
     fn fixed_screen(&self, p: XyPos) -> Pos2 {
-        let p = XyPosF64::from(p);
+        let p = XyPos::from(p);
         self.screen([p.x, p.y])
     }
     fn coordinate(&self, p: Pos2) -> LonLat {
         let (x, y) = self.screen_pos_to_xy(p);
-        Wgs84LonLat::from(XyPosF64::new(x, y)).into()
+        Wgs84LonLat::from(XyPos::new(x, y)).into()
     }
 }
 

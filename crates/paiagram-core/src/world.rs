@@ -11,7 +11,6 @@ impl WorldSnapshot {
     }
     /// Given the new world snapshot, update the cache. Returns the new world snapshot
     // TODO: handle rtrees
-    #[inline(never)]
     fn update_diff(&self, new: WorldSnapshot) -> Option<WorldSnapshot> {
         use imbl::ordmap::DiffItem::{Add, Remove, Update};
         let mut ret = new.clone();

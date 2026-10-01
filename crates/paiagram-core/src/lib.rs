@@ -9,6 +9,7 @@ mod interval;
 mod make_type;
 pub mod problems;
 pub mod route;
+pub mod spatial_index;
 pub mod trip;
 pub mod units;
 mod world;
