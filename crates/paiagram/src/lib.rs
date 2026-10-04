@@ -155,7 +155,7 @@ impl Default for MainUiState {
     fn default() -> Self {
         Self {
             tree: Tree::new_tabs(
-                "main",
+                Id::unique("main"),
                 vec![
                     MainTab::Start(StartTab::default()),
                     MainTab::Config(ConfigTab::default()),
@@ -249,7 +249,7 @@ pub fn show_ui(
         match &*lock {
             FileLoadState::Idle => {}
             FileLoadState::Processing => {
-                egui::Modal::new(Id::new("write modal")).show(ui.ctx(), |ui| {
+                egui::Modal::new(Id::unique("write modal")).show(ui.ctx(), |ui| {
                     ui.horizontal(|ui| {
                         ui.label("Loading data...");
                         ui.spinner();

@@ -1,7 +1,6 @@
 [workspace]
 resolver = "3"
 members = ["crates/*"]
-exclude = ["crates/epaint_default_fonts"]
 default-members = ["crates/paiagram"]
 
 [workspace.package]
@@ -29,7 +28,8 @@ clap = { version = "4.5.51", features = ["derive"] }
 ecow = { version = "0.3.0", features = ["serde"] }
 # egui stuff
 eframe = {
-  version = "0.36.1",
+  git = "https://github.com/emilk/egui.git",
+  rev = "e45775e4504531ea480db566ea3cccc79d40a340",
   features = [
     "default_fonts",
     "accesskit",
@@ -41,17 +41,25 @@ eframe = {
   ]
 }
 egui = {
-  version = "0.36.1",
+  git = "https://github.com/emilk/egui.git",
+  rev = "e45775e4504531ea480db566ea3cccc79d40a340",
   features = [
     "persistence",
     "rayon",
     "serde",
   ]
 }
-egui_extras = { version = "0.36.1", features = ["webp"] }
+egui_extras = {
+  git = "https://github.com/emilk/egui.git",
+  rev = "e45775e4504531ea480db566ea3cccc79d40a340",
+  features = ["webp"],
+}
 # Internationalization
 egui-i18n = { version = "0.2.0", features = ["fluent"] }
-egui_tiles = "0.17.1"
+egui_tiles = {
+  git = "https://github.com/rerun-io/egui_tiles",
+  rev = "8c239000003c5d422eaad6115b661b5f6076b4de",
+}
 ehttp = "0.7.1"
 either = "1.15.0"
 encoding_rs = "0.8.35"
@@ -72,7 +80,7 @@ itoa = "1.0.18"
 jiff = "0.2.29"
 js-sys = "0.3"
 krilla = "0.8.2"
-log = "0.4.33"
+log = "0.4.34"
 num-format = "0.4.4"
 paiagram-core.path = "crates/paiagram-core"
 paiagram-export.path = "crates/paiagram-export"
@@ -130,7 +138,13 @@ wgsl_bindgen = "0.23"
 zrip = "0.8.7"
 
 [patch.crates-io]
-epaint_default_fonts = { path = "crates/epaint_default_fonts" }
+# Redirect every egui-family crate that some dependency still requests from crates.io to the same
+# git revision as above.
+eframe = { git = "https://github.com/emilk/egui.git", rev = "e45775e4504531ea480db566ea3cccc79d40a340" }
+egui = { git = "https://github.com/emilk/egui.git", rev = "e45775e4504531ea480db566ea3cccc79d40a340" }
+egui_extras = { git = "https://github.com/emilk/egui.git", rev = "e45775e4504531ea480db566ea3cccc79d40a340" }
+emath = { git = "https://github.com/emilk/egui.git", rev = "e45775e4504531ea480db566ea3cccc79d40a340" }
+epaint = { git = "https://github.com/emilk/egui.git", rev = "e45775e4504531ea480db566ea3cccc79d40a340" }
 
 # Enable a small amount of optimization in the dev profile.
 [profile.dev]

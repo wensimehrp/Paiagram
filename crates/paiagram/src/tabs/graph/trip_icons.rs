@@ -2,7 +2,7 @@
 //
 // ^ wgsl_bindgen version 0.23.3
 // Changes made to this file will not be saved.
-// SourceHash: 933656be60c5117de0d4e613213e58a31f4dbf7a381a2542853da54b5ee08f21
+// SourceHash: ba3ea71c448390231631188a6e12b8024d4715c9bbab548d34d417e74a98a23d
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ShaderEntry {

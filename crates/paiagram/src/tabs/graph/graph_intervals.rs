@@ -2,7 +2,7 @@
 //
 // ^ wgsl_bindgen version 0.23.3
 // Changes made to this file will not be saved.
-// SourceHash: d918f10c797199a406918c19f6efef0fc471aa83cccd7730bc3ecdca23beff00
+// SourceHash: a73cbddd7523721d9a48e0a010f5b20096187034bc47aaade11f69748110a3d3
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ShaderEntry {
@@ -152,9 +152,9 @@ pub mod graph_intervals {
     }
     pub const LINE_THICKNESS: f32 = 2f32;
     pub const FEATHER_WIDTH_PX: f32 = 2f32;
-    pub const SQUARE_MESH_LENGTH: u32 = 4u32;
     pub const SEGMENT_MESH_LENGTH: u32 = 6u32;
     pub const SEGMENT_MESH_CONNECT_START: u32 = 4u32;
+    pub const SQUARE_MESH_LENGTH: u32 = 4u32;
     pub const ENTRY_VS_MAIN: &str = "vs_main";
     pub const ENTRY_FS_MAIN: &str = "fs_main";
     #[derive(Debug)]
@@ -364,11 +364,11 @@ const LINE_THICKNESS: f32 = 2f;
 const LINE_COLOR: vec4<f32> = vec4<f32>(0.23f, 0.55f, 0.95f, 1f);
 const FEATHER_WIDTH_PX: f32 = 2f;
 const SQUARE_CORNERS: array<vec2<f32>, 4> = array<vec2<f32>, 4>(vec2<f32>(-1f, -1f), vec2<f32>(1f, -1f), vec2<f32>(-1f, 1f), vec2<f32>(1f, 1f));
-const SQUARE_MESH_LENGTH: u32 = 4u;
 const SEGMENT_MESH_VERTICES: array<SegmentMeshVertex, 4> = array<SegmentMeshVertex, 4>(SegmentMeshVertex(0f, 1f), SegmentMeshVertex(0f, -1f), SegmentMeshVertex(1f, 1f), SegmentMeshVertex(1f, -1f));
 const SEGMENT_MESH_LENGTH: u32 = 6u;
 const SEGMENT_MESH_INDICES: array<u32, 6> = array<u32, 6>(0u, 1u, 2u, 3u, 2u, 3u);
 const SEGMENT_MESH_CONNECT_START: u32 = 4u;
+const SQUARE_MESH_LENGTH: u32 = 4u;
 
 @group(0) @binding(1) 
 var<storage> interval_points: array<IntervalPoint>;

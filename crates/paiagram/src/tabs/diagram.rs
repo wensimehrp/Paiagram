@@ -172,7 +172,9 @@ impl Tab for DiagramTab {
                     let defs = fonts.definitions();
                     if let Some(names) = defs.families.get(&egui::FontFamily::Proportional) {
                         for name in names {
-                            ret.push(defs.font_data[name].font.clone())
+                            let blob = &defs.font_data[name].font;
+                            let bytes: &[u8] = (**blob).as_ref();
+                            ret.push(std::borrow::Cow::Owned(bytes.to_vec()))
                         }
                     }
                     ret

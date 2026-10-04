@@ -38,7 +38,7 @@ impl Tab for ServiceClassesTab {
                                 .take(row_range.count())
                             {
                                 let service_class_str = service_class.name.as_str();
-                                let atom_id = ui.id().with(service_class_str);
+                                let atom_id = IdSalt::new(service_class_str);
                                 let atom = Atom::custom(atom_id, Vec2::new(35.0, 15.0));
                                 let button = egui::Button::selectable(
                                     self.selected_class == Some(service_class_key),
