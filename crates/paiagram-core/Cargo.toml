@@ -21,8 +21,7 @@ egui.workspace = true
 ehttp.workspace = true
 either.workspace = true
 encoding_rs.workspace = true
-eros.workspace = true
-gtfs-structures = { version = "0.46.1", default-features = false }
+gtfs-structures.workspace = true
 imbl.workspace = true
 indexmap.workspace = true
 itertools.workspace = true

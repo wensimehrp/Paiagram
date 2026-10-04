@@ -2,7 +2,7 @@ use egui::*;
 use paiagram_core::{IntervalDirection, IntervalKey};
 use serde::{Deserialize, Serialize};
 
-use crate::tabs::trip::{self, TripTab};
+use crate::tabs::trip::TripTab;
 use crate::{App, MainTab, UiCommand};
 
 #[derive(Serialize, Deserialize, Clone, Default)]

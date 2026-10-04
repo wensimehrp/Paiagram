@@ -158,7 +158,10 @@ impl GlobalDiagramRendererResources {
             layout: Some(&pipeline_layout),
             vertex: gpu_trip::vertex_state(&shader, &vertex),
             fragment: Some(gpu_trip::fragment_state(&shader, &fragment)),
-            primitive: wgpu::PrimitiveState::default(),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleStrip,
+                ..Default::default()
+            },
             depth_stencil: None,
             multisample: wgpu::MultisampleState {
                 count: msaa_samples.max(1),

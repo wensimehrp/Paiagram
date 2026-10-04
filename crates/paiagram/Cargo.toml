@@ -17,21 +17,19 @@ clap.workspace = true
 ecow.workspace = true
 eframe.workspace = true
 egui.workspace = true
-egui_commonmark = "0.23.0"
 egui_extras.workspace = true
 egui-i18n.workspace = true
-egui_material_icons.workspace = true
 egui_tiles.workspace = true
 ehttp.workspace = true
 either.workspace = true
 env_logger.workspace = true
-eros.workspace = true
+fdg-sim.workspace = true
 fontdb.workspace = true
 futures-channel.workspace = true
 futures-lite.workspace = true
 git-version.workspace = true
 ib-matcher.workspace = true
-image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+image.workspace = true
 itertools.workspace = true
 itoa.workspace = true
 jiff.workspace = true
@@ -48,6 +46,7 @@ rfd.workspace = true
 serde.workspace = true
 smallvec.workspace = true
 vec1.workspace = true
+walkers.workspace = true
 web-time.workspace = true
 wgpu = { version = "*" }  # workaround for wgsl_bindgen
 

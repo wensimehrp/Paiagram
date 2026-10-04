@@ -2,13 +2,11 @@ use jiff::Zoned;
 use paiagram_core::time::{Tick, TimetableTime};
 
 /// Token used to unlock the timer.
-pub(crate) struct TimerLockKey {
-    _marker: (),
-}
+pub(crate) struct TimerLockKey(());
 
 pub(crate) struct GlobalTimer {
     /// Progress of the timer
-    ticks: Tick,
+    seconds: f64,
     locked: bool,
     /// Ignored when synched to real time.
     pub animation_speed: f32,
@@ -20,7 +18,7 @@ pub(crate) struct GlobalTimer {
 impl GlobalTimer {
     pub fn new() -> Self {
         Self {
-            ticks: TimetableTime::from_hms(8, 0, 0).to_ticks(),
+            seconds: TimetableTime::from_hms(8, 0, 0).0 as f64,
             locked: false,
             animation_speed: 1.0,
             animation_playing: false,
@@ -40,23 +38,23 @@ impl GlobalTimer {
             return;
         }
         if self.sync_to_real_time {
-            self.ticks = Self::current_real_time_ticks();
+            self.seconds = Self::current_real_time_seconds();
             return;
         }
         if !self.animation_playing {
             return;
         }
         let speed = self.animation_speed as f64;
-        let tick_delta = delta * speed * Tick::TICKS_PER_SECOND as f64;
-        self.ticks = Tick(self.ticks.0 + tick_delta.round() as i64);
+        let seconds_delta = delta * speed;
+        self.seconds += seconds_delta
     }
 
-    pub fn ticks(&self) -> Tick {
-        self.ticks
+    pub fn seconds(&self) -> f64 {
+        self.seconds
     }
 
-    pub fn ticks_mut(&mut self, _key: &TimerLockKey) -> &mut Tick {
-        &mut self.ticks
+    pub fn update_seconds(&mut self, new_seconds: f64, _key: &TimerLockKey) {
+        self.seconds = new_seconds
     }
 
     /// Acquire the lock and return a key used to release it.
@@ -65,7 +63,7 @@ impl GlobalTimer {
             None
         } else {
             self.locked = true;
-            Some(TimerLockKey { _marker: () })
+            Some(TimerLockKey(()))
         }
     }
 
@@ -75,15 +73,13 @@ impl GlobalTimer {
         self.locked = false;
     }
 
-    /// The current time of day as [`Tick`]s since midnight.
-    fn current_real_time_ticks() -> Tick {
+    /// The current time of day as seconds in f64 since midnight.
+    fn current_real_time_seconds() -> f64 {
         let now = Zoned::now();
         let time = now.datetime().time();
-        Tick(
-            time.hour() as i64 * 3600 * Tick::TICKS_PER_SECOND
-                + time.minute() as i64 * 60 * Tick::TICKS_PER_SECOND
-                + time.second() as i64 * Tick::TICKS_PER_SECOND
-                + time.subsec_nanosecond() as i64 / 10_000_000,
-        )
+        time.hour() as f64 * 3600.0
+            + time.minute() as f64 * 60.0
+            + time.second() as f64
+            + time.subsec_nanosecond() as f64 / 1e9
     }
 }

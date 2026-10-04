@@ -91,7 +91,7 @@ fn main() -> eframe::Result<()> {
             .with_app_id("Paiagram")
             .with_inner_size([1280.0, 720.0]),
         renderer: eframe::Renderer::Wgpu,
-        multisampling: 4,
+        multisampling: 1,
         ..Default::default()
     };
     let args = Arguments::parse();

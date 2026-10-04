@@ -2,7 +2,7 @@
 //
 // ^ wgsl_bindgen version 0.23.3
 // Changes made to this file will not be saved.
-// SourceHash: dadf1c1cef2baa6d4147a8b3105de9cefe97d6efab06e2c04b81780d5257991e
+// SourceHash: 53ef8fafe26517874bdda438cdecfc08778664b9adfe8c7cef5c07b38dbf89cd
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ShaderEntry {
@@ -227,8 +227,8 @@ pub mod gpu_trip {
     }
     pub const TICKS_PER_SECOND: i32 = 100i32;
     pub const FEATHER_WIDTH_PX: f32 = 2f32;
-    pub const SEGMENT_MESH_LENGTH: u32 = 12u32;
-    pub const SEGMENT_QUAD_LENGTH: u32 = 6u32;
+    pub const SEGMENT_MESH_CONNECT_START: u32 = 4u32;
+    pub const SEGMENT_MESH_LENGTH: u32 = 6u32;
     pub const ENTRY_VS_MAIN: &str = "vs_main";
     pub const ENTRY_FS_MAIN: &str = "fs_main";
     #[derive(Debug)]
@@ -476,10 +476,9 @@ struct SegmentMeshVertex {
 const TICKS_PER_SECOND: i32 = 100i;
 const FEATHER_WIDTH_PX: f32 = 2f;
 const SEGMENT_MESH_VERTICES: array<SegmentMeshVertex, 4> = array<SegmentMeshVertex, 4>(SegmentMeshVertex(0f, 1f), SegmentMeshVertex(0f, -1f), SegmentMeshVertex(1f, 1f), SegmentMeshVertex(1f, -1f));
-const SEGMENT_MESH_INDICES: array<u32, 12> = array<u32, 12>(0u, 1u, 2u, 1u, 3u, 2u, 0u, 1u, 2u, 1u, 3u, 2u);
-const SEGMENT_MESH_LENGTH: u32 = 12u;
-const SEGMENT_QUAD_CORNERS: array<vec2<f32>, 6> = array<vec2<f32>, 6>(vec2<f32>(-1f, -1f), vec2<f32>(1f, -1f), vec2<f32>(-1f, 1f), vec2<f32>(-1f, 1f), vec2<f32>(1f, -1f), vec2<f32>(1f, 1f));
-const SEGMENT_QUAD_LENGTH: u32 = 6u;
+const SEGMENT_MESH_INDICES: array<u32, 6> = array<u32, 6>(0u, 1u, 2u, 3u, 2u, 3u);
+const SEGMENT_MESH_CONNECT_START: u32 = 4u;
+const SEGMENT_MESH_LENGTH: u32 = 6u;
 
 @group(0) @binding(0) 
 var<uniform> uniforms: Uniforms;
@@ -577,15 +576,14 @@ fn segment_quad_pos(p0_: vec2<f32>, p1_: vec2<f32>, corner: vec2<f32>, half_exte
 
 @vertex 
 fn vs_main(@builtin(vertex_index) vertex_index: u32, @builtin(instance_index) instance_index: u32) -> VertexOut {
-    var dir_incoming: vec2<f32>;
-    var local: bool;
     var p_connect: vec2<f32>;
     var dir_connect: vec2<f32>;
     var dir_outgoing: vec2<f32>;
+    var dir_arr_in: vec2<f32>;
+    var local: bool;
     var joint_p: vec2<f32>;
     var dir_in: vec2<f32>;
     var dir_out: vec2<f32>;
-    var world_pos: vec2<f32>;
     var local_1: bool;
 
     let entry_4 = entry_segments[instance_index];
@@ -594,92 +592,80 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32, @builtin(instance_index) in
     let _e11 = line_feather(_e10);
     let mesh = SEGMENT_MESH_VERTICES[SEGMENT_MESH_INDICES[vertex_index]];
     let is_end = (mesh.along > 0.5f);
-    let is_connect = (vertex_index >= 6u);
+    let is_connect = (vertex_index >= SEGMENT_MESH_CONNECT_START);
     let _e22 = entry_arrival(entry_4);
     let _e23 = entry_departure(entry_4);
     let is_dwell = (entry_4.arr_seconds != entry_4.dep_seconds);
     let _e31 = normalize_or((_e23 - _e22), vec2<f32>(1f, 0f));
-    dir_incoming = _e31;
-    if (entry_4.connects_to_prev != 0u) {
-        local = (instance_index > 0u);
-    } else {
-        local = false;
-    }
-    let _e41 = local;
-    if _e41 {
-        let prev = entry_segments[(instance_index - 1u)];
-        let _e47 = entry_departure(prev);
-        let _e49 = normalize_or((_e22 - _e47), _e31);
-        dir_incoming = _e49;
-    }
     p_connect = _e23;
     dir_connect = _e31;
     dir_outgoing = _e31;
     if (entry_4.connects_to_next != 0u) {
         let next_1 = entry_segments[(instance_index + 1u)];
-        let _e61 = entry_arrival(next_1);
-        p_connect = _e61;
-        let _e62 = p_connect;
-        let _e64 = normalize_or((_e62 - _e23), _e31);
-        dir_connect = _e64;
-        let _e67 = outgoing_from_arrival((instance_index + 1u));
-        dir_outgoing = _e67;
+        let _e43 = entry_arrival(next_1);
+        p_connect = _e43;
+        let _e44 = p_connect;
+        let _e46 = normalize_or((_e44 - _e23), _e31);
+        dir_connect = _e46;
+        let _e49 = outgoing_from_arrival((instance_index + 1u));
+        dir_outgoing = _e49;
     }
-    joint_p = _e22;
-    let _e69 = dir_incoming;
-    dir_in = _e69;
-    dir_out = _e31;
-    if is_connect {
-        if is_end {
-            let _e72 = p_connect;
-            joint_p = _e72;
-            let _e73 = dir_connect;
-            dir_in = _e73;
-            let _e74 = dir_outgoing;
-            dir_out = _e74;
-        } else {
-            joint_p = _e23;
-            let _e75 = dir_connect;
-            dir_out = _e75;
-            dir_in = _e31;
-            if !(is_dwell) {
-                let _e77 = dir_incoming;
-                dir_in = _e77;
-                if (entry_4.connects_to_prev == 0u) {
-                    let _e81 = dir_connect;
-                    dir_in = _e81;
-                }
-            }
-        }
+    dir_arr_in = _e31;
+    if (entry_4.connects_to_prev != 0u) {
+        local = (instance_index > 0u);
     } else {
-        if is_end {
-            joint_p = _e23;
-            dir_in = _e31;
-            let _e82 = dir_connect;
-            dir_out = _e82;
+        local = false;
+    }
+    let _e59 = local;
+    if _e59 {
+        let prev = entry_segments[(instance_index - 1u)];
+        let _e65 = entry_departure(prev);
+        let _e67 = normalize_or((_e22 - _e65), _e31);
+        dir_arr_in = _e67;
+    } else {
+        if !(is_dwell) {
+            let _e69 = dir_connect;
+            dir_arr_in = _e69;
         }
     }
-    let offset_1 = (mesh.side * (half_width_2 + (_e11 * 0.5f)));
-    let _e88 = joint_p;
-    let _e89 = dir_in;
-    let _e90 = dir_out;
-    let _e95 = joint_vertex(_e88, _e89, _e90, mesh.side, (half_width_2 + (_e11 * 0.5f)));
-    world_pos = _e95;
-    if !(is_connect) {
-        local_1 = !(is_dwell);
+    let _e70 = dir_connect;
+    let dir_arr_out = select(_e31, _e70, !(is_dwell));
+    let _e73 = dir_arr_in;
+    let dir_dep_in = select(_e31, _e73, !(is_dwell));
+    joint_p = _e22;
+    let _e77 = dir_arr_in;
+    dir_in = _e77;
+    dir_out = dir_arr_out;
+    if is_connect {
+        local_1 = is_end;
     } else {
         local_1 = false;
     }
-    let _e102 = local_1;
-    if _e102 {
-        world_pos = _e22;
+    let _e83 = local_1;
+    if _e83 {
+        let _e84 = p_connect;
+        joint_p = _e84;
+        let _e85 = dir_connect;
+        dir_in = _e85;
+        let _e86 = dir_outgoing;
+        dir_out = _e86;
+    } else {
+        if is_end {
+            joint_p = _e23;
+            dir_in = dir_dep_in;
+            let _e87 = dir_connect;
+            dir_out = _e87;
+        }
     }
-    let _e104 = world_pos.x;
-    let _e108 = uniforms.screen_size.x;
-    let clip_x = (((_e104 / _e108) * 2f) - 1f);
-    let _e115 = world_pos.y;
-    let _e119 = uniforms.screen_size.y;
-    let clip_y = (1f - ((_e115 / _e119) * 2f));
+    let offset_1 = (mesh.side * (half_width_2 + (_e11 * 0.5f)));
+    let _e93 = joint_p;
+    let _e94 = dir_in;
+    let _e95 = dir_out;
+    let _e100 = joint_vertex(_e93, _e94, _e95, mesh.side, (half_width_2 + (_e11 * 0.5f)));
+    let _e105 = uniforms.screen_size.x;
+    let clip_x = (((_e100.x / _e105) * 2f) - 1f);
+    let _e115 = uniforms.screen_size.y;
+    let clip_y = (1f - ((_e100.y / _e115) * 2f));
     let rgba = entry_4.style.fill_rgba;
     let color = vec4<f32>((f32(((rgba >> 24u) & 255u)) / 255f), (f32(((rgba >> 16u) & 255u)) / 255f), (f32(((rgba >> 8u) & 255u)) / 255f), (f32((rgba & 255u)) / 255f));
     return VertexOut(color, offset_1, half_width_2, vec4<f32>(clip_x, clip_y, 0f, 1f));

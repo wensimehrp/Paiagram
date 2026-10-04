@@ -8,6 +8,7 @@ use crate::import::oudia::OudFileType;
 use crate::time::TimetableDuration;
 use crate::units::time::TimetableTime;
 
+mod gtfs;
 mod oudia;
 mod pyetgr;
 
@@ -69,7 +70,7 @@ pub fn make_snapshot(
         ImportType::OuDiaSecond => {
             oudia::parse_oudia(OudFileType::OuDiaSecond(&str::from_utf8(data)?))
         }
-        ImportType::Gtfs => todo!(),
+        ImportType::Gtfs => gtfs::parse_gtfs(data),
         ImportType::PaiagramPaia => todo!(),
         ImportType::PaiagramRon => todo!(),
         #[cfg(debug_assertions)]

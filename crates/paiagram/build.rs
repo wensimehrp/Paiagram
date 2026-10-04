@@ -13,33 +13,50 @@ const WESL_PACKAGE_ROOT: &str = "src/tabs";
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let out_dir = PathBuf::from(std::env::var("OUT_DIR")?);
 
-    let gpu_trip_wgsl = compile_wesl(
-        WESL_PACKAGE_ROOT,
+    generate_bindings(
+        &out_dir,
         "package::diagram::gpu_trip",
-        &out_dir.join("gpu_trip.wgsl"),
+        "gpu_trip.wgsl",
+        "src/tabs/diagram/gpu_trip.rs",
+    )?;
+    generate_bindings(
+        &out_dir,
+        "package::graph::graph_intervals",
+        "graph_intervals.wgsl",
+        "src/tabs/graph/graph_intervals.rs",
+    )?;
+    generate_bindings(
+        &out_dir,
+        "package::graph::graph_nodes",
+        "graph_nodes.wgsl",
+        "src/tabs/graph/graph_nodes.rs",
+    )?;
+    generate_bindings(
+        &out_dir,
+        "package::graph::trip_icons",
+        "trip_icons.wgsl",
+        "src/tabs/graph/trip_icons.rs",
     )?;
 
-    WgslBindgenOptionBuilder::default()
-        .workspace_root(out_dir.clone())
-        .add_entry_point(gpu_trip_wgsl.to_string_lossy().into_owned())
-        .serialization_strategy(WgslTypeSerializeStrategy::Bytemuck)
-        .type_map(RustWgslTypeMap) // Use glam for math types
-        .output("src/tabs/diagram/gpu_trip.rs")
-        .build()?
-        .generate()?;
+    Ok(())
+}
 
-    let gpu_graph_wgsl = compile_wesl(
-        WESL_PACKAGE_ROOT,
-        "package::graph::gpu_graph",
-        &out_dir.join("gpu_graph.wgsl"),
-    )?;
+/// Compiles a WESL module and runs `wgsl_bindgen` over the result, writing the Rust bindings to
+/// `rs_output`.
+fn generate_bindings(
+    out_dir: &Path,
+    module: &str,
+    wgsl_name: &str,
+    rs_output: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let wgsl = compile_wesl(WESL_PACKAGE_ROOT, module, &out_dir.join(wgsl_name))?;
 
     WgslBindgenOptionBuilder::default()
-        .workspace_root(out_dir.clone())
-        .add_entry_point(gpu_graph_wgsl.to_string_lossy().into_owned())
+        .workspace_root(out_dir.to_path_buf())
+        .add_entry_point(wgsl.to_string_lossy().into_owned())
         .serialization_strategy(WgslTypeSerializeStrategy::Bytemuck)
         .type_map(RustWgslTypeMap) // Use glam for math types
-        .output("src/tabs/graph/gpu_graph.rs")
+        .output(rs_output)
         .build()?
         .generate()?;
 

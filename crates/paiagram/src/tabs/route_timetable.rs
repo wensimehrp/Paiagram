@@ -1,7 +1,7 @@
 use egui::scroll_area::ScrollBarVisibility;
 use egui::*;
 use paiagram_core::RouteKey;
-use paiagram_core::trip::{TEntry, TravelMode};
+use paiagram_core::trip::TravelMode;
 use serde::{Deserialize, Serialize};
 
 use crate::font::TIMETABLTE_TEXT_STYLE;
@@ -24,6 +24,9 @@ impl RouteTimetableTab {
 
 impl super::Tab for RouteTimetableTab {
     const NAME: &'static str = "Route timetable";
+    fn title(&self) -> WidgetText {
+        "Route Timetable".into()
+    }
     fn main_display(&mut self, app: &mut crate::App, ui: &mut Ui) {
         let Some(route) = app.routes.get(&self.route_key) else {
             ui.centered_and_justified(|ui| ui.heading("Route does not exist"));
@@ -149,8 +152,5 @@ impl super::Tab for RouteTimetableTab {
         scroll = center.inner.state.offset;
 
         self.scroll = scroll;
-    }
-    fn title(&self) -> WidgetText {
-        "Route Timetable".into()
     }
 }

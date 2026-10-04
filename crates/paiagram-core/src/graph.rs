@@ -5,8 +5,8 @@ use pathfinding::prelude::dijkstra;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    Distance, Interval, IntervalCache, IntervalCollection, IntervalKey, Node, NodeCollection,
-    NodeKey, Wfc,
+    Distance, Interval, IntervalCache, IntervalCollection, IntervalKey, LonLat, Node,
+    NodeCollection, NodeKey, Wfc,
 };
 
 impl NodeKey {
@@ -147,5 +147,40 @@ impl Graph {
         self.adjacency.remove(&(a, b))?;
         self.adjacency.remove(&(b, a))?;
         self.intervals.remove(&IntervalKey::new(a, b))
+    }
+
+    pub fn update_node_coordinate(
+        &mut self,
+        node_key: NodeKey,
+        new_coordinate: LonLat,
+    ) -> Option<LonLat> {
+        let wfc = self.nodes.get_mut(&node_key)?;
+        let old = std::mem::replace(&mut wfc.pos, new_coordinate);
+        let sorted_keys: Vec<_> =
+            self.neighbor_intervals(node_key).map(|(sorted_key, _)| sorted_key).collect();
+        for key in sorted_keys.into_iter() {
+            let interval = self.intervals.get_mut(&key).unwrap();
+            if node_key == key.hi {
+                if interval.data.nodes.is_empty() {
+                    interval.data.nodes.push(new_coordinate);
+                } else {
+                    *interval.data.nodes.make_mut().first_mut().unwrap() = new_coordinate;
+                }
+            } else {
+                match interval.data.nodes.len() {
+                    0 => {
+                        interval.data.nodes.push(new_coordinate);
+                        interval.data.nodes.push(new_coordinate);
+                    }
+                    1 => {
+                        interval.data.nodes.push(new_coordinate);
+                    }
+                    _ => {
+                        *interval.data.nodes.make_mut().last_mut().unwrap() = new_coordinate;
+                    }
+                }
+            }
+        }
+        Some(old)
     }
 }

@@ -182,6 +182,10 @@ pub struct StrokeStyle {
     pub width: u8,
 }
 
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Serialize, Deserialize, Default, Clone, Debug)]
 pub struct WorldSnapshot {
     pub trips: TripCollection,
@@ -190,6 +194,13 @@ pub struct WorldSnapshot {
     pub graph: graph::Graph,
     pub service_classes: ServiceClassCollection,
     pub routes: RouteCollection,
+    /// Spatial r-trees derived from the rest of the world. Not persisted; rebuilt
+    /// whenever [`spatial_dirty`](Self::spatial_dirty) is set.
+    #[serde(skip)]
+    pub spatial: spatial_index::SpatialCache,
+    /// Whether [`spatial`](Self::spatial) is out of date and must be rebuilt.
+    #[serde(skip, default = "default_true")]
+    pub spatial_dirty: bool,
 }
 
 /// The truth of the application. This structure holds a write-only log and a set of undos and

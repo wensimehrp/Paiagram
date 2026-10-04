@@ -2,18 +2,6 @@ use crate::route::DiagramCache;
 use crate::trip::{EstimateEntry, TEstimate};
 use crate::{NodeKeyHashMap, TripKey, WorldSnapshot};
 
-// #[derive(Clone, Copy)]
-// struct TripEntryData {
-//     entity: Entity,
-//     station: Entity,
-//     estimate: Option<EntryEstimate>,
-// }
-
-// struct TripData {
-//     entity: Entity,
-//     entries: Vec<TripEntryData>,
-// }
-
 type TripPoint = (TEstimate, EstimateEntry, u32, f32);
 
 /// All diagram placements of an entry's node, i.e. every `(layout line index, progress)` at

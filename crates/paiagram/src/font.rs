@@ -52,7 +52,7 @@ pub(crate) fn load_default_font(ctx: Context, font_name: Arc<Mutex<String>>) {
     );
     info!("Loaded XF_Nstf");
     ctx.set_fonts(definitions.clone());
-    egui_material_icons::initialize(&ctx);
+    // egui_material_icons::initialize(&ctx);
     // dynamic query
     match FONT_DATABASE.read().query(&fontdb::Query {
         families: &[Family::Name("Sarasa UI SC"), Family::SansSerif],

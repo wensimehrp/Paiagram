@@ -75,11 +75,6 @@ impl TripSchedule {
         &self.entries
     }
 
-    /// Mutable access to the schedule entries.
-    pub(crate) fn entries_mut(&mut self) -> &mut EcoVec<TEntry> {
-        &mut self.entries
-    }
-
     pub fn arr_to_dur(
         &self,
         estimates: &[(Option<TEstimate>, EstimateEntry)],

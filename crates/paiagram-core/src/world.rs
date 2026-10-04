@@ -6,39 +6,56 @@ impl WorldSnapshot {
     pub fn mutate(&mut self, f: impl FnOnce(WorldSnapshot) -> WorldSnapshot) {
         let new_world = f(self.clone());
         if let Some(updated) = self.update_diff(new_world) {
-            *self = updated
+            *self = updated;
+            self.refresh_spatial_index();
+        }
+    }
+    pub fn refresh_spatial_index(&mut self) {
+        // ugly. TODO: remove whole-world rebuild
+        if self.spatial_dirty {
+            self.spatial = crate::spatial_index::SpatialCache::build(self);
+            self.spatial_dirty = false;
         }
     }
     /// Given the new world snapshot, update the cache. Returns the new world snapshot
-    // TODO: handle rtrees
     fn update_diff(&self, new: WorldSnapshot) -> Option<WorldSnapshot> {
         use imbl::ordmap::DiffItem::{Add, Remove, Update};
         let mut ret = new.clone();
         for diff in self.trips.diff(&new.trips) {
             match diff {
-                Add(k, v) => v.schedule.estimates(&new.graph, |estimates| {
-                    for [(_, curr), (_, next)] in estimates.array_windows() {
-                        if curr.node_key() == next.node_key() {
-                            continue;
+                Add(k, v) => {
+                    ret.spatial_dirty = true;
+                    v.schedule.estimates(&new.graph, |estimates| {
+                        for [(_, curr), (_, next)] in estimates.array_windows() {
+                            if curr.node_key() == next.node_key() {
+                                continue;
+                            }
+                            let interval_key = IntervalKey::new(curr.node_key(), next.node_key());
+                            let Some(interval) = ret.graph.intervals.get_mut(&interval_key) else {
+                                continue;
+                            };
+                            match interval.cache.trips.binary_search(k) {
+                                Ok(_) => {}
+                                Err(idx) => interval.cache.trips.insert(idx, *k),
+                            }
                         }
-                        let interval_key = IntervalKey::new(curr.node_key(), next.node_key());
-                        let interval = ret.graph.intervals.get_mut(&interval_key).unwrap();
-                        match interval.cache.trips.binary_search(k) {
-                            Ok(_) => {}
-                            Err(idx) => interval.cache.trips.insert(idx, *k),
-                        }
-                    }
-                }),
-                Remove(k, v) => {}
+                    });
+                }
+                Remove(_k, _v) => {
+                    ret.spatial_dirty = true;
+                }
                 Update {
-                    old: (k, old_v),
-                    new: (_, new_v),
-                } => {}
+                    old: (_k, _old_v),
+                    new: (_, _new_v),
+                } => {
+                    ret.spatial_dirty = true;
+                }
             }
         }
         for diff in self.vehicles.diff(&new.vehicles) {}
         for diff in self.stations.diff(&new.stations) {}
         for diff in self.graph.nodes.diff(&new.graph.nodes) {
+            ret.spatial_dirty = true;
             // Keep each station's cached node list in sync, since route station records
             // (`StationRecord::All`) resolve their nodes through it.
             match diff {
@@ -82,12 +99,7 @@ impl WorldSnapshot {
         }
         for diff in self.graph.intervals.diff(&new.graph.intervals) {
             match diff {
-                Add(k, v) => {}
-                Remove(k, v) => {}
-                Update {
-                    old: (k, old_v),
-                    new: (_, new_v),
-                } => {}
+                Add(..) | Remove(..) | Update { .. } => ret.spatial_dirty = true,
             }
         }
         for diff in self.service_classes.diff(&new.service_classes) {}

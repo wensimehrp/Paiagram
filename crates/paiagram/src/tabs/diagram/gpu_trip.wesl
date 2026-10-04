@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 import package::shaders::draw_lines::{
+    SEGMENT_MESH_CONNECT_START,
     SEGMENT_MESH_INDICES,
     SEGMENT_MESH_VERTICES,
     VertexOut,
@@ -109,21 +110,15 @@ fn vs_main(
 
     let mesh = SEGMENT_MESH_VERTICES[SEGMENT_MESH_INDICES[vertex_index]];
     let is_end = mesh.along > 0.5;
-    // Vertex indices `6..12` form the quad connecting this entry to the next one.
-    let is_connect = vertex_index >= 6u;
+    // Strip vertices before the connecting quad belong to the entry's own dwell segment; the
+    // rest form the quad that connects this entry to the next one.
+    let is_connect = vertex_index >= SEGMENT_MESH_CONNECT_START;
 
     let p_arr = entry_arrival(entry);
     let p_dep = entry_departure(entry);
     // A pass-through entry has no horizontal part (`arrival == departure`).
     let is_dwell = entry.arr_seconds != entry.dep_seconds;
     let dir_dwell = normalize_or(p_dep - p_arr, vec2<f32>(1.0, 0.0));
-
-    // Direction of the connection coming from the previous entry into this one.
-    var dir_incoming = dir_dwell;
-    if entry.connects_to_prev != 0u && instance_index > 0u {
-        let prev = entry_segments[instance_index - 1u];
-        dir_incoming = normalize_or(p_arr - entry_departure(prev), dir_dwell);
-    }
 
     // Where this entry connects to, and along which direction.
     var p_connect = p_dep;
@@ -133,50 +128,40 @@ fn vs_main(
         let next = entry_segments[instance_index + 1u];
         p_connect = entry_arrival(next);
         dir_connect = normalize_or(p_connect - p_dep, dir_dwell);
-        // Use the *next* entry's leaving direction, which accounts for it being a pass-through.
         dir_outgoing = outgoing_from_arrival(instance_index + 1u);
     }
 
+    var dir_arr_in = dir_dwell;
+    if entry.connects_to_prev != 0u && instance_index > 0u {
+        let prev = entry_segments[instance_index - 1u];
+        dir_arr_in = normalize_or(p_arr - entry_departure(prev), dir_dwell);
+    } else if !is_dwell {
+        dir_arr_in = dir_connect;
+    }
+
+    let dir_arr_out = select(dir_dwell, dir_connect, !is_dwell);
+    let dir_dep_in = select(dir_dwell, dir_arr_in, !is_dwell);
+
     // The joint this vertex belongs to, with its incoming and outgoing directions.
     var joint_p = p_arr;
-    var dir_in = dir_incoming;
-    var dir_out = dir_dwell;
-    if is_connect {
-        if is_end {
-            joint_p = p_connect;
-            dir_in = dir_connect;
-            dir_out = dir_outgoing;
-        } else {
-            joint_p = p_dep;
-            dir_out = dir_connect;
-            // A pass-through entry connects directly to the incoming connection, or is a flat cap
-            // when there is no incoming one.
-            dir_in = dir_dwell;
-            if !is_dwell {
-                dir_in = dir_incoming;
-                if entry.connects_to_prev == 0u {
-                    dir_in = dir_connect;
-                }
-            }
-        }
+    var dir_in = dir_arr_in;
+    var dir_out = dir_arr_out;
+    if is_connect && is_end {
+        // The connecting quad's far edge.
+        joint_p = p_connect;
+        dir_in = dir_connect;
+        dir_out = dir_outgoing;
     } else if is_end {
+        // The edge shared by the dwell quad and the connecting quad. The connecting quad's own
+        // vertices always pick the far-edge mesh corners, so this branch only ever sees the
+        // dwell quad's far edge.
         joint_p = p_dep;
-        dir_in = dir_dwell;
+        dir_in = dir_dep_in;
         dir_out = dir_connect;
     }
 
-    // Expand the mesh quad. The quad is offset from the centre line by `half_width + feather/2`
-    // so the 50%-coverage contour sits exactly on the nominal edge, and its corners are mitered
-    // against the neighbouring segments. Crucially the miter uses the *expanded* width too, so
-    // the two quads that share a joint produce the exact same vertex and tile without gaps. The
-    // `offset` passed to the fragment shader is the perpendicular distance at that vertex, which
-    // is still `half_width + feather/2` because the vertex lies on the segment's offset line.
     let offset = mesh.side * (half_width + feather * 0.5);
-    var world_pos = joint_vertex(joint_p, dir_in, dir_out, mesh.side, half_width + feather * 0.5);
-    // Skip the horizontal quad entirely when there is no horizontal part to draw.
-    if !is_connect && !is_dwell {
-        world_pos = p_arr;
-    }
+    let world_pos = joint_vertex(joint_p, dir_in, dir_out, mesh.side, half_width + feather * 0.5);
 
     let clip_x = (world_pos.x / uniforms.screen_size.x) * 2.0 - 1.0;
     let clip_y = 1.0 - (world_pos.y / uniforms.screen_size.y) * 2.0;

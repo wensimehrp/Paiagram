@@ -13,7 +13,7 @@ macro_rules! define_tabs {
         pub(crate) mod all_tabs {
             $( pub(crate) use super::$name::[<$name:camel Tab>]; )*
         }
-        #[derive(Serialize, Deserialize, Clone, PartialEq)]
+        #[derive(Serialize, Deserialize, PartialEq)]
         pub(super) enum MainTab {
             $( [<$name:camel>](super::tabs::all_tabs::[<$name:camel Tab>]), )*
         }

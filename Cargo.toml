@@ -51,19 +51,20 @@ egui = {
 egui_extras = { version = "0.36.1", features = ["webp"] }
 # Internationalization
 egui-i18n = { version = "0.2.0", features = ["fluent"] }
-egui_material_icons = "0.8.0"
 egui_tiles = "0.17.1"
 ehttp = "0.7.1"
 either = "1.15.0"
 encoding_rs = "0.8.35"
 env_logger = "0.11.11"
-eros = "0.5.0"
+fdg-sim = "0.9.1"
 fontdb = "0.24.0"
 futures-channel = "0.3"
 futures-lite = "2.6.1"
 getrandom = { version = "0.3", features = ["wasm_js"] }
 git-version = "0.3.9"
+gtfs-structures = { version = "0.50.1", default-features = false }
 ib-matcher = { version = "0.4.3", features = ["pinyin", "romaji"] }
+image = { version = "0.25.10", default-features = false, features = ["png"] }
 imbl = { version = "7.0.2", features = ["debug", "serde"] }
 indexmap = "2.14.0"
 itertools = "0.14.0"
@@ -96,6 +97,7 @@ smallvec = { version = "1.15.1", features = ["serde"] }
 thiserror = "2.0.18"
 urlencoding = "2.1.3"
 vec1 = "1.12.1"
+walkers = { version = "0.60.0", features = ["serde"] }
 wasm-bindgen = "0.2.122"
 wasm-bindgen-futures = "0.4"
 wasm-bindgen-rayon = { version = "1.3.0", features = ["no-bundler"] }

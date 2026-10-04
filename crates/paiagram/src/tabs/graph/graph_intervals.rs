@@ -2,21 +2,21 @@
 //
 // ^ wgsl_bindgen version 0.23.3
 // Changes made to this file will not be saved.
-// SourceHash: 357ee244daa1913633a01fc75f0a6ec252f98b8ac2cd947d78da217b12702a94
+// SourceHash: d918f10c797199a406918c19f6efef0fc471aa83cccd7730bc3ecdca23beff00
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ShaderEntry {
-    GpuGraph,
+    GraphIntervals,
 }
 impl ShaderEntry {
     pub fn create_pipeline_layout(&self, device: &wgpu::Device) -> wgpu::PipelineLayout {
         match self {
-            Self::GpuGraph => gpu_graph::create_pipeline_layout(device),
+            Self::GraphIntervals => graph_intervals::create_pipeline_layout(device),
         }
     }
     pub fn create_shader_module_embed_source(&self, device: &wgpu::Device) -> wgpu::ShaderModule {
         match self {
-            Self::GpuGraph => gpu_graph::create_shader_module_embed_source(device),
+            Self::GraphIntervals => graph_intervals::create_shader_module_embed_source(device),
         }
     }
 }
@@ -57,100 +57,104 @@ pub mod layout_asserts {
     use super::_root;
     use super::_root::*;
     const WGSL_BASE_TYPE_ASSERTS: () = {};
-    const GPU_GRAPH_UNIFORMS_ASSERTS: () = {
-        assert!(std::mem::offset_of!(gpu_graph::Uniforms, screen_size) == 0);
-        assert!(std::mem::offset_of!(gpu_graph::Uniforms, x_proj_min) == 8);
-        assert!(std::mem::offset_of!(gpu_graph::Uniforms, y_proj_min) == 12);
-        assert!(std::mem::offset_of!(gpu_graph::Uniforms, zoom) == 16);
-        assert!(std::mem::offset_of!(gpu_graph::Uniforms, pixels_per_point) == 20);
-        assert!(std::mem::align_of::<gpu_graph::Uniforms>() == 8);
-        assert!(std::mem::size_of::<gpu_graph::Uniforms>() == 24);
+    const GRAPH_INTERVALS_INTERVAL_POINT_ASSERTS: () = {
+        assert!(std::mem::offset_of!(graph_intervals::IntervalPoint, screen_pos) == 0);
+        assert!(std::mem::offset_of!(graph_intervals::IntervalPoint, connects_to_next) == 8);
+        assert!(std::mem::align_of::<graph_intervals::IntervalPoint>() == 8);
+        assert!(std::mem::size_of::<graph_intervals::IntervalPoint>() == 16);
     };
-    const GPU_GRAPH_LON_LAT_ASSERTS: () = {
-        assert!(std::mem::offset_of!(gpu_graph::LonLat, lon) == 0);
-        assert!(std::mem::offset_of!(gpu_graph::LonLat, lat) == 4);
-        assert!(std::mem::align_of::<gpu_graph::LonLat>() == 4);
-        assert!(std::mem::size_of::<gpu_graph::LonLat>() == 8);
-    };
-    const GPU_GRAPH_INTERVAL_POINT_ASSERTS: () = {
-        assert!(std::mem::offset_of!(gpu_graph::IntervalPoint, coordinate) == 0);
-        assert!(std::mem::offset_of!(gpu_graph::IntervalPoint, connects_to_next) == 8);
-        assert!(std::mem::align_of::<gpu_graph::IntervalPoint>() == 4);
-        assert!(std::mem::size_of::<gpu_graph::IntervalPoint>() == 12);
+    const GRAPH_INTERVALS_UNIFORMS_ASSERTS: () = {
+        assert!(std::mem::offset_of!(graph_intervals::Uniforms, screen_size) == 0);
+        assert!(std::mem::offset_of!(graph_intervals::Uniforms, pixels_per_point) == 8);
+        assert!(std::mem::align_of::<graph_intervals::Uniforms>() == 8);
+        assert!(std::mem::size_of::<graph_intervals::Uniforms>() == 16);
     };
 }
 #[allow(unused, non_snake_case, non_camel_case_types, non_upper_case_globals)]
-pub mod gpu_graph {
+pub mod graph_intervals {
     use super::_root;
     use super::_root::*;
+    #[repr(C, align(8))]
+    #[derive(Debug, PartialEq, Clone, Copy)]
+    pub struct IntervalPoint {
+        #[doc = "offset: 0, size: 8, type: `vec2<f32>`"]
+        pub screen_pos: [f32; 2],
+        #[doc = "offset: 8, size: 4, type: `u32`"]
+        pub connects_to_next: u32,
+        pub _pad_connects_to_next: [u8; 8 - ::core::mem::size_of::<u32>()],
+    }
+    impl IntervalPoint {
+        pub const fn new(screen_pos: [f32; 2], connects_to_next: u32) -> Self {
+            Self {
+                screen_pos,
+                connects_to_next,
+                _pad_connects_to_next: [0; 8 - ::core::mem::size_of::<u32>()],
+            }
+        }
+    }
+    #[repr(C)]
+    #[derive(Debug, PartialEq, Clone, Copy)]
+    pub struct IntervalPointInit {
+        pub screen_pos: [f32; 2],
+        pub connects_to_next: u32,
+    }
+    impl IntervalPointInit {
+        pub fn build(&self) -> IntervalPoint {
+            IntervalPoint {
+                screen_pos: self.screen_pos,
+                connects_to_next: self.connects_to_next,
+                _pad_connects_to_next: [0; 8 - ::core::mem::size_of::<u32>()],
+            }
+        }
+    }
+    impl From<IntervalPointInit> for IntervalPoint {
+        fn from(data: IntervalPointInit) -> Self {
+            data.build()
+        }
+    }
     #[repr(C, align(8))]
     #[derive(Debug, PartialEq, Clone, Copy)]
     pub struct Uniforms {
         #[doc = "offset: 0, size: 8, type: `vec2<f32>`"]
         pub screen_size: [f32; 2],
         #[doc = "offset: 8, size: 4, type: `f32`"]
-        pub x_proj_min: f32,
-        #[doc = "offset: 12, size: 4, type: `f32`"]
-        pub y_proj_min: f32,
-        #[doc = "offset: 16, size: 4, type: `f32`"]
-        pub zoom: f32,
-        #[doc = "offset: 20, size: 4, type: `f32`"]
         pub pixels_per_point: f32,
+        pub _pad_pixels_per_point: [u8; 8 - ::core::mem::size_of::<f32>()],
     }
     impl Uniforms {
-        pub const fn new(
-            screen_size: [f32; 2],
-            x_proj_min: f32,
-            y_proj_min: f32,
-            zoom: f32,
-            pixels_per_point: f32,
-        ) -> Self {
+        pub const fn new(screen_size: [f32; 2], pixels_per_point: f32) -> Self {
             Self {
                 screen_size,
-                x_proj_min,
-                y_proj_min,
-                zoom,
                 pixels_per_point,
+                _pad_pixels_per_point: [0; 8 - ::core::mem::size_of::<f32>()],
             }
         }
     }
-    #[repr(C, align(4))]
+    #[repr(C)]
     #[derive(Debug, PartialEq, Clone, Copy)]
-    pub struct LonLat {
-        #[doc = "offset: 0, size: 4, type: `i32`"]
-        pub lon: i32,
-        #[doc = "offset: 4, size: 4, type: `i32`"]
-        pub lat: i32,
+    pub struct UniformsInit {
+        pub screen_size: [f32; 2],
+        pub pixels_per_point: f32,
     }
-    impl LonLat {
-        pub const fn new(lon: i32, lat: i32) -> Self {
-            Self { lon, lat }
-        }
-    }
-    #[repr(C, align(4))]
-    #[derive(Debug, PartialEq, Clone, Copy)]
-    pub struct IntervalPoint {
-        #[doc = "offset: 0, size: 8, type: `LonLat`"]
-        pub coordinate: LonLat,
-        #[doc = "offset: 8, size: 4, type: `u32`"]
-        pub connects_to_next: u32,
-    }
-    impl IntervalPoint {
-        pub const fn new(coordinate: LonLat, connects_to_next: u32) -> Self {
-            Self {
-                coordinate,
-                connects_to_next,
+    impl UniformsInit {
+        pub fn build(&self) -> Uniforms {
+            Uniforms {
+                screen_size: self.screen_size,
+                pixels_per_point: self.pixels_per_point,
+                _pad_pixels_per_point: [0; 8 - ::core::mem::size_of::<f32>()],
             }
         }
     }
-    pub const EARTH_RADIUS_METERS: f32 = 6378137f32;
-    pub const WEB_MERCATOR_MAX_LAT: f32 = 85.05113f32;
-    pub const FRAC_PI_4: f32 = 0.7853982f32;
-    pub const LONLAT_SCALE: f32 = 10000000f32;
+    impl From<UniformsInit> for Uniforms {
+        fn from(data: UniformsInit) -> Self {
+            data.build()
+        }
+    }
     pub const LINE_THICKNESS: f32 = 2f32;
     pub const FEATHER_WIDTH_PX: f32 = 2f32;
-    pub const SEGMENT_MESH_LENGTH: u32 = 12u32;
-    pub const SEGMENT_QUAD_LENGTH: u32 = 6u32;
+    pub const SQUARE_MESH_LENGTH: u32 = 4u32;
+    pub const SEGMENT_MESH_LENGTH: u32 = 6u32;
+    pub const SEGMENT_MESH_CONNECT_START: u32 = 4u32;
     pub const ENTRY_VS_MAIN: &str = "vs_main";
     pub const ENTRY_FS_MAIN: &str = "fs_main";
     #[derive(Debug)]
@@ -209,29 +213,29 @@ pub mod gpu_graph {
     }
     #[derive(Debug)]
     pub struct WgpuBindGroup0EntriesParams<'a> {
-        pub uniforms: wgpu::BufferBinding<'a>,
         pub interval_points: wgpu::BufferBinding<'a>,
+        pub uniforms: wgpu::BufferBinding<'a>,
     }
     #[derive(Clone, Debug)]
     pub struct WgpuBindGroup0Entries<'a> {
-        pub uniforms: wgpu::BindGroupEntry<'a>,
         pub interval_points: wgpu::BindGroupEntry<'a>,
+        pub uniforms: wgpu::BindGroupEntry<'a>,
     }
     impl<'a> WgpuBindGroup0Entries<'a> {
         pub fn new(params: WgpuBindGroup0EntriesParams<'a>) -> Self {
             Self {
-                uniforms: wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::Buffer(params.uniforms),
-                },
                 interval_points: wgpu::BindGroupEntry {
                     binding: 1,
                     resource: wgpu::BindingResource::Buffer(params.interval_points),
                 },
+                uniforms: wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::Buffer(params.uniforms),
+                },
             }
         }
         pub fn into_array(self) -> [wgpu::BindGroupEntry<'a>; 2] {
-            [self.uniforms, self.interval_points]
+            [self.interval_points, self.uniforms]
         }
         pub fn collect<B: FromIterator<wgpu::BindGroupEntry<'a>>>(self) -> B {
             self.into_array().into_iter().collect()
@@ -242,23 +246,8 @@ pub mod gpu_graph {
     impl WgpuBindGroup0 {
         pub const LAYOUT_DESCRIPTOR: wgpu::BindGroupLayoutDescriptor<'static> =
             wgpu::BindGroupLayoutDescriptor {
-                label: Some("GpuGraph::BindGroup0::LayoutDescriptor"),
+                label: Some("GraphIntervals::BindGroup0::LayoutDescriptor"),
                 entries: &[
-                    #[doc = " @binding(0): \"uniforms\""]
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: std::num::NonZeroU64::new(std::mem::size_of::<
-                                _root::gpu_graph::Uniforms,
-                            >(
-                            )
-                                as _),
-                        },
-                        count: None,
-                    },
                     #[doc = " @binding(1): \"interval_points\""]
                     wgpu::BindGroupLayoutEntry {
                         binding: 1,
@@ -267,6 +256,21 @@ pub mod gpu_graph {
                             ty: wgpu::BufferBindingType::Storage { read_only: true },
                             has_dynamic_offset: false,
                             min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    #[doc = " @binding(0): \"uniforms\""]
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: std::num::NonZeroU64::new(std::mem::size_of::<
+                                _root::graph_intervals::Uniforms,
+                            >(
+                            )
+                                as _),
                         },
                         count: None,
                     },
@@ -279,7 +283,7 @@ pub mod gpu_graph {
             let bind_group_layout = Self::get_bind_group_layout(device);
             let entries = bindings.into_array();
             let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("GpuGraph::BindGroup0"),
+                label: Some("GraphIntervals::BindGroup0"),
                 layout: &bind_group_layout,
                 entries: &entries,
             });
@@ -321,7 +325,7 @@ pub mod gpu_graph {
     }
     pub fn create_pipeline_layout(device: &wgpu::Device) -> wgpu::PipelineLayout {
         device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("GpuGraph::PipelineLayout"),
+            label: Some("GraphIntervals::PipelineLayout"),
             bind_group_layouts: &[Some(&WgpuBindGroup0::get_bind_group_layout(device))],
             immediate_size: 0u32,
         })
@@ -329,26 +333,13 @@ pub mod gpu_graph {
     pub fn create_shader_module_embed_source(device: &wgpu::Device) -> wgpu::ShaderModule {
         let source = std::borrow::Cow::Borrowed(SHADER_STRING);
         device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("gpu_graph.wgsl"),
+            label: Some("graph_intervals.wgsl"),
             source: wgpu::ShaderSource::Wgsl(source),
         })
     }
     pub const SHADER_STRING: &str = r#"
-struct Uniforms {
-    screen_size: vec2<f32>,
-    x_proj_min: f32,
-    y_proj_min: f32,
-    zoom: f32,
-    pixels_per_point: f32,
-}
-
-struct LonLat {
-    lon: i32,
-    lat: i32,
-}
-
 struct IntervalPoint {
-    coordinate: LonLat,
+    screen_pos: vec2<f32>,
     connects_to_next: u32,
 }
 
@@ -359,54 +350,30 @@ struct VertexOut {
     @builtin(position) position: vec4<f32>,
 }
 
+struct Uniforms {
+    screen_size: vec2<f32>,
+    pixels_per_point: f32,
+}
+
 struct SegmentMeshVertex {
     along: f32,
     side: f32,
 }
 
-const EARTH_RADIUS_METERS: f32 = 6378137f;
-const WEB_MERCATOR_MAX_LAT: f32 = 85.05113f;
-const FRAC_PI_4_: f32 = 0.7853982f;
-const LONLAT_SCALE: f32 = 10000000f;
 const LINE_THICKNESS: f32 = 2f;
 const LINE_COLOR: vec4<f32> = vec4<f32>(0.23f, 0.55f, 0.95f, 1f);
 const FEATHER_WIDTH_PX: f32 = 2f;
-const SEGMENT_QUAD_CORNERS: array<vec2<f32>, 6> = array<vec2<f32>, 6>(vec2<f32>(-1f, -1f), vec2<f32>(1f, -1f), vec2<f32>(-1f, 1f), vec2<f32>(-1f, 1f), vec2<f32>(1f, -1f), vec2<f32>(1f, 1f));
+const SQUARE_CORNERS: array<vec2<f32>, 4> = array<vec2<f32>, 4>(vec2<f32>(-1f, -1f), vec2<f32>(1f, -1f), vec2<f32>(-1f, 1f), vec2<f32>(1f, 1f));
+const SQUARE_MESH_LENGTH: u32 = 4u;
 const SEGMENT_MESH_VERTICES: array<SegmentMeshVertex, 4> = array<SegmentMeshVertex, 4>(SegmentMeshVertex(0f, 1f), SegmentMeshVertex(0f, -1f), SegmentMeshVertex(1f, 1f), SegmentMeshVertex(1f, -1f));
-const SEGMENT_MESH_LENGTH: u32 = 12u;
-const SEGMENT_MESH_INDICES: array<u32, 12> = array<u32, 12>(0u, 1u, 2u, 1u, 3u, 2u, 0u, 1u, 2u, 1u, 3u, 2u);
-const SEGMENT_QUAD_LENGTH: u32 = 6u;
+const SEGMENT_MESH_LENGTH: u32 = 6u;
+const SEGMENT_MESH_INDICES: array<u32, 6> = array<u32, 6>(0u, 1u, 2u, 3u, 2u, 3u);
+const SEGMENT_MESH_CONNECT_START: u32 = 4u;
 
-@group(0) @binding(0) 
-var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) 
 var<storage> interval_points: array<IntervalPoint>;
-
-fn lonlat_to_xy_proj_pos(ll: LonLat) -> vec2<f32> {
-    let lon_deg = clamp((f32(ll.lon) / LONLAT_SCALE), -180f, 180f);
-    let lat_deg = clamp((f32(ll.lat) / LONLAT_SCALE), -90f, 90f);
-    let lon_rad = radians(lon_deg);
-    let lat_rad = radians(clamp(lat_deg, -85.05113f, WEB_MERCATOR_MAX_LAT));
-    let x = (EARTH_RADIUS_METERS * lon_rad);
-    let y = (-6378137f * log(tan((FRAC_PI_4_ + (lat_rad * 0.5f)))));
-    return vec2<f32>(x, y);
-}
-
-fn xy_proj_pos_to_screen_pos(xy_proj_pos: vec2<f32>) -> vec2<f32> {
-    let _e2 = uniforms.x_proj_min;
-    let _e5 = uniforms.y_proj_min;
-    let proj_min = vec2<f32>(_e2, _e5);
-    let _e11 = uniforms.zoom;
-    return ((xy_proj_pos - proj_min) * _e11);
-}
-
-fn screen_pos_to_clip(screen_pos_1: vec2<f32>) -> vec2<f32> {
-    let _e5 = uniforms.screen_size.x;
-    let clip_x = (((screen_pos_1.x / _e5) * 2f) - 1f);
-    let _e15 = uniforms.screen_size.y;
-    let clip_y = (1f - ((screen_pos_1.y / _e15) * 2f));
-    return vec2<f32>(clip_x, clip_y);
-}
+@group(0) @binding(0) 
+var<uniform> uniforms: Uniforms;
 
 fn line_feather(pixels_per_point: f32) -> f32 {
     return (FEATHER_WIDTH_PX / max(pixels_per_point, 0.000001f));
@@ -432,6 +399,14 @@ fn segment_quad_pos(p0_: vec2<f32>, p1_: vec2<f32>, corner: vec2<f32>, half_exte
     return ((center + (_e6 * (corner.x * half_len))) + (_e7 * (corner.y * half_extent)));
 }
 
+fn screen_pos_to_clip(screen_pos_1: vec2<f32>) -> vec2<f32> {
+    let _e5 = uniforms.screen_size.x;
+    let clip_x = (((screen_pos_1.x / _e5) * 2f) - 1f);
+    let _e15 = uniforms.screen_size.y;
+    let clip_y = (1f - ((screen_pos_1.y / _e15) * 2f));
+    return vec2<f32>(clip_x, clip_y);
+}
+
 fn line_alpha(offset: f32, half_width: f32, feather: f32) -> f32 {
     return (1f - smoothstep((half_width - (feather * 0.5f)), (half_width + (feather * 0.5f)), abs(offset)));
 }
@@ -453,21 +428,18 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32, @builtin(instance_index) in
     let _e6 = uniforms.pixels_per_point;
     let _e7 = line_feather(_e6);
     let half_extent_1 = (1f + (_e7 * 0.5f));
-    let _e13 = lonlat_to_xy_proj_pos(point.coordinate);
-    let _e14 = xy_proj_pos_to_screen_pos(_e13);
-    let corner_1 = SEGMENT_QUAD_CORNERS[vertex_index];
+    let start = point.screen_pos;
+    let corner_1 = SQUARE_CORNERS[vertex_index];
     let offset_1 = (corner_1.y * half_extent_1);
-    screen_pos = _e14;
+    screen_pos = start;
     if (point.connects_to_next != 0u) {
-        let _e29 = interval_points[(instance_index + 1u)].coordinate;
-        let _e30 = lonlat_to_xy_proj_pos(_e29);
-        let _e31 = xy_proj_pos_to_screen_pos(_e30);
-        let _e32 = segment_quad_pos(_e14, _e31, corner_1, half_extent_1);
-        screen_pos = _e32;
+        let end = interval_points[(instance_index + 1u)].screen_pos;
+        let _e28 = segment_quad_pos(start, end, corner_1, half_extent_1);
+        screen_pos = _e28;
     }
-    let _e33 = screen_pos;
-    let _e34 = screen_pos_to_clip(_e33);
-    return VertexOut(LINE_COLOR, offset_1, 1f, vec4<f32>(_e34, 0f, 1f));
+    let _e29 = screen_pos;
+    let _e30 = screen_pos_to_clip(_e29);
+    return VertexOut(LINE_COLOR, offset_1, 1f, vec4<f32>(_e30, 0f, 1f));
 }
 
 @fragment 
@@ -483,10 +455,8 @@ fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
 pub mod bytemuck_impls {
     use super::_root;
     use super::_root::*;
-    unsafe impl bytemuck::Zeroable for gpu_graph::Uniforms {}
-    unsafe impl bytemuck::Pod for gpu_graph::Uniforms {}
-    unsafe impl bytemuck::Zeroable for gpu_graph::LonLat {}
-    unsafe impl bytemuck::Pod for gpu_graph::LonLat {}
-    unsafe impl bytemuck::Zeroable for gpu_graph::IntervalPoint {}
-    unsafe impl bytemuck::Pod for gpu_graph::IntervalPoint {}
+    unsafe impl bytemuck::Zeroable for graph_intervals::IntervalPoint {}
+    unsafe impl bytemuck::Pod for graph_intervals::IntervalPoint {}
+    unsafe impl bytemuck::Zeroable for graph_intervals::Uniforms {}
+    unsafe impl bytemuck::Pod for graph_intervals::Uniforms {}
 }

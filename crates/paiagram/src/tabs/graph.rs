@@ -1,35 +1,35 @@
-//! Geographic network editor backed exclusively by Source commands and spatial caches.
-use std::sync::Arc;
+use std::collections::HashMap;
 
+use egui::emath::inverse_lerp;
 use egui::*;
+use fdg_sim::{ForceGraph, Node, Simulation, SimulationParameters};
+use paiagram_core::time::TimetableTime;
 use paiagram_core::*;
-use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
+use walkers::sources::OpenStreetMap;
+use walkers::{HttpTiles, Map, MapMemory, lon_lat};
 
-use super::{Navigatable, Tab};
+use super::Tab;
 use crate::App;
-mod gpu_draw;
-mod gpu_graph;
-mod underlay;
+use crate::selection::{SelectedItem, SelectedItems};
+pub(crate) mod gpu_draw;
+mod graph_intervals;
+mod graph_nodes;
+mod trip_icons;
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize)]
 #[serde(default)]
 pub(crate) struct GraphTab {
-    navi: GraphNavigation,
-    underlay_tile_type: underlay::UnderlayTileType,
     #[serde(skip)]
-    underlay: Arc<Mutex<underlay::UnderlayPainter>>,
-    #[serde(skip)]
-    panel_is_open: bool,
+    tiles: Option<HttpTiles>,
+    map_memory: MapMemory,
 }
 
 impl Default for GraphTab {
     fn default() -> Self {
         Self {
-            navi: GraphNavigation::default(),
-            underlay_tile_type: underlay::UnderlayTileType::None,
-            underlay: Default::default(),
-            panel_is_open: true,
+            tiles: None,
+            map_memory: MapMemory::default(),
         }
     }
 }
@@ -40,77 +40,19 @@ impl PartialEq for GraphTab {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone)]
-pub(crate) struct GraphNavigation {
-    x_offset: f64,
-    y_offset: f64,
-    zoom: f32,
-    visible: Rect,
-}
-
-impl Default for GraphNavigation {
-    fn default() -> Self {
-        Self {
-            x_offset: -500.0,
-            y_offset: -500.0,
-            zoom: 0.5,
-            visible: Rect::NOTHING,
-        }
-    }
-}
-
-impl Navigatable for GraphNavigation {
-    type XOffset = f64;
-    type YOffset = f64;
-
-    fn zoom_x(&self) -> f32 {
-        self.zoom
-    }
-    fn zoom_y(&self) -> f32 {
-        self.zoom
-    }
-    fn set_zoom(&mut self, x: f32, _: f32) {
-        self.zoom = x.clamp(0.00001, 20.0);
-    }
-    fn offset_x(&self) -> f64 {
-        self.x_offset
-    }
-    fn offset_y(&self) -> f64 {
-        self.y_offset
-    }
-    fn set_offset(&mut self, x: f64, y: f64) {
-        self.x_offset = x;
-        self.y_offset = y;
-    }
-    fn visible_rect(&self) -> Rect {
-        self.visible
-    }
-    fn clamp_zoom(&self, x: f32, _: f32) -> (f32, f32) {
-        let z = x.clamp(0.00001, 20.0);
-        (z, z)
-    }
-}
-
-impl GraphNavigation {
-    fn screen(&self, p: [f64; 2]) -> Pos2 {
-        self.xy_to_screen_pos(p[0], p[1])
-    }
-    fn fixed_screen(&self, p: XyPos) -> Pos2 {
-        let p = XyPos::from(p);
-        self.screen([p.x, p.y])
-    }
-    fn coordinate(&self, p: Pos2) -> LonLat {
-        let (x, y) = self.screen_pos_to_xy(p);
-        Wgs84LonLat::from(XyPos::new(x, y)).into()
-    }
-}
-
 impl Tab for GraphTab {
     const NAME: &'static str = "Graph";
     fn title(&self) -> WidgetText {
         egui_i18n::tr!("tab-graph").into()
     }
     fn main_display(&mut self, app: &mut App, ui: &mut Ui) {
+        // TODO: remove this
+        if self.tiles.is_none() {
+            self.tiles = Some(HttpTiles::new(OpenStreetMap, ui.ctx().clone()));
+        };
+        if ui.button("Auto layout").clicked() {
+            auto_layout(app);
+        }
         Frame::canvas(ui.style())
             .inner_margin(Margin::ZERO)
             .outer_margin(Margin::ZERO)
@@ -121,4 +63,221 @@ impl Tab for GraphTab {
     }
 }
 
-fn main_display(tab: &mut GraphTab, app: &mut App, ui: &mut Ui) {}
+struct MapPlugin<'a> {
+    app: &'a mut App,
+}
+
+impl<'a> walkers::Plugin for MapPlugin<'a> {
+    fn run(
+        self: Box<Self>,
+        ui: &mut Ui,
+        response: &Response,
+        projector: &walkers::Projector,
+        _map_memory: &MapMemory,
+    ) {
+        let coor_min = projector.unproject(response.rect.left_top().to_vec2());
+        let coor_min: LonLat = Wgs84LonLat {
+            lon: coor_min.x(),
+            lat: coor_min.y(),
+        }
+        .into();
+        let coor_max = projector.unproject(response.rect.right_bottom().to_vec2());
+        let coor_max: LonLat = Wgs84LonLat {
+            lon: coor_max.x(),
+            lat: coor_max.y(),
+        }
+        .into();
+
+        let interact_pos = if response.clicked()
+            && let Some(pos) = response.interact_pointer_pos()
+            && matches!(self.app.selected_items.take(), SelectedItems::None)
+        {
+            Some(pos)
+        } else {
+            None
+        };
+
+        const SELECTION_THRESHOLD_SQUARE: f32 =
+            trip_icons::trip_icons::ICON_HALF_SIZE * trip_icons::trip_icons::ICON_HALF_SIZE;
+
+        let lon_lat_to_pos = |coor: LonLat| {
+            let wgs84_lon_lat: Wgs84LonLat = coor.into();
+            projector.project(lon_lat(wgs84_lon_lat.lon, wgs84_lon_lat.lat)).to_pos2()
+        };
+
+        let mut callback = gpu_draw::GraphCallback::new();
+        callback.populate_uniforms(response.rect);
+
+        let App {
+            source,
+            timer,
+            selected_items,
+            ..
+        } = self.app;
+
+        let mut trip_leg_text = Vec::new();
+        let mut node_text = Vec::new();
+
+        for leg in
+            source.spatial.trip_legs.get(coor_min, coor_max, TimetableTime(timer.seconds() as i32))
+        {
+            let Some(trip) = source.trips.get(&leg.trip_key) else {
+                continue;
+            };
+            let fill = trip
+                .service_class
+                .and_then(|key| source.service_classes.get(&key))
+                .map_or(Color32::GRAY, |wfc| wfc.style.color);
+            let Some(&[a, b]) = leg.interval.first_chunk() else {
+                continue;
+            };
+            let (first, next) = if leg.is_hi_to_lo { (a, b) } else { (b, a) };
+            let pos1 = lon_lat_to_pos(first);
+            let pos2 = lon_lat_to_pos(next);
+            let progress = {
+                let t1 = leg.curr_dep.0 as f64;
+                let t2 = leg.next_arr.0 as f64;
+                let t_current = timer.seconds();
+                // curr arr time is simply out of range. so just clamp the value...
+                inverse_lerp(t1..=t2, t_current).unwrap_or(0.0).at_least(0.0) as f32
+            };
+            // t_current is a float while t2 is a i32
+            // this leaves a ~1 in-app second gap that duplicates entries.
+            // simply remove the entry when progress > 1.0.
+            if progress > 1.0 {
+                continue;
+            }
+            let trip_pos = pos1.lerp(pos2, progress);
+            trip_leg_text.push((
+                trip_pos,
+                trip.name.as_str(),
+                fill,
+                matches!(
+                    selected_items,
+                    SelectedItems::Trips(selected_trips) if selected_trips.contains(&leg.trip_key)
+                ),
+            ));
+            callback.trip_icons.push(trip_icons::trip_icons::TripIcon::new(
+                0,
+                (trip_pos - response.rect.left_top()).into(),
+            ));
+            if let Some(interact_pos) = interact_pos
+                && (interact_pos - trip_pos).length_sq() <= SELECTION_THRESHOLD_SQUARE
+            {
+                selected_items.replace(SelectedItem::Trip(leg.trip_key))
+            }
+        }
+
+        callback.node_points.clear();
+        for node in source.spatial.nodes.get(coor_min, coor_max) {
+            let pos = lon_lat_to_pos(node.coor);
+            callback.node_points.push(graph_nodes::graph_nodes::NodePoint {
+                screen_pos: (pos - response.rect.min).into(),
+            });
+            node_text.push((
+                pos,
+                source.graph.nodes().get(&node.node_key).map_or("<UNKNOWN>", |wfc| &wfc.name),
+            ));
+        }
+
+        callback.interval_points.clear();
+        for interval in source.spatial.intervals.get(coor_min, coor_max) {
+            let last = interval.nodes.len().saturating_sub(1);
+            callback.interval_points.extend(interval.nodes.iter().enumerate().map(
+                |(idx, &node)| {
+                    graph_intervals::graph_intervals::IntervalPoint::new(
+                        {
+                            let pos = lon_lat_to_pos(node) - response.rect.left_top();
+                            [pos.x, pos.y]
+                        },
+                        u32::from(idx != last),
+                    )
+                },
+            ));
+        }
+
+        ui.painter().add(callback.paint_callback(response.rect));
+
+        for (pos, text) in node_text {
+            ui.painter().text(
+                pos + Vec2::new(8.0, 0.0),
+                Align2::LEFT_CENTER,
+                text,
+                FontId::proportional(13.0),
+                ui.visuals().text_color(),
+            );
+        }
+
+        for (pos, text, fill, is_selected) in trip_leg_text {
+            ui.painter().text(
+                pos + Vec2::new(0.0, -trip_icons::trip_icons::ICON_HALF_SIZE),
+                Align2::CENTER_BOTTOM,
+                text,
+                FontId::proportional(13.0),
+                fill,
+            );
+            if is_selected {
+                ui.painter().circle(
+                    pos,
+                    trip_icons::trip_icons::ICON_HALF_SIZE + 6.0,
+                    Color32::RED.gamma_multiply(0.5),
+                    Stroke::new(1.0, Color32::RED),
+                );
+            }
+        }
+    }
+}
+
+// TODO: remove this
+fn auto_layout(app: &mut App) {
+    let mut graph: ForceGraph<NodeKey, ()> = ForceGraph::default();
+    let mut idx_map = HashMap::with_capacity(app.source.graph.nodes().len());
+    for &node in app.source.graph.nodes().keys() {
+        let idx = graph.add_node(Node::new("", node));
+        idx_map.insert(node, idx);
+    }
+    for edge_key in app.source.graph.intervals().keys() {
+        graph.add_edge(
+            idx_map.get(&edge_key.hi).copied().unwrap(),
+            idx_map.get(&edge_key.lo).copied().unwrap(),
+            (),
+        );
+    }
+    let mut simulation = Simulation::from_graph(graph, SimulationParameters::default());
+    for _ in 0..1000 {
+        simulation.update(0.1);
+        let max_step = simulation
+            .get_graph()
+            .node_weights()
+            .map(|node| node.location.distance(node.old_location))
+            .fold(0.0_f32, f32::max);
+        if max_step < 0.1 {
+            break;
+        }
+    }
+    let _ = app.source.mutate(|mut world| {
+        for node in simulation.get_graph().node_weights() {
+            let new_coor: Wgs84LonLat = XyPos {
+                x: node.location.x as f64,
+                y: node.location.y as f64,
+            }
+            .into();
+            world.graph.update_node_coordinate(node.data, new_coor.into());
+        }
+        Ok(world)
+    });
+}
+
+fn main_display(tab: &mut GraphTab, app: &mut App, ui: &mut Ui) {
+    let map = Map::new(
+        match tab.tiles.as_mut() {
+            // map::new wants dyn, thus rebind
+            Some(tiles) => Some(tiles),
+            None => None,
+        },
+        &mut tab.map_memory,
+        lon_lat(0.0, 0.0),
+    )
+    .with_plugin(MapPlugin { app });
+    ui.add(map);
+}

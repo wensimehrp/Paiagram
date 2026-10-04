@@ -13,15 +13,15 @@ mod widgets;
 use std::sync::Arc;
 
 pub use config::AppLanguage;
-use egui::{Button, Frame, Id, OpenUrl, Panel, Popup, ScrollArea, Ui};
+use egui::{Button, DragValue, Frame, Id, OpenUrl, Panel, Popup, ScrollArea, Ui};
 use egui_i18n::tr;
-use egui_material_icons::icons;
+// use egui_material_icons::icons;
 use egui_tiles::{
     Behavior, ContainerKind, SimplificationOptions, Tile, TileId, Tiles, Tree, UiResponse,
 };
 use log::info;
 use paiagram_core::import::ImportType;
-use paiagram_core::time::Tick;
+use paiagram_core::time::{Tick, TimetableTime};
 use paiagram_core::{RouteKey, SaveFile, Source};
 use paiagram_export::ExportOuDia;
 use paiagram_rw::{ExportObject, FileWriteState};
@@ -77,6 +77,7 @@ impl App {
     /// pass egui uses (eframe's `NativeOptions::multisampling`).
     pub fn init_gpu(&mut self, render_state: &eframe::egui_wgpu::RenderState, msaa_samples: u32) {
         crate::tabs::diagram::gpu_draw::init(render_state, msaa_samples);
+        crate::tabs::graph::gpu_draw::init(render_state, msaa_samples);
     }
     /// Apply UI commands and change the main ui state
     fn apply_ui_commands(&mut self, mus: &mut MainUiState) {
@@ -105,7 +106,7 @@ enum UiCommand {
     OpenOrFocus(MainTab),
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize)]
 pub struct MainUiState {
     tree: Tree<MainTab>,
     maximized: Option<TileId>,
@@ -207,17 +208,21 @@ impl<'w> Behavior<MainTab> for MainTabViewer<'w> {
     ) {
         // wtf???
         let mut ui_action_queue = std::mem::take(&mut self.app.ui_action_queue);
-        ui.menu_button(icons::ICON_ADD, |ui| {
+        ui.menu_button("+", |ui| {
             ScrollArea::vertical().show(ui, |ui| {
                 if ui.button("Intervals").clicked() {
                     ui_action_queue.push(UiCommand::OpenOrFocus(MainTab::Intervals(
                         IntervalsTab::default(),
                     )));
                 }
-                if ui.button("ServiceClasses").clicked() {
+                if ui.button("Service Classes").clicked() {
                     ui_action_queue.push(UiCommand::OpenOrFocus(MainTab::ServiceClasses(
                         ServiceClassesTab::default(),
                     )));
+                }
+                if ui.button("Graph").clicked() {
+                    ui_action_queue
+                        .push(UiCommand::OpenOrFocus(MainTab::Graph(GraphTab::default())));
                 }
                 for (route_key, info) in &self.app.snap.routes {
                     if ui.button(info.name.as_str()).clicked() {
@@ -226,7 +231,6 @@ impl<'w> Behavior<MainTab> for MainTabViewer<'w> {
                         )));
                     }
                 }
-                ui.separator();
             })
         });
         self.app.ui_action_queue = ui_action_queue;
@@ -294,6 +298,7 @@ pub fn show_ui(
                     ("Import OuDiaSecond", "OuDiaSecond", ImportType::OuDiaSecond),
                     ("Import OuDia", "OuDia", ImportType::OuDia),
                     ("Import qETRC/pyETRC", "pyetgr", ImportType::Pyetgr),
+                    ("Import GTFS", "GTFS", ImportType::Gtfs),
                     #[cfg(debug_assertions)]
                     ("Import sample.oud2", "OuDiaSecond", ImportType::BuiltinOud2),
                 ] {
@@ -357,12 +362,12 @@ pub fn show_ui(
     });
     Panel::bottom("bottom panel").exact_size(24.0).show(ui, |ui| {
         ui.horizontal_centered(|ui| {
-            let time = app.timer.ticks().to_timetable_time();
+            let mut time = TimetableTime(app.timer.seconds() as i32);
             ui.add_enabled(
                 !app.timer.sync_to_real_time,
                 egui::Checkbox::new(&mut app.timer.animation_playing, ""),
             );
-            let time_response = ui.add(TimeDragValue(time, &mut None));
+            let time_response = ui.add(DragValue::new(&mut time));
             ui.add_enabled(
                 !app.timer.sync_to_real_time,
                 egui::DragValue::new(&mut app.timer.animation_speed).fixed_decimals(1).suffix("×"),
@@ -377,7 +382,7 @@ pub fn show_ui(
                 && time_response.dragged()
                 && let Some(key) = app.timer.try_lock()
             {
-                *app.timer.ticks_mut(&key) = Tick::from_timetable_time(time);
+                app.timer.update_seconds(time.0 as f64, &key);
                 app.timer.unlock(key);
             }
             if app.timer.animation_playing || app.timer.sync_to_real_time {
