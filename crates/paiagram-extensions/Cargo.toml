@@ -12,4 +12,12 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+log.workspace = true
 paiagram-core.workspace = true
+parking_lot.workspace = true
+rayon.workspace = true
+rquickjs.workspace = true
+wasmi.workspace = true
+
+[dev-dependencies]
+env_logger.workspace = true

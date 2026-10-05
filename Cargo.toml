@@ -96,6 +96,7 @@ rayon = "1.12.0"
 rfd = "0.17.2"
 rhai = "1.25.1"
 ron = "0.12.0"
+rquickjs = { version = "0.14.0", features = ["macro"] }
 rstar = "0.12.2"
 rustc-hash = "2.1.2"
 serde = { version = "1.0.228", features = ["derive", "rc"] }
@@ -109,6 +110,7 @@ walkers = { version = "0.60.0", features = ["serde"] }
 wasm-bindgen = "0.2.122"
 wasm-bindgen-futures = "0.4"
 wasm-bindgen-rayon = { version = "1.3.0", features = ["no-bundler"] }
+wasmi = "2.0.0"
 web-sys = {
   version = "0.3.104",
   features = [

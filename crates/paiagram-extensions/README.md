@@ -4,10 +4,10 @@ Extensions add extra features to Paiagram.
 
 ## Languages
 
-You can write extensions in [Rhai](https://rhai.rs), or any other language compiled to
+You can write extensions in [JavaScript](https://en.wikipedia.org/wiki/JavaScript), or any other language compiled to
 [WebAssembly](https://en.wikipedia.org/wiki/WebAssembly).
 
-## Rhai
+## JavaScript
 
 In order to manipulate the world, the extension must return a new world. The program will
 automatically calculate the difference between the new world and the existing world, and merge the
