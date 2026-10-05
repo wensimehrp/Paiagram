@@ -1,8 +1,12 @@
+<!--typst-begin-exclude-->
+
 # Route/Marey Chart
+
+<!--typst-end-exclude-->
 
 A route is the base of a [Marey
 chart](https://en.wikipedia.org/wiki/Charles_Ibry). A Marey chart is essentially
-a fancy time-distance graph with a bunch of lines on it, and each line
+a fancy time-distance graph with a bunch of lines on it, where each line
 represents a trip. On the Marey chart, a line intersection means two vehicles on
 the trip meet. If the route only has one lane (e.g. the case for single-track
 railways), an intersection means a collision. If the route has two lanes, an
@@ -15,19 +19,22 @@ the height information discarded. Marey charts take a step further by
 compressing the 2d space into 1d space. In other words, coordinates are
 simplified to milestones on a route.
 
-Traditional implementations (or, at least implementations I've seen) don't
-account for the case where the network is very complicated, where there might be
+Traditional software suffers when trying to model complicated networks, for
+example, when there are
 [multiple routes](https://en.wikipedia.org/wiki/Quadruple-track_railway)
 connecting stations, or massive
 [station throats](https://en.wiktionary.org/wiki/station_throat). Paiagram's
 route model is designed to work around those limitations. It is designed around
 Marey chart's model, but with significant extensions.
 
-Paiagram's route model is intended for **displaying** info, and each
-[`Route`] has these components:
+<!--typst-begin-exclude-->
+
+Each [`Route`] has these components:
 
 - name, for obvious reasons,
 - intervals, which is defined in [`RouteIntervals`].
+
+<!--typst-end-exclude-->
 
 ## Milestone (Nominal Distance)
 
@@ -43,12 +50,27 @@ interval's appearence on the graph.
 
 The nodes in the interval are the most important part of the route data model.
 The canvas would use this progress info and display trip lines at different
-sections of the diagram.
+sections of the diagram. Each node is assigned a progress.
 
-Each node has a progress, which is normalized to a 0..=1 range. Each starting
+<!--typst-begin-exclude-->
+
+Each node's progress is normalized to a 0..=1 range. Each starting
 node gets a progress of 0, while each ending node gets 1. Nodes between the
 starting node and the ending node gets different progress values based on their
 distances to the source and target nodes. The progress is calculated as
 P = Dₛ ÷ (Dₛ + Dₜ), where P is the progress between 0..=1, Dₛ is the shortest
 distance from the node to any of the sources, and Dₜ is the shortest distance
 from the node to any of the targets.
+
+<!--typst-end-exclude-->
+
+<!--raw-typst
+The progress is calculated using the following formula:
+
+$
+  P = D_s / (D_s + D_t)
+$
+
+where $D_s$ is the shortest distance from the node to any starting nodes,
+and $D_t$ is the distance from the node to any ending nodes.
+-->
