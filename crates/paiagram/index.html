@@ -142,6 +142,12 @@
             <div class="lds-dual-ring"></div>
         </div>
 
+        <script>
+            window.addEventListener("beforeunload", (event) =>
+                event.preventDefault(),
+            );
+        </script>
+
         <!--Register Service Worker. this will cache the wasm / js scripts for offline use (for PWA functionality). -->
         <!-- Force refresh (Ctrl + F5) to load the latest files instead of cached files  -->
         <script>
