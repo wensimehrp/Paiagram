@@ -1,4 +1,7 @@
+use std::f32::consts::FRAC_PI_4;
+
 use egui::*;
+use itertools::{Itertools, chain};
 use paiagram_core::route::{DiagramCache, StationRecord};
 use paiagram_core::time::{Tick, TimetableTime};
 use paiagram_core::trip::TEstimate;
@@ -9,10 +12,12 @@ use serde::{Deserialize, Serialize};
 
 pub(crate) mod gpu_draw;
 mod gpu_trip;
+mod label_placement;
 
 use super::{Navigatable, Tab};
 use crate::App;
 use crate::selection::{SelectedItem, SelectedItems};
+use crate::tabs::diagram::label_placement::label_placement;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(into = "DiagramTabNoCache", from = "DiagramTabNoCache")]
@@ -375,6 +380,7 @@ fn main_display(tab: &mut DiagramTab, app: &mut App, ui: &mut Ui) {
                         )
                     },
                 );
+            let text_color = ui.visuals().text_color().gamma_multiply(animation_progress);
             for polyline in tab.cache.map.get(trip_key).iter().flat_map(|&it| it) {
                 let points: Vec<_> = polyline
                     .iter()
@@ -388,7 +394,74 @@ fn main_display(tab: &mut DiagramTab, app: &mut App, ui: &mut Ui) {
                         [Pos2::new(x1, y), Pos2::new(x2, y)]
                     })
                     .collect();
-                painter.line(points, stroke);
+                if let Some(&first) = points.first()
+                    && let Some(&last) = points.last()
+                    && let Some((estimate_first, ..)) = polyline.first()
+                    && let Some((estimate_last, ..)) = polyline.last()
+                {
+                    let y_max = points
+                        .iter()
+                        .fold(first.y, |acc, pos| if pos.y > acc { pos.y } else { acc })
+                        + 20.0;
+                    painter.line(
+                        vec![first, pos2(first.x, y_max), pos2(last.x, y_max), last],
+                        Stroke::new(1.0, Color32::DARK_GREEN.gamma_multiply(animation_progress)),
+                    );
+                    painter.text(
+                        pos2(first.x.max(response.rect.left()), y_max)
+                            + Vec2::angled(-FRAC_PI_4) * 2.0,
+                        Align2::LEFT_BOTTOM,
+                        estimate_first.arr.to_string(),
+                        FontId::proportional(13.0),
+                        text_color,
+                    );
+                    painter.text(
+                        pos2(first.x.max(response.rect.left()), y_max)
+                            + Vec2::angled(FRAC_PI_4) * 2.0,
+                        Align2::LEFT_TOP,
+                        (estimate_last.dep - estimate_first.arr).to_string(),
+                        FontId::proportional(13.0),
+                        text_color,
+                    );
+                    painter.text(
+                        pos2(last.x.min(response.rect.right()), y_max)
+                            + Vec2::angled(-FRAC_PI_4 * 3.0) * 2.0,
+                        Align2::RIGHT_BOTTOM,
+                        (estimate_last.dep).to_string(),
+                        FontId::proportional(13.0),
+                        text_color,
+                    );
+                }
+                painter.line(points.clone(), stroke);
+                let (points, _) = points.as_chunks::<2>();
+                for ((estimate, ..), (prev, curr, next)) in std::iter::zip(
+                    polyline,
+                    chain!([None], points.iter().map(Some), [None]).tuple_windows(),
+                ) {
+                    let &[pos_curr_arr, pos_curr_dep] = curr.unwrap();
+                    let pos_prev_dep = prev.map_or(pos_curr_arr, |&[_, p]| p);
+                    let pos_next_arr = next.map_or(pos_curr_dep, |&[p, _]| p);
+                    if estimate.arr != estimate.dep {
+                        let (align, direction) =
+                            label_placement(pos_prev_dep, pos_curr_arr, pos_curr_dep);
+                        painter.text(
+                            pos_curr_arr + direction * 4.0,
+                            align,
+                            estimate.arr.to_string(),
+                            FontId::proportional(13.0),
+                            text_color,
+                        );
+                    }
+                    let (align, direction) =
+                        label_placement(pos_curr_arr, pos_curr_dep, pos_next_arr);
+                    painter.text(
+                        pos_curr_dep + direction * 4.0,
+                        align,
+                        estimate.dep.to_string(),
+                        FontId::proportional(13.0),
+                        text_color,
+                    );
+                }
             }
         }
     }
