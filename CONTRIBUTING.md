@@ -11,7 +11,8 @@ them.
 
 ## AI Policy
 
-We don't encourage or discourage the use of AI/LLM. In general, you may use it to do the following:
+We don't encourage or discourage the use of AI/LLM, though such tools are already used in the
+development of this app. In general, you may use it to do the following:
 
 - Improve your work.
 - Write documentation.

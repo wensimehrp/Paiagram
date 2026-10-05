@@ -16,23 +16,23 @@ details).
 
 = Travel Mode <travel-mode>
 
-Each trip contains a set of entries. Each entry contains arrival and departure modes. A departure
-mode could be any of the following:
-
-#table(
-  columns: 2,
-  [At], [the trip departs at this specific timepoint],
-  [For], [the trip departs after a given amount of time after arrival],
-  [Flexible], [the departure time is flexible],
-)
-
-Likewise, an arrival mode could be any of the following:
+Each trip contains a set of entries. Each entry contains arrive and depart modes. An arrive mode can
+be any of the following:
 
 #table(
   columns: 2,
   [At], [the trip arrives at this specific timepoint],
   [For], [the trip arrives after a given amount of time *after the previous stable timepoint*],
   [Flexible], [the arrival time is flexible],
+)
+
+Likewise, a depart mode can be any of the following:
+
+#table(
+  columns: 2,
+  [At], [the trip departs at this specific timepoint],
+  [For], [the trip departs after a given amount of time after arrival],
+  [Flexible], [the departure time is flexible],
   [Non-stop], [the trip does not stop at this station.],
 )
 
@@ -51,8 +51,7 @@ In this case, Paiagram would do the following:
 - Calculate a shortest path between every entry pair in the timetable that doesn't have a direct
   path from the first to the second
 - Assign that shortest path to the trip
-- Automatically calculate the times at each intermediate station. Each intermediate station would
-  generate a corresponding *derived* entry.
+- Automatically calculate the times at each intermediate station.
 
 Each entry in the trip entry list falls into one of the following categories:
 
@@ -75,8 +74,8 @@ fixed or timetabled entries. In contrast, you can only delete timetabled and fix
 
 == Editing the Trip's Path
 
-In other software such as qETRC You can edit the trip's path by inserting extra fixed (i.e. Flexible
-arrival mode, Flexible departure mode) entries.
+The trip's timetable defines the path it takes. You can adjust the path by inserting entries with
+arrive mode set to Flexible and depart mode set to Non-Stop.
 
 = Vehicles
 

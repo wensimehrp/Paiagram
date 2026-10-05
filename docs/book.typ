@@ -35,7 +35,8 @@
   ),
   tree: (
     chapter-path("index"),
-    chapter-path("tutorial"),
+    chapter-path("resources"),
+    chapter-path("a-guide-to-timetabling"),
     other(content: [= Model], children: (
       chapter-path("model/network"),
       chapter-path("model/route"),
@@ -53,6 +54,7 @@
       chapter-path("import/gtfs"),
     )),
     other(content: [= Exporting], children: (
+      chapter-path("export/pdf"),
       chapter-path("export/paia"),
       chapter-path("export/oudia"),
       chapter-path("export/typst-diagram"),
@@ -71,5 +73,6 @@
 
       #cmarker.render(label-prefix: "license-", read("../LICENSE.md"))
     ]),
+    chapter-path("notes"),
   ),
 )

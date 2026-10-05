@@ -63,22 +63,26 @@ exit 0
         {
           h.div(class: "text-5xl md:text-6xl font-bold flex flex-col justify-center gap-3")[
             #h.span(class: "text-shadow-sm")[Marey charts, reimagined.]
-            #let base-classes = {
+            #let a = h.a.with(class: {
               "py-3 px-6 bg-gray-300/50 rounded-sm backdrop-blur-sm text-2xl w-full"
               " shadow-sm hover:shadow-lg hover:bg-black/30 transition-all"
               " flex flex-col [&>small]:text-sm"
-            }
-            #h.a(href: "https://example.com", class: base-classes, {
+            })
+            #a(href: "https://example.com", {
               h.span[Try it Online]
               h.small[Run the latest version]
-            })
-            #h.a(href: "docs/index.html", class: base-classes, {
+            }) <online-version>
+            #a(href: "docs/index.html", {
               h.span[Read the Docs]
               h.small[Read the online documentation]
             })
-            #h.a(href: links.repo, class: base-classes, {
+            #a(href: links.repo, {
               h.span[See the Source]
               h.small[Browse the source code]
+            })
+            #a(href: "https://github.com/wensimehrp/Paiagram/discussions", {
+              h.span[Official Discussion Zone]
+              h.small[Talk about Paiagram]
             })
           ]
           h.div(

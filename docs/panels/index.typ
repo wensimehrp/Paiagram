@@ -46,18 +46,3 @@ could enter `haneten` instead).
 
 This feature is supported by #link("https://github.com/Chaoses-Ib/ib-matcher")[the IB Matcher]. If
 you like this feature, consider giving the author a star on GitHub!
-
-= Assistance Panel / Right Panel
-
-The right panel provides functions to edit your work and extra data that may help you analyzing your
-network and timetable.
-
-The assistance panel contains three tabs: Edit, Properties, and Export
-
-== "Edit" Tab
-
-== "Properties" Tab
-
-== "Export" Tab
-
-You can use the Export tab to export the current tab's information.
