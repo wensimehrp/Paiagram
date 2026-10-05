@@ -3,6 +3,8 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    # Pinned to the last nixpkgs whose `trunk` builds
+    nixpkgs-trunk.url = "github:NixOS/nixpkgs/56c02bc00adcf003215cc4bd996d6efaf4cff188";
     rust-overlay.url = "github:oxalica/rust-overlay";
     flake-utils.url = "github:numtide/flake-utils";
   };
@@ -10,6 +12,7 @@
   outputs =
     {
       nixpkgs,
+      nixpkgs-trunk,
       rust-overlay,
       flake-utils,
       ...
@@ -22,6 +25,8 @@
         pkgs = import nixpkgs {
           inherit system overlays;
         };
+
+        trunkPkgs = import nixpkgs-trunk { inherit system; };
 
         rustToolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
 
@@ -93,7 +98,8 @@
               cargo-expand
               gitui
               typst
-              trunk
+              # pinned via the `nixpkgs-trunk` input, see the top of this file.
+              trunkPkgs.trunk
               imagemagick
             ]
             ++ runtimeLibs
