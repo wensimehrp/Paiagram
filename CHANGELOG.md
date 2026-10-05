@@ -27,6 +27,7 @@ documentation. This changelog includes changes to the following:
 ### Removed
 
 - Removed LLT Import.
+- Derived travel modes.
 
 ## 0.1.3 (May. 29, 2026)
 
