@@ -67,7 +67,7 @@ impl ConfigUi {
 
     fn desc(&self) -> Option<&String> {
         match self {
-            Self::Text { .. } => None,
+            Self::Text { desc } => Some(desc),
             Self::Separator => None,
             Self::CollapsingHeader { desc, .. } => desc.as_ref(),
             Self::Radio { desc, .. } => desc.as_ref(),
@@ -143,34 +143,32 @@ pub struct ConfigUiList<'a> {
 
 impl<'a> ConfigUiList<'a> {
     pub fn show_ui(mut self, ui: &mut Ui) {
-        Grid::new("extension grid").num_columns(2).show(ui, |ui| {
-            for elem in self.ui_definition {
-                self.show_inner(ui, elem);
-                ui.end_row();
-            }
-        });
+        for elem in self.ui_definition {
+            self.show_inner(ui, elem);
+        }
     }
     fn show_inner(&mut self, ui: &mut Ui, elem: &ConfigUi) {
-        if let Some(desc) = elem.desc() {
-            ui.label(desc);
+        fn to_str_or_default(desc: &Option<String>) -> &str {
+            desc.as_ref().map_or_default(String::as_str)
         }
         match elem {
             ConfigUi::Text { desc } => {
-                ui.label("");
                 ui.label(desc);
             }
             ConfigUi::Separator => {
-                ui.label("");
                 ui.separator();
             }
             ConfigUi::CollapsingHeader {
-                variable, items, ..
+                variable,
+                desc,
+                items,
+                ..
             } => {
                 let Some(ConfigUiReturnValue::Map(map)) = self.return_value.get_mut(variable)
                 else {
                     unreachable!();
                 };
-                ui.collapsing("", |ui| {
+                ui.collapsing(to_str_or_default(desc), |ui| {
                     ConfigUiList {
                         ui_definition: items,
                         return_value: map,
@@ -179,30 +177,37 @@ impl<'a> ConfigUiList<'a> {
                 });
             }
             ConfigUi::Radio {
-                variable, items, ..
+                variable,
+                desc,
+                items,
+                ..
             } => {
                 let Some(ConfigUiReturnValue::Number(current_value)) =
                     self.return_value.get_mut(variable)
                 else {
                     unreachable!()
                 };
-                ui.vertical(|ui| {
-                    for (idx, item) in items.iter().enumerate() {
-                        ui.radio_value(current_value, idx as f64, item);
-                    }
+                ui.horizontal(|ui| {
+                    ui.label(to_str_or_default(desc));
+                    ui.vertical(|ui| {
+                        for (idx, item) in items.iter().enumerate() {
+                            ui.radio_value(current_value, idx as f64, item);
+                        }
+                    });
                 });
             }
-            ConfigUi::Tickbox { variable, .. } => {
+            ConfigUi::Tickbox { variable, desc, .. } => {
                 let Some(ConfigUiReturnValue::Boolean(current_value)) =
                     self.return_value.get_mut(variable)
                 else {
                     unreachable!()
                 };
-                ui.checkbox(current_value, "");
+                ui.checkbox(current_value, to_str_or_default(desc));
             }
             ConfigUi::TextInput {
                 variable,
                 placeholder,
+                desc,
                 ..
             } => {
                 let Some(ConfigUiReturnValue::String(current_value)) =
@@ -210,6 +215,7 @@ impl<'a> ConfigUiList<'a> {
                 else {
                     unreachable!()
                 };
+                ui.label(to_str_or_default(desc));
                 TextEdit::singleline(current_value)
                     .hint_text(placeholder.as_ref().map_or_default(String::as_str))
                     .show(ui);
@@ -219,6 +225,7 @@ impl<'a> ConfigUiList<'a> {
                 integer,
                 min,
                 max,
+                desc,
                 ..
             } => {
                 let Some(ConfigUiReturnValue::Number(current_value)) =
@@ -231,6 +238,7 @@ impl<'a> ConfigUiList<'a> {
                 if *integer {
                     widget = widget.min_decimals(0).max_decimals(0)
                 }
+                ui.label(to_str_or_default(desc));
                 ui.add(widget);
             }
         }
