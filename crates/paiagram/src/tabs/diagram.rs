@@ -17,9 +17,10 @@ mod gpu_trip {
 }
 mod label_placement;
 
+use paiagram_selection::{SelectedItem, SelectedItems};
+
 use super::{Navigatable, Tab};
 use crate::App;
-use crate::selection::{SelectedItem, SelectedItems};
 use crate::tabs::diagram::label_placement::label_placement;
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -165,7 +166,7 @@ impl Tab for DiagramTab {
         "Diagram".into()
     }
     fn main_display(&mut self, app: &mut App, ui: &mut Ui) {
-        ui.horizontal(|ui| {
+        let cache_and_pdf = |ui: &mut Ui| {
             if ui.button("Update cache").clicked() {
                 if let Some(route) = app.routes.get(&self.key) {
                     route.intervals.populate_trips(&app.snap, &mut self.cache);
@@ -196,7 +197,13 @@ impl Tab for DiagramTab {
                 }
                 .write_to_file::<false>(app.file_write_state.clone());
             }
-        });
+        };
+        Window::new("123")
+            .auto_sized()
+            .title_bar(false)
+            .fixed_pos(ui.clip_rect().shrink(8.0).right_top())
+            .pivot(Align2::RIGHT_TOP)
+            .show(ui.ctx(), cache_and_pdf);
         Frame::canvas(ui.style())
             .inner_margin(Margin::ZERO)
             .outer_margin(Margin::ZERO)
