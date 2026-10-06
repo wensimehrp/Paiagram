@@ -52,6 +52,7 @@
       chapter-path("import/qetrc"),
       chapter-path("import/oudia"),
       chapter-path("import/gtfs"),
+      chapter-path("import/jgrpp-orderlist"),
     )),
     other(content: [= Exporting], children: (
       chapter-path("export/pdf"),
