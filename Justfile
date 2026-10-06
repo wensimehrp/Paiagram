@@ -19,6 +19,9 @@ rust-docs:
 watch-wasm-app:
     trunk --config ./crates/paiagram serve --public-url .
 
+watch-release-wasm-app:
+    trunk --config ./crates/paiagram serve --release --public-url .
+
 # Build WASM binary
 build-wasm-app:
     rm -rf dist/app
