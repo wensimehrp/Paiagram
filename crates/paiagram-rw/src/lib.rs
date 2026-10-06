@@ -16,7 +16,9 @@ use web_sys::wasm_bindgen::JsValue;
 #[cfg(target_arch = "wasm32")]
 use web_sys::{Blob, BlobPropertyBag, HtmlAnchorElement, Url};
 
+#[derive(Default)]
 pub enum FileWriteState {
+    #[default]
     Idle,
     Processing,
     Done(io::Result<()>),

@@ -12,11 +12,16 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+egui.workspace = true
 log.workspace = true
 paiagram-core.workspace = true
+paiagram-rw.workspace = true
+paiagram-selection.workspace = true
 parking_lot.workspace = true
 rayon.workspace = true
 rquickjs.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 wasmi.workspace = true
 
 [dev-dependencies]

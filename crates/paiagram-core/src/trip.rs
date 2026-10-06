@@ -101,7 +101,7 @@ impl TripSchedule {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Serialize)]
 pub struct TEstimate {
     pub arr: TTime,
     pub dep: TTime,
@@ -113,7 +113,7 @@ impl TEstimate {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Serialize)]
 pub enum EstimateEntry {
     Pinned(TEntry),
     Derived(NodeKey),

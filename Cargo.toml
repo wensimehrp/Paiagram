@@ -84,10 +84,12 @@ log = "0.4.34"
 num-format = "0.4.4"
 paiagram-core.path = "crates/paiagram-core"
 paiagram-export.path = "crates/paiagram-export"
+paiagram-extensions.path = "crates/paiagram-extensions"
 paiagram-oudia.path = "crates/paiagram-oudia"
 paiagram-oudia-macros.path = "crates/paiagram-oudia-macros"
 paiagram-raptor.path = "crates/paiagram-raptor"
 paiagram-rw.path = "crates/paiagram-rw"
+paiagram-selection.path = "crates/paiagram-selection"
 parking_lot = "0.12"
 paste = "1.0.15"
 petgraph = { version = "0.8.3", features = ["rayon", "serde-1"] }
@@ -96,10 +98,10 @@ rayon = "1.12.0"
 rfd = "0.17.2"
 rhai = "1.25.1"
 ron = "0.12.0"
-rquickjs = { version = "0.14.0", features = ["macro"] }
+rquickjs = { version = "0.14.0", features = ["macro", "parallel", "rust-alloc"] }
 rstar = "0.12.2"
 rustc-hash = "2.1.2"
-serde = { version = "1.0.228", features = ["derive", "rc"] }
+serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"
 slotmap = { version = "1.1.1", features = ["serde"] }
 smallvec = { version = "1.15.1", features = ["serde"] }

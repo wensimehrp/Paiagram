@@ -8,6 +8,14 @@ use paiagram::{App, UiState};
 use serde::Deserialize;
 use web_time::Instant;
 
+/// Supplies QuickJS's host clock for the upcoming `env.__rquickjs_host_now_us` import that
+/// `rquickjs-sys`'s wasm shim declares.
+#[cfg(target_arch = "wasm32")]
+#[unsafe(no_mangle)]
+pub extern "C" fn __rquickjs_host_now_us() -> f64 {
+    js_sys::Date::now() * 1000.0
+}
+
 struct PaiagramApp {
     app: App,
     ui_state: UiState,

@@ -104,7 +104,7 @@ fn gen_progress(
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub struct RouteIntervals(pub Vec<RouteInterval>);
 
-#[derive(Clone, Default, Debug)]
+#[derive(Clone, Default, Debug, Serialize)]
 pub struct DiagramCache {
     pub map: TripKeyHashMap<SmallVec<[Vec<(TEstimate, EstimateEntry, u32, f32)>; 1]>>,
 }

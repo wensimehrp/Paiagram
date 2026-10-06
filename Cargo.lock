@@ -4641,8 +4641,10 @@ dependencies = [
  "log",
  "paiagram-core",
  "paiagram-export",
+ "paiagram-extensions",
  "paiagram-raptor",
  "paiagram-rw",
+ "paiagram-selection",
  "parking_lot",
  "paste",
  "pollster 1.0.1",
@@ -4712,12 +4714,17 @@ dependencies = [
 name = "paiagram-extensions"
 version = "0.1.3"
 dependencies = [
+ "egui",
  "env_logger",
  "log",
  "paiagram-core",
+ "paiagram-rw",
+ "paiagram-selection",
  "parking_lot",
  "rayon",
  "rquickjs",
+ "serde",
+ "serde_json",
  "wasmi",
 ]
 
@@ -4776,6 +4783,15 @@ dependencies = [
  "wasm-bindgen-futures",
  "web-sys",
  "zrip",
+]
+
+[[package]]
+name = "paiagram-selection"
+version = "0.1.3"
+dependencies = [
+ "paiagram-core",
+ "serde",
+ "vec1",
 ]
 
 [[package]]
@@ -7422,6 +7438,9 @@ name = "vec1"
 version = "1.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "eab68b56840f69efb0fefbe3ab6661499217ffdc58e2eef7c3f6f69835386322"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "vello_common"

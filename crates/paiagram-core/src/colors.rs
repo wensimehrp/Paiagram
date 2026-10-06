@@ -1,7 +1,6 @@
 //! The color definitions.
 
 use egui::Color32;
-use egui::color_picker::{Alpha, color_picker_color32, show_color_at};
 use serde::{Deserialize, Serialize};
 
 /// A color displayed in the application. This is used for stations, intervals, and trip classes.

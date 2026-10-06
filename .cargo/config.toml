@@ -1,12 +1,12 @@
-[target.x86_64-unknown-linux-gnu]
-linker = "clang"
-rustflags = ["-C", "link-arg=-fuse-ld=mold"]
-
 [target.wasm32-unknown-unknown]
 rustflags = [
   "--cfg=getrandom_backend=\"wasm_js\"",
   "--cfg=web_sys_unstable_apis",  # for query_local_fonts
   "-Ctarget-feature=+simd128,+atomics,+bulk-memory,+mutable-globals",
+  # rquickjs-sys ships a prebuilt wasi-libc/libc.a compiled without atomics.
+  # Rebuilding libc.a with -matomics -mbulk-memory would
+  # let this workaround be dropped.
+  "-Clink-arg=--no-check-features",
   "-Clink-arg=--shared-memory",
   "-Clink-arg=--max-memory=1073741824",
   "-Clink-arg=--import-memory",
@@ -15,6 +15,10 @@ rustflags = [
   "-Clink-arg=--export=__tls_align",
   "-Clink-arg=--export=__tls_base",
 ]
+
+[target.x86_64-unknown-linux-gnu]
+linker = "clang"
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]
 
 [unstable]
 build-std = ["std", "panic_abort"]

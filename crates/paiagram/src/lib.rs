@@ -21,10 +21,11 @@ use egui_tiles::{
 };
 use log::info;
 use paiagram_core::import::ImportType;
-use paiagram_core::time::{Tick, TimetableTime};
+use paiagram_core::time::TimetableTime;
 use paiagram_core::{RouteKey, SaveFile, Source};
 use paiagram_export::ExportOuDia;
 use paiagram_rw::{ExportObject, FileWriteState};
+use paiagram_selection::SelectedItems;
 use parking_lot::Mutex;
 use rfd::AsyncFileDialog;
 use serde::{Deserialize, Serialize};
@@ -35,9 +36,7 @@ pub use wasm_bindgen_rayon::init_thread_pool;
 
 use crate::command_palette::CommandPalette;
 use crate::load::FileLoadState;
-use crate::selection::SelectedItems;
 use crate::timer::GlobalTimer;
-use crate::widgets::TimeDragValue;
 
 pub struct App {
     source: Source,
@@ -223,6 +222,11 @@ impl<'w> Behavior<MainTab> for MainTabViewer<'w> {
                 if ui.button("Graph").clicked() {
                     ui_action_queue
                         .push(UiCommand::OpenOrFocus(MainTab::Graph(GraphTab::default())));
+                }
+                if ui.button("Extension").clicked() {
+                    ui_action_queue.push(UiCommand::OpenOrFocus(MainTab::Extension(
+                        ExtensionTab::default(),
+                    )));
                 }
                 for (route_key, info) in &self.app.snap.routes {
                     if ui.button(info.name.as_str()).clicked() {

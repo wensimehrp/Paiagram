@@ -39,6 +39,7 @@ define_tabs!(
     trip;
     intervals;
     service_classes;
+    extension;
 );
 
 fn handle_keyboard_navigation(ui: &Ui) -> Vec2 {
