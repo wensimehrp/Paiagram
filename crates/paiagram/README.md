@@ -6,7 +6,7 @@ This crate uses `egui`, which should run in the browser, Linux, macOS, and Windo
 
 ## World Snapshot
 
-```
+```text
 start of frame
 ╭─────────╮
 │^    ╭───┴───╮
