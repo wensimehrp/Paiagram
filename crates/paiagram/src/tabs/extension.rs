@@ -43,7 +43,7 @@ impl Default for ExtensionTab {
     fn default() -> Self {
         let (file_sender, file_receiver) = channel();
         Self {
-            script_text: String::new(),
+            script_text: include_str!("../../../paiagram-extensions/scripts/ui_sample.js").into(),
             file_receiver,
             file_sender,
             edit_mode: false,
@@ -102,13 +102,23 @@ fn main_display(tab: &mut ExtensionTab, app: &mut crate::App, ui: &mut Ui) {
     }
     ui.checkbox(&mut tab.edit_mode, "Edit mode");
     if tab.edit_mode {
-        ui.add(
-            TextEdit::multiline(&mut tab.script_text).code_editor().desired_width(f32::INFINITY),
-        );
+        ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
+            ui.add(
+                TextEdit::multiline(&mut tab.script_text)
+                    .code_editor()
+                    .desired_width(f32::INFINITY),
+            );
+        });
         return;
     }
     ui.horizontal(|ui| {
-        if ui.button("Refresh").clicked() || tab.config_ui.is_none() {
+        if ui.button("Refresh").clicked()
+            || (tab.config_ui.is_none()
+                && matches!(
+                    tab.config_running_status.try_lock(),
+                    Some(inner) if matches!(*inner, ConfigRunningStatus::Idle)
+                ))
+        {
             eval_config(
                 JsRuntimeData {
                     snap: app.snap.clone(),
@@ -131,38 +141,44 @@ fn main_display(tab: &mut ExtensionTab, app: &mut crate::App, ui: &mut Ui) {
                 tab.script_text.as_str().into(),
             );
         }
-    });
-    if let Some(mut result) = tab.config_running_status.try_lock()
-        && matches!(*result, ConfigRunningStatus::Finished(..))
-        && let ConfigRunningStatus::Finished(result) = std::mem::take(&mut *result)
-    {
-        if let Ok(result) = &result {
-            tab.return_value_map = default_return_values(result);
-        };
-        tab.config_ui = Some(result.map_err(|e| e.to_string()));
-    }
-    if let Some(mut result) = tab.script_running_status.try_lock() {
-        if matches!(*result, ScriptRunningStatus::Running) {
-            ui.horizontal(|ui| {
-                ui.spinner();
-                ui.label("Executing script...");
-            });
-        } else if matches!(*result, ScriptRunningStatus::Finished(..))
-            && let ScriptRunningStatus::Finished(result) = std::mem::take(&mut *result)
-        {
-            match result {
-                Ok(world) => tab.script_eval_err = None,
-                Err(e) => tab.script_eval_err = Some(e.to_string()),
+        if let Some(mut result) = tab.config_running_status.try_lock() {
+            if matches!(*result, ConfigRunningStatus::Running) {
+                ui.horizontal(|ui| {
+                    ui.spinner();
+                    ui.label("Evaluating config...");
+                });
+            } else if matches!(*result, ConfigRunningStatus::Finished(..))
+                && let ConfigRunningStatus::Finished(result) = std::mem::take(&mut *result)
+            {
+                if let Ok(result) = &result {
+                    tab.return_value_map = default_return_values(result);
+                };
+                tab.config_ui = Some(result.map_err(|e| e.to_string()));
             }
         }
-    }
+        if let Some(mut result) = tab.script_running_status.try_lock() {
+            if matches!(*result, ScriptRunningStatus::Running) {
+                ui.horizontal(|ui| {
+                    ui.spinner();
+                    ui.label("Executing script...");
+                });
+            } else if matches!(*result, ScriptRunningStatus::Finished(..))
+                && let ScriptRunningStatus::Finished(result) = std::mem::take(&mut *result)
+            {
+                match result {
+                    Ok(world) => tab.script_eval_err = None,
+                    Err(e) => tab.script_eval_err = Some(e.to_string()),
+                }
+            }
+        }
+    });
     if let Some(err) = &tab.script_eval_err {
         ui.label(err);
     }
     let Some(config_ui) = &tab.config_ui else {
         return;
     };
-    match config_ui {
+    ScrollArea::vertical().auto_shrink(false).show(ui, |ui| match config_ui {
         Ok(config_ui) => ConfigUiList {
             ui_definition: config_ui,
             return_value: &mut tab.return_value_map,
@@ -172,5 +188,5 @@ fn main_display(tab: &mut ExtensionTab, app: &mut crate::App, ui: &mut Ui) {
             ui.label("Error while showing config:");
             ui.label(msg);
         }
-    };
+    });
 }
