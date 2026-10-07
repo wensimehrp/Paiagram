@@ -20,29 +20,29 @@ pub enum ConfigUi {
     Separator,
     CollapsingHeader {
         variable: ReturnVariableName,
-        desc: Option<String>,
+        desc: String,
         items: Vec<ConfigUi>,
     },
     Radio {
         variable: ReturnVariableName,
-        desc: Option<String>,
+        desc: String,
         items: Vec<String>,
         default: usize,
     },
     Tickbox {
         variable: ReturnVariableName,
-        desc: Option<String>,
+        desc: String,
         default: bool,
     },
     TextInput {
         variable: ReturnVariableName,
-        desc: Option<String>,
+        desc: String,
         placeholder: Option<String>,
         default: Option<String>,
     },
     DragValue {
         variable: ReturnVariableName,
-        desc: Option<String>,
+        desc: String,
         integer: bool,
         min: f64,
         max: f64,
@@ -69,11 +69,12 @@ impl ConfigUi {
         match self {
             Self::Text { desc } => Some(desc),
             Self::Separator => None,
-            Self::CollapsingHeader { desc, .. } => desc.as_ref(),
-            Self::Radio { desc, .. } => desc.as_ref(),
-            Self::Tickbox { desc, .. } => desc.as_ref(),
-            Self::TextInput { desc, .. } => desc.as_ref(),
-            Self::DragValue { desc, .. } => desc.as_ref(),
+            // special case for collapsing header as we want to display it on the header
+            Self::CollapsingHeader { .. } => None,
+            Self::Radio { desc, .. } => Some(desc),
+            Self::Tickbox { .. } => None,
+            Self::TextInput { desc, .. } => Some(desc),
+            Self::DragValue { desc, .. } => Some(desc),
         }
     }
 
@@ -144,16 +145,23 @@ pub struct ConfigUiList<'a> {
 impl<'a> ConfigUiList<'a> {
     pub fn show_ui(mut self, ui: &mut Ui) {
         for elem in self.ui_definition {
-            self.show_inner(ui, elem);
+            if let Some(desc) = elem.desc() {
+                ui.label(desc);
+                Frame::NONE
+                    .inner_margin(Margin {
+                        left: 12,
+                        ..Default::default()
+                    })
+                    .show(ui, |ui| self.show_inner(ui, elem));
+            } else {
+                self.show_inner(ui, elem);
+            }
         }
     }
     fn show_inner(&mut self, ui: &mut Ui, elem: &ConfigUi) {
-        fn to_str_or_default(desc: &Option<String>) -> &str {
-            desc.as_ref().map_or_default(String::as_str)
-        }
         match elem {
-            ConfigUi::Text { desc } => {
-                ui.label(desc);
+            ConfigUi::Text { .. } => {
+                // already handled
             }
             ConfigUi::Separator => {
                 ui.separator();
@@ -168,7 +176,7 @@ impl<'a> ConfigUiList<'a> {
                 else {
                     unreachable!();
                 };
-                ui.collapsing(to_str_or_default(desc), |ui| {
+                ui.collapsing(desc, |ui| {
                     ConfigUiList {
                         ui_definition: items,
                         return_value: map,
@@ -177,23 +185,17 @@ impl<'a> ConfigUiList<'a> {
                 });
             }
             ConfigUi::Radio {
-                variable,
-                desc,
-                items,
-                ..
+                variable, items, ..
             } => {
                 let Some(ConfigUiReturnValue::Number(current_value)) =
                     self.return_value.get_mut(variable)
                 else {
                     unreachable!()
                 };
-                ui.horizontal(|ui| {
-                    ui.label(to_str_or_default(desc));
-                    ui.vertical(|ui| {
-                        for (idx, item) in items.iter().enumerate() {
-                            ui.radio_value(current_value, idx as f64, item);
-                        }
-                    });
+                ui.horizontal_wrapped(|ui| {
+                    for (idx, item) in items.iter().enumerate() {
+                        ui.radio_value(current_value, idx as f64, item);
+                    }
                 });
             }
             ConfigUi::Tickbox { variable, desc, .. } => {
@@ -202,12 +204,11 @@ impl<'a> ConfigUiList<'a> {
                 else {
                     unreachable!()
                 };
-                ui.checkbox(current_value, to_str_or_default(desc));
+                ui.checkbox(current_value, desc);
             }
             ConfigUi::TextInput {
                 variable,
                 placeholder,
-                desc,
                 ..
             } => {
                 let Some(ConfigUiReturnValue::String(current_value)) =
@@ -215,7 +216,6 @@ impl<'a> ConfigUiList<'a> {
                 else {
                     unreachable!()
                 };
-                ui.label(to_str_or_default(desc));
                 TextEdit::singleline(current_value)
                     .hint_text(placeholder.as_ref().map_or_default(String::as_str))
                     .show(ui);
@@ -225,7 +225,6 @@ impl<'a> ConfigUiList<'a> {
                 integer,
                 min,
                 max,
-                desc,
                 ..
             } => {
                 let Some(ConfigUiReturnValue::Number(current_value)) =
@@ -238,7 +237,6 @@ impl<'a> ConfigUiList<'a> {
                 if *integer {
                     widget = widget.min_decimals(0).max_decimals(0)
                 }
-                ui.label(to_str_or_default(desc));
                 ui.add(widget);
             }
         }

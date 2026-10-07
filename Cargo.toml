@@ -52,7 +52,7 @@ egui = {
 egui_extras = {
   git = "https://github.com/emilk/egui.git",
   rev = "e45775e4504531ea480db566ea3cccc79d40a340",
-  features = ["webp"],
+  features = ["syntect"],
 }
 # Internationalization
 egui-i18n = { version = "0.2.0", features = ["fluent"] }

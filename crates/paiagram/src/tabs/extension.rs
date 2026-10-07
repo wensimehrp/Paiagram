@@ -102,10 +102,23 @@ fn main_display(tab: &mut ExtensionTab, app: &mut crate::App, ui: &mut Ui) {
     }
     ui.checkbox(&mut tab.edit_mode, "Edit mode");
     if tab.edit_mode {
+        let theme = egui_extras::syntax_highlighting::CodeTheme::from_memory(ui.ctx(), ui.style());
+        let mut layouter = |ui: &egui::Ui, buf: &dyn egui::TextBuffer, wrap_width: f32| {
+            let mut layout_job = egui_extras::syntax_highlighting::highlight(
+                ui.ctx(),
+                ui.style(),
+                &theme,
+                buf.as_str(),
+                "js",
+            );
+            layout_job.wrap.max_width = wrap_width;
+            ui.fonts_mut(|f| f.layout_job(layout_job))
+        };
         ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
             ui.add(
                 TextEdit::multiline(&mut tab.script_text)
                     .code_editor()
+                    .layouter(&mut layouter)
                     .desired_width(f32::INFINITY),
             );
         });
