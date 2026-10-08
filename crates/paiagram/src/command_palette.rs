@@ -1,5 +1,5 @@
 use ecow::EcoString;
-use egui::{Context, Key, Modifiers, NumExt, Ui};
+use egui::{Context, Key, Modifiers, NumExt, Stroke, Ui};
 use egui_i18n::tr;
 use paiagram_core::{RouteKey, StationKey, TripKey};
 
@@ -51,7 +51,21 @@ impl CommandPalette {
             .scroll(false)
             .title_bar(false)
             .show(ctx, |ui| {
-                egui::Frame::new().inner_margin(2).show(ui, |ui| self.window_content_ui(ui, app))
+                egui::Frame::new().inner_margin(2).show(ui, |ui| self.window_content_ui(ui, app));
+                ui.painter().rect_stroke(
+                    ui.min_rect(),
+                    0,
+                    Stroke::new(1.0, egui::Color32::RED),
+                    egui::StrokeKind::Middle,
+                );
+
+                if self.visible
+                    && let Some(Some(click_pos)) =
+                        ui.input(|r| r.pointer.any_click().then_some(r.pointer.interact_pos()))
+                    && !ui.min_rect().contains(click_pos)
+                {
+                    self.visible ^= true;
+                };
             });
     }
 
