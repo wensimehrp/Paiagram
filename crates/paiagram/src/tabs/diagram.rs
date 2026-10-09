@@ -474,17 +474,17 @@ fn main_display(tab: &mut DiagramTab, app: &mut App, ui: &mut Ui) {
                         FontId::proportional(13.0),
                         text_color,
                     );
+                    let EstimateEntry::Pinned(entry) = entry else {
+                        continue;
+                    };
                     let button_radius = 8.0;
                     let circle_handle_size: f32 = 7.0 / 12.0 * button_radius * 2.0;
                     let triangle_handle_size: f32 = 10.0 / 12.0 * button_radius * 2.0;
                     let dash_handle_size: f32 = 9.0 / 12.0 * button_radius * 2.0;
-                    let delta_x = button_radius * 2.0 * 0.8
+                    let raw_delta = (button_radius * 2.0)
                         - (pos_curr_dep.x - pos_curr_arr.x)
                             .clamp(-button_radius * 2.0, button_radius * 2.0);
-                    let delta_x = delta_x / 2.0;
-                    let EstimateEntry::Pinned(entry) = entry else {
-                        continue;
-                    };
+                    let delta_x = (raw_delta / 2.0) * 0.8;
                     let extreme_bg_color = ui.visuals().extreme_bg_color;
                     let bg_stroke = if ui.visuals().dark_mode {
                         Stroke::new(1.0, ui.visuals().text_color())

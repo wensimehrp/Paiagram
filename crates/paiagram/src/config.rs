@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use egui::ScrollArea;
+use egui::{ScrollArea, *};
 use log::info;
 use paiagram_core::time::TDuration;
 use parking_lot::Mutex;
@@ -86,7 +86,7 @@ impl Default for AppLanguage {
 pub(crate) struct Preferences {
     pub dev_mode: bool,
     pub aa: bool,
-    pub lod_mode: LevelOfDetailMode,
+    pub theme_preference: ThemePreference,
     pub language: AppLanguage,
     pub font_name: Arc<Mutex<String>>,
 }
@@ -96,9 +96,9 @@ impl Preferences {
         AppLanguage::init();
         let font_name = Arc::new(Mutex::new(String::new()));
         let ret = Self {
+            theme_preference: ThemePreference::default(),
             dev_mode: false,
             aa: true,
-            lod_mode: LevelOfDetailMode::default(),
             language: AppLanguage::default(),
             font_name: font_name.clone(),
         };
@@ -143,12 +143,21 @@ impl egui::Widget for &mut Preferences {
                 ui.weak("(Language code)");
                 ui.label(self.language.lang_code());
                 ui.end_row();
-                ui.label("Level of Detail");
-                ui.horizontal(|ui| {
-                    ui.radio_value(&mut self.lod_mode, LevelOfDetailMode::X1, "1x");
-                    ui.radio_value(&mut self.lod_mode, LevelOfDetailMode::X2, "2x");
-                    ui.radio_value(&mut self.lod_mode, LevelOfDetailMode::X4, "4x");
-                });
+                ui.label("Dark mode");
+                ComboBox::from_id_salt("Dark mode")
+                    .selected_text(match self.theme_preference {
+                        ThemePreference::Dark => "Always dark",
+                        ThemePreference::Light => "Always light",
+                        ThemePreference::System => "System theme",
+                    })
+                    .truncate()
+                    .show_ui(ui, |ui| {
+                        let tp = &mut self.theme_preference;
+                        ui.selectable_value(tp, ThemePreference::Dark, "Always dark");
+                        ui.selectable_value(tp, ThemePreference::Light, "Always light");
+                        ui.selectable_value(tp, ThemePreference::System, "System theme");
+                        ui.set_theme(self.theme_preference);
+                    });
                 ui.end_row();
                 ui.label("Antialiasing");
                 ui.checkbox(&mut self.aa, "");
