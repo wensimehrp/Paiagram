@@ -1,20 +1,17 @@
 // SPDX-License-Identifier: MPL-2.0
 #![doc = include_str!("../README.md")]
 
-use std::sync::mpsc::Sender;
 use std::sync::{Arc, LazyLock};
 pub mod config_ui;
 
 use config_ui::{ConfigUi, ReturnValueMap};
-use paiagram_core::route::DiagramCache;
-use paiagram_core::{Key, WorldSnapshot};
-use paiagram_selection::SelectedItems;
+use paiagram_core::WorldSnapshot;
 use parking_lot::Mutex;
 use rayon::spawn;
-use rquickjs::class::Trace;
-use rquickjs::{
-    CatchResultExt, Class, Context, Ctx, Function, JsLifetime, Module, Object, Runtime, Value,
-};
+use rquickjs::{CatchResultExt, Class, Context, Ctx, Function, Module, Object, Runtime, Value};
+
+mod runtime;
+pub use runtime::{JsDataExporter, JsIo, JsRuntimeData};
 
 #[derive(Default, Debug)]
 pub enum RunningStatus<T> {
@@ -119,95 +116,6 @@ fn with_context<T>(
     })
 }
 
-/// The read-only half of the extension API, exposed to both entry points as `world`.
-#[derive(Trace, JsLifetime)]
-#[rquickjs::class(rename_all = "camelCase")]
-pub struct JsRuntimeData {
-    #[qjs(skip_trace)]
-    pub snap: WorldSnapshot,
-    #[qjs(skip_trace)]
-    pub selected_items: SelectedItems,
-}
-
-/// The side-effecting half of the extension API. It is passed to `run` as the third argument and
-/// is intentionally not part of the `world` object given to `config_ui`.
-#[derive(Trace, JsLifetime)]
-#[rquickjs::class(rename_all = "camelCase")]
-pub struct JsIo {
-    // wasm only allows downloading files in the main thread
-    #[qjs(skip_trace)]
-    pub file_sender: Sender<JsDataExporter>,
-}
-
-pub struct JsDataExporter {
-    pub filename: String,
-    pub content: String,
-}
-
-impl paiagram_rw::ExportObject for JsDataExporter {
-    fn write_content<W: std::io::Write>(&mut self, writer: &mut W) -> std::io::Result<()> {
-        writer.write_all(self.content.as_bytes())
-    }
-    fn filename(&self) -> String {
-        self.filename.clone()
-    }
-}
-
-#[rquickjs::methods(rename_all = "camelCase")]
-impl JsRuntimeData {
-    pub fn selected_items<'js>(&self, ctx: Ctx<'js>) -> rquickjs::Result<Value<'js>> {
-        rquickjs_serde::to_value(ctx, &self.selected_items).map_err(|err| {
-            rquickjs::Error::new_from_js_message(
-                "selected_items",
-                "rquickjs-serde",
-                err.to_string(),
-            )
-        })
-    }
-    /// Returns every route key in the world. Accessible from scripts as `world.routeInfo()`.
-    pub fn route_info<'js>(&self, ctx: Ctx<'js>) -> rquickjs::Result<Value<'js>> {
-        let keys: Vec<_> = self.snap.routes.keys().copied().collect();
-        rquickjs_serde::to_value(ctx, keys).map_err(|err| {
-            rquickjs::Error::new_from_js_message("route_info", "rquickjs-serde", err.to_string())
-        })
-    }
-
-    /// Returns a plain object mapping each trip key (as a decimal string) to its diagram lines.
-    /// The cache is derived, so it is rebuilt from the world on each call. Accessible from
-    /// scripts as `world.diagramCache()`.
-    pub fn diagram_cache<'js>(&self, ctx: Ctx<'js>) -> rquickjs::Result<Value<'js>> {
-        let caches = Object::new(ctx.clone())?;
-        for route in self.snap.routes.values() {
-            let mut cache = DiagramCache::default();
-            route.intervals.populate_trips(&self.snap, &mut cache);
-            for (trip_key, polylines) in &cache.map {
-                let value = rquickjs_serde::to_value(ctx.clone(), polylines).map_err(|err| {
-                    rquickjs::Error::new_from_js_message(
-                        "diagram_cache",
-                        "rquickjs-serde",
-                        err.to_string(),
-                    )
-                })?;
-                caches.set(trip_key.to_bits().to_string(), value)?;
-            }
-        }
-        Ok(caches.into_value())
-    }
-}
-
-#[rquickjs::methods(rename_all = "camelCase")]
-impl JsIo {
-    /// Request a file download from JS. Only available to `run` as `io.saveFile(...)`.
-    pub fn save_file(&mut self, filename: String, extension: String, content: String) {
-        self.file_sender
-            .send(JsDataExporter {
-                filename: format!("{filename}{extension}"),
-                content,
-            })
-            .unwrap();
-    }
-}
-
 /// JavaScript factory for the global `console` object. It takes the Rust log bridge as a
 /// parameter, so no extra globals are needed.
 const CONSOLE_SHIM: &str = r#"
@@ -253,7 +161,7 @@ fn install_console<'js>(ctx: &Ctx<'js>) -> rquickjs::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use paiagram_core::TripKey;
+    use paiagram_core::{Key, TripKey};
     use paiagram_selection::SelectedItem;
     use rquickjs::{Array, BigInt, Context, Runtime, Value};
 
