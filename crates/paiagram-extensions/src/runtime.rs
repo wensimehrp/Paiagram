@@ -7,8 +7,7 @@ use rquickjs::class::Trace;
 use rquickjs::{Ctx, JsLifetime, Object, Value};
 use serde::{Deserialize, Serialize};
 
-/// The side-effecting half of the extension API. It is passed to `run` as the third argument and
-/// is intentionally not part of the `world` object given to `config_ui`.
+/// The side-effecting half of the extension API.
 #[derive(Trace, JsLifetime)]
 #[rquickjs::class(rename_all = "camelCase")]
 pub struct JsIo {

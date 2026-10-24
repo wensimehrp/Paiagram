@@ -26,8 +26,7 @@ pub type ScriptRunningStatus = RunningStatus<Option<WorldSnapshot>>;
 
 static RQUICKJS_RUNTIME: LazyLock<Runtime> = LazyLock::new(|| Runtime::new().unwrap());
 
-/// Evaluates the module and calls its exported `config_ui(world)` entrypoint. No [`JsIo`] is
-/// created for this pass, so the configuration UI cannot trigger side effects.
+/// Evaluate the config
 pub fn eval_config(
     runtime_data: JsRuntimeData,
     status: Arc<Mutex<ConfigRunningStatus>>,
@@ -49,9 +48,7 @@ pub fn eval_config(
     });
 }
 
-/// Runs the extension: evaluates the module and calls its exported `run(world, params, io)` entry
-/// point, returning the new world if the script produced one. `params` holds the values collected
-/// from the config UI. `io` is only available to `run`, so `config_ui` cannot trigger side effects.
+/// Execute the extension's `run` entrypoint
 pub fn run_script(
     runtime_data: JsRuntimeData,
     io: JsIo,
@@ -66,12 +63,7 @@ pub fn run_script(
             Some(io),
             &script_str,
             |_ctx, module, world, io| {
-                // `run` is optional: a script that only performs side effects (such as exporting a
-                // file) doesn't have to export it, and then produces no new world.
-                let entry: Option<Function> = module.get("run")?;
-                let Some(entry) = entry else {
-                    return Ok(None);
-                };
+                let entry: Function = module.get("run")?;
                 let io = io.expect("run always receives io");
                 entry.call::<_, ()>((world.clone(), return_values, io))?;
                 Ok(Some(std::mem::take(&mut world.borrow_mut().snap)))
@@ -81,9 +73,6 @@ pub fn run_script(
     });
 }
 
-/// Evaluates `script_str` as an ES module in a fresh context, installs the global `console`, then
-/// runs `f` with the module, the `world` argument passed to both entry points, and the optional
-/// `io` argument passed only to `run`.
 fn with_context<T>(
     runtime_data: JsRuntimeData,
     io: Option<JsIo>,
