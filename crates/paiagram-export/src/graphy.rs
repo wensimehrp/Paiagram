@@ -12,18 +12,18 @@ use krilla::paint::{Fill, LineCap, LineJoin, Stroke};
 use krilla::surface::Surface;
 use krilla::text::{Font, TextDirection};
 use krilla::{Data, Document};
-use paiagram_core::route::{DiagramCache, RouteInterval, StationRecord};
+use paiagram_core::route::{MareyCache, RouteInterval, StationRecord};
 use paiagram_core::time::Tick;
 use paiagram_core::{CanvasLength, RouteKey, WorldSnapshot};
 
 /// 1 PDF point is 1/72 inch, whereas [`CanvasLength`] is measured in millimetres.
 const PT_PER_MM: f64 = 72.0 / 25.4;
 /// Horizontal scale: five minutes of timetable span one centimetre of canvas, matching the
-/// diagram tab's default zoom.
+/// Marey tab's default zoom.
 const TICKS_PER_5_MIN: f64 = 5.0 * 60.0 * 100.0;
-/// Padding (in PDF points) around the diagram.
+/// Padding (in PDF points) around the Marey chart.
 const MARGIN: f64 = 20.0;
-/// Extra time shown on either side of the diagram, in ticks (ten minutes).
+/// Extra time shown on either side of the Marey chart, in ticks (ten minutes).
 const TIME_PADDING_TICKS: i64 = 10 * 60 * 100;
 /// The largest allowed PDF page dimension (200 inches).
 const MAX_PAGE: f64 = 14400.0;
@@ -46,7 +46,7 @@ pub enum GraphyFormat {
 pub struct ExportGraphy {
     pub snap: WorldSnapshot,
     pub route: RouteKey,
-    pub cache: DiagramCache,
+    pub cache: MareyCache,
     pub format: GraphyFormat,
     pub fonts: Vec<Cow<'static, [u8]>>,
 }
@@ -89,13 +89,13 @@ fn krilla_data(data: &Cow<'static, [u8]>) -> Data {
 fn new_document(
     snap: &WorldSnapshot,
     route_key: RouteKey,
-    cache: &DiagramCache,
+    cache: &MareyCache,
     font: Font,
 ) -> Option<Vec<u8>> {
     let route = snap.routes.get(&route_key)?;
     let (station_heights, station_names, total_height_mm) = station_lines(snap, &route.intervals.0);
 
-    // Time span covered by the diagram, padded a little on both sides. When the cache is empty,
+    // Time span covered by the Marey chart, padded a little on both sides. When the cache is empty,
     // fall back to a whole day so there is still something to look at.
     let (mut t_min, mut t_max) = time_range(cache).unwrap_or((0, 24 * 3600 * 100));
     t_min -= TIME_PADDING_TICKS;
@@ -183,10 +183,10 @@ fn new_document(
         to_x,
     );
 
-    // Trip (diagram) lines.
+    // Trip (Marey) lines.
     draw_trips(snap, cache, &station_heights, &mut surface, to_x, to_y);
 
-    // Station labels, drawn last so they stay legible on top of the diagram lines.
+    // Station labels, drawn last so they stay legible on top of the Marey lines.
     if station_names.iter().any(|name| !name.is_empty()) {
         surface.set_stroke(None);
         surface.set_fill(Some(gray_fill(1.0)));
@@ -211,7 +211,7 @@ fn new_document(
 }
 
 /// The vertical position (in canvas millimetres) of the start of every route interval, the name
-/// of the station at that position, and the total height of the diagram.
+/// of the station at that position, and the total height of the Marey chart.
 fn station_lines(
     snap: &WorldSnapshot,
     intervals: &[RouteInterval],
@@ -240,7 +240,7 @@ fn station_name(snap: &WorldSnapshot, record: &StationRecord) -> Option<String> 
 }
 
 /// The earliest and latest time (in ticks) covered by the cached trip polylines.
-fn time_range(cache: &DiagramCache) -> Option<(i64, i64)> {
+fn time_range(cache: &MareyCache) -> Option<(i64, i64)> {
     let mut min = i64::MAX;
     let mut max = i64::MIN;
     for polylines in cache.map.values() {
@@ -301,7 +301,7 @@ fn draw_time_lines(
     }
 }
 
-/// The label of a time-scale tick, matching the diagram tab: seconds for the finest levels,
+/// The label of a time-scale tick, matching the Marey tab: seconds for the finest levels,
 /// `H:MM` for the minute levels and the full `HH:MM:SS` for the day level.
 fn time_label(time: paiagram_core::time::TimetableTime, level: usize) -> String {
     let (hours, minutes, seconds, _) = time.to_hmsd();
@@ -314,7 +314,7 @@ fn time_label(time: paiagram_core::time::TimetableTime, level: usize) -> String 
 
 fn draw_trips(
     snap: &WorldSnapshot,
-    cache: &DiagramCache,
+    cache: &MareyCache,
     station_heights: &[CanvasLength],
     surface: &mut Surface<'_>,
     to_x: impl Fn(i64) -> f32,
@@ -339,7 +339,7 @@ fn draw_trips(
 
         for polyline in polylines {
             // Each entry spans `arr`..`dep` at one placement, so it contributes two points at
-            // the same height (mirroring the diagram tab's CPU drawing).
+            // the same height (mirroring the Marey tab's CPU drawing).
             let mut points = Vec::with_capacity(polyline.len() * 2);
             for (estimate, _entry, idx, progress) in polyline {
                 let (Some(start), Some(end)) = (

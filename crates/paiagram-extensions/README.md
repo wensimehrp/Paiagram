@@ -20,7 +20,7 @@ Extensions are ES modules. An extension exports two required entry points:
   world and only performs side effects.
   - `params`: holds the values collected from the configuration UI
   - `world` exposes the read-only world API (for example `world.selectedItems()`
-    and `world.diagramCache()`)
+    and `world.mareyCache()`)
   - `io` exposes side-effecting operations such as `io.saveFile(...)`, which triggers a file
     download.
 

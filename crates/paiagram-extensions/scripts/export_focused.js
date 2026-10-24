@@ -7,7 +7,7 @@ const DEFAULTS = Object.freeze({
 });
 
 // CSS pixels per centimetre. The SVG is fitted afterwards, so these are only used to keep the
-// diagram's physical aspect ratio (minutes per centimetre horizontally, millimetres vertically).
+// Marey diagram's physical aspect ratio (minutes per centimetre horizontally, millimetres vertically).
 const PX_PER_CM = 96 / 2.54;
 const PX_PER_MM = PX_PER_CM / 10;
 const INTERVAL_MM = 15;
@@ -17,7 +17,7 @@ export function config_ui(_world) {
     return [
         {
             type: "text",
-            desc: "Export the focused trip's diagram lines as an SVG",
+            desc: "Export the focused trip's Marey lines as an SVG",
         },
         {
             type: "dragValue",
@@ -69,11 +69,11 @@ export function run(world, params, io) {
         return;
     }
 
-    // Keys are 64-bit BigInts. `diagramCache()` is a plain object keyed by their decimal strings.
+    // Keys are 64-bit BigInts. `mareyCache()` is a plain object keyed by their decimal strings.
     const tripKeyText = String(tripKey);
-    const polylines = world.diagramCache()[tripKeyText];
+    const polylines = world.mareyCache()[tripKeyText];
     if (!Array.isArray(polylines) || polylines.length === 0) {
-        console.warn(`Trip ${tripKeyText} has no diagram lines in the cache`);
+        console.warn(`Trip ${tripKeyText} has no Marey lines in the cache`);
         return;
     }
 
@@ -94,7 +94,7 @@ export function run(world, params, io) {
     );
     const transparent = params?.transparent === true;
 
-    const svg = diagramToSvg(polylines, {
+    const svg = mareyToSvg(polylines, {
         tripKey: tripKeyText,
         minutesPerCm,
         strokeWidth,
@@ -108,16 +108,16 @@ export function run(world, params, io) {
     );
 }
 
-// Mirrors the diagram's own drawing (`tabs/diagram.rs`, `gpu_trip.wesl`):
+// Mirrors the Marey tab's own drawing (`tabs/marey.rs`, `gpu_trip.wesl`):
 //   * each cached point is `(estimate, entry, idx, progress)`;
 //   * a point is drawn as an arrival + departure at the same height, i.e. a horizontal dwell;
 //   * its height is `mix(station_heights[idx], station_heights[idx + 1], progress)`, where every
 //     interval's canvas length defaults to 1.5 cm = 15 mm, so it is `15 * (idx + progress)` mm.
 //
-// The axes use the diagram's fixed scales — `minutesPerCm` minutes span one centimetre
+// The axes use the Marey tab's fixed scales — `minutesPerCm` minutes span one centimetre
 // horizontally, one millimetre of canvas is one millimetre vertically — and the whole thing is then
 // fitted with a single uniform factor, so the lines keep their true shape.
-function diagramToSvg(polylines, options) {
+function mareyToSvg(polylines, options) {
     const { tripKey, minutesPerCm, strokeWidth, maxSize, transparent } =
         options;
     const xPerSecond = PX_PER_CM / (minutesPerCm * 60);
@@ -182,7 +182,7 @@ function diagramToSvg(polylines, options) {
         .map((points) => pathData(points, tx, ty))
         .filter((d) => d.length > 0);
 
-    const title = xmlEscape(`Diagram lines for trip ${tripKey}`);
+    const title = xmlEscape(`Marey lines for trip ${tripKey}`);
     const desc = xmlEscape(
         `${lines.length} line(s), ${minutesPerCm} minutes per centimetre`,
     );
@@ -211,7 +211,7 @@ function emptySvg(tripKey, strokeWidth, transparent) {
         : `<rect width="100%" height="100%" fill="#ffffff"/>`;
     return [
         `<?xml version="1.0" encoding="UTF-8"?>`,
-        `<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1" viewBox="0 0 1 1" role="img" aria-label="${xmlEscape(`No diagram lines for trip ${tripKey}`)}" stroke-width="${fmt(strokeWidth)}">`,
+        `<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1" viewBox="0 0 1 1" role="img" aria-label="${xmlEscape(`No Marey lines for trip ${tripKey}`)}" stroke-width="${fmt(strokeWidth)}">`,
         background,
         `</svg>`,
     ]

@@ -13,7 +13,7 @@ const WESL_PACKAGE_ROOT: &str = "src/tabs";
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let out_dir = PathBuf::from(std::env::var("OUT_DIR")?);
 
-    generate_bindings(&out_dir, "package::diagram::gpu_trip", "gpu_trip")?;
+    generate_bindings(&out_dir, "package::marey::gpu_trip", "gpu_trip")?;
     generate_bindings(
         &out_dir,
         "package::graph::graph_intervals",

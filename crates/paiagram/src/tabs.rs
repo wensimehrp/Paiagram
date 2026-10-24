@@ -30,7 +30,7 @@ macro_rules! define_tabs {
 
 define_tabs!(
     // classes;
-    diagram;
+    marey;
     graph;
     route_timetable;
     config;

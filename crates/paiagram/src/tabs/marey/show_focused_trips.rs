@@ -8,7 +8,7 @@ use paiagram_core::trip::{EstimateEntry, TravelMode, TripSchedule};
 use paiagram_core::{CanvasLength, Source};
 
 use crate::tabs::Navigatable;
-use crate::tabs::diagram::label_placement::label_placement;
+use crate::tabs::marey::label_placement::label_placement;
 use crate::widgets::buttons;
 
 pub fn show_focused_trip<'a>(
@@ -17,7 +17,7 @@ pub fn show_focused_trip<'a>(
     source: &mut Source,
     animation_progress: f32,
     ui: &mut Ui,
-    tab: &mut super::DiagramTab,
+    tab: &mut super::MareyTab,
     station_heights: &[CanvasLength],
     painter: &mut Painter,
     response: &Response,
@@ -41,7 +41,7 @@ pub fn show_focused_trip<'a>(
 }
 
 fn draw_polyline(
-    tab: &super::DiagramTab,
+    tab: &super::MareyTab,
     polyline: &[BucketPoint],
     station_heights: &[CanvasLength],
     mut painter: &mut Painter,

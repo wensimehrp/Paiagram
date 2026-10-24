@@ -6,10 +6,10 @@ use pathfinding::prelude::dijkstra;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 
-mod prep_diagram;
+mod prep_marey;
 mod prep_segments;
 
-pub use prep_diagram::{
+pub use prep_marey::{
     RouteTimetable, RouteTimetableEntry, RouteTimetableExport, StationDisplayMode,
 };
 
@@ -124,7 +124,7 @@ pub type BucketPoint = (TEstimate, EstimateEntry, u32, f32);
 pub type TripBucket = SmallVec<[Vec<BucketPoint>; 1]>;
 
 #[derive(Clone, Default, Debug, Serialize)]
-pub struct DiagramCache {
+pub struct MareyCache {
     pub map: TripKeyHashMap<TripBucket>,
 }
 
@@ -140,7 +140,7 @@ impl RouteIntervals {
     }
 
     fn prepare_lookup(&self, snap: &WorldSnapshot) -> NodeKeyHashMap<Vec<(u32, f32)>> {
-        // Where each graph node sits on the diagram: every `(line index, progress)` placement.
+        // Where each graph node sits on the Marey chart: every `(line index, progress)` placement.
         let mut node_lookup: NodeKeyHashMap<Vec<(u32, f32)>> = NodeKeyHashMap::default();
         for (key, progress) in self.progresses(snap).enumerate().flat_map(|(idx, it)| {
             it.filter_map(move |(key, distance)| Some((key, (idx as u32, distance?))))
@@ -178,8 +178,8 @@ impl RouteIntervals {
         trip_keys
     }
 
-    /// Populates trips into a diagram cache
-    pub fn populate_trips(&self, snap: &WorldSnapshot, cache: &mut DiagramCache) {
+    /// Populates trips into a Marey cache
+    pub fn populate_trips(&self, snap: &WorldSnapshot, cache: &mut MareyCache) {
         let node_lookup = self.prepare_lookup(snap);
         let trip_keys = self.get_passing_trips(snap);
 
@@ -197,7 +197,7 @@ impl RouteIntervals {
         }
     }
 
-    /// Populates a single schedule into the diagram cache
+    /// Populates a single schedule into the Marey cache
     pub fn populate_schedule(
         &self,
         snap: &WorldSnapshot,
@@ -212,10 +212,10 @@ impl RouteIntervals {
     }
 
     pub fn populate_route_timetable(&self, snap: &WorldSnapshot) -> RouteTimetable {
-        let mut diagram_cache = DiagramCache::default();
-        self.populate_trips(snap, &mut diagram_cache);
+        let mut marey_cache = MareyCache::default();
+        self.populate_trips(snap, &mut marey_cache);
         RouteTimetable::new(
-            diagram_cache,
+            marey_cache,
             self.0.iter().map(|entry| &entry.station_record),
         )
     }

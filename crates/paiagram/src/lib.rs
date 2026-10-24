@@ -70,12 +70,12 @@ impl App {
             file_write_state: Arc::new(Mutex::new(FileWriteState::Idle)),
         }
     }
-    /// Initializes the custom WGPU resources used by the diagram tab's render callback.
+    /// Initializes the custom WGPU resources used by the Marey tab's render callback.
     ///
     /// Call once at startup, once the WGPU backend exists. `msaa_samples` must match the render
     /// pass egui uses (eframe's `NativeOptions::multisampling`).
     pub fn init_gpu(&mut self, render_state: &eframe::egui_wgpu::RenderState, msaa_samples: u32) {
-        crate::tabs::diagram::gpu_draw::init(render_state, msaa_samples);
+        crate::tabs::marey::gpu_draw::init(render_state, msaa_samples);
         crate::tabs::graph::gpu_draw::init(render_state, msaa_samples);
     }
     /// Apply UI commands and change the main ui state
@@ -231,8 +231,8 @@ impl<'w> Behavior<MainTab> for MainTabViewer<'w> {
                 for (route_key, info) in &self.app.snap.routes {
                     ui.menu_button(info.name.as_str(), |ui| {
                         if ui.button("Graph").clicked() {
-                            ui_action_queue.push(UiCommand::OpenOrFocus(MainTab::Diagram(
-                                DiagramTab::new(*route_key),
+                            ui_action_queue.push(UiCommand::OpenOrFocus(MainTab::Marey(
+                                MareyTab::new(*route_key),
                             )));
                         }
                         if ui.button("Route Timetable").clicked() {

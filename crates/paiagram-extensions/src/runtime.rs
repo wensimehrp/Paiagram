@@ -1,6 +1,6 @@
 use std::sync::mpsc;
 
-use paiagram_core::route::DiagramCache;
+use paiagram_core::route::MareyCache;
 use paiagram_core::{Key, Wfc, WorldSnapshot};
 use paiagram_selection::SelectedItems;
 use rquickjs::class::Trace;
@@ -96,17 +96,15 @@ impl JsRuntimeData {
         rquickjs_serde::to_value(ctx, keys).map_err(format_serde_err(Self::route_info))
     }
 
-    /// Returns a plain object mapping each trip key (as a decimal string) to its diagram lines.
-    /// The cache is derived, so it is rebuilt from the world on each call. Accessible from
-    /// scripts as `world.diagramCache()`.
-    pub fn diagram_cache<'js>(&self, ctx: Ctx<'js>) -> Ret<'js> {
+    /// Returns a plain object mapping each trip key (as a decimal string) to its Marey lines.
+    pub fn marey_cache<'js>(&self, ctx: Ctx<'js>) -> Ret<'js> {
         let caches = Object::new(ctx.clone())?;
         for route in self.snap.routes.values() {
-            let mut cache = DiagramCache::default();
+            let mut cache = MareyCache::default();
             route.intervals.populate_trips(&self.snap, &mut cache);
             for (trip_key, polylines) in &cache.map {
                 let value = rquickjs_serde::to_value(ctx.clone(), polylines)
-                    .map_err(format_serde_err(Self::diagram_cache))?;
+                    .map_err(format_serde_err(Self::marey_cache))?;
                 caches.set(trip_key.to_bits().to_string(), value)?;
             }
         }

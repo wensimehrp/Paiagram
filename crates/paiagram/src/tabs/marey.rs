@@ -1,7 +1,7 @@
 use std::iter;
 
 use egui::*;
-use paiagram_core::route::{DiagramCache, StationRecord};
+use paiagram_core::route::{MareyCache, StationRecord};
 use paiagram_core::time::{Tick, TimetableTime};
 use paiagram_core::trip::TEstimate;
 use paiagram_core::{CanvasLength, RouteKey, TripKey};
@@ -23,57 +23,57 @@ use super::{Navigatable, Tab};
 use crate::App;
 
 #[derive(Clone, Serialize, Deserialize)]
-#[serde(into = "DiagramTabNoCache", from = "DiagramTabNoCache")]
-pub(crate) struct DiagramTab {
+#[serde(into = "MareyTabNoCache", from = "MareyTabNoCache")]
+pub(crate) struct MareyTab {
     key: RouteKey,
-    navi: DiagramTabNavigation,
-    cache: DiagramCache,
-    callback: gpu_draw::DiagramCallback,
+    navi: MareyTabNavigation,
+    cache: MareyCache,
+    callback: gpu_draw::MareyCallback,
 }
 
-/// [`DiagramTab`] w/o cache for serde
+/// [`MareyTab`] w/o cache for serde
 #[derive(Clone, Serialize, Deserialize)]
-struct DiagramTabNoCache {
+struct MareyTabNoCache {
     key: RouteKey,
-    navi: DiagramTabNavigation,
+    navi: MareyTabNavigation,
 }
 
-impl From<DiagramTab> for DiagramTabNoCache {
-    fn from(DiagramTab { key, navi, .. }: DiagramTab) -> Self {
+impl From<MareyTab> for MareyTabNoCache {
+    fn from(MareyTab { key, navi, .. }: MareyTab) -> Self {
         Self { key, navi }
     }
 }
 
-impl From<DiagramTabNoCache> for DiagramTab {
-    fn from(DiagramTabNoCache { key, navi }: DiagramTabNoCache) -> Self {
+impl From<MareyTabNoCache> for MareyTab {
+    fn from(MareyTabNoCache { key, navi }: MareyTabNoCache) -> Self {
         Self {
             key,
             navi,
-            cache: DiagramCache::default(),
-            callback: gpu_draw::DiagramCallback::new(key),
+            cache: MareyCache::default(),
+            callback: gpu_draw::MareyCallback::new(key),
         }
     }
 }
 
-impl DiagramTab {
+impl MareyTab {
     pub fn new(key: RouteKey) -> Self {
         Self {
             key,
-            navi: DiagramTabNavigation::default(),
-            cache: DiagramCache::default(),
-            callback: gpu_draw::DiagramCallback::new(key),
+            navi: MareyTabNavigation::default(),
+            cache: MareyCache::default(),
+            callback: gpu_draw::MareyCallback::new(key),
         }
     }
 }
 
-impl PartialEq for DiagramTab {
+impl PartialEq for MareyTab {
     fn eq(&self, other: &Self) -> bool {
         self.key == other.key
     }
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-struct DiagramTabNavigation {
+struct MareyTabNavigation {
     x_offset: Tick,
     y_offset: CanvasLength,
     zoom: Vec2,
@@ -82,7 +82,7 @@ struct DiagramTabNavigation {
     max_height: CanvasLength,
 }
 
-impl Default for DiagramTabNavigation {
+impl Default for MareyTabNavigation {
     fn default() -> Self {
         // Default horizontal scale: five minutes of time span one centimetre of canvas.
         let five_minutes_in_ticks = TimetableTime::from_hms(0, 5, 0).to_ticks().0 as f32;
@@ -101,7 +101,7 @@ fn default_visible_rect() -> Rect {
     Rect::NOTHING
 }
 
-impl Navigatable for DiagramTabNavigation {
+impl Navigatable for MareyTabNavigation {
     type XOffset = Tick;
     type YOffset = CanvasLength;
 
@@ -159,10 +159,10 @@ impl Navigatable for DiagramTabNavigation {
     }
 }
 
-impl Tab for DiagramTab {
-    const NAME: &'static str = "Diagram";
+impl Tab for MareyTab {
+    const NAME: &'static str = "Marey Diagram";
     fn title(&self) -> WidgetText {
-        "Diagram".into()
+        Self::NAME.into()
     }
     fn main_display(&mut self, app: &mut App, ui: &mut Ui) {
         let cache_and_pdf = |ui: &mut Ui| {
@@ -213,7 +213,7 @@ impl Tab for DiagramTab {
     }
 }
 
-fn draw_time_lines(painter: &mut Painter, navi: &DiagramTabNavigation) {
+fn draw_time_lines(painter: &mut Painter, navi: &MareyTabNavigation) {
     const MAX_SCREEN_WIDTH: f64 = 64.0;
     const MIN_SCREEN_WIDTH: f64 = 32.0;
     let sizes = [
@@ -290,7 +290,7 @@ fn draw_time_lines(painter: &mut Painter, navi: &DiagramTabNavigation) {
     }
 }
 
-fn main_display(tab: &mut DiagramTab, app: &mut App, ui: &mut Ui) {
+fn main_display(tab: &mut MareyTab, app: &mut App, ui: &mut Ui) {
     let (response, mut painter) =
         ui.allocate_painter(ui.available_size_before_wrap(), Sense::click_and_drag());
     tab.navi.visible_rect = response.rect;
@@ -341,7 +341,7 @@ fn main_display(tab: &mut DiagramTab, app: &mut App, ui: &mut Ui) {
 
     tab.navi.max_height = station_height_so_far;
 
-    // paint the station lines and diagram lines
+    // paint the station lines and Marey lines
     tab.callback.populate_stations(station_heights.iter().copied());
     tab.callback.populate_uniforms(&tab.navi, response.rect);
     painter.add(tab.callback.clone().paint_callback(response.rect));
@@ -420,7 +420,7 @@ fn main_display(tab: &mut DiagramTab, app: &mut App, ui: &mut Ui) {
 }
 
 fn select_trip_from_pos(
-    tab: &DiagramTab,
+    tab: &MareyTab,
     ptr_pos: Pos2,
     station_heights: &[CanvasLength],
 ) -> Option<TripKey> {

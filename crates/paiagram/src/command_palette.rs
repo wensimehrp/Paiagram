@@ -117,7 +117,7 @@ impl CommandPalette {
             return;
         };
         if let Some(tab) = match item {
-            MatchedType::Route(k) => Some(MainTab::Diagram(DiagramTab::new(k))),
+            MatchedType::Route(k) => Some(MainTab::Marey(MareyTab::new(k))),
             MatchedType::Station(k) => None,
             MatchedType::Trip(k) => Some(MainTab::Trip(TripTab::new(k))),
             MatchedType::Tab(f) => Some(f()),

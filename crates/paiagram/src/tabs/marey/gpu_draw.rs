@@ -2,22 +2,22 @@
 // TODO: handle styles
 
 use eframe::egui_wgpu::{self, wgpu};
-use paiagram_core::route::DiagramCache;
+use paiagram_core::route::MareyCache;
 use paiagram_core::{CanvasLength, RouteKey, RouteKeyHashMap, Source};
 
 use super::gpu_trip::{ShaderEntry, gpu_trip};
 use crate::tabs::Navigatable;
 
-/// Per-frame data for one diagram, uploaded to the GPU in [`DiagramCallback::prepare`].
+/// Per-frame data for one Marey tab, uploaded to the GPU in [`MareyCallback::prepare`].
 #[derive(Clone)]
-pub(super) struct DiagramCallback {
+pub(super) struct MareyCallback {
     pub route_key: RouteKey,
     pub uniforms: gpu_trip::Uniforms,
     pub entry_segments: Vec<gpu_trip::EntrySegment>,
     pub stations: Vec<gpu_trip::CanvasLength>,
 }
 
-impl DiagramCallback {
+impl MareyCallback {
     pub fn new(route_key: RouteKey) -> Self {
         Self {
             route_key,
@@ -27,7 +27,7 @@ impl DiagramCallback {
         }
     }
 
-    pub fn populate_uniforms(&mut self, navi: &super::DiagramTabNavigation, rect: egui::Rect) {
+    pub fn populate_uniforms(&mut self, navi: &super::MareyTabNavigation, rect: egui::Rect) {
         self.uniforms = gpu_trip::Uniforms::new(
             [rect.width(), rect.height()],
             navi.offset_x() as i32,
@@ -47,7 +47,7 @@ impl DiagramCallback {
         egui_wgpu::Callback::new_paint_callback(rect, self)
     }
 
-    pub fn populate_entry_segments(&mut self, cache: &DiagramCache, source: &Source) {
+    pub fn populate_entry_segments(&mut self, cache: &MareyCache, source: &Source) {
         self.entry_segments.clear();
         self.stations.clear();
         for idx in 0..100 {
@@ -91,14 +91,14 @@ impl DiagramCallback {
     }
 }
 
-/// GPU resources shared by every diagram callback.
+/// GPU resources shared by every Marey tab callback.
 ///
 /// Created once at startup by [`init`] and stored in the renderer's `callback_resources`, so it
 /// outlives the egui render pass (the pipeline must not be dropped while it is in use). Buffers
-/// are per-tab, because several diagrams can be open at once.
-struct GlobalDiagramRendererResources {
+/// are per-tab, because several Marey tabs can be open at once.
+struct GlobalMareyRendererResources {
     pipeline: wgpu::RenderPipeline,
-    per_tab_resources: RouteKeyHashMap<PerTabDiagramRendererResources>,
+    per_tab_resources: RouteKeyHashMap<PerTabMareyRendererResources>,
 }
 
 /// `egui-wgpu` stores callback resources in a `type_map::concurrent::TypeMap`, whose `insert`
@@ -111,11 +111,11 @@ struct GlobalDiagramRendererResources {
 /// recursing through `wgpu`'s deeply nested types while checking the auto traits (which otherwise
 /// trips `recursion_depth_exceeding_limit`).
 // SAFETY: we only render in the main thread
-unsafe impl Send for GlobalDiagramRendererResources {}
+unsafe impl Send for GlobalMareyRendererResources {}
 // SAFETY: see above.
-unsafe impl Sync for GlobalDiagramRendererResources {}
+unsafe impl Sync for GlobalMareyRendererResources {}
 
-struct PerTabDiagramRendererResources {
+struct PerTabMareyRendererResources {
     uniforms: wgpu::Buffer,
     entry_segments: wgpu::Buffer,
     stations: wgpu::Buffer,
@@ -128,16 +128,16 @@ const UNIFORM_SIZE: u64 = std::mem::size_of::<gpu_trip::Uniforms>() as u64;
 const SEGMENT_SIZE: u64 = std::mem::size_of::<gpu_trip::EntrySegment>() as u64;
 const STATION_SIZE: u64 = std::mem::size_of::<gpu_trip::CanvasLength>() as u64;
 
-/// Creates the diagram pipeline and inserts it into the renderer's callback resources.
+/// Creates the Marey pipeline and inserts it into the renderer's callback resources.
 ///
 /// Must be called once at startup, when the WGPU backend is available. `msaa_samples` has to
 /// match the render pass egui uses (i.e. eframe's `NativeOptions::multisampling`).
 pub(crate) fn init(render_state: &egui_wgpu::RenderState, msaa_samples: u32) {
-    let resources = GlobalDiagramRendererResources::new(render_state, msaa_samples);
+    let resources = GlobalMareyRendererResources::new(render_state, msaa_samples);
     render_state.renderer.write().callback_resources.insert(resources);
 }
 
-impl GlobalDiagramRendererResources {
+impl GlobalMareyRendererResources {
     fn new(render_state: &egui_wgpu::RenderState, msaa_samples: u32) -> Self {
         let device = &render_state.device;
 
@@ -154,7 +154,7 @@ impl GlobalDiagramRendererResources {
         })]);
 
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("diagram_gpu_trip"),
+            label: Some("marey_gpu_trip"),
             layout: Some(&pipeline_layout),
             vertex: gpu_trip::vertex_state(&shader, &vertex),
             fragment: Some(gpu_trip::fragment_state(&shader, &fragment)),
@@ -178,16 +178,16 @@ impl GlobalDiagramRendererResources {
     }
 }
 
-impl PerTabDiagramRendererResources {
+impl PerTabMareyRendererResources {
     fn new(device: &wgpu::Device) -> Self {
         let uniforms = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("diagram uniforms"),
+            label: Some("marey uniforms"),
             size: UNIFORM_SIZE,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        let entry_segments = storage_buffer(device, SEGMENT_SIZE, "diagram entry segments");
-        let stations = storage_buffer(device, STATION_SIZE, "diagram stations");
+        let entry_segments = storage_buffer(device, SEGMENT_SIZE, "marey entry segments");
+        let stations = storage_buffer(device, STATION_SIZE, "marey stations");
         let bind_group = make_bind_group(device, &uniforms, &entry_segments, &stations);
 
         Self {
@@ -224,7 +224,7 @@ fn make_bind_group(
     gpu_trip::WgpuBindGroup0::from_bindings(device, entries)
 }
 
-impl egui_wgpu::CallbackTrait for DiagramCallback {
+impl egui_wgpu::CallbackTrait for MareyCallback {
     fn prepare(
         &self,
         device: &wgpu::Device,
@@ -233,11 +233,11 @@ impl egui_wgpu::CallbackTrait for DiagramCallback {
         _egui_encoder: &mut wgpu::CommandEncoder,
         callback_resources: &mut egui_wgpu::CallbackResources,
     ) -> Vec<wgpu::CommandBuffer> {
-        let global: &mut GlobalDiagramRendererResources = callback_resources.get_mut().unwrap();
+        let global: &mut GlobalMareyRendererResources = callback_resources.get_mut().unwrap();
         let resources = global
             .per_tab_resources
             .entry(self.route_key)
-            .or_insert_with(|| PerTabDiagramRendererResources::new(device));
+            .or_insert_with(|| PerTabMareyRendererResources::new(device));
 
         // Grow the storage buffers when the data no longer fits, and rebuild the bind group so
         // it points at the new buffers.
@@ -246,11 +246,11 @@ impl egui_wgpu::CallbackTrait for DiagramCallback {
         let mut needs_rebind = false;
         if resources.entry_segments.size() < needed_segments {
             resources.entry_segments =
-                storage_buffer(device, needed_segments, "diagram entry segments");
+                storage_buffer(device, needed_segments, "marey entry segments");
             needs_rebind = true;
         }
         if resources.stations.size() < needed_stations {
-            resources.stations = storage_buffer(device, needed_stations, "diagram stations");
+            resources.stations = storage_buffer(device, needed_stations, "marey stations");
             needs_rebind = true;
         }
         if needs_rebind {
@@ -288,7 +288,7 @@ impl egui_wgpu::CallbackTrait for DiagramCallback {
         render_pass: &mut wgpu::RenderPass<'static>,
         callback_resources: &egui_wgpu::CallbackResources,
     ) {
-        let global: &GlobalDiagramRendererResources = callback_resources.get().unwrap();
+        let global: &GlobalMareyRendererResources = callback_resources.get().unwrap();
         let Some(resources) = global.per_tab_resources.get(&self.route_key) else {
             return;
         };

@@ -5,7 +5,7 @@ use csv::Writer;
 use ecow::{EcoVec, eco_vec};
 use paiagram_rw::ExportObject;
 
-use crate::route::{DiagramCache, StationRecord};
+use crate::route::{MareyCache, StationRecord};
 use crate::trip::{EstimateEntry, TEstimate};
 use crate::{TripKey, WorldSnapshot};
 
@@ -103,7 +103,7 @@ fn merge_or_push_columns(
 
 impl RouteTimetable {
     pub fn new<'a>(
-        diagram_cache: DiagramCache,
+        marey_cache: MareyCache,
         station_records: impl Iterator<Item = &'a StationRecord>,
     ) -> Self {
         let station_records: EcoVec<_> = station_records
@@ -117,7 +117,7 @@ impl RouteTimetable {
             })
             .collect();
         let station_count = station_records.len();
-        let (inbound_columns, outbound_columns) = diagram_cache.map.into_iter().fold(
+        let (inbound_columns, outbound_columns) = marey_cache.map.into_iter().fold(
             (
                 EcoVec::<(TripKey, EcoVec<RouteTimetableEntry>)>::new(),
                 EcoVec::<(TripKey, EcoVec<RouteTimetableEntry>)>::new(),
