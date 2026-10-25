@@ -1,15 +1,20 @@
-use crate::{IntervalKey, WorldSnapshot};
+use ecow::EcoVec;
+
+use crate::graph::Graph;
+use crate::trip::TripSchedule;
+use crate::{IntervalKey, Trip, Wfc, WorldSnapshot};
+
+#[cfg(test)]
+mod tests;
 
 impl WorldSnapshot {
-    /// Mutates the world and updates the cache.
-    /// Doesn't mutate if it fails
-    pub fn mutate(&mut self, f: impl FnOnce(WorldSnapshot) -> WorldSnapshot) {
+    /// Mutates the world and updates its derived caches.
+    pub(crate) fn update_snapshot(&mut self, f: impl FnOnce(WorldSnapshot) -> WorldSnapshot) {
         let new_world = f(self.clone());
-        if let Some(updated) = self.update_diff(new_world) {
-            *self = updated;
-            self.refresh_spatial_index();
-        }
+        *self = self.update_diff(new_world);
+        self.refresh_spatial_index();
     }
+
     pub fn refresh_spatial_index(&mut self) {
         // ugly. TODO: remove whole-world rebuild
         if self.spatial_dirty {
@@ -17,64 +22,66 @@ impl WorldSnapshot {
             self.spatial_dirty = false;
         }
     }
-    /// Given the new world snapshot, update the cache. Returns the new world snapshot
-    fn update_diff(&self, new: WorldSnapshot) -> Option<WorldSnapshot> {
+
+    /// Given the new world snapshot, update the cache. Returns the updated world snapshot.
+    /// The new snapshot is applied as a diff against the old one.
+    fn update_diff(&self, new: WorldSnapshot) -> WorldSnapshot {
+        // The new world is only a source of changed values. Caches are derived from the old
+        // snapshot and patched incrementally; anything only present in the new snapshot's cache is
+        // discarded.
         use imbl::ordmap::DiffItem::{Add, Remove, Update};
-        let mut ret = new.clone();
-        for diff in self.trips.diff(&new.trips) {
+        let mut ret = self.clone();
+
+        for diff in self.vehicles.diff(&new.vehicles) {
             match diff {
-                Add(k, v) => {
-                    ret.spatial_dirty = true;
-                    v.schedule.estimates(&new.graph, |estimates| {
-                        for [(_, curr), (_, next)] in estimates.array_windows() {
-                            if curr.node_key() == next.node_key() {
-                                continue;
-                            }
-                            let interval_key = IntervalKey::new(curr.node_key(), next.node_key());
-                            let Some(interval) = ret.graph.intervals.get_mut(&interval_key) else {
-                                continue;
-                            };
-                            match interval.cache.trips.binary_search(k) {
-                                Ok(_) => {}
-                                Err(idx) => interval.cache.trips.insert(idx, *k),
-                            }
-                        }
-                    });
+                Add(key, vehicle) => {
+                    ret.vehicles.insert(*key, fresh(vehicle));
                 }
-                Remove(_k, _v) => {
-                    ret.spatial_dirty = true;
+                Remove(key, _) => {
+                    ret.vehicles.remove(key);
                 }
                 Update {
-                    old: (_k, _old_v),
-                    new: (_, _new_v),
+                    old: (key, old),
+                    new: (_, new_vehicle),
                 } => {
-                    ret.spatial_dirty = true;
+                    ret.vehicles.insert(*key, updated(old, new_vehicle));
                 }
             }
         }
-        for diff in self.vehicles.diff(&new.vehicles) {}
-        for diff in self.stations.diff(&new.stations) {}
+
+        for diff in self.stations.diff(&new.stations) {
+            match diff {
+                Add(key, station) => {
+                    ret.stations.insert(*key, fresh(station));
+                }
+                Remove(key, _) => {
+                    ret.stations.remove(key);
+                }
+                Update {
+                    old: (key, old),
+                    new: (_, new_station),
+                } => {
+                    ret.stations.insert(*key, updated(old, new_station));
+                }
+            }
+        }
+
         for diff in self.graph.nodes.diff(&new.graph.nodes) {
             ret.spatial_dirty = true;
-            // Keep each station's cached node list in sync, since route station records
-            // (`StationRecord::All`) resolve their nodes through it.
             match diff {
                 Add(node_key, node) => {
                     let node_key = *node_key;
                     if let Some(station) = ret.stations.get_mut(&node.parent) {
-                        let nodes = &mut station.cache.nodes;
-                        if let Err(idx) = nodes.binary_search(&node_key) {
-                            nodes.insert(idx, node_key);
-                        }
+                        insert_sorted(&mut station.cache.nodes, node_key);
                     }
+                    ret.graph.nodes.insert(node_key, fresh(node));
                 }
                 Remove(node_key, node) => {
                     let node_key = *node_key;
-                    if let Some(station) = ret.stations.get_mut(&node.parent)
-                        && let Ok(idx) = station.cache.nodes.binary_search(&node_key)
-                    {
-                        station.cache.nodes.remove(idx);
+                    if let Some(station) = ret.stations.get_mut(&node.parent) {
+                        remove_sorted(&mut station.cache.nodes, &node_key);
                     }
+                    ret.graph.nodes.remove(&node_key);
                 }
                 Update {
                     old: (node_key, old_node),
@@ -82,28 +89,167 @@ impl WorldSnapshot {
                 } => {
                     let node_key = *node_key;
                     if old_node.parent != new_node.parent {
-                        if let Some(station) = ret.stations.get_mut(&old_node.parent)
-                            && let Ok(idx) = station.cache.nodes.binary_search(&node_key)
-                        {
-                            station.cache.nodes.remove(idx);
+                        if let Some(station) = ret.stations.get_mut(&old_node.parent) {
+                            remove_sorted(&mut station.cache.nodes, &node_key);
                         }
                         if let Some(station) = ret.stations.get_mut(&new_node.parent) {
-                            let nodes = &mut station.cache.nodes;
-                            if let Err(idx) = nodes.binary_search(&node_key) {
-                                nodes.insert(idx, node_key);
-                            }
+                            insert_sorted(&mut station.cache.nodes, node_key);
                         }
                     }
+                    ret.graph.nodes.insert(node_key, updated(old_node, new_node));
                 }
             }
         }
+
         for diff in self.graph.intervals.diff(&new.graph.intervals) {
+            ret.spatial_dirty = true;
             match diff {
-                Add(..) | Remove(..) | Update { .. } => ret.spatial_dirty = true,
+                Add(key, interval) => {
+                    ret.graph.insert_interval_entry(*key, fresh(interval));
+                }
+                Remove(key, _) => {
+                    ret.graph.remove_interval_entry(key);
+                }
+                Update {
+                    old: (key, old),
+                    new: (_, new_interval),
+                } => {
+                    ret.graph.insert_interval_entry(*key, updated(old, new_interval));
+                }
             }
         }
-        for diff in self.service_classes.diff(&new.service_classes) {}
-        for diff in self.routes.diff(&new.routes) {}
-        Some(ret)
+
+        for diff in self.trips.diff(&new.trips) {
+            ret.spatial_dirty = true;
+            match diff {
+                Add(key, trip) => {
+                    add_trip_to_caches(&mut ret, *key, trip, &new.graph);
+                    ret.trips.insert(*key, fresh(trip));
+                }
+                Remove(key, trip) => {
+                    remove_trip_from_caches(&mut ret, *key, trip, &self.graph);
+                    ret.trips.remove(key);
+                }
+                Update {
+                    old: (key, old_trip),
+                    new: (_, new_trip),
+                } => {
+                    remove_trip_from_caches(&mut ret, *key, old_trip, &self.graph);
+                    add_trip_to_caches(&mut ret, *key, new_trip, &new.graph);
+                    ret.trips.insert(*key, updated(old_trip, new_trip));
+                }
+            }
+        }
+
+        for diff in self.service_classes.diff(&new.service_classes) {
+            match diff {
+                Add(key, class) => {
+                    ret.service_classes.insert(*key, fresh(class));
+                }
+                Remove(key, _) => {
+                    ret.service_classes.remove(key);
+                }
+                Update {
+                    old: (key, old),
+                    new: (_, new_class),
+                } => {
+                    ret.service_classes.insert(*key, updated(old, new_class));
+                }
+            }
+        }
+
+        for diff in self.routes.diff(&new.routes) {
+            match diff {
+                Add(key, route) => {
+                    ret.routes.insert(*key, fresh(route));
+                }
+                Remove(key, _) => {
+                    ret.routes.remove(key);
+                }
+                Update {
+                    old: (key, old),
+                    new: (_, new_route),
+                } => {
+                    ret.routes.insert(*key, updated(old, new_route));
+                }
+            }
+        }
+
+        ret
+    }
+}
+
+/// Clone a new entry but discard its cache; `update_diff` rebuilds it after insertion.
+fn fresh<D: Clone, C: Default>(value: &Wfc<D, C>) -> Wfc<D, C> {
+    Wfc {
+        data: value.data.clone(),
+        cache: C::default(),
+    }
+}
+
+/// Replace an entry's data while preserving the cache maintained by the old snapshot.
+fn updated<D: Clone, C: Clone>(old: &Wfc<D, C>, new: &Wfc<D, C>) -> Wfc<D, C> {
+    Wfc {
+        data: new.data.clone(),
+        cache: old.cache.clone(),
+    }
+}
+
+fn add_trip_to_caches(
+    ret: &mut WorldSnapshot,
+    trip_key: crate::TripKey,
+    trip: &Trip,
+    graph: &Graph,
+) {
+    for_each_trip_interval(&trip.schedule, graph, |interval_key| {
+        if let Some(interval) = ret.graph.intervals.get_mut(&interval_key) {
+            insert_sorted(&mut interval.cache.trips, trip_key);
+        }
+    });
+    for vehicle_key in &trip.vehicles {
+        if let Some(vehicle) = ret.vehicles.get_mut(vehicle_key) {
+            insert_sorted(&mut vehicle.cache.trips, trip_key);
+        }
+    }
+}
+
+fn remove_trip_from_caches(
+    ret: &mut WorldSnapshot,
+    trip_key: crate::TripKey,
+    trip: &Trip,
+    graph: &Graph,
+) {
+    for_each_trip_interval(&trip.schedule, graph, |interval_key| {
+        if let Some(interval) = ret.graph.intervals.get_mut(&interval_key) {
+            remove_sorted(&mut interval.cache.trips, &trip_key);
+        }
+    });
+    for vehicle_key in &trip.vehicles {
+        if let Some(vehicle) = ret.vehicles.get_mut(vehicle_key) {
+            remove_sorted(&mut vehicle.cache.trips, &trip_key);
+        }
+    }
+}
+
+fn for_each_trip_interval(schedule: &TripSchedule, graph: &Graph, mut f: impl FnMut(IntervalKey)) {
+    schedule.estimates(graph, |estimates| {
+        for [(_, curr), (_, next)] in estimates.array_windows() {
+            if curr.node_key() == next.node_key() {
+                continue;
+            }
+            f(IntervalKey::new(curr.node_key(), next.node_key()));
+        }
+    });
+}
+
+fn insert_sorted<T: Ord + Clone>(values: &mut EcoVec<T>, value: T) {
+    if let Err(index) = values.binary_search(&value) {
+        values.insert(index, value);
+    }
+}
+
+fn remove_sorted<T: Ord + Clone>(values: &mut EcoVec<T>, value: &T) {
+    if let Ok(index) = values.binary_search(value) {
+        values.remove(index);
     }
 }

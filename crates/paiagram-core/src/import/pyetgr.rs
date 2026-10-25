@@ -19,7 +19,7 @@ use crate::time::{TTime, TimetableTime};
 use crate::trip::{TEntry, TEntryId, TravelMode, TripSchedule};
 use crate::units::distance::Distance;
 use crate::{
-    Interval, LonLat, Node, NodeKey, Route, RouteKey, ServiceClass, ServiceClassKey,
+    Interval, IntervalKey, LonLat, Node, NodeKey, Route, RouteKey, ServiceClass, ServiceClassKey,
     Station as PaiagramStation, StationKey, StrokeStyle, Trip as PaiagramTrip, TripKey, Wfc,
     WorldSnapshot,
 };
@@ -205,13 +205,13 @@ pub(super) fn parse_pyetgr(data: &[u8]) -> Option<WorldSnapshot> {
         {
             let length = curr_stn.distance_km - prev_stn.distance_km;
             let length = Distance::from_km(length).0;
-            world.graph.insert_interval(
-                (prev_key, curr_key),
-                Interval {
+            world.graph.insert_interval_entry(
+                IntervalKey::new(prev_key, curr_key),
+                Wfc::new(Interval {
                     nodes: eco_vec![],
                     length: NonZeroU32::new(length as u32),
                     direction: IntervalDirection::Both,
-                },
+                }),
             );
         }
     }

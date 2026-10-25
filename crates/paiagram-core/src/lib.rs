@@ -29,6 +29,7 @@ use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 pub use units::*;
 
+use crate::import::ImportMode;
 use crate::trip::TripSchedule;
 
 pub trait Key: Clone + Copy {
@@ -222,6 +223,35 @@ pub struct WorldSnapshot {
     pub spatial_dirty: bool,
 }
 
+impl WorldSnapshot {
+    /// Insert every entity from `other`, keeping the entities already present in `self`.
+    fn merged(mut self, other: &Self) -> Self {
+        for (key, value) in &other.vehicles {
+            self.vehicles.insert(*key, value.clone());
+        }
+        for (key, value) in &other.stations {
+            self.stations.insert(*key, value.clone());
+        }
+        for (key, value) in &other.graph.nodes {
+            self.graph.nodes.insert(*key, value.clone());
+        }
+        for (key, value) in &other.graph.intervals {
+            self.graph.insert_interval_entry(*key, value.clone());
+        }
+        for (key, value) in &other.trips {
+            self.trips.insert(*key, value.clone());
+        }
+        for (key, value) in &other.service_classes {
+            self.service_classes.insert(*key, value.clone());
+        }
+        for (key, value) in &other.routes {
+            self.routes.insert(*key, value.clone());
+        }
+        self.spatial_dirty = true;
+        self
+    }
+}
+
 /// The truth of the application. This structure holds a write-only log and a set of undos and
 /// redos, as well as the world's current snapshot.
 ///
@@ -240,6 +270,7 @@ impl Source {
     pub fn revision(&self) -> u64 {
         self.revision
     }
+
     /// Mutates the world and makes a backup
     pub fn mutate(
         &mut self,
@@ -255,9 +286,19 @@ impl Source {
 
         let old = self.snap.clone();
         self.history.push(old);
-        self.snap.mutate(|_old_world| new_world);
+        self.snap.update_snapshot(|_old_world| new_world);
         self.revision += 1;
         Ok(())
+    }
+
+    /// Applies an imported world, either on top of the current one or replacing it.
+    pub fn import(&mut self, world: WorldSnapshot, mode: ImportMode) -> Result<(), String> {
+        self.mutate(move |existing| {
+            Ok(match mode {
+                ImportMode::Merge => existing.merged(&world),
+                ImportMode::Replace => world,
+            })
+        })
     }
 
     pub fn undoable(&self) -> bool {
@@ -266,6 +307,7 @@ impl Source {
     pub fn redoable(&self) -> bool {
         self.redo_len > 0
     }
+
     pub fn undo(&mut self) -> Result<(), String> {
         if !self.undoable() {
             return Err("No undos available".into());
@@ -276,6 +318,7 @@ impl Source {
         self.revision += 1;
         Ok(())
     }
+
     pub fn redo(&mut self) -> Result<(), String> {
         if !self.redoable() {
             return Err("No redos available".into());

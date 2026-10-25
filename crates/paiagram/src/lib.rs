@@ -20,7 +20,7 @@ use egui_tiles::{
     Behavior, ContainerKind, SimplificationOptions, Tile, TileId, Tiles, Tree, UiResponse,
 };
 use log::info;
-use paiagram_core::import::ImportType;
+use paiagram_core::import::{ImportMode, ImportType};
 use paiagram_core::time::TimetableTime;
 use paiagram_core::{RouteKey, SaveFile, Source};
 use paiagram_export::{ExportGtfs, ExportOuDia};
@@ -228,6 +228,11 @@ impl<'w> Behavior<MainTab> for MainTabViewer<'w> {
                         ExtensionTab::default(),
                     )));
                 }
+                if ui.button("Config").clicked() {
+                    ui_action_queue.push(UiCommand::OpenOrFocus(MainTab::Config(
+                        ConfigTab::default(),
+                    )));
+                }
                 for (route_key, info) in &self.app.snap.routes {
                     ui.menu_button(info.name.as_str(), |ui| {
                         if ui.button("Graph").clicked() {
@@ -272,8 +277,8 @@ pub fn show_ui(
                     unreachable!();
                 };
                 match world {
-                    Ok(new_world) => {
-                        app.source.mutate(|_old_world| Ok(new_world));
+                    Ok((new_world, mode)) => {
+                        let _ = app.source.import(new_world, mode);
                     }
                     Err(s) => {}
                 }
@@ -313,19 +318,28 @@ pub fn show_ui(
                     #[cfg(debug_assertions)]
                     ("Import sample.oud2", "OuDiaSecond", ImportType::BuiltinOud2),
                 ] {
-                    if !ui.button(button_display).clicked() {
-                        continue;
-                    }
-                    info!("Trying to read {category}");
-                    let dialog = AsyncFileDialog::new()
-                        .set_title(button_display)
-                        .add_filter(category, import_type.file_extensions());
-                    load::load_file(
-                        dialog,
-                        import_type,
-                        app.file_load_state.clone(),
-                        ui.ctx().clone(),
-                    );
+                    ui.menu_button(button_display, |ui| {
+                        for (label, import_mode) in [
+                            ("Add to current world", ImportMode::Merge),
+                            ("Replace current world", ImportMode::Replace),
+                        ] {
+                            if !ui.button(label).clicked() {
+                                continue;
+                            }
+                            info!("Trying to read {category}");
+                            let dialog = AsyncFileDialog::new()
+                                .set_title(button_display)
+                                .add_filter(category, import_type.file_extensions());
+                            load::load_file(
+                                dialog,
+                                import_type,
+                                import_mode,
+                                app.file_load_state.clone(),
+                                ui.ctx().clone(),
+                            );
+                            ui.close();
+                        }
+                    });
                 }
                 ui.separator();
                 if ui.button("Save .paia").clicked() {

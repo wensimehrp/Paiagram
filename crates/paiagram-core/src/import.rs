@@ -24,6 +24,14 @@ fn normalize_times<'a>(mut time_iter: impl Iterator<Item = &'a mut TimetableTime
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ImportMode {
+    /// Keep the current world and add the imported entities to it.
+    Merge,
+    /// Discard the current world and replace it with the imported one.
+    Replace,
+}
+
 #[derive(Clone, Copy)]
 pub enum ImportType {
     /// qETRC and pyETRC JSON

@@ -13,8 +13,8 @@ use crate::route::{RouteInterval, RouteIntervals, StationRecord};
 use crate::time::TimetableTime;
 use crate::trip::{TEntry, TEntryId, TravelMode, TripSchedule};
 use crate::{
-    Interval, LonLat, Node, NodeKey, Route, RouteKey, ServiceClass, ServiceClassKey, Station,
-    StationKey, StrokeStyle, Trip, TripKey, Wfc, WorldSnapshot,
+    Interval, IntervalKey, LonLat, Node, NodeKey, Route, RouteKey, ServiceClass, ServiceClassKey,
+    Station, StationKey, StrokeStyle, Trip, TripKey, Wfc, WorldSnapshot,
 };
 
 pub(super) enum OudFileType<'a> {
@@ -75,13 +75,13 @@ pub(crate) fn parse_oudia(
         let target = (*graph.node_weight(edge_ref.target()).unwrap()) as *const OudStation;
         let (source, _) = *stn_to_node_key.get(&source).unwrap();
         let (target, _) = *stn_to_node_key.get(&target).unwrap();
-        world.graph.insert_interval(
-            (source, target),
-            Interval {
+        world.graph.insert_interval_entry(
+            IntervalKey::new(source, target),
+            Wfc::new(Interval {
                 nodes: EcoVec::new(),
                 length: NonZeroU32::new(1000),
                 direction: IntervalDirection::Both,
-            },
+            }),
         );
     }
     let mut service_classes = route
@@ -203,7 +203,7 @@ mod test {
         // Applying the imported world is what runs `update_diff`, which looks up the
         // interval between each pair of consecutive trip entries.
         let mut world = crate::WorldSnapshot::default();
-        world.mutate(|_| snap.clone());
+        world.update_snapshot(|_| snap.clone());
         Ok(())
     }
 }

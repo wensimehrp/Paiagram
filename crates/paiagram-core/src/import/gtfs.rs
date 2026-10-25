@@ -25,7 +25,7 @@ use crate::route::{RouteInterval, RouteIntervals, StationRecord};
 use crate::time::TimetableTime;
 use crate::trip::{TEntry, TEntryId, TravelMode, TripSchedule};
 use crate::{
-    Interval, LonLat, Node, NodeKey, NodeKeyHashMap, Route, RouteKey, ServiceClass,
+    Interval, IntervalKey, LonLat, Node, NodeKey, NodeKeyHashMap, Route, RouteKey, ServiceClass,
     ServiceClassKey, Station, StationKey, StrokeStyle, Trip, TripKey, Wfc, Wgs84LonLat,
     WorldSnapshot,
 };
@@ -130,13 +130,13 @@ pub(super) fn parse_gtfs(data: &[u8]) -> Result<WorldSnapshot, Box<dyn std::erro
             }
             // whoops I forgot to set up nodes
             let (hi, lo) = if a > b { (a, b) } else { (b, a) };
-            world.graph.insert_interval(
-                (a, b),
-                Interval {
+            world.graph.insert_interval_entry(
+                IntervalKey::new(a, b),
+                Wfc::new(Interval {
                     nodes: eco_vec![node_pos[&hi], node_pos[&lo]],
                     length: None,
                     direction: IntervalDirection::Both,
-                },
+                }),
             );
         }
 

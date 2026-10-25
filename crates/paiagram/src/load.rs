@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use paiagram_core::WorldSnapshot;
-use paiagram_core::import::{ImportType, make_snapshot};
+use paiagram_core::import::{ImportMode, ImportType, make_snapshot};
 use parking_lot::Mutex;
 use rfd::AsyncFileDialog;
 
@@ -10,12 +10,13 @@ pub(crate) enum FileLoadState {
     #[default]
     Idle,
     Processing,
-    Done(Result<WorldSnapshot, String>),
+    Done(Result<(WorldSnapshot, ImportMode), String>),
 }
 
 pub(crate) fn load_file(
     dialog: AsyncFileDialog,
     import_type: ImportType,
+    import_mode: ImportMode,
     state: Arc<Mutex<FileLoadState>>,
     ctx: egui::Context,
 ) {
@@ -40,7 +41,9 @@ pub(crate) fn load_file(
         // send to the rayon thread.
         // Use a tx rx pair from futures_channel instead.
         rayon::spawn(move || {
-            let new_world = make_snapshot(&data, import_type).map_err(|e| e.to_string());
+            let new_world = make_snapshot(&data, import_type)
+                .map(|world| (world, import_mode))
+                .map_err(|e| e.to_string());
             *state.lock() = FileLoadState::Done(new_world);
             let _ = tx.send(());
         });

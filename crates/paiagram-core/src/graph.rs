@@ -134,19 +134,23 @@ impl Graph {
         self.nodes.insert(node_key, Wfc::new(node));
     }
 
-    pub fn insert_interval(&mut self, (a, b): (NodeKey, NodeKey), interval: Interval) {
-        self.intervals.insert(IntervalKey::new(a, b), Wfc::new(interval));
-        self.adjacency.insert((a, b));
-        self.adjacency.insert((b, a));
+    pub(crate) fn insert_interval_entry(
+        &mut self,
+        key: IntervalKey,
+        interval: Wfc<Interval, IntervalCache>,
+    ) {
+        self.adjacency.insert((key.hi, key.lo));
+        self.adjacency.insert((key.lo, key.hi));
+        self.intervals.insert(key, interval);
     }
 
-    pub fn remove_interval(
+    pub(crate) fn remove_interval_entry(
         &mut self,
-        (a, b): (NodeKey, NodeKey),
+        key: &IntervalKey,
     ) -> Option<Wfc<Interval, IntervalCache>> {
-        self.adjacency.remove(&(a, b))?;
-        self.adjacency.remove(&(b, a))?;
-        self.intervals.remove(&IntervalKey::new(a, b))
+        self.adjacency.remove(&(key.hi, key.lo));
+        self.adjacency.remove(&(key.lo, key.hi));
+        self.intervals.remove(key)
     }
 
     pub fn update_node_coordinate(
