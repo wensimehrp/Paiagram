@@ -183,9 +183,9 @@ fn show_station_header<'a, 'snap>(
                 .min_size(cell_size)
                 .atom_ui(ui);
                 button.set_intrinsic_size(cell_size);
-                Popup::menu(&button.response)
-                    .close_behavior(PopupCloseBehavior::CloseOnClickOutside)
-                    .show(|ui| {
+                Tooltip::for_enabled(&button).show(|ui| ui.label(station_name));
+                Popup::menu(&button).close_behavior(PopupCloseBehavior::CloseOnClickOutside).show(
+                    |ui| {
                         let mut disp_bigflag = |flag: StationDisplayMode, atoms: &str| {
                             let mut flag_bool = display_mode.contains(flag);
                             // disallow removing if it is the only activated flag
@@ -198,7 +198,8 @@ fn show_station_header<'a, 'snap>(
                         disp_bigflag(StationDisplayMode::ARRIVAL, "Arrival");
                         disp_bigflag(StationDisplayMode::TRACK, "Track");
                         disp_bigflag(StationDisplayMode::DEPARTURE, "Departure");
-                    });
+                    },
+                );
             }
         });
     Vec2 {
@@ -256,16 +257,16 @@ fn show_trip_header(
                     width: 1.0,
                     color: fill.gamma_multiply(0.5),
                 };
+                let button = Button::new(RichText::new(name).color(if fill.intensity() > 0.5 {
+                    Color32::BLACK
+                } else {
+                    Color32::WHITE
+                }))
+                .truncate();
+
                 if ui
-                    .place(
-                        cell_rect,
-                        Button::new(RichText::new(name).color(if fill.intensity() > 0.5 {
-                            Color32::BLACK
-                        } else {
-                            Color32::WHITE
-                        }))
-                        .truncate(),
-                    )
+                    .place(cell_rect, button)
+                    .on_hover_text(format!("Click to open the trip\n{name}"))
                     .clicked()
                 {
                     app.ui_action_queue.push(UiCommand::OpenOrFocus(super::MainTab::Trip(
