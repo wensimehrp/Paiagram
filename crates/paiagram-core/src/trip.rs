@@ -130,10 +130,64 @@ impl TripSchedule {
     }
 
     pub fn set_arr_or_pass_mode(&mut self, id: TEntryId, mode: TravelMode) {
-        let Some(entry) = self.entries.make_mut().iter_mut().find(|e| e.id == id) else {
+        let Some(changed) = self.entries.iter().position(|e| e.id == id) else {
             return;
         };
-        entry.arr_or_pass = mode;
+        let old_arrivals = self.arrival_times();
+        let entries = self.entries.make_mut();
+        entries[changed].arr_or_pass = mode;
+
+        // `For` arrivals are measured from the previous stable departure. Changing this
+        // entry's mode can move or remove that anchor, so re-anchor the following `For`
+        // entries to keep their absolute arrival times unchanged.
+        let mut prev_stable: Option<TTime> = None;
+        for (index, entry) in entries.iter_mut().enumerate() {
+            let arr = match entry.arr_or_pass {
+                TravelMode::At(t) => Some(t),
+                TravelMode::For(d) => {
+                    let arr = prev_stable.map(|p| p + d);
+                    match (index > changed, prev_stable, old_arrivals[index]) {
+                        (true, Some(prev), Some(old_arr)) => {
+                            entry.arr_or_pass = TravelMode::For(old_arr - prev);
+                            Some(old_arr)
+                        }
+                        _ => arr,
+                    }
+                }
+                TravelMode::Flexible => None,
+            };
+            let dep = match entry.dep.unwrap_or(TravelMode::Flexible) {
+                TravelMode::At(t) => Some(t),
+                TravelMode::For(d) => arr.map(|a| a + d),
+                TravelMode::Flexible => arr,
+            };
+            if let Some(dep) = dep {
+                prev_stable = Some(dep);
+            }
+        }
+    }
+
+    /// The absolute arrival time of each entry under the current modes.
+    fn arrival_times(&self) -> Vec<Option<TTime>> {
+        let mut prev_stable: Option<TTime> = None;
+        let mut arrivals = Vec::with_capacity(self.entries.len());
+        for entry in &self.entries {
+            let arr = match entry.arr_or_pass {
+                TravelMode::At(t) => Some(t),
+                TravelMode::For(d) => prev_stable.map(|p| p + d),
+                TravelMode::Flexible => None,
+            };
+            arrivals.push(arr);
+            let dep = match entry.dep.unwrap_or(TravelMode::Flexible) {
+                TravelMode::At(t) => Some(t),
+                TravelMode::For(d) => arr.map(|a| a + d),
+                TravelMode::Flexible => arr,
+            };
+            if let Some(dep) = dep {
+                prev_stable = Some(dep);
+            }
+        }
+        arrivals
     }
 
     pub fn set_dep_mode(&mut self, id: TEntryId, mode: Option<TravelMode>) {

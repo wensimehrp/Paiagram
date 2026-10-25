@@ -24,7 +24,6 @@ pub fn show_focused_trip<'a>(
     tab: &mut super::MareyTab,
     station_heights: &[CanvasLength],
     painter: &mut Painter,
-    response: &Response,
     polylines: TripBucket,
     trip_key: TripKey,
     estimate_base: Option<TEstimate>,
@@ -39,11 +38,9 @@ pub fn show_focused_trip<'a>(
             &polyline,
             station_heights,
             painter,
-            response,
             text_color,
             stroke,
             ui,
-            animation_progress,
             trip_key,
             estimate_base,
         );
@@ -58,11 +55,9 @@ fn draw_polyline(
     polyline: &[BucketPoint],
     station_heights: &[CanvasLength],
     mut painter: &mut Painter,
-    response: &Response,
     text_color: Color32,
     stroke: Stroke,
     ui: &mut Ui,
-    animation_progress: f32,
     trip_key: TripKey,
     estimate_base: Option<TEstimate>,
 ) -> Option<(TEntryId, TEstimate, Either<TDuration, TDuration>)> {
@@ -78,39 +73,6 @@ fn draw_polyline(
             [Pos2::new(x1, y), Pos2::new(x2, y)]
         })
         .collect();
-    // if let Some(&first) = points.first()
-    //     && let Some(&last) = points.last()
-    //     && let Some((estimate_first, ..)) = polyline.first()
-    //     && let Some((estimate_last, ..)) = polyline.last()
-    // {
-    //     let y_max =
-    //         points.iter().fold(first.y, |acc, pos| if pos.y > acc { pos.y } else { acc }) + 20.0;
-    //     painter.line(
-    //         vec![first, pos2(first.x, y_max), pos2(last.x, y_max), last],
-    //         Stroke::new(1.0, Color32::DARK_GREEN.gamma_multiply(animation_progress)),
-    //     );
-    //     painter.text(
-    //         pos2(first.x.max(response.rect.left()), y_max) + Vec2::angled(-FRAC_PI_4) * 2.0,
-    //         Align2::LEFT_BOTTOM,
-    //         estimate_first.arr.to_string(),
-    //         FontId::proportional(13.0),
-    //         text_color,
-    //     );
-    //     painter.text(
-    //         pos2(first.x.max(response.rect.left()), y_max) + Vec2::angled(FRAC_PI_4) * 2.0,
-    //         Align2::LEFT_TOP,
-    //         (estimate_last.dep - estimate_first.arr).to_string(),
-    //         FontId::proportional(13.0),
-    //         text_color,
-    //     );
-    //     painter.text(
-    //         pos2(last.x.min(response.rect.right()), y_max) + Vec2::angled(-FRAC_PI_4 * 3.0) *
-    // 2.0,         Align2::RIGHT_BOTTOM,
-    //         (estimate_last.dep).to_string(),
-    //         FontId::proportional(13.0),
-    //         text_color,
-    //     );
-    // }
     painter.line(points.clone(), stroke);
     let (points, _) = points.as_chunks::<2>();
     let handle_iter = iter::zip(
@@ -232,14 +194,16 @@ fn draw_polyline(
                         !matches!(entry.arr_or_pass, TravelMode::Flexible),
                     ];
                     let btn = Button::new("At").right_text(
-                        RichText::from(format!("{}", estimate_entry.arr))
+                        RichText::from(format!("{}", estimate_visual.arr))
                             .font(TIMETABLE_FONT_ID.clone()),
                     );
                     if ui.add_enabled(show_at, btn).clicked() {
                         let _ = source.mutate(|mut world| {
                             let trip = world.trips.get_mut(&trip_key).ok_or("wtf")?;
-                            trip.schedule
-                                .set_arr_or_pass_mode(entry.id, TravelMode::At(estimate_entry.arr));
+                            trip.schedule.set_arr_or_pass_mode(
+                                entry.id,
+                                TravelMode::At(estimate_visual.arr),
+                            );
                             Ok(world)
                         });
                     }
@@ -319,18 +283,18 @@ fn draw_polyline(
                         !matches!(entry.dep, None),
                     ];
                     let btn = Button::new("At").right_text(
-                        RichText::from(format!("{}", estimate_entry.dep))
+                        RichText::from(format!("{}", estimate_visual.dep))
                             .font(TIMETABLE_FONT_ID.clone()),
                     );
                     if ui.add_enabled(show_at, btn).clicked() {
                         let _ = source.mutate(|mut world| {
                             let trip = world.trips.get_mut(&trip_key).ok_or("wtf")?;
                             trip.schedule
-                                .set_dep_mode(entry.id, Some(TravelMode::At(estimate_entry.dep)));
+                                .set_dep_mode(entry.id, Some(TravelMode::At(estimate_visual.dep)));
                             Ok(world)
                         });
                     }
-                    let duration = estimate_entry.duration();
+                    let duration = estimate_visual.duration();
                     let btn = Button::new("For").right_text(
                         RichText::from(duration.to_string_no_arrow())
                             .font(TIMETABLE_FONT_ID.clone()),

@@ -4,17 +4,24 @@ use paiagram_core::time::TimetableTime;
 use paiagram_core::trip::TravelMode::{self, At, Flexible, For};
 use paiagram_core::trip::{EstimateEntry, TEstimate, TripSchedule};
 use paiagram_core::{TripKey, WorldSnapshot};
+use paiagram_selection::SelectedItems;
 use serde::{Deserialize, Serialize};
 
 use super::Tab;
 use crate::widgets::{DurationDragValue, TimeDragValue};
 use crate::{App, UiCommand};
 
-#[derive(Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Clone)]
 pub(crate) struct TripTab {
-    trip_key: TripKey,
+    trip_key: Option<TripKey>,
     show_derived: bool,
     name_edit_buf: Option<String>,
+}
+
+impl PartialEq for TripTab {
+    fn eq(&self, other: &Self) -> bool {
+        self.trip_key == other.trip_key
+    }
 }
 
 impl Tab for TripTab {
@@ -30,7 +37,7 @@ impl Tab for TripTab {
 impl TripTab {
     pub(crate) fn new(trip_key: TripKey) -> Self {
         Self {
-            trip_key,
+            trip_key: Some(trip_key),
             show_derived: false,
             name_edit_buf: None,
         }
@@ -38,15 +45,52 @@ impl TripTab {
 }
 
 fn show_trip(tab: &mut TripTab, app: &mut App, ui: &mut Ui) {
-    let ui_queue = &mut app.ui_action_queue;
     let snap = &app.source.snap;
-    let Some(trip) = snap.trips.get(&tab.trip_key) else {
+    let trip_key = tab.trip_key.or(match &app.selected_items {
+        SelectedItems::Trips(trips) => Some(*trips.first()),
+        _ => None,
+    });
+    let select_a_trip = |ui: &mut Ui, existing_key: &mut Option<TripKey>| {
+        let selected_text = existing_key.map_or("Current selected trip", |key| {
+            snap.trips.get(&key).map_or("Unknown", |wfc| &wfc.name)
+        });
+        let combo_box =
+            ComboBox::from_id_salt("Selected existing trip").selected_text(selected_text);
+        combo_box.show_ui(ui, |ui| {
+            ui.selectable_value(existing_key, None, "Current selected trip");
+            ScrollArea::vertical().show_rows(
+                ui,
+                ui.spacing().interact_size.y,
+                app.trips.len(),
+                |ui, range| {
+                    for (key, trip) in app.trips.iter().skip(range.start).take(range.count()) {
+                        ui.selectable_value(existing_key, Some(*key), trip.name.as_str());
+                    }
+                },
+            );
+        });
+    };
+    let Some(trip_key) = trip_key else {
+        Frame::new().inner_margin(6.0).show(ui, |ui| {
+            ui.heading("No trips selected");
+            select_a_trip(ui, &mut tab.trip_key);
+        });
         return;
     };
-    ui.heading(trip.name.as_str());
-    egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
-        egui::Frame::new().inner_margin(6.0).show(ui, |ui| {
-            egui::Grid::new(ui.id().with("trip ui")).num_columns(2).striped(true).show(ui, |ui| {
+    let Some(trip) = snap.trips.get(&trip_key) else {
+        Frame::new().inner_margin(6.0).show(ui, |ui| {
+            ui.heading("Selected trip doesn't exist");
+            select_a_trip(ui, &mut tab.trip_key);
+        });
+        return;
+    };
+    Frame::new().inner_margin(6.0).show(ui, |ui| {
+        ui.heading(trip.name.as_str());
+        select_a_trip(ui, &mut tab.trip_key);
+    });
+    ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
+        Frame::new().inner_margin(6.0).show(ui, |ui| {
+            Grid::new("trip ui").num_columns(2).striped(true).show(ui, |ui| {
                 ui.label(tr!("trip-table-station"));
                 ui.label(tr!("trip-table-arrival"));
                 ui.end_row();
@@ -55,13 +99,12 @@ fn show_trip(tab: &mut TripTab, app: &mut App, ui: &mut Ui) {
                 trip.schedule.estimates(&snap.graph, |estimates| {
                     for (estimate, entry) in estimates.into_iter().copied() {
                         row_ui(
-                            tab.trip_key,
+                            trip_key,
                             &trip.schedule,
                             estimates,
                             estimate,
                             entry,
                             snap,
-                            ui_queue,
                             ui,
                         );
                         ui.end_row();
@@ -79,7 +122,6 @@ fn row_ui(
     estimate: Option<TEstimate>,
     entry: EstimateEntry,
     snap: &WorldSnapshot,
-    ui_queue: &mut Vec<UiCommand>,
     ui: &mut Ui,
 ) {
     const BTN_SIZE: Vec2 = vec2(70.0, 18.0);
