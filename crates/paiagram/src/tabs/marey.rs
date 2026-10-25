@@ -1,9 +1,8 @@
-use std::iter;
-
 use egui::*;
-use paiagram_core::route::{MareyCache, StationRecord};
-use paiagram_core::time::{Tick, TimetableTime};
-use paiagram_core::trip::TEstimate;
+use either::Either;
+use paiagram_core::route::MareyCache;
+use paiagram_core::time::{TDuration, Tick, TimetableTime};
+use paiagram_core::trip::{TEntryId, TEstimate};
 use paiagram_core::{CanvasLength, RouteKey, TripKey};
 use paiagram_export::GraphyFormat;
 use paiagram_rw::ExportObject;
@@ -29,6 +28,7 @@ pub(crate) struct MareyTab {
     navi: MareyTabNavigation,
     cache: MareyCache,
     callback: gpu_draw::MareyCallback,
+    current_editing_entry: Option<(TripKey, (TEntryId, TEstimate, Either<TDuration, TDuration>))>,
 }
 
 /// [`MareyTab`] w/o cache for serde
@@ -51,6 +51,7 @@ impl From<MareyTabNoCache> for MareyTab {
             navi,
             cache: MareyCache::default(),
             callback: gpu_draw::MareyCallback::new(key),
+            current_editing_entry: None,
         }
     }
 }
@@ -62,6 +63,7 @@ impl MareyTab {
             navi: MareyTabNavigation::default(),
             cache: MareyCache::default(),
             callback: gpu_draw::MareyCallback::new(key),
+            current_editing_entry: None,
         }
     }
 }
@@ -296,51 +298,49 @@ fn main_display(tab: &mut MareyTab, app: &mut App, ui: &mut Ui) {
         ui.allocate_painter(ui.available_size_before_wrap(), Sense::click_and_drag());
     tab.navi.visible_rect = response.rect;
     tab.navi.handle_navigation(ui, &response);
+
     draw_time_lines(&mut painter, &tab.navi);
 
     let Some(route) = app.source.routes.get(&tab.key).cloned() else {
         return;
     };
 
-    let mut station_height_so_far = CanvasLength::ZERO;
-    let mut station_heights = Vec::with_capacity(route.intervals.0.len());
-    let station_line_stroke = Stroke {
-        width: 0.6,
-        color: Color32::GRAY,
-    };
+    let (station_heights, max_height) = route.intervals.0.iter().fold(
+        (
+            Vec::with_capacity(route.intervals.0.len()),
+            CanvasLength::ZERO,
+        ),
+        |(mut acc, height_so_far), interval| {
+            let Some(station) = interval
+                .station_record
+                .station_key(app.source.graph.nodes())
+                .and_then(|key| app.stations.get(key))
+            else {
+                return (acc, height_so_far);
+            };
+            let station_line_stroke = Stroke {
+                width: 0.6,
+                color: Color32::GRAY,
+            };
+            let mut y = tab.navi.logical_y_to_screen_y(height_so_far);
+            station_line_stroke.round_center_to_pixel(ui.pixels_per_point(), &mut y);
+            painter.hline(response.rect.x_range(), y, station_line_stroke);
+            painter.text(
+                pos2(response.rect.left(), y),
+                Align2::LEFT_BOTTOM,
+                station.name.as_str(),
+                FontId::proportional(13.0),
+                station_line_stroke.color,
+            );
+            acc.push(height_so_far);
+            (
+                acc,
+                height_so_far + interval.canvas_length.unwrap_or(CanvasLength::from_cm(1.5)),
+            )
+        },
+    );
 
-    for interval in &route.intervals.0 {
-        let Some(station) = (match &interval.station_record {
-            StationRecord::All(key) => Some(*key),
-            StationRecord::Some(nodes) => nodes
-                .first()
-                .and_then(|key| app.source.graph.nodes().get(key))
-                .map(|wfc| wfc.parent),
-        })
-        .and_then(|key| app.source.stations.get(&key)) else {
-            continue;
-        };
-        let mut y = tab.navi.logical_y_to_screen_y(station_height_so_far);
-        station_line_stroke.round_center_to_pixel(ui.pixels_per_point(), &mut y);
-        painter.hline(response.rect.x_range(), y, station_line_stroke);
-        painter.text(
-            Pos2 {
-                x: response.rect.left(),
-                y,
-            },
-            Align2::LEFT_BOTTOM,
-            station.name.as_str(),
-            FontId::proportional(13.0),
-            station_line_stroke.color,
-        );
-        station_heights.push(station_height_so_far);
-        station_height_so_far = CanvasLength(
-            station_height_so_far.0
-                + interval.canvas_length.unwrap_or_else(|| CanvasLength::from_cm(1.5)).0,
-        );
-    }
-
-    tab.navi.max_height = station_height_so_far;
+    tab.navi.max_height = max_height;
 
     // paint the station lines and Marey lines
     tab.callback.populate_stations(station_heights.iter().copied());
@@ -400,12 +400,20 @@ fn main_display(tab: &mut MareyTab, app: &mut App, ui: &mut Ui) {
                 width: lerp(style.width as f32..=5.0, animation_progress),
                 color: style.color,
             };
-            let schedule = trip.schedule.clone();
+            let mut schedule = trip.schedule.clone();
+            if let Some((key, (entry_id, _base_estimate, shift))) = tab.current_editing_entry
+                && key == *trip_key
+            {
+                match shift {
+                    Either::Left(d) => schedule.shift_arr_or_pass(entry_id, d),
+                    Either::Right(d) => schedule.shift_dep(entry_id, d),
+                }
+            }
             let Some(polylines) = route.intervals.populate_schedule(&app.snap, &schedule) else {
                 continue;
             };
-            show_focused_trips::show_focused_trip(
-                schedule,
+            let ret = show_focused_trips::show_focused_trip(
+                &schedule,
                 stroke,
                 &mut app.source,
                 animation_progress,
@@ -415,7 +423,10 @@ fn main_display(tab: &mut MareyTab, app: &mut App, ui: &mut Ui) {
                 &mut painter,
                 &response,
                 polylines,
+                *trip_key,
+                tab.current_editing_entry.map(|it| it.1.1),
             );
+            tab.current_editing_entry = ret.map(|it| (*trip_key, it));
         }
     }
 }
