@@ -7,7 +7,7 @@ use ecow::EcoVec;
 use serde::{Deserialize, Serialize};
 
 use crate::graph::Graph;
-use crate::time::{TDuration, TTime, TimetableTime};
+use crate::time::{TDuration, TTime, TimetableDuration, TimetableTime};
 use crate::{Distance, IntervalCollection, IntervalKey, NodeKey};
 
 /// Travel mode. Travel mode defines how the vehicle travels.
@@ -35,7 +35,7 @@ impl TravelMode {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize, Copy, Debug, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, Copy, Debug, PartialEq, Hash)]
 pub struct TEntryId(u32);
 static NEXT_ENTRY_ID: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
 
@@ -105,6 +105,42 @@ impl TripSchedule {
             .map(|(es, _)| *es)??
             .dep;
         Some(e1 - e0)
+    }
+
+    pub fn shift_arr_or_pass(&mut self, id: TEntryId, duration: TimetableDuration) {
+        let Some(entry) = self.entries.make_mut().iter_mut().find(|e| e.id == id) else {
+            return;
+        };
+        match &mut entry.arr_or_pass {
+            TravelMode::At(t) => *t += duration,
+            TravelMode::For(d) => *d += duration,
+            TravelMode::Flexible => {}
+        }
+    }
+
+    pub fn shift_dep(&mut self, id: TEntryId, duration: TimetableDuration) {
+        let Some(entry) = self.entries.make_mut().iter_mut().find(|e| e.id == id) else {
+            return;
+        };
+        match &mut entry.dep {
+            Some(TravelMode::At(t)) => *t += duration,
+            Some(TravelMode::For(d)) => *d += duration,
+            Some(TravelMode::Flexible) | None => {}
+        }
+    }
+
+    pub fn set_arr_or_pass_mode(&mut self, id: TEntryId, mode: TravelMode) {
+        let Some(entry) = self.entries.make_mut().iter_mut().find(|e| e.id == id) else {
+            return;
+        };
+        entry.arr_or_pass = mode;
+    }
+
+    pub fn set_dep_mode(&mut self, id: TEntryId, mode: Option<TravelMode>) {
+        let Some(entry) = self.entries.make_mut().iter_mut().find(|e| e.id == id) else {
+            return;
+        };
+        entry.dep = mode;
     }
 }
 
