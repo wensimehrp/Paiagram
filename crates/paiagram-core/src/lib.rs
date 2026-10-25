@@ -16,6 +16,7 @@ pub mod units;
 mod world;
 use std::num::NonZeroU32;
 use std::ops::{Deref, DerefMut};
+use std::sync::mpsc;
 
 use ecow::{EcoString, EcoVec};
 use egui::Color32;
@@ -27,6 +28,7 @@ use paiagram_rw::ExportObject;
 use route::RouteIntervals;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
+use spatial_index::SpatialCache;
 pub use units::*;
 
 use crate::import::ImportMode;
@@ -202,11 +204,7 @@ impl Default for StrokeStyle {
     }
 }
 
-fn default_true() -> bool {
-    true
-}
-
-#[derive(Serialize, Deserialize, Default, Clone, Debug)]
+#[derive(Serialize, Deserialize, Default, Clone, Debug, PartialEq)]
 pub struct WorldSnapshot {
     pub trips: TripCollection,
     pub vehicles: VehicleCollection,
@@ -214,13 +212,6 @@ pub struct WorldSnapshot {
     pub graph: graph::Graph,
     pub service_classes: ServiceClassCollection,
     pub routes: RouteCollection,
-    /// Spatial r-trees derived from the rest of the world. Not persisted; rebuilt
-    /// whenever [`spatial_dirty`](Self::spatial_dirty) is set.
-    #[serde(skip)]
-    pub spatial: spatial_index::SpatialCache,
-    /// Whether [`spatial`](Self::spatial) is out of date and must be rebuilt.
-    #[serde(skip, default = "default_true")]
-    pub spatial_dirty: bool,
 }
 
 impl WorldSnapshot {
@@ -247,7 +238,6 @@ impl WorldSnapshot {
         for (key, value) in &other.routes {
             self.routes.insert(*key, value.clone());
         }
-        self.spatial_dirty = true;
         self
     }
 }
@@ -259,16 +249,53 @@ impl WorldSnapshot {
 pub struct Source {
     /// The current active world snapshot
     pub snap: WorldSnapshot,
+    prev_frame_snap: WorldSnapshot,
     history: Vec<WorldSnapshot>,
     /// the amount of redos available at this point
     redo_len: usize,
     revision: u64,
+    spatial: SpatialCache,
+    spatial_tx: mpsc::Sender<(u64, SpatialCache)>,
+    spatial_rx: mpsc::Receiver<(u64, SpatialCache)>,
 }
 
 impl Source {
     /// Changes after every successful command, undo, and redo.
     pub fn revision(&self) -> u64 {
         self.revision
+    }
+
+    /// The app's spatial cache
+    pub fn spatial(&self) -> &SpatialCache {
+        &self.spatial
+    }
+
+    /// The world snapshot from the previous frame.
+    pub fn prev_frame_snap(&self) -> &WorldSnapshot {
+        &self.prev_frame_snap
+    }
+
+    /// Saves the current snapshot as the previous frame's. Call once at the start of each frame.
+    pub fn begin_frame(&mut self) {
+        self.prev_frame_snap = self.snap.clone();
+        if let Ok((build_idx, new_spatial)) = self.spatial_rx.try_recv() {
+            if build_idx == self.revision() {
+                self.spatial = new_spatial;
+            } else {
+                self.spawn_spatial_build();
+            }
+        }
+    }
+
+    /// Build the spatial cache on the rayon pool.
+    fn spawn_spatial_build(&self) {
+        let revision = self.revision;
+        let snap = self.snap.clone();
+        let sender = self.spatial_tx.clone();
+        rayon::spawn(move || {
+            let cache = SpatialCache::build(&snap);
+            let _ = sender.send((revision, cache));
+        });
     }
 
     /// Mutates the world and makes a backup
@@ -286,8 +313,11 @@ impl Source {
 
         let old = self.snap.clone();
         self.history.push(old);
-        self.snap.update_snapshot(|_old_world| new_world);
+        let spatial_dirty = self.snap.update_snapshot(|_old_world| new_world);
         self.revision += 1;
+        if spatial_dirty {
+            self.spawn_spatial_build();
+        }
         Ok(())
     }
 
@@ -316,6 +346,7 @@ impl Source {
         std::mem::swap(&mut self.snap, &mut self.history[target_idx]);
         self.redo_len += 1;
         self.revision += 1;
+        self.spawn_spatial_build();
         Ok(())
     }
 
@@ -327,17 +358,23 @@ impl Source {
         let target_idx = self.history.len() - 1 - self.redo_len;
         std::mem::swap(&mut self.snap, &mut self.history[target_idx]);
         self.revision += 1;
+        self.spawn_spatial_build();
         Ok(())
     }
 }
 
 impl Source {
     pub fn new() -> Self {
+        let (spatial_tx, spatial_rx) = mpsc::channel();
         Self {
             snap: WorldSnapshot::default(),
+            prev_frame_snap: WorldSnapshot::default(),
             history: Vec::new(),
             redo_len: 0,
             revision: 0,
+            spatial: SpatialCache::default(),
+            spatial_tx,
+            spatial_rx,
         }
     }
 }
@@ -369,12 +406,21 @@ impl TryFrom<SaveFile> for Source {
     type Error = &'static str;
     fn try_from(value: SaveFile) -> Result<Self, Self::Error> {
         match value {
-            SaveFile::V1(snap) => Ok(Self {
-                history: Vec::new(),
-                redo_len: 0,
-                revision: 0,
-                snap,
-            }),
+            SaveFile::V1(snap) => {
+                let (spatial_tx, spatial_rx) = mpsc::channel();
+                let source = Self {
+                    prev_frame_snap: snap.clone(),
+                    history: Vec::new(),
+                    redo_len: 0,
+                    revision: 0,
+                    snap,
+                    spatial: SpatialCache::default(),
+                    spatial_tx,
+                    spatial_rx,
+                };
+                source.spawn_spatial_build();
+                Ok(source)
+            }
         }
     }
 }

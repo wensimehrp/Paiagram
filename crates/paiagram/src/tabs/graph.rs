@@ -127,9 +127,11 @@ impl<'a> walkers::Plugin for MapPlugin<'a> {
         let mut trip_leg_text = Vec::new();
         let mut node_text = Vec::new();
 
-        for leg in
-            source.spatial.trip_legs.get(coor_min, coor_max, TimetableTime(timer.seconds() as i32))
-        {
+        for leg in source.spatial().trip_legs.get(
+            coor_min,
+            coor_max,
+            TimetableTime(timer.seconds() as i32),
+        ) {
             let Some(trip) = source.trips.get(&leg.trip_key) else {
                 continue;
             };
@@ -174,7 +176,7 @@ impl<'a> walkers::Plugin for MapPlugin<'a> {
         }
 
         callback.node_points.clear();
-        for node in source.spatial.nodes.get(coor_min, coor_max) {
+        for node in source.spatial().nodes.get(coor_min, coor_max) {
             let pos = lon_lat_to_pos(node.coor);
             callback.node_points.push(graph_nodes::graph_nodes::NodePoint {
                 screen_pos: (pos - response.rect.min).into(),
@@ -186,7 +188,7 @@ impl<'a> walkers::Plugin for MapPlugin<'a> {
         }
 
         callback.interval_points.clear();
-        for interval in source.spatial.intervals.get(coor_min, coor_max) {
+        for interval in source.spatial().intervals.get(coor_min, coor_max) {
             let last = interval.nodes.len().saturating_sub(1);
             callback.interval_points.extend(interval.nodes.iter().enumerate().map(
                 |(idx, &node)| {

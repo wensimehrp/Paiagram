@@ -8,29 +8,28 @@ use crate::{IntervalKey, Trip, Wfc, WorldSnapshot};
 mod tests;
 
 impl WorldSnapshot {
-    /// Mutates the world and updates its derived caches.
-    pub(crate) fn update_snapshot(&mut self, f: impl FnOnce(WorldSnapshot) -> WorldSnapshot) {
+    /// Mutates the world and updates its derived caches. Returns whether the spatial index needs
+    /// to be rebuilt.
+    pub(crate) fn update_snapshot(
+        &mut self,
+        f: impl FnOnce(WorldSnapshot) -> WorldSnapshot,
+    ) -> bool {
         let new_world = f(self.clone());
-        *self = self.update_diff(new_world);
-        self.refresh_spatial_index();
+        let (updated, spatial_dirty) = self.update_diff(new_world);
+        *self = updated;
+        spatial_dirty
     }
 
-    pub fn refresh_spatial_index(&mut self) {
-        // ugly. TODO: remove whole-world rebuild
-        if self.spatial_dirty {
-            self.spatial = crate::spatial_index::SpatialCache::build(self);
-            self.spatial_dirty = false;
-        }
-    }
-
-    /// Given the new world snapshot, update the cache. Returns the updated world snapshot.
+    /// Given the new world snapshot, update the cache. Returns the updated world snapshot and
+    /// whether its spatial data changed.
     /// The new snapshot is applied as a diff against the old one.
-    fn update_diff(&self, new: WorldSnapshot) -> WorldSnapshot {
+    fn update_diff(&self, new: WorldSnapshot) -> (WorldSnapshot, bool) {
         // The new world is only a source of changed values. Caches are derived from the old
         // snapshot and patched incrementally; anything only present in the new snapshot's cache is
         // discarded.
         use imbl::ordmap::DiffItem::{Add, Remove, Update};
         let mut ret = self.clone();
+        let mut spatial_dirty = false;
 
         for diff in self.vehicles.diff(&new.vehicles) {
             match diff {
@@ -67,7 +66,7 @@ impl WorldSnapshot {
         }
 
         for diff in self.graph.nodes.diff(&new.graph.nodes) {
-            ret.spatial_dirty = true;
+            spatial_dirty = true;
             match diff {
                 Add(node_key, node) => {
                     let node_key = *node_key;
@@ -102,7 +101,7 @@ impl WorldSnapshot {
         }
 
         for diff in self.graph.intervals.diff(&new.graph.intervals) {
-            ret.spatial_dirty = true;
+            spatial_dirty = true;
             match diff {
                 Add(key, interval) => {
                     ret.graph.insert_interval_entry(*key, fresh(interval));
@@ -120,7 +119,7 @@ impl WorldSnapshot {
         }
 
         for diff in self.trips.diff(&new.trips) {
-            ret.spatial_dirty = true;
+            spatial_dirty = true;
             match diff {
                 Add(key, trip) => {
                     add_trip_to_caches(&mut ret, *key, trip, &new.graph);
@@ -175,7 +174,7 @@ impl WorldSnapshot {
             }
         }
 
-        ret
+        (ret, spatial_dirty)
     }
 }
 

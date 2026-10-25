@@ -259,6 +259,7 @@ pub fn show_ui(
     ui_state: &mut UiState,
     delta_time: std::time::Duration,
 ) {
+    app.source.begin_frame();
     ui_state.command_palette.show(ui.ctx(), app);
     app.apply_ui_commands(&mut ui_state.mus);
     if let Some(mut lock) = app.file_load_state.try_lock() {

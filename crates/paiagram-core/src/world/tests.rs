@@ -86,12 +86,7 @@ fn populated_world() -> (
 
 fn assert_same_world(a: &WorldSnapshot, b: &WorldSnapshot) {
     // don't use assert_eq since they print A LOT when not eq
-    assert!(a.trips == b.trips);
-    assert!(a.vehicles == b.vehicles);
-    assert!(a.stations == b.stations);
-    assert!(a.graph == b.graph);
-    assert!(a.service_classes == b.service_classes);
-    assert!(a.routes == b.routes);
+    assert!(a == b);
 }
 
 /// Remove every top-level entity introduced by `snapshot` from `target`.
@@ -122,7 +117,7 @@ fn remove_snapshot(target: &mut WorldSnapshot, snapshot: &WorldSnapshot) {
 #[test]
 fn building_a_world_populates_derived_caches() {
     let (new, station, a, b, vehicle, trip) = populated_world();
-    let world = WorldSnapshot::default().update_diff(new);
+    let (world, spatial_dirty) = WorldSnapshot::default().update_diff(new);
 
     let interval = IntervalKey::new(a, b);
     assert_eq!(
@@ -138,17 +133,17 @@ fn building_a_world_populates_derived_caches() {
         &[a, b]
     );
     assert_eq!(world.graph.neighbor_intervals(a).count(), 1);
-    assert!(world.spatial_dirty);
+    assert!(spatial_dirty);
 }
 
 #[test]
 fn removing_a_trip_removes_it_from_derived_caches() {
     let (new, _station, a, b, vehicle, trip) = populated_world();
-    let world = WorldSnapshot::default().update_diff(new);
+    let (world, _) = WorldSnapshot::default().update_diff(new);
 
     let mut changed = world.clone();
     changed.trips.remove(&trip);
-    let updated = world.update_diff(changed);
+    let (updated, _) = world.update_diff(changed);
 
     let interval = IntervalKey::new(a, b);
     assert!(updated.graph.intervals.get(&interval).unwrap().cache.trips.is_empty());
@@ -159,11 +154,11 @@ fn removing_a_trip_removes_it_from_derived_caches() {
 #[test]
 fn removing_an_interval_updates_adjacency() {
     let (new, _station, a, b, _vehicle, _trip) = populated_world();
-    let world = WorldSnapshot::default().update_diff(new);
+    let (world, _) = WorldSnapshot::default().update_diff(new);
 
     let mut changed = world.clone();
     changed.graph.remove_interval_entry(&IntervalKey::new(a, b));
-    let updated = world.update_diff(changed);
+    let (updated, _) = world.update_diff(changed);
 
     assert_eq!(updated.graph.neighbor_intervals(a).count(), 0);
 }
@@ -171,7 +166,7 @@ fn removing_an_interval_updates_adjacency() {
 #[test]
 fn moving_a_node_updates_station_caches() {
     let (new, station, a, b, _vehicle, _trip) = populated_world();
-    let world = WorldSnapshot::default().update_diff(new);
+    let (world, _) = WorldSnapshot::default().update_diff(new);
 
     let new_station = StationKey::new();
     let mut changed = world.clone();
@@ -186,7 +181,7 @@ fn moving_a_node_updates_station_caches() {
     node.data.parent = new_station;
     changed.graph.nodes.insert(b, node);
 
-    let updated = world.update_diff(changed);
+    let (updated, _) = world.update_diff(changed);
     assert_eq!(
         updated.stations.get(&station).unwrap().cache.nodes.as_slice(),
         &[a]
@@ -200,7 +195,7 @@ fn moving_a_node_updates_station_caches() {
 #[test]
 fn updating_a_trips_vehicles_moves_its_cache_entry() {
     let (new, _station, _a, _b, old_vehicle, trip) = populated_world();
-    let world = WorldSnapshot::default().update_diff(new);
+    let (world, _) = WorldSnapshot::default().update_diff(new);
 
     let new_vehicle = VehicleKey::new();
     let mut changed = world.clone();
@@ -214,7 +209,7 @@ fn updating_a_trips_vehicles_moves_its_cache_entry() {
     changed_trip.data.vehicles = smallvec![new_vehicle];
     changed.trips.insert(trip, changed_trip);
 
-    let updated = world.update_diff(changed);
+    let (updated, _) = world.update_diff(changed);
     assert!(updated.vehicles.get(&old_vehicle).unwrap().cache.trips.is_empty());
     assert_eq!(
         updated.vehicles.get(&new_vehicle).unwrap().cache.trips.as_slice(),
@@ -253,7 +248,7 @@ fn undoing_imports_matches_removing_their_snapshots() -> Result<(), Box<dyn std:
             match mode {
                 // A replace discards everything that came before it.
                 Replace => {
-                    let expected = WorldSnapshot::default().update_diff(world.clone());
+                    let (expected, _) = WorldSnapshot::default().update_diff(world.clone());
                     assert_same_world(&source.snap, &expected);
                 }
                 // A merge only adds `world` to the previous snapshot.

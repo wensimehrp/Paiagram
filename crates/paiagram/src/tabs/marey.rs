@@ -167,12 +167,12 @@ impl Tab for MareyTab {
         Self::NAME.into()
     }
     fn main_display(&mut self, app: &mut App, ui: &mut Ui) {
+        self.callback.populate_entry_segments(&self.cache, &app.source);
         let Some(route) = app.routes.get(&self.key) else {
             ui.centered_and_justified(|ui| ui.heading("Route does not exist"));
             self.cache.map.clear();
             return;
         };
-        self.callback.populate_entry_segments(&self.cache, &app.source);
         let window = Window::new("123")
             .auto_sized()
             .title_bar(false)
@@ -181,7 +181,6 @@ impl Tab for MareyTab {
         window.show(ui.ctx(), |ui: &mut Ui| {
             if ui.button("Update cache").clicked() {
                 route.intervals.populate_trips(&app.snap, &mut self.cache);
-                // self.callback.populate_entry_segments(&self.cache, &app.source);
             }
             if ui.button("Export PDF").clicked() {
                 let fonts = ui.fonts(|fonts| {
