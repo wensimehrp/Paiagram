@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 #![doc = include_str!("units/README.md")]
 
+use derive_more::{Add, AddAssign, Sub, SubAssign};
+
 pub mod coordinates;
 pub mod distance;
 pub mod speed;
@@ -11,7 +13,9 @@ pub use distance::*;
 use serde::{Deserialize, Serialize};
 
 /// The canvas' length in millimetres
-#[derive(Default, Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[derive(
+    Default, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Add, AddAssign, Sub, SubAssign,
+)]
 pub struct CanvasLength(pub f64);
 
 impl From<f64> for CanvasLength {
