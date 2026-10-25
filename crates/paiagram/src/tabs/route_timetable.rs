@@ -6,7 +6,6 @@ use egui::scroll_area::{ScrollAreaOutput, ScrollBarVisibility};
 use egui::*;
 use either::Either;
 use itertools::{Itertools, chain, izip};
-use log::info;
 use paiagram_core::route::{
     RouteTimetable, RouteTimetableEntry, RouteTimetableExport, StationDisplayMode, StationRecord,
 };
@@ -401,6 +400,7 @@ fn show_grid<'a>(
                 entry_iter.enumerate().fold(paint_pos, |paint_pos, (row, (stn_record, atoms))| {
                     let top = rect.top() + row as f32 * cell_size.y;
                     let cell_rect = Rect::from_min_size(pos2(left, top), cell_size);
+                    ui.spacing_mut().button_padding = Vec2::ZERO;
                     ui.place(cell_rect, WidgetAtom::new(atoms));
                     paint_pos.or_else(|| {
                         ui.input(|r| r.pointer.hover_pos())

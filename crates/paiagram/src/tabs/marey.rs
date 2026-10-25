@@ -165,13 +165,20 @@ impl Tab for MareyTab {
         Self::NAME.into()
     }
     fn main_display(&mut self, app: &mut App, ui: &mut Ui) {
-        let cache_and_pdf = |ui: &mut Ui| {
+        let Some(route) = app.routes.get(&self.key) else {
+            ui.centered_and_justified(|ui| ui.heading("Route does not exist"));
+            self.cache.map.clear();
+            self.callback.populate_entry_segments(&self.cache, &app.source);
+            return;
+        };
+        let window = Window::new("123")
+            .auto_sized()
+            .title_bar(false)
+            .fixed_pos(ui.clip_rect().shrink(8.0).right_top())
+            .pivot(Align2::RIGHT_TOP);
+        window.show(ui.ctx(), |ui: &mut Ui| {
             if ui.button("Update cache").clicked() {
-                if let Some(route) = app.routes.get(&self.key) {
-                    route.intervals.populate_trips(&app.snap, &mut self.cache);
-                } else {
-                    self.cache.map.clear();
-                }
+                route.intervals.populate_trips(&app.snap, &mut self.cache);
                 self.callback.populate_entry_segments(&self.cache, &app.source);
             }
             if ui.button("Export PDF").clicked() {
@@ -196,13 +203,7 @@ impl Tab for MareyTab {
                 }
                 .write_to_file(app.file_write_state.clone());
             }
-        };
-        Window::new("123")
-            .auto_sized()
-            .title_bar(false)
-            .fixed_pos(ui.clip_rect().shrink(8.0).right_top())
-            .pivot(Align2::RIGHT_TOP)
-            .show(ui.ctx(), cache_and_pdf);
+        });
         Frame::canvas(ui.style())
             .inner_margin(Margin::ZERO)
             .outer_margin(Margin::ZERO)
@@ -385,7 +386,7 @@ fn main_display(tab: &mut MareyTab, app: &mut App, ui: &mut Ui) {
         }
     }
 
-    // display zone
+    // display and edit zone
     if let SelectedItems::Trips(trips) = &app.selected_items {
         for trip_key in trips {
             let Some(trip) = app.source.trips.get(trip_key) else {
