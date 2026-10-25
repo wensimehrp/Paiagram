@@ -29,6 +29,9 @@ fn load_browser_fonts(db: &mut Database) -> Option<()> {
 pub(crate) static TIMETABLTE_TEXT_STYLE: LazyLock<TextStyle> =
     LazyLock::new(|| TextStyle::Name("timetable font".into()));
 
+pub(crate) static TIMETABLE_FONT_ID: LazyLock<FontId> =
+    LazyLock::new(|| FontId::new(13.0, FontFamily::Name("timetable font".into())));
+
 pub(crate) fn load_default_font(ctx: Context, font_name: Arc<Mutex<String>>) {
     let mut definitions = FontDefinitions::default();
     definitions
@@ -37,12 +40,7 @@ pub(crate) fn load_default_font(ctx: Context, font_name: Arc<Mutex<String>>) {
         .or_default()
         .insert(0, "Paiagram-Timetable-Font".into());
     ctx.all_styles_mut(|s| {
-        s.text_styles.insert(TIMETABLTE_TEXT_STYLE.clone(), {
-            let mut default = FontId::default();
-            default.size = 13.0;
-            default.family = FontFamily::Name("timetable font".into());
-            default
-        });
+        s.text_styles.insert(TIMETABLTE_TEXT_STYLE.clone(), TIMETABLE_FONT_ID.clone());
     });
     definitions.font_data.insert(
         "Paiagram-Timetable-Font".into(),
