@@ -32,5 +32,5 @@ build-wasm-app:
         -d $PWD/dist/app --public-url .
 
 release-wasm-app: build-wasm-app rust-docs
-    du -sh target/wasm32-unknown-unknown/wasm-release/paiagram.wasm | sort -hr
+    du -sh target/wasm32-unknown-unknown/release/paiagram.wasm | sort -hr
     du -sh dist/app/* | sort -hr
