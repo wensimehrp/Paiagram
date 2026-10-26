@@ -40,6 +40,10 @@ pub struct TEntryId(u32);
 static NEXT_ENTRY_ID: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
 
 impl TEntryId {
+    /// Create a new dummy ID.
+    pub unsafe fn dummy() -> Self {
+        Self(0)
+    }
     /// Create a new unique entry ID.
     pub fn new() -> Self {
         Self(NEXT_ENTRY_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
@@ -80,6 +84,10 @@ impl TripSchedule {
     /// The schedule entries.
     pub fn entries(&self) -> &[TEntry] {
         &self.entries
+    }
+
+    pub fn push(&mut self, new: TEntry) {
+        self.entries.push(new);
     }
 
     pub fn arr_to_dur(

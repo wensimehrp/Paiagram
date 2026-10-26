@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 #![doc = include_str!("../README.md")]
 
+use paiagram_core::trip::TEntryId;
+use paiagram_core::units::time::TimetableTime;
 use paiagram_core::{IntervalKey, LonLat, NodeKey, RouteKey, ServiceClassKey, StationKey, TripKey};
 use serde::Serialize;
 use vec1::{Vec1, vec1};
@@ -83,7 +85,7 @@ gen_selected_items! {
     type (Route, Routes) = RouteKey;
     no_single_selection {
         type Coordinate = (LonLat, String);                 // Add new station
-        type TripExtension = ();                            // Extend current trip
+        type TripExtension = TripKey;                       // Extend current trip
         type RouteExtension = ();                           // Extend current route
     }
 }

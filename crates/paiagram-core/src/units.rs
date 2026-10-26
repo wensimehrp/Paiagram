@@ -14,7 +14,18 @@ use serde::{Deserialize, Serialize};
 
 /// The canvas' length in millimetres
 #[derive(
-    Default, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Add, AddAssign, Sub, SubAssign,
+    Default,
+    Serialize,
+    Deserialize,
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    Add,
+    AddAssign,
+    Sub,
+    SubAssign,
+    PartialOrd,
 )]
 pub struct CanvasLength(pub f64);
 

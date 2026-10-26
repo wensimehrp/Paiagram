@@ -1,9 +1,11 @@
+use ecow::eco_vec;
 use egui::*;
 use either::Either;
+use itertools::Itertools;
 use paiagram_core::route::MareyCache;
 use paiagram_core::time::{TDuration, Tick, TimetableTime};
-use paiagram_core::trip::{TEntryId, TEstimate};
-use paiagram_core::{CanvasLength, RouteKey, TripKey};
+use paiagram_core::trip::{TEntry, TEntryId, TEstimate, TravelMode, TripSchedule};
+use paiagram_core::{CanvasLength, Route, RouteCache, RouteKey, Trip, TripKey, Wfc};
 use paiagram_export::GraphyFormat;
 use paiagram_rw::ExportObject;
 use serde::{Deserialize, Serialize};
@@ -20,6 +22,8 @@ use paiagram_selection::{SelectedItem, SelectedItems};
 
 use super::{Navigatable, Tab};
 use crate::App;
+use crate::font::TIMETABLE_FONT_ID;
+use crate::tabs::marey::show_focused_trips::draw_polyline;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(into = "MareyTabNoCache", from = "MareyTabNoCache")]
@@ -374,17 +378,44 @@ fn main_display(tab: &mut MareyTab, app: &mut App, ui: &mut Ui) {
 
     // interactive zone
     if response.clicked()
-        && let Some(pos) = response.interact_pointer_pos()
+        && let Some(pointer_pos) = response.interact_pointer_pos()
         // this makes sure that when already selecting item
         // the next action always deselects the item instead of focusing on new item
+        && !matches!(app.selected_items, SelectedItems::TripExtension(_)) // it has its own state
         && matches!(app.selected_items.take(), SelectedItems::None)
     {
-        if let Some(trip_key) = select_trip_from_pos(tab, pos, &station_heights) {
+        if let Some(trip_key) = select_trip_from_pos(tab, pointer_pos, &station_heights) {
             app.selected_items.replace(SelectedItem::Trip(trip_key));
-        } else if false {
-            // TODO
-        } else if false {
-            // TODO
+        } else if response.double_clicked()
+            // TODO: also show the route when hovering in another trip panel?
+            && let station_idx = find_nearest_station_idx_from_pos(&station_heights, pointer_pos, &tab.navi)
+            && let Some(interval) = route.intervals.0.get(station_idx)
+            && let Some(station_key) = interval.station_record.station_key(app.source.graph.nodes())
+            && let Some(station) = app.source.stations.get(station_key)
+            && let Some(node) = station.cache.nodes.first()
+        {
+            let t = tab.navi.screen_x_to_logical_x(pointer_pos.x).to_timetable_time();
+            let trip_key = TripKey::new();
+            let id = TEntryId::new();
+            let new_entry = TEntry {
+                node: *node,
+                arr_or_pass: TravelMode::At(t),
+                dep: None,
+                id,
+            };
+            let _ = app.mutate(|mut world| {
+                world.trips.insert(
+                    trip_key,
+                    Wfc::new(Trip {
+                        name: "New Trip".into(),
+                        schedule: TripSchedule::new(eco_vec![new_entry]),
+                        service_class: None,
+                        vehicles: Default::default(),
+                    }),
+                );
+                Ok(world)
+            });
+            app.selected_items = SelectedItems::TripExtension(trip_key);
         }
     }
 
@@ -429,6 +460,50 @@ fn main_display(tab: &mut MareyTab, app: &mut App, ui: &mut Ui) {
             );
             tab.current_editing_entry = ret.map(|it| (*trip_key, it));
         }
+    } else if let &SelectedItems::TripExtension(trip_key) = &app.selected_items
+        && let Some(trip) = app.trips.get(&trip_key)
+        && let Some(pointer_pos) = ui.pointer_hover_pos()
+        && let station_idx =
+            find_nearest_station_idx_from_pos(&station_heights, pointer_pos, &tab.navi)
+        && let Some(interval) = route.intervals.0.get(station_idx)
+        && let Some(station_key) = interval.station_record.station_key(app.source.graph.nodes())
+        && let Some(station) = app.source.stations.get(station_key)
+        && let Some(&node) = station.cache.nodes.first()
+    {
+        let t = tab.navi.screen_x_to_logical_x(pointer_pos.x).to_timetable_time();
+        let stroke = Stroke::new(3.0, Color32::RED);
+        let mut schedule = trip.schedule.clone();
+        let current_entry = |id: TEntryId| TEntry {
+            node,
+            arr_or_pass: TravelMode::At(t),
+            dep: None,
+            id,
+        };
+        schedule.push(current_entry(unsafe { TEntryId::dummy() }));
+        for polyline in
+            route.intervals.populate_schedule(&app.snap, &schedule).into_iter().flatten()
+        {
+            draw_polyline(&tab.navi, &polyline, &station_heights, &mut painter, stroke);
+        }
+        if response.clicked() {
+            let _ = app.mutate(|mut world| {
+                let trip = world.trips.get_mut(&trip_key).ok_or("wtf?")?;
+                trip.schedule.push(current_entry(TEntryId::new()));
+                Ok(world)
+            });
+        } else if response.secondary_clicked() {
+            app.selected_items = SelectedItems::None;
+        }
+    } else if let Some(pos) = ui.input(|r| r.pointer.latest_pos()) {
+        paint_time_cursor(
+            &tab.navi,
+            &station_heights,
+            pos,
+            ui,
+            response.rect,
+            route,
+            app,
+        );
     }
 }
 
@@ -473,4 +548,95 @@ fn select_trip_from_pos(
             (hit(curr_arr, curr_dep) || hit(curr_dep, next_arr) || hit(next_arr, next_dep))
                 .then_some(*key)
         })
+}
+
+// SAFETY: we only call if there is at least one station in station_heights
+fn find_nearest_station_idx_from_pos(
+    station_heights: &[CanvasLength],
+    pos: Pos2,
+    navi: &MareyTabNavigation,
+) -> usize {
+    if let Some(&first) = station_heights.first()
+        && navi.screen_y_to_logical_y(pos.y) < first
+    {
+        0
+    } else {
+        station_heights
+            .iter()
+            .map(|&height| navi.logical_y_to_screen_y(height))
+            .tuple_windows()
+            .enumerate()
+            .find_map(|(idx, (prev, next))| {
+                let mid = (prev + next) / 2.0;
+                (prev..=mid)
+                    .contains(&pos.y)
+                    .then_some(idx)
+                    .or((mid..=next).contains(&pos.y).then_some(idx + 1))
+            })
+            .unwrap_or(station_heights.len() - 1)
+    }
+}
+
+fn paint_time_cursor(
+    navi: &MareyTabNavigation,
+    station_heights: &[CanvasLength],
+    pointer_pos: Pos2,
+    ui: &mut Ui,
+    rect: Rect,
+    route: Wfc<Route, RouteCache>,
+    app: &App,
+) {
+    let stroke = Stroke::new(1.5, Color32::RED);
+    let (pointer_t, pointer_distance) = navi.screen_pos_to_xy(pointer_pos);
+    let station_idx = find_nearest_station_idx_from_pos(station_heights, pointer_pos, navi);
+    let dt = ui.input(|input| input.stable_dt).at_most(0.1);
+    let mut requires_repaint = false;
+    let new_logical_y = station_heights[station_idx];
+    let smoothed_logical_y = ui.data_mut(|data| {
+        let smoothed: &mut CanvasLength =
+            data.get_temp_mut_or(ui.scope_id().with("pointer animation"), new_logical_y);
+        let t = emath::exponential_smooth_factor(0.9, 0.05, dt);
+        *smoothed = CanvasLength(lerp(smoothed.0..=new_logical_y.0, t as f64));
+        if (*smoothed - new_logical_y).0.abs() < 0.5 {
+            requires_repaint = true;
+        }
+        *smoothed
+    });
+    if requires_repaint {
+        ui.request_repaint();
+    }
+    // time axis snaps, station axis animates
+    let mut pos =
+        navi.xy_to_screen_pos(pointer_t.to_timetable_time().to_ticks(), smoothed_logical_y);
+    // stupid API here...
+    stroke.round_center_to_pixel(ui.pixels_per_point(), &mut pos.x);
+    stroke.round_center_to_pixel(ui.pixels_per_point(), &mut pos.y);
+    ui.painter().hline(rect.x_range(), pos.y, stroke);
+    ui.painter().vline(pos.x, rect.y_range(), stroke);
+    ui.painter().text(
+        pos + vec2(-3.0, -3.0),
+        Align2::RIGHT_BOTTOM,
+        pointer_t.to_timetable_time(),
+        TIMETABLE_FONT_ID.clone(),
+        ui.visuals().strong_text_color(),
+    );
+    ui.painter().text(
+        pos + vec2(3.0, -3.0),
+        Align2::LEFT_BOTTOM,
+        "Double click to create trip",
+        FontId::proportional(13.0),
+        ui.visuals().strong_text_color(),
+    );
+    let station_name = route.intervals.0[station_idx]
+        .station_record
+        .station_key(app.graph.nodes())
+        .and_then(|key| app.stations.get(key))
+        .map_or("Unknown", |wfc| wfc.name.as_str());
+    ui.painter().text(
+        pos + vec2(-3.0, 3.0),
+        Align2::RIGHT_TOP,
+        station_name,
+        FontId::proportional(13.0),
+        ui.visuals().strong_text_color(),
+    );
 }

@@ -73,7 +73,7 @@ impl<D, C> DerefMut for WorldFieldContainer<D, C> {
 }
 
 impl<D, C> WorldFieldContainer<D, C> {
-    fn new(data: D) -> Self
+    pub fn new(data: D) -> Self
     where
         C: Default,
     {
