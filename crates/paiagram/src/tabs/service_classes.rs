@@ -25,7 +25,9 @@ impl Tab for ServiceClassesTab {
         Self::NAME.into()
     }
     fn main_display(&mut self, app: &mut App, ui: &mut Ui) {
+        puffin::profile_function!();
         Panel::left("service classes left panel").frame(Frame::NONE).show(ui, |ui| {
+            puffin::profile_scope!("service_class_list");
             let spacing = ui.spacing().interact_size.y;
             let rows = app.service_classes.len();
             let scroll_area = ScrollArea::vertical().auto_shrink(false);
@@ -75,6 +77,7 @@ impl Tab for ServiceClassesTab {
             });
         });
         CentralPanel::default_margins().show(ui, |ui| {
+            puffin::profile_scope!("service_class_details");
             let Some(selected_class_key) = self.selected_class else {
                 ui.centered_and_justified(|ui| ui.heading("Nothing focused"));
                 return;

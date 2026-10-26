@@ -14,6 +14,7 @@ impl WorldSnapshot {
         &mut self,
         f: impl FnOnce(WorldSnapshot) -> WorldSnapshot,
     ) -> bool {
+        puffin::profile_function!();
         let new_world = f(self.clone());
         let (updated, spatial_dirty) = self.update_diff(new_world);
         *self = updated;
@@ -24,6 +25,7 @@ impl WorldSnapshot {
     /// whether its spatial data changed.
     /// The new snapshot is applied as a diff against the old one.
     fn update_diff(&self, new: WorldSnapshot) -> (WorldSnapshot, bool) {
+        puffin::profile_function!();
         // The new world is only a source of changed values. Caches are derived from the old
         // snapshot and patched incrementally; anything only present in the new snapshot's cache is
         // discarded.

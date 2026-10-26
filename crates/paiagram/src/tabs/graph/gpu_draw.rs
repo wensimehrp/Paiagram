@@ -22,6 +22,7 @@ impl GraphCallback {
     }
 
     pub fn populate_uniforms(&mut self, rect: egui::Rect) {
+        puffin::profile_function!();
         self.uniforms = graph_intervals::Uniforms::new(
             [rect.width(), rect.height()],
             1.0, // always overwritten in `prepare`
@@ -207,6 +208,7 @@ impl egui_wgpu::CallbackTrait for GraphCallback {
         _egui_encoder: &mut wgpu::CommandEncoder,
         callback_resources: &mut egui_wgpu::CallbackResources,
     ) -> Vec<wgpu::CommandBuffer> {
+        puffin::profile_function!();
         let global: &mut GlobalGraphRendererResources = callback_resources.get_mut().unwrap();
         let buffers = &mut global.buffers;
 
@@ -258,6 +260,7 @@ impl egui_wgpu::CallbackTrait for GraphCallback {
         render_pass: &mut wgpu::RenderPass<'static>,
         callback_resources: &egui_wgpu::CallbackResources,
     ) {
+        puffin::profile_function!();
         let global: &GlobalGraphRendererResources = callback_resources.get().unwrap();
         let buffers = &global.buffers;
 

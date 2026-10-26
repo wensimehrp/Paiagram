@@ -97,7 +97,7 @@ impl Preferences {
         let font_name = Arc::new(Mutex::new(String::new()));
         let ret = Self {
             theme_preference: ThemePreference::default(),
-            dev_mode: false,
+            dev_mode: cfg!(debug_assertions),
             aa: true,
             language: AppLanguage::default(),
             font_name: font_name.clone(),

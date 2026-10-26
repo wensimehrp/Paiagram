@@ -8,6 +8,7 @@ pub(super) fn prep_single_segment<'a>(
     graph: &Graph,
     mut node_lookup: impl FnMut(&EstimateEntry) -> &'a [(u32, f32)],
 ) {
+    puffin::profile_function!();
     trip_bucket.clear();
 
     let mut push_to_bucket = |points: Vec<BucketPoint>| {

@@ -12,6 +12,7 @@ pub(crate) struct StartTab;
 impl Tab for StartTab {
     const NAME: &'static str = "Start";
     fn main_display(&mut self, app: &mut App, ui: &mut Ui) {
+        puffin::profile_function!();
         let painter = ui.painter();
         let stroke = Stroke::new(20.0, ui.visuals().window_stroke.color);
         for coord in LOGO_COORDINATES {

@@ -28,6 +28,7 @@ paiagram-oudia.workspace = true
 paiagram-rw.workspace = true
 paste.workspace = true
 pathfinding = "4.16.0"
+puffin.workspace = true
 rayon.workspace = true
 rstar.workspace = true
 rustc-hash.workspace = true

@@ -25,6 +25,7 @@ pub(super) enum OudFileType<'a> {
 pub(crate) fn parse_oudia(
     stream: OudFileType,
 ) -> Result<WorldSnapshot, Box<dyn std::error::Error>> {
+    puffin::profile_function!();
     let mut world = WorldSnapshot::default();
     let root = match stream {
         OudFileType::OuDiaSecond(s) => parse_oud2_to_ir(s)?,

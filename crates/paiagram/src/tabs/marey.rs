@@ -167,6 +167,7 @@ impl Tab for MareyTab {
         Self::NAME.into()
     }
     fn main_display(&mut self, app: &mut App, ui: &mut Ui) {
+        puffin::profile_function!();
         self.callback.populate_entry_segments(&self.cache, &app.source);
         let Some(route) = app.routes.get(&self.key) else {
             ui.centered_and_justified(|ui| ui.heading("Route does not exist"));
@@ -216,6 +217,7 @@ impl Tab for MareyTab {
 }
 
 fn draw_time_lines(painter: &mut Painter, navi: &MareyTabNavigation) {
+    puffin::profile_function!();
     const MAX_SCREEN_WIDTH: f64 = 64.0;
     const MIN_SCREEN_WIDTH: f64 = 32.0;
     let sizes = [
@@ -293,6 +295,7 @@ fn draw_time_lines(painter: &mut Painter, navi: &MareyTabNavigation) {
 }
 
 fn main_display(tab: &mut MareyTab, app: &mut App, ui: &mut Ui) {
+    puffin::profile_function!();
     let (response, mut painter) =
         ui.allocate_painter(ui.available_size_before_wrap(), Sense::click_and_drag());
     tab.navi.visible_rect = response.rect;
@@ -434,6 +437,7 @@ fn select_trip_from_pos(
     ptr_pos: Pos2,
     station_heights: &[CanvasLength],
 ) -> Option<TripKey> {
+    puffin::profile_function!();
     const SELECT_RADIUS: f32 = 7.0;
     // The same point mapping as when drawing (see the display zone in `main_display`), so that
     // what is selected matches what is drawn. Each entry spans `arr`..`dep` at one placement.

@@ -12,6 +12,7 @@ pub(crate) struct StationTab {
 impl super::Tab for StationTab {
     const NAME: &'static str = "Station";
     fn main_display(&mut self, app: &mut crate::App, ui: &mut Ui) {
+        puffin::profile_function!();
         let stations = &app.source.stations;
         let Some(stn) = stations.get(&self.stn_key) else {
             ui.centered_and_justified(|ui| ui.heading("Station does not exist!"));
@@ -41,6 +42,7 @@ fn station_ui(
     ui_cmds: &mut Vec<UiCommand>,
     ui: &mut Ui,
 ) {
+    puffin::profile_function!();
     ui.heading(stn.name.as_str());
     let mut all_trips: Vec<TripKey> = Vec::new();
     all_trips.sort_unstable();

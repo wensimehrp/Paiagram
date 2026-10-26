@@ -33,6 +33,7 @@ impl CommandPalette {
         self.selected_alternative = 0;
     }
     pub(crate) fn show(&mut self, ctx: &Context, app: &mut App) {
+        puffin::profile_function!();
         self.visible |= ctx.input_mut(|i| i.consume_key(Modifiers::COMMAND, Key::P));
         self.visible &= !ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape));
         if !self.visible {
@@ -70,6 +71,7 @@ impl CommandPalette {
     }
 
     fn window_content_ui(&mut self, ui: &mut Ui, app: &mut App) {
+        puffin::profile_function!();
         // query a bunch of stuff from the ECS, then throw them in
         let enter_pressed = ui.input_mut(|i| i.consume_key(Default::default(), Key::Enter));
         let text_response = ui.add(
@@ -137,6 +139,7 @@ impl CommandPalette {
         enter_pressed: bool,
         mut scroll_to_selected_alternative: bool,
     ) -> Option<MatchedType> {
+        puffin::profile_function!();
         let mut ret: Option<MatchedType> = None;
         scroll_to_selected_alternative |=
             ui.input(|i| i.key_pressed(Key::ArrowUp) || i.key_pressed(Key::ArrowDown));

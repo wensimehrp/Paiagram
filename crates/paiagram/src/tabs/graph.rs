@@ -53,6 +53,7 @@ impl Tab for GraphTab {
         egui_i18n::tr!("tab-graph").into()
     }
     fn main_display(&mut self, app: &mut App, ui: &mut Ui) {
+        puffin::profile_function!();
         // TODO: remove this
         if self.tiles.is_none() {
             self.tiles = Some(HttpTiles::new(OpenStreetMap, ui.ctx().clone()));
@@ -85,6 +86,7 @@ impl<'a> walkers::Plugin for MapPlugin<'a> {
         projector: &walkers::Projector,
         _map_memory: &MapMemory,
     ) {
+        puffin::profile_function!();
         let coor_min = projector.unproject(response.rect.left_top().to_vec2());
         let coor_min: LonLat = Wgs84LonLat {
             lon: coor_min.x(),
@@ -127,115 +129,127 @@ impl<'a> walkers::Plugin for MapPlugin<'a> {
         let mut trip_leg_text = Vec::new();
         let mut node_text = Vec::new();
 
-        for leg in source.spatial().trip_legs.get(
-            coor_min,
-            coor_max,
-            TimetableTime(timer.seconds() as i32),
-        ) {
-            let Some(trip) = source.trips.get(&leg.trip_key) else {
-                continue;
-            };
-            let fill = trip
-                .service_class
-                .and_then(|key| source.service_classes.get(&key))
-                .map_or(Color32::GRAY, |wfc| wfc.style.color);
-            let Some(&[a, b]) = leg.interval.first_chunk() else {
-                continue;
-            };
-            let (first, next) = if leg.is_hi_to_lo { (a, b) } else { (b, a) };
-            let pos1 = lon_lat_to_pos(first);
-            let pos2 = lon_lat_to_pos(next);
-            let progress = {
-                let t1 = leg.curr_dep.0 as f64;
-                let t2 = leg.next_arr.0 as f64;
-                let t_current = timer.seconds();
-                // curr arr time is simply out of range. so just clamp the value...
-                inverse_lerp(t1..=t2, t_current).unwrap_or(0.0).at_least(0.0) as f32
-            };
-            // t_current is a float while t2 is a i32
-            // this leaves a ~1 in-app second gap that duplicates entries.
-            // simply remove the entry when progress > 1.0.
-            if progress > 1.0 {
-                continue;
-            }
-            let trip_pos = pos1.lerp(pos2, progress);
-            trip_leg_text.push((
-                trip_pos,
-                trip.name.as_str(),
-                fill,
-                matches!(
-                    selected_items,
-                    SelectedItems::Trips(selected_trips) if selected_trips.contains(&leg.trip_key)
-                ),
-            ));
-            if let Some(interact_pos) = interact_pos
-                && (interact_pos - trip_pos).length_sq() <= SELECTION_THRESHOLD_SQUARE
-            {
-                selected_items.replace(SelectedItem::Trip(leg.trip_key))
+        {
+            puffin::profile_scope!("map_trip_legs");
+            for leg in source.spatial().trip_legs.get(
+                coor_min,
+                coor_max,
+                TimetableTime(timer.seconds() as i32),
+            ) {
+                let Some(trip) = source.trips.get(&leg.trip_key) else {
+                    continue;
+                };
+                let fill = trip
+                    .service_class
+                    .and_then(|key| source.service_classes.get(&key))
+                    .map_or(Color32::GRAY, |wfc| wfc.style.color);
+                let Some(&[a, b]) = leg.interval.first_chunk() else {
+                    continue;
+                };
+                let (first, next) = if leg.is_hi_to_lo { (a, b) } else { (b, a) };
+                let pos1 = lon_lat_to_pos(first);
+                let pos2 = lon_lat_to_pos(next);
+                let progress = {
+                    let t1 = leg.curr_dep.0 as f64;
+                    let t2 = leg.next_arr.0 as f64;
+                    let t_current = timer.seconds();
+                    // curr arr time is simply out of range. so just clamp the value...
+                    inverse_lerp(t1..=t2, t_current).unwrap_or(0.0).at_least(0.0) as f32
+                };
+                // t_current is a float while t2 is a i32
+                // this leaves a ~1 in-app second gap that duplicates entries.
+                // simply remove the entry when progress > 1.0.
+                if progress > 1.0 {
+                    continue;
+                }
+                let trip_pos = pos1.lerp(pos2, progress);
+                trip_leg_text.push((
+                    trip_pos,
+                    trip.name.as_str(),
+                    fill,
+                    matches!(
+                        selected_items,
+                        SelectedItems::Trips(selected_trips) if selected_trips.contains(&leg.trip_key)
+                    ),
+                ));
+                if let Some(interact_pos) = interact_pos
+                    && (interact_pos - trip_pos).length_sq() <= SELECTION_THRESHOLD_SQUARE
+                {
+                    selected_items.replace(SelectedItem::Trip(leg.trip_key))
+                }
             }
         }
 
-        callback.node_points.clear();
-        for node in source.spatial().nodes.get(coor_min, coor_max) {
-            let pos = lon_lat_to_pos(node.coor);
-            callback.node_points.push(graph_nodes::graph_nodes::NodePoint {
-                screen_pos: (pos - response.rect.min).into(),
-            });
-            node_text.push((
-                pos,
-                source.graph.nodes().get(&node.node_key).map_or("<UNKNOWN>", |wfc| &wfc.name),
-            ));
+        {
+            puffin::profile_scope!("map_nodes");
+            callback.node_points.clear();
+            for node in source.spatial().nodes.get(coor_min, coor_max) {
+                let pos = lon_lat_to_pos(node.coor);
+                callback.node_points.push(graph_nodes::graph_nodes::NodePoint {
+                    screen_pos: (pos - response.rect.min).into(),
+                });
+                node_text.push((
+                    pos,
+                    source.graph.nodes().get(&node.node_key).map_or("<UNKNOWN>", |wfc| &wfc.name),
+                ));
+            }
         }
 
-        callback.interval_points.clear();
-        for interval in source.spatial().intervals.get(coor_min, coor_max) {
-            let last = interval.nodes.len().saturating_sub(1);
-            callback.interval_points.extend(interval.nodes.iter().enumerate().map(
-                |(idx, &node)| {
-                    graph_intervals::graph_intervals::IntervalPoint::new(
-                        {
-                            let pos = lon_lat_to_pos(node) - response.rect.left_top();
-                            [pos.x, pos.y]
-                        },
-                        u32::from(idx != last),
-                    )
-                },
-            ));
+        {
+            puffin::profile_scope!("map_intervals");
+            callback.interval_points.clear();
+            for interval in source.spatial().intervals.get(coor_min, coor_max) {
+                let last = interval.nodes.len().saturating_sub(1);
+                callback.interval_points.extend(interval.nodes.iter().enumerate().map(
+                    |(idx, &node)| {
+                        graph_intervals::graph_intervals::IntervalPoint::new(
+                            {
+                                let pos = lon_lat_to_pos(node) - response.rect.left_top();
+                                [pos.x, pos.y]
+                            },
+                            u32::from(idx != last),
+                        )
+                    },
+                ));
+            }
         }
 
         ui.painter().add(callback.paint_callback(response.rect));
 
-        for (pos, text) in node_text {
-            ui.painter().text(
-                pos + Vec2::new(8.0, 0.0),
-                Align2::LEFT_CENTER,
-                text,
-                FontId::proportional(13.0),
-                ui.visuals().text_color(),
-            );
-        }
-
-        for (pos, text, fill, is_selected) in trip_leg_text {
-            ui.painter().image(
-                self.trip_icon,
-                Rect::from_center_size(pos, Vec2::splat(ICON_HALF_SIZE * 2.0)),
-                Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
-                Color32::WHITE,
-            );
-            ui.painter().text(
-                pos + Vec2::new(0.0, -ICON_HALF_SIZE),
-                Align2::CENTER_BOTTOM,
-                text,
-                FontId::proportional(13.0),
-                fill,
-            );
-            if is_selected {
-                ui.painter().circle(
-                    pos,
-                    ICON_HALF_SIZE + 6.0,
-                    Color32::RED.gamma_multiply(0.5),
-                    Stroke::new(1.0, Color32::RED),
+        {
+            puffin::profile_scope!("map_text");
+            for (pos, text) in node_text {
+                ui.painter().text(
+                    pos + Vec2::new(8.0, 0.0),
+                    Align2::LEFT_CENTER,
+                    text,
+                    FontId::proportional(13.0),
+                    ui.visuals().text_color(),
                 );
+            }
+
+            for (pos, text, fill, is_selected) in trip_leg_text {
+                ui.painter().image(
+                    self.trip_icon,
+                    Rect::from_center_size(pos, Vec2::splat(ICON_HALF_SIZE * 2.0)),
+                    Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
+                    Color32::WHITE,
+                );
+                ui.painter().text(
+                    pos + Vec2::new(0.0, -ICON_HALF_SIZE),
+                    Align2::CENTER_BOTTOM,
+                    text,
+                    FontId::proportional(13.0),
+                    fill,
+                );
+                if is_selected {
+                    ui.painter().circle(
+                        pos,
+                        ICON_HALF_SIZE + 6.0,
+                        Color32::RED.gamma_multiply(0.5),
+                        Stroke::new(1.0, Color32::RED),
+                    );
+                }
             }
         }
     }
@@ -243,6 +257,7 @@ impl<'a> walkers::Plugin for MapPlugin<'a> {
 
 // TODO: remove this
 fn auto_layout(app: &mut App) {
+    puffin::profile_function!();
     let mut graph: ForceGraph<NodeKey, ()> = ForceGraph::default();
     let mut idx_map = HashMap::with_capacity(app.source.graph.nodes().len());
     for &node in app.source.graph.nodes().keys() {
@@ -282,6 +297,7 @@ fn auto_layout(app: &mut App) {
 }
 
 fn main_display(tab: &mut GraphTab, app: &mut App, ui: &mut Ui) {
+    puffin::profile_function!();
     let trip_icon = tab.trip_icon.get_or_insert_with(|| load_trip_icon(ui.ctx())).id();
     let map = Map::new(
         match tab.tiles.as_mut() {

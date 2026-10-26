@@ -12,6 +12,7 @@ pub(crate) struct ConfigTab;
 impl Tab for ConfigTab {
     const NAME: &'static str = "Configuration";
     fn main_display(&mut self, app: &mut App, ui: &mut Ui) {
+        puffin::profile_function!();
         let available = ui.available_width();
         ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
             StripBuilder::new(ui)

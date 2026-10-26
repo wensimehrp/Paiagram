@@ -30,6 +30,7 @@ impl Tab for TripTab {
         tr!("tab-trip").into()
     }
     fn main_display(&mut self, app: &mut App, ui: &mut egui::Ui) {
+        puffin::profile_function!();
         show_trip(self, app, ui);
     }
 }
@@ -45,6 +46,7 @@ impl TripTab {
 }
 
 fn show_trip(tab: &mut TripTab, app: &mut App, ui: &mut Ui) {
+    puffin::profile_function!();
     let snap = &app.source.snap;
     let trip_key = tab.trip_key.or(match &app.selected_items {
         SelectedItems::Trips(trips) => Some(*trips.first()),
@@ -124,6 +126,7 @@ fn row_ui(
     snap: &WorldSnapshot,
     ui: &mut Ui,
 ) {
+    puffin::profile_function!();
     const BTN_SIZE: Vec2 = vec2(70.0, 18.0);
     let Some(node) = snap.graph.nodes().get(&entry.node_key()) else {
         ui.label("No station");

@@ -28,6 +28,7 @@ impl MareyCallback {
     }
 
     pub fn populate_uniforms(&mut self, navi: &super::MareyTabNavigation, rect: egui::Rect) {
+        puffin::profile_function!();
         self.uniforms = gpu_trip::Uniforms::new(
             [rect.width(), rect.height()],
             navi.offset_x() as i32,
@@ -39,6 +40,7 @@ impl MareyCallback {
     }
 
     pub fn populate_stations(&mut self, station_heights: impl Iterator<Item = CanvasLength>) {
+        puffin::profile_function!();
         self.stations.clear();
         self.stations.extend(station_heights.map(|h| gpu_trip::CanvasLength::new(h.0 as f32)));
     }
@@ -48,6 +50,7 @@ impl MareyCallback {
     }
 
     pub fn populate_entry_segments(&mut self, cache: &MareyCache, source: &Source) {
+        puffin::profile_function!();
         self.entry_segments.clear();
         self.stations.clear();
         for idx in 0..100 {
@@ -233,6 +236,7 @@ impl egui_wgpu::CallbackTrait for MareyCallback {
         _egui_encoder: &mut wgpu::CommandEncoder,
         callback_resources: &mut egui_wgpu::CallbackResources,
     ) -> Vec<wgpu::CommandBuffer> {
+        puffin::profile_function!();
         let global: &mut GlobalMareyRendererResources = callback_resources.get_mut().unwrap();
         let resources = global
             .per_tab_resources
@@ -288,6 +292,7 @@ impl egui_wgpu::CallbackTrait for MareyCallback {
         render_pass: &mut wgpu::RenderPass<'static>,
         callback_resources: &egui_wgpu::CallbackResources,
     ) {
+        puffin::profile_function!();
         let global: &GlobalMareyRendererResources = callback_resources.get().unwrap();
         let Some(resources) = global.per_tab_resources.get(&self.route_key) else {
             return;

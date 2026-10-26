@@ -47,6 +47,7 @@ fn merge_candidates(
     range: std::ops::Range<usize>,
     new_items: impl Iterator<Item = RouteTimetableEntry> + Clone,
 ) -> Option<EcoVec<RouteTimetableEntry>> {
+    puffin::profile_function!();
     old.extend(iter::repeat_n(
         RouteTimetableEntry::NotInOperation,
         range.end.saturating_sub(old.len()),
@@ -70,6 +71,7 @@ fn merge_or_push_columns(
     is_inbound: bool,
     station_count: usize,
 ) -> EcoVec<(TripKey, EcoVec<RouteTimetableEntry>)> {
+    puffin::profile_function!();
     let first_idx = new_column.first().unwrap().2 as usize;
     let start_idx = if is_inbound {
         first_idx
@@ -106,6 +108,7 @@ impl RouteTimetable {
         marey_cache: MareyCache,
         station_records: impl Iterator<Item = &'a StationRecord>,
     ) -> Self {
+        puffin::profile_function!();
         let station_records: EcoVec<_> = station_records
             .cloned()
             .map(|it| {

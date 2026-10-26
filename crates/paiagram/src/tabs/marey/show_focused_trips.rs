@@ -28,6 +28,7 @@ pub fn show_focused_trip<'a>(
     trip_key: TripKey,
     estimate_base: Option<TEstimate>,
 ) -> Option<(TEntryId, TEstimate, Either<TDuration, TDuration>)> {
+    puffin::profile_function!();
     let text_color = ui.visuals().text_color().gamma_multiply(animation_progress);
 
     polylines.iter().fold(None, |acc, polyline| {
@@ -61,6 +62,7 @@ fn draw_polyline(
     trip_key: TripKey,
     estimate_base: Option<TEstimate>,
 ) -> Option<(TEntryId, TEstimate, Either<TDuration, TDuration>)> {
+    puffin::profile_function!();
     let points: Vec<_> = polyline
         .iter()
         .flat_map(|&(estimate, _entry, idx, progress)| {

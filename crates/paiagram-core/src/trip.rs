@@ -268,6 +268,7 @@ impl TripSchedule {
     where
         F: FnMut(&[OutputInner]) -> R,
     {
+        puffin::profile_function!();
         ESTIMATE_BUFFER.with(|r| {
             let mut estimate_buf = r.borrow_mut();
             estimate_buf.clear();

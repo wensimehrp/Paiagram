@@ -22,7 +22,9 @@ impl super::Tab for IntervalsTab {
         Self::NAME.into()
     }
     fn main_display(&mut self, app: &mut App, ui: &mut Ui) {
+        puffin::profile_function!();
         Panel::left(ui.id().with("interval left panel")).frame(Frame::NONE).show(ui, |ui| {
+            puffin::profile_scope!("interval_list");
             ScrollArea::vertical().auto_shrink(false).show_rows(
                 ui,
                 ui.spacing().interact_size.y,
@@ -71,6 +73,7 @@ impl super::Tab for IntervalsTab {
         });
         let mut ui_action_queue = std::mem::take(&mut app.ui_action_queue);
         CentralPanel::no_frame().show(ui, |ui| {
+            puffin::profile_scope!("interval_details");
             let Some(interval) = self.focused else {
                 ui.vertical_centered_justified(|ui| ui.heading("Nothing focused"));
                 return;

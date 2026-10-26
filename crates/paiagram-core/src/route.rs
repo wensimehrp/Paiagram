@@ -140,6 +140,7 @@ impl RouteIntervals {
     }
 
     fn prepare_lookup(&self, snap: &WorldSnapshot) -> NodeKeyHashMap<Vec<(u32, f32)>> {
+        puffin::profile_function!();
         // Where each graph node sits on the Marey chart: every `(line index, progress)` placement.
         let mut node_lookup: NodeKeyHashMap<Vec<(u32, f32)>> = NodeKeyHashMap::default();
         for (key, progress) in self.progresses(snap).enumerate().flat_map(|(idx, it)| {
@@ -160,6 +161,7 @@ impl RouteIntervals {
     }
 
     pub fn get_passing_trips(&self, snap: &WorldSnapshot) -> Vec<TripKey> {
+        puffin::profile_function!();
         let mut trip_keys: Vec<TripKey> = self
             .0
             .iter()
@@ -180,6 +182,7 @@ impl RouteIntervals {
 
     /// Populates trips into a Marey cache
     pub fn populate_trips(&self, snap: &WorldSnapshot, cache: &mut MareyCache) {
+        puffin::profile_function!();
         let node_lookup = self.prepare_lookup(snap);
         let trip_keys = self.get_passing_trips(snap);
 
@@ -212,6 +215,7 @@ impl RouteIntervals {
     }
 
     pub fn populate_route_timetable(&self, snap: &WorldSnapshot) -> RouteTimetable {
+        puffin::profile_function!();
         let mut marey_cache = MareyCache::default();
         self.populate_trips(snap, &mut marey_cache);
         RouteTimetable::new(

@@ -121,6 +121,7 @@ impl Graph {
 
     /// The returning vector contains both starting and ending nodes
     pub fn dijkstra(&self, start: NodeKey, end: NodeKey) -> Option<(Vec<NodeKey>, Distance)> {
+        puffin::profile_function!();
         let successors = |source: &NodeKey| {
             let source = *source;
             self.outgoing_intervals(source).map(move |(interval_key, interval)| {

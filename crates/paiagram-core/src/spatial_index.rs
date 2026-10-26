@@ -18,6 +18,7 @@ pub struct SpatialCache {
 
 impl SpatialCache {
     pub fn build(snap: &WorldSnapshot) -> Self {
+        puffin::profile_function!();
         // temp solution
         let (intervals, (nodes, trip_legs)) = join(
             || IntervalsRTree::from_world(snap.clone()),
@@ -128,6 +129,7 @@ pub struct IntervalsRTree(RTree<IntervalRTreeObject>);
 impl IntervalsRTree {
     /// Build the tree from every interval in the world's graph.
     fn from_world(snap: WorldSnapshot) -> Self {
+        puffin::profile_function!();
         let objects = snap
             .graph
             .intervals()
@@ -156,6 +158,7 @@ pub struct NodesRTree(RTree<NodeRTreeObject>);
 impl NodesRTree {
     /// Build the tree from every node in the world's graph.
     fn from_world(snap: WorldSnapshot) -> Self {
+        puffin::profile_function!();
         let objects = snap
             .graph
             .nodes()
@@ -180,6 +183,7 @@ pub struct TripLegsRTree(RTree<TripLegRTreeObject>);
 impl TripLegsRTree {
     /// Build the tree from the estimated legs of every trip.
     fn from_world(snap: WorldSnapshot) -> Self {
+        puffin::profile_function!();
         let mut objects = Vec::new();
         for (trip_key, trip) in snap.trips.iter() {
             trip.schedule.estimates(&snap.graph, |estimates| {

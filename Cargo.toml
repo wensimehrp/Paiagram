@@ -81,6 +81,9 @@ parking_lot = "0.12"
 paste = "1.0.15"
 petgraph = { version = "0.8.3", features = ["rayon", "serde-1"] }
 pollster = "1.0.1"
+# BadMachine/puffin branch `egui37`
+puffin = { git = "https://github.com/BadMachine/puffin", rev = "5816e2ec17e2026437e5dc1db39946712965044", features = ["web"] }
+puffin_egui = { git = "https://github.com/BadMachine/puffin", rev = "5816e2ec17e2026437e5dc1db39946712965044" }
 rayon = "1.12.0"
 rfd = "0.17.2"
 ron = "0.12.0"

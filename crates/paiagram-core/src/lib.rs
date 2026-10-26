@@ -217,6 +217,7 @@ pub struct WorldSnapshot {
 impl WorldSnapshot {
     /// Insert every entity from `other`, keeping the entities already present in `self`.
     fn merged(mut self, other: &Self) -> Self {
+        puffin::profile_function!();
         for (key, value) in &other.vehicles {
             self.vehicles.insert(*key, value.clone());
         }
@@ -277,6 +278,7 @@ impl Source {
 
     /// Saves the current snapshot as the previous frame's. Call once at the start of each frame.
     pub fn begin_frame(&mut self) {
+        puffin::profile_function!();
         self.prev_frame_snap = self.snap.clone();
         if let Ok((build_idx, new_spatial)) = self.spatial_rx.try_recv() {
             if build_idx == self.revision() {
@@ -293,6 +295,7 @@ impl Source {
         let snap = self.snap.clone();
         let sender = self.spatial_tx.clone();
         rayon::spawn(move || {
+            puffin::profile_scope!("spatial_cache_build");
             let cache = SpatialCache::build(&snap);
             let _ = sender.send((revision, cache));
         });
@@ -303,6 +306,7 @@ impl Source {
         &mut self,
         f: impl FnOnce(WorldSnapshot) -> Result<WorldSnapshot, String>,
     ) -> Result<(), String> {
+        puffin::profile_function!();
         let new_world = f(self.snap.clone())?;
 
         if self.redo_len > 0 {
@@ -323,6 +327,7 @@ impl Source {
 
     /// Applies an imported world, either on top of the current one or replacing it.
     pub fn import(&mut self, world: WorldSnapshot, mode: ImportMode) -> Result<(), String> {
+        puffin::profile_function!();
         self.mutate(move |existing| {
             Ok(match mode {
                 ImportMode::Merge => existing.merged(&world),
@@ -339,6 +344,7 @@ impl Source {
     }
 
     pub fn undo(&mut self) -> Result<(), String> {
+        puffin::profile_function!();
         if !self.undoable() {
             return Err("No undos available".into());
         }
@@ -351,6 +357,7 @@ impl Source {
     }
 
     pub fn redo(&mut self) -> Result<(), String> {
+        puffin::profile_function!();
         if !self.redoable() {
             return Err("No redos available".into());
         }

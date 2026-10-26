@@ -70,6 +70,7 @@ pub fn make_snapshot(
     data: &[u8],
     import_content: ImportType,
 ) -> Result<WorldSnapshot, Box<dyn std::error::Error>> {
+    puffin::profile_function!();
     match import_content {
         ImportType::Pyetgr => {
             pyetgr::parse_pyetgr(data).ok_or(Box::new(io::Error::other("Failed!")))

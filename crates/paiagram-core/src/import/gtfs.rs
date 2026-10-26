@@ -36,6 +36,7 @@ fn stop_lonlat(stop: &Stop) -> LonLat {
 }
 
 pub(super) fn parse_gtfs(data: &[u8]) -> Result<WorldSnapshot, Box<dyn std::error::Error>> {
+    puffin::profile_function!();
     let gtfs = Gtfs::from_reader(Cursor::new(data))?;
     let mut world = WorldSnapshot::default();
 

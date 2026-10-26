@@ -49,16 +49,19 @@ impl RouteTimetableTab {
 impl super::Tab for RouteTimetableTab {
     const NAME: &'static str = "Route timetable";
     fn main_display(&mut self, app: &mut crate::App, ui: &mut Ui) {
+        puffin::profile_function!();
         let Some(route) = app.routes.get(&self.route_key) else {
             ui.centered_and_justified(|ui| ui.heading("Route does not exist"));
             return;
         };
 
         ui.horizontal(|ui| {
+            puffin::profile_scope!("timetable_toolbar");
             if ui.button("refresh cache").clicked() {
                 self.cache = route.intervals.populate_route_timetable(&app.snap);
             }
             if ui.button("Export .csv").clicked() {
+                puffin::profile_scope!("export_csv");
                 RouteTimetableExport(self.cache.clone(), app.snap.clone())
                     .write_to_file(Default::default());
             }
@@ -90,10 +93,12 @@ impl super::Tab for RouteTimetableTab {
             .drag_to_open(true)
             .default_size(cell_size.x * 2.0)
             .show(ui, |ui| {
+                puffin::profile_scope!("station_header");
                 self.scroll = show_station_header(app, ui, cell_size, station_records, self.scroll);
             });
 
         Panel::top("top panel").frame(Frame::NONE).show(ui, |ui| {
+            puffin::profile_scope!("trip_header");
             self.scroll = show_trip_header(app, ui, cell_size, columns, self.scroll);
         });
 
@@ -106,6 +111,7 @@ impl super::Tab for RouteTimetableTab {
         };
 
         CentralPanel::no_frame().show(ui, |ui| {
+            puffin::profile_scope!("timetable_grid");
             let (scroll, paint_params) = show_grid(
                 self.show_estimates,
                 app,
@@ -144,6 +150,7 @@ fn show_station_header<'a, 'snap>(
     station_records: impl Iterator<Item = (&'a StationRecord, &'a mut StationDisplayMode)>,
     scroll: Vec2,
 ) -> Vec2 {
+    puffin::profile_function!();
     let cell_size = vec2(ui.available_width(), cell_size.y);
     ui.add_sized(cell_size, Label::new("Stations").truncate());
     let scroll_area = ScrollArea::vertical()
@@ -216,6 +223,7 @@ fn show_trip_header(
     columns: &[(TripKey, EcoVec<RouteTimetableEntry>)],
     scroll: Vec2,
 ) -> Vec2 {
+    puffin::profile_function!();
     let scroll_area = ScrollArea::horizontal()
         .auto_shrink([false, true])
         .scroll_bar_visibility(scroll_area::ScrollBarVisibility::AlwaysHidden)
@@ -292,6 +300,7 @@ fn show_grid<'a>(
     columns: &[(TripKey, EcoVec<RouteTimetableEntry>)],
     scroll: Vec2,
 ) -> (Vec2, Option<(Pos2, &'a StationRecord)>) {
+    puffin::profile_function!();
     // window stroke for drawing strokes
     let stroke = ui.visuals().window_stroke;
 
@@ -311,6 +320,7 @@ fn show_grid<'a>(
         row_count,
         columns.len(),
         |ui, rect, row_range, col_range| {
+            puffin::profile_scope!("grid_cells");
             for idx in station_records
                 .clone()
                 .flat_map(|(_, disp_mode)| disp_mode.iter())
@@ -428,6 +438,7 @@ fn show_grid_viewport<R>(
     total_cols: usize,
     add_contents: impl FnOnce(&mut Ui, Rect, Range<usize>, Range<usize>) -> R,
 ) -> ScrollAreaOutput<R> {
+    puffin::profile_function!();
     let row_pitch = cell_size.y;
     let col_pitch = cell_size.x;
 

@@ -91,6 +91,7 @@ impl Tab for ExtensionTab {
         Self::NAME.into()
     }
     fn main_display(&mut self, app: &mut crate::App, ui: &mut Ui) {
+        puffin::profile_function!();
         Frame::new().inner_margin(6.0).show(ui, |ui| {
             main_display(self, app, ui);
         });
@@ -98,6 +99,7 @@ impl Tab for ExtensionTab {
 }
 
 fn main_display(tab: &mut ExtensionTab, app: &mut crate::App, ui: &mut Ui) {
+    puffin::profile_function!();
     if let Ok(data) = tab.file_receiver.try_recv() {
         data.write_to_file(Default::default());
     }

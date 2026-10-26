@@ -174,6 +174,7 @@ impl<'w> Behavior<MainTab> for MainTabViewer<'w> {
         for_all_tabs!(pane, p, p.title())
     }
     fn pane_ui(&mut self, ui: &mut Ui, _tile_id: TileId, tab: &mut MainTab) -> UiResponse {
+        puffin::profile_function!();
         ui.painter().rect_filled(ui.available_rect_before_wrap(), 0, ui.visuals().panel_fill);
         for_all_tabs!(tab, t, t.main_display(self.app, ui));
 
@@ -233,20 +234,35 @@ impl<'w> Behavior<MainTab> for MainTabViewer<'w> {
                         ConfigTab::default(),
                     )));
                 }
-                for (route_key, info) in &self.app.snap.routes {
-                    ui.menu_button(info.name.as_str(), |ui| {
-                        if ui.button("Graph").clicked() {
-                            ui_action_queue.push(UiCommand::OpenOrFocus(MainTab::Marey(
-                                MareyTab::new(*route_key),
-                            )));
-                        }
-                        if ui.button("Route Timetable").clicked() {
-                            ui_action_queue.push(UiCommand::OpenOrFocus(MainTab::RouteTimetable(
-                                RouteTimetableTab::new(*route_key),
-                            )));
-                        }
-                    });
+                if self.app.preferences.dev_mode && ui.button("Profiler").clicked() {
+                    puffin::set_scopes_on(true);
+                    ui_action_queue.push(UiCommand::OpenOrFocus(MainTab::Profiler(
+                        ProfilerTab::default(),
+                    )));
                 }
+                ScrollArea::vertical().show_rows(
+                    ui,
+                    ui.spacing().interact_size.y,
+                    self.app.snap.routes.len(),
+                    |ui, range| {
+                        for (route_key, info) in
+                            &self.app.snap.routes.skip(range.start).take(range.count())
+                        {
+                            ui.menu_button(info.name.as_str(), |ui| {
+                                if ui.button("Graph").clicked() {
+                                    ui_action_queue.push(UiCommand::OpenOrFocus(MainTab::Marey(
+                                        MareyTab::new(*route_key),
+                                    )));
+                                }
+                                if ui.button("Route Timetable").clicked() {
+                                    ui_action_queue.push(UiCommand::OpenOrFocus(
+                                        MainTab::RouteTimetable(RouteTimetableTab::new(*route_key)),
+                                    ));
+                                }
+                            });
+                        }
+                    },
+                );
             })
         });
         self.app.ui_action_queue = ui_action_queue;
@@ -259,10 +275,19 @@ pub fn show_ui(
     ui_state: &mut UiState,
     delta_time: std::time::Duration,
 ) {
+    puffin::GlobalProfiler::lock().new_frame();
+    puffin::profile_function!();
     app.source.begin_frame();
-    ui_state.command_palette.show(ui.ctx(), app);
-    app.apply_ui_commands(&mut ui_state.mus);
+    {
+        puffin::profile_scope!("command_palette");
+        ui_state.command_palette.show(ui.ctx(), app);
+    }
+    {
+        puffin::profile_scope!("apply_ui_commands");
+        app.apply_ui_commands(&mut ui_state.mus);
+    }
     if let Some(mut lock) = app.file_load_state.try_lock() {
+        puffin::profile_scope!("file_load");
         match &*lock {
             FileLoadState::Idle => {}
             FileLoadState::Processing => {
@@ -287,6 +312,7 @@ pub fn show_ui(
         }
     }
     Panel::top("top panel").exact_size(32.0).show(ui, |ui| {
+        puffin::profile_scope!("top_panel");
         ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
             Popup::menu(&ui.button("App")).show(|ui| {
                 if ui.add(Button::new("Command Palette").shortcut_text("Ctrl+P")).clicked() {
@@ -393,6 +419,7 @@ pub fn show_ui(
         })
     });
     Panel::bottom("bottom panel").exact_size(24.0).show(ui, |ui| {
+        puffin::profile_scope!("bottom_panel");
         ui.horizontal_centered(|ui| {
             let mut time = TimetableTime(app.timer.seconds() as i32);
             ui.add_enabled(
@@ -424,6 +451,7 @@ pub fn show_ui(
         })
     });
     egui::CentralPanel::default().frame(Frame::default()).show(ui, |ui| {
+        puffin::profile_scope!("main_tabs");
         let mut tab_viewer = MainTabViewer { app };
         ui_state.mus.tree.ui(&mut tab_viewer, ui);
     });

@@ -129,6 +129,7 @@ struct Config<'a> {
 }
 
 pub(super) fn parse_pyetgr(data: &[u8]) -> Option<WorldSnapshot> {
+    puffin::profile_function!();
     let mut world = WorldSnapshot::default();
     let root: Root = match serde_json::from_slice(data) {
         Ok(r) => r,

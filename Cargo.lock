@@ -1785,6 +1785,7 @@ dependencies = [
  "mime_guess2",
  "profiling",
  "resvg",
+ "serde",
  "syntect",
 ]
 
@@ -1899,6 +1900,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d4532960034c15ba2f55e9eee631040ecc473c32e6c4b200828c759840f13a06"
 dependencies = [
  "enum-map-derive",
+ "serde",
 ]
 
 [[package]]
@@ -3407,6 +3409,8 @@ dependencies = [
  "equivalent",
  "hashbrown 0.17.1",
  "rayon",
+ "serde",
+ "serde_core",
 ]
 
 [[package]]
@@ -3837,6 +3841,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 
 [[package]]
+name = "log-once"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6d8a05e3879b317b1b6dbf353e5bba7062bedcc59815267bb23eaa0c576cebf0"
+dependencies = [
+ "log",
+]
+
+[[package]]
 name = "logos"
 version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3882,6 +3895,12 @@ name = "lru-slab"
 version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4050469837a6ff301cd14c1f8f24f88549e6d548f24f64e2148eb0f72cebc51f"
+
+[[package]]
+name = "lz4_flex"
+version = "0.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7ef0d4ed8669f8f8826eb00dc878084aa8f253506c4fd5e8f58f5bce72ddb97e"
 
 [[package]]
 name = "memchr"
@@ -4098,6 +4117,12 @@ dependencies = [
  "security-framework-sys",
  "tempfile",
 ]
+
+[[package]]
+name = "natord"
+version = "1.0.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "308d96db8debc727c3fd9744aac51751243420e46edf401010908da7f8d5e57c"
 
 [[package]]
 name = "ndk"
@@ -4651,6 +4676,8 @@ dependencies = [
  "parking_lot",
  "paste",
  "pollster 1.0.1",
+ "puffin",
+ "puffin_egui",
  "rayon",
  "rfd",
  "serde",
@@ -4685,6 +4712,7 @@ dependencies = [
  "paiagram-rw",
  "paste",
  "pathfinding",
+ "puffin",
  "rayon",
  "rstar 0.12.2",
  "rustc-hash 2.1.3",
@@ -5303,6 +5331,41 @@ name = "profiling"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3d595e54a326bc53c1c197b32d295e14b169e3cfeaa8dc82b529f947fba6bcf5"
+
+[[package]]
+name = "puffin"
+version = "0.20.0"
+source = "git+https://github.com/BadMachine/puffin?rev=5816e2ec17e2026437e5dc1db39946712965044#5816e2ec17e2026437e5dc1db39946712965044b"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "byteorder",
+ "cfg-if",
+ "itertools 0.15.0",
+ "js-sys",
+ "lz4_flex",
+ "parking_lot",
+ "serde",
+ "web-time",
+]
+
+[[package]]
+name = "puffin_egui"
+version = "0.30.0"
+source = "git+https://github.com/BadMachine/puffin?rev=5816e2ec17e2026437e5dc1db39946712965044#5816e2ec17e2026437e5dc1db39946712965044b"
+dependencies = [
+ "egui",
+ "egui_extras",
+ "indexmap",
+ "log",
+ "log-once",
+ "natord",
+ "parking_lot",
+ "puffin",
+ "time",
+ "vec1",
+ "web-time",
+]
 
 [[package]]
 name = "pxfm"
