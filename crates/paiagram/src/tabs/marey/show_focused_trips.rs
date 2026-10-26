@@ -12,6 +12,7 @@ use paiagram_core::{CanvasLength, Source, TripKey};
 
 use crate::font::TIMETABLE_FONT_ID;
 use crate::tabs::Navigatable;
+use crate::tabs::marey::MareyTabNavigation;
 use crate::tabs::marey::label_placement::label_placement;
 use crate::widgets::buttons;
 
@@ -32,16 +33,16 @@ pub fn show_focused_trip<'a>(
     let text_color = ui.visuals().text_color().gamma_multiply(animation_progress);
 
     polylines.iter().fold(None, |acc, polyline| {
-        let ret = draw_polyline(
+        let points = draw_polyline(&tab.navi, polyline, station_heights, painter, stroke);
+        let ret = show_trip_handles(
             trip_schedule,
             tab,
             source,
-            &polyline,
-            station_heights,
-            painter,
+            polyline,
+            &points,
             text_color,
-            stroke,
             ui,
+            painter,
             trip_key,
             estimate_base,
         );
@@ -49,33 +50,50 @@ pub fn show_focused_trip<'a>(
     })
 }
 
-fn draw_polyline(
-    trip_schedule: &TripSchedule,
-    tab: &super::MareyTab,
-    source: &mut Source,
+/// Draws the path of one trip, without any labels or interactive handles.
+///
+/// Returns the screen-space positions of the arrival/departure pairs, so that
+/// [`show_trip_handles`] can place its handles on top of the line.
+pub fn draw_polyline(
+    navi: &MareyTabNavigation,
     polyline: &[BucketPoint],
     station_heights: &[CanvasLength],
-    mut painter: &mut Painter,
-    text_color: Color32,
+    painter: &mut Painter,
     stroke: Stroke,
-    ui: &mut Ui,
-    trip_key: TripKey,
-    estimate_base: Option<TEstimate>,
-) -> Option<(TEntryId, TEstimate, Either<TDuration, TDuration>)> {
-    puffin::profile_function!();
+) -> Vec<Pos2> {
+    puffin::profile_scope!("trip line");
     let points: Vec<_> = polyline
         .iter()
         .flat_map(|&(estimate, _entry, idx, progress)| {
-            let x1 = tab.navi.logical_x_to_screen_x(estimate.arr.to_ticks());
-            let x2 = tab.navi.logical_x_to_screen_x(estimate.dep.to_ticks());
+            let x1 = navi.logical_x_to_screen_x(estimate.arr.to_ticks());
+            let x2 = navi.logical_x_to_screen_x(estimate.dep.to_ticks());
             let idx = idx as usize;
-            let curr_y = tab.navi.logical_y_to_screen_y(station_heights[idx]);
-            let next_y = tab.navi.logical_y_to_screen_y(station_heights[idx + 1]);
+            let curr_y = navi.logical_y_to_screen_y(station_heights[idx]);
+            let next_y = navi.logical_y_to_screen_y(station_heights[idx + 1]);
             let y = lerp(curr_y..=next_y, progress);
             [Pos2::new(x1, y), Pos2::new(x2, y)]
         })
         .collect();
     painter.line(points.clone(), stroke);
+    points
+}
+
+/// Draws the arrival/departure labels and the interactive handles of one trip.
+///
+/// Returns the time patch produced by dragging a handle, if any.
+fn show_trip_handles(
+    trip_schedule: &TripSchedule,
+    tab: &super::MareyTab,
+    source: &mut Source,
+    polyline: &[BucketPoint],
+    points: &[Pos2],
+    text_color: Color32,
+    ui: &mut Ui,
+    mut painter: &mut Painter,
+    trip_key: TripKey,
+    estimate_base: Option<TEstimate>,
+) -> Option<(TEntryId, TEstimate, Either<TDuration, TDuration>)> {
+    puffin::profile_scope!("trip handles");
     let (points, _) = points.as_chunks::<2>();
     let handle_iter = iter::zip(
         polyline,
