@@ -14,7 +14,6 @@ use std::sync::Arc;
 pub use config::AppLanguage;
 use egui::{Button, DragValue, Frame, Id, OpenUrl, Panel, Popup, ScrollArea, Ui};
 use egui_i18n::tr;
-// use egui_material_icons::icons;
 use egui_tiles::{
     Behavior, ContainerKind, SimplificationOptions, Tile, TileId, Tiles, Tree, UiResponse,
 };
@@ -32,6 +31,7 @@ use tabs::all_tabs::*;
 use tabs::{MainTab, Tab, for_all_tabs};
 #[cfg(target_arch = "wasm32")]
 pub use wasm_bindgen_rayon::init_thread_pool;
+pub use widgets::search::build_matcher;
 
 use crate::command_palette::CommandPalette;
 use crate::load::FileLoadState;
@@ -224,7 +224,6 @@ impl<'w> Behavior<MainTab> for MainTabViewer<'w> {
                     }
                 }
                 if self.app.preferences.dev_mode && ui.button("Profiler").clicked() {
-                    puffin::set_scopes_on(true);
                     ui_action_queue.push(UiCommand::OpenOrFocus(MainTab::Profiler(
                         ProfilerTab::default(),
                     )));
