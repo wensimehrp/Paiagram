@@ -209,32 +209,19 @@ impl<'w> Behavior<MainTab> for MainTabViewer<'w> {
         let mut ui_action_queue = std::mem::take(&mut self.app.ui_action_queue);
         ui.menu_button("+", |ui| {
             ScrollArea::vertical().show(ui, |ui| {
-                if ui.button("Intervals").clicked() {
-                    ui_action_queue.push(UiCommand::OpenOrFocus(MainTab::Intervals(
-                        IntervalsTab::default(),
-                    )));
-                }
-                if ui.button("Service Classes").clicked() {
-                    ui_action_queue.push(UiCommand::OpenOrFocus(MainTab::ServiceClasses(
-                        ServiceClassesTab::default(),
-                    )));
-                }
-                if ui.button("Graph").clicked() {
-                    ui_action_queue
-                        .push(UiCommand::OpenOrFocus(MainTab::Graph(GraphTab::default())));
-                }
-                if ui.button("Extension").clicked() {
-                    ui_action_queue.push(UiCommand::OpenOrFocus(MainTab::Extension(
-                        ExtensionTab::default(),
-                    )));
-                }
-                if ui.button("Config").clicked() {
-                    ui_action_queue.push(UiCommand::OpenOrFocus(MainTab::Config(
-                        ConfigTab::default(),
-                    )));
-                }
-                if ui.button("Trip").clicked() {
-                    ui_action_queue.push(UiCommand::OpenOrFocus(MainTab::Trip(TripTab::default())));
+                #[rustfmt::skip]
+                let tabs: [(_, fn() -> MainTab); 6] = [
+                    ("Intervals",       || MainTab::Intervals(IntervalsTab::default())),
+                    ("Service Classes", || MainTab::ServiceClasses(ServiceClassesTab::default())),
+                    ("Graph",           || MainTab::Graph(GraphTab::default())),
+                    ("Extension",       || MainTab::Extension(ExtensionTab::default())),
+                    ("Config",          || MainTab::Config(ConfigTab::default())),
+                    ("Trip",            || MainTab::Trip(TripTab::default())),
+                ];
+                for (text, tab) in tabs {
+                    if ui.button(text).clicked() {
+                        ui_action_queue.push(UiCommand::OpenOrFocus(tab()));
+                    }
                 }
                 if self.app.preferences.dev_mode && ui.button("Profiler").clicked() {
                     puffin::set_scopes_on(true);
