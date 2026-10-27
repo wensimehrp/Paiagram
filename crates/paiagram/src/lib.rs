@@ -233,6 +233,9 @@ impl<'w> Behavior<MainTab> for MainTabViewer<'w> {
                         ConfigTab::default(),
                     )));
                 }
+                if ui.button("Trip").clicked() {
+                    ui_action_queue.push(UiCommand::OpenOrFocus(MainTab::Trip(TripTab::default())));
+                }
                 if self.app.preferences.dev_mode && ui.button("Profiler").clicked() {
                     puffin::set_scopes_on(true);
                     ui_action_queue.push(UiCommand::OpenOrFocus(MainTab::Profiler(
