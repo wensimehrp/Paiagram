@@ -1,12 +1,13 @@
 use std::num::NonZeroU64;
 
+use ecow::EcoVec;
 use imbl::OrdSet;
-use pathfinding::prelude::dijkstra;
+use pathfinding::prelude::astar;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     Distance, Interval, IntervalCache, IntervalCollection, IntervalKey, LonLat, Node,
-    NodeCollection, NodeKey, Wfc,
+    NodeCollection, NodeKey, Wfc, Wgs84LonLat,
 };
 
 impl NodeKey {
@@ -83,6 +84,18 @@ impl From<Graph> for GraphNoCache {
     }
 }
 
+/// Whether an interval can be traversed from the given endpoint.
+///
+/// `is_lo_key` is true when the endpoint is the lower key of the interval.
+fn traversable(direction: IntervalDirection, is_lo_key: bool) -> bool {
+    match (direction, is_lo_key) {
+        (IntervalDirection::Both, _) => true,
+        (IntervalDirection::LoToHi, true) => true,
+        (IntervalDirection::HiToLo, false) => true,
+        _ => false,
+    }
+}
+
 impl Graph {
     pub fn nodes(&self) -> &NodeCollection {
         &self.nodes
@@ -109,83 +122,95 @@ impl Graph {
         node_key: NodeKey,
     ) -> impl Iterator<Item = (IntervalKey, &'a Wfc<Interval, IntervalCache>)> + 'a {
         self.neighbor_intervals(node_key).filter(move |(interval_key, wfc)| {
-            let is_lo_key = node_key < interval_key.hi;
-            match (wfc.direction, is_lo_key) {
-                (IntervalDirection::Both, _) => true,
-                (IntervalDirection::LoToHi, true) => true,
-                (IntervalDirection::HiToLo, false) => true,
-                _ => false,
-            }
+            traversable(wfc.direction, node_key < interval_key.hi)
         })
     }
 
-    /// The returning vector contains both starting and ending nodes
-    pub fn dijkstra(&self, start: NodeKey, end: NodeKey) -> Option<(Vec<NodeKey>, Distance)> {
-        puffin::profile_function!();
-        let successors = |source: &NodeKey| {
-            let source = *source;
-            self.outgoing_intervals(source).map(move |(interval_key, interval)| {
-                (interval_key.other(source), interval.length())
-            })
+    /// The great-circle distance between two nodes, used as the A* heuristic.
+    ///
+    /// This is admissible whenever interval lengths are at least the straight-line
+    /// distance between their endpoints, which holds for lengths derived from geometry.
+    fn heuristic(&self, from: NodeKey, to: NodeKey) -> Distance {
+        let (Some(from), Some(to)) = (self.nodes.get(&from), self.nodes.get(&to)) else {
+            return Distance::ZERO;
         };
-        dijkstra(&start, successors, |node| *node == end)
+        Distance(
+            Wgs84LonLat::from(from.pos).distance_to_meters(Wgs84LonLat::from(to.pos)).round()
+                as i32,
+        )
+    }
+
+    /// Finds a shortest path with A*.
+    ///
+    /// The returned vector contains both the starting and ending nodes.
+    pub fn shortest_path(&self, start: NodeKey, end: NodeKey) -> Option<(Vec<NodeKey>, Distance)> {
+        puffin::profile_function!();
+        astar(
+            &start,
+            |node| {
+                let node = *node;
+                self.outgoing_intervals(node).map(move |(interval_key, interval)| {
+                    (
+                        interval_key.other(node),
+                        interval.length(interval_key, &self.nodes),
+                    )
+                })
+            },
+            |node| self.heuristic(*node, end),
+            |node| *node == end,
+        )
     }
 
     pub fn insert_node(&mut self, node_key: NodeKey, node: Node) {
         self.nodes.insert(node_key, Wfc::new(node));
     }
 
-    pub(crate) fn insert_interval_entry(
+    /// Moves a node, returning its previous position.
+    ///
+    /// Intervals do not store their endpoints, so only the node itself needs to change.
+    pub fn update_node_coordinate(
+        &mut self,
+        node_key: NodeKey,
+        new_coordinate: LonLat,
+    ) -> Option<LonLat> {
+        let node = self.nodes.get_mut(&node_key)?;
+        Some(std::mem::replace(&mut node.pos, new_coordinate))
+    }
+
+    pub fn insert_interval(
         &mut self,
         key: IntervalKey,
-        interval: Wfc<Interval, IntervalCache>,
+        new_interval: Wfc<Interval, IntervalCache>,
     ) {
         self.adjacency.insert((key.hi, key.lo));
         self.adjacency.insert((key.lo, key.hi));
-        self.intervals.insert(key, interval);
+        self.intervals.insert(key, new_interval);
     }
 
-    pub(crate) fn remove_interval_entry(
+    pub fn connect_nodes(&mut self, (from, to): (NodeKey, NodeKey)) {
+        if from == to {
+            return;
+        }
+        let key = SortedKey::new(from, to);
+        if self.intervals.contains_key(&key) {
+            return;
+        }
+        self.insert_interval(
+            key,
+            Wfc::new(Interval {
+                intermediate_nodes: EcoVec::new(),
+                length: None,
+                direction: IntervalDirection::Both,
+            }),
+        );
+    }
+
+    pub(crate) fn remove_interval(
         &mut self,
         key: &IntervalKey,
     ) -> Option<Wfc<Interval, IntervalCache>> {
         self.adjacency.remove(&(key.hi, key.lo));
         self.adjacency.remove(&(key.lo, key.hi));
         self.intervals.remove(key)
-    }
-
-    pub fn update_node_coordinate(
-        &mut self,
-        node_key: NodeKey,
-        new_coordinate: LonLat,
-    ) -> Option<LonLat> {
-        let wfc = self.nodes.get_mut(&node_key)?;
-        let old = std::mem::replace(&mut wfc.pos, new_coordinate);
-        let sorted_keys: Vec<_> =
-            self.neighbor_intervals(node_key).map(|(sorted_key, _)| sorted_key).collect();
-        for key in sorted_keys.into_iter() {
-            let interval = self.intervals.get_mut(&key).unwrap();
-            if node_key == key.hi {
-                if interval.data.nodes.is_empty() {
-                    interval.data.nodes.push(new_coordinate);
-                } else {
-                    *interval.data.nodes.make_mut().first_mut().unwrap() = new_coordinate;
-                }
-            } else {
-                match interval.data.nodes.len() {
-                    0 => {
-                        interval.data.nodes.push(new_coordinate);
-                        interval.data.nodes.push(new_coordinate);
-                    }
-                    1 => {
-                        interval.data.nodes.push(new_coordinate);
-                    }
-                    _ => {
-                        *interval.data.nodes.make_mut().last_mut().unwrap() = new_coordinate;
-                    }
-                }
-            }
-        }
-        Some(old)
     }
 }
