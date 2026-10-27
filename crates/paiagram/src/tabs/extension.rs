@@ -43,8 +43,7 @@ impl Default for ExtensionTab {
     fn default() -> Self {
         let (file_sender, file_receiver) = channel();
         Self {
-            script_text: include_str!("../../../paiagram-extensions/scripts/export_focused.js")
-                .into(),
+            script_text: include_str!("../../../../extensions/export_focused.js").into(),
             file_receiver,
             file_sender,
             edit_mode: false,
