@@ -26,7 +26,7 @@ use crate::time::TimetableTime;
 use crate::trip::{TEntry, TEntryId, TravelMode, TripSchedule};
 use crate::{
     Interval, IntervalKey, LonLat, Node, NodeKey, Route, RouteKey, ServiceClass, ServiceClassKey,
-    Station, StationKey, StrokeStyle, Trip, TripKey, Wfc, Wgs84LonLat, WorldSnapshot,
+    Station, StationKey, StrokeStyle, Trip, TripKey, Wfc, Wgs84LonLat, World,
 };
 
 /// The position of a GTFS stop. Missing coordinates default to `(0, 0)`.
@@ -34,10 +34,10 @@ fn stop_lonlat(stop: &Stop) -> LonLat {
     Wgs84LonLat::new(stop.longitude.unwrap_or(0.0), stop.latitude.unwrap_or(0.0)).into()
 }
 
-pub(super) fn parse_gtfs(data: &[u8]) -> Result<WorldSnapshot, Box<dyn std::error::Error>> {
+pub(super) fn parse_gtfs(data: &[u8]) -> Result<World, Box<dyn std::error::Error>> {
     puffin::profile_function!();
     let gtfs = Gtfs::from_reader(Cursor::new(data))?;
-    let mut world = WorldSnapshot::default();
+    let mut world = World::default();
 
     // Stops with a `parent_station` become nodes of that station; standalone
     // stops become a station of their own.

@@ -221,7 +221,7 @@ impl Default for StrokeStyle {
 }
 
 #[derive(Serialize, Deserialize, Default, Clone, Debug, PartialEq)]
-pub struct WorldSnapshot {
+pub struct World {
     pub trips: TripCollection,
     pub vehicles: VehicleCollection,
     pub stations: StationCollection,
@@ -230,7 +230,7 @@ pub struct WorldSnapshot {
     pub routes: RouteCollection,
 }
 
-impl WorldSnapshot {
+impl World {
     /// Insert every entity from `other`, keeping the entities already present in `self`.
     fn merged(mut self, other: &Self) -> Self {
         puffin::profile_function!();
@@ -260,14 +260,14 @@ impl WorldSnapshot {
 }
 
 /// The truth of the application. This structure holds a write-only log and a set of undos and
-/// redos, as well as the world's current snapshot.
+/// redos, as well as the current world.
 ///
 /// The source is not clonable, and should not be cloned anyways.
 pub struct Source {
-    /// The current active world snapshot
-    pub snap: WorldSnapshot,
-    prev_frame_snap: WorldSnapshot,
-    history: Vec<WorldSnapshot>,
+    /// The current world
+    pub world: World,
+    prev_frame_world: World,
+    history: Vec<World>,
     /// the amount of redos available at this point
     redo_len: usize,
     revision: u64,
@@ -287,20 +287,20 @@ impl Source {
         &self.spatial
     }
 
-    /// The world snapshot from the previous frame.
-    pub fn prev_frame_snap(&self) -> &WorldSnapshot {
-        &self.prev_frame_snap
+    /// The world from the previous frame.
+    pub fn prev_frame_world(&self) -> &World {
+        &self.prev_frame_world
     }
 
     /// Available history
-    pub fn history(&self) -> &[WorldSnapshot] {
+    pub fn history(&self) -> &[World] {
         &self.history
     }
 
-    /// Saves the current snapshot as the previous frame's. Call once at the start of each frame.
+    /// Saves the current world as the previous frame's. Call once at the start of each frame.
     pub fn begin_frame(&mut self) {
         puffin::profile_function!();
-        self.prev_frame_snap = self.snap.clone();
+        self.prev_frame_world = self.world.clone();
         if let Ok((build_idx, new_spatial)) = self.spatial_rx.try_recv() {
             if build_idx == self.revision() {
                 self.spatial = new_spatial;
@@ -313,22 +313,19 @@ impl Source {
     /// Build the spatial cache on the rayon pool.
     fn spawn_spatial_build(&self) {
         let revision = self.revision;
-        let snap = self.snap.clone();
+        let world = self.world.clone();
         let sender = self.spatial_tx.clone();
         rayon::spawn(move || {
             puffin::profile_scope!("spatial_cache_build");
-            let cache = SpatialCache::build(&snap);
+            let cache = SpatialCache::build(&world);
             let _ = sender.send((revision, cache));
         });
     }
 
     /// Mutates the world and makes a backup
-    pub fn mutate(
-        &mut self,
-        f: impl FnOnce(WorldSnapshot) -> Result<WorldSnapshot, String>,
-    ) -> Result<(), String> {
+    pub fn mutate(&mut self, f: impl FnOnce(World) -> Result<World, String>) -> Result<(), String> {
         puffin::profile_function!();
-        let new_world = f(self.snap.clone())?;
+        let new_world = f(self.world.clone())?;
 
         if self.redo_len > 0 {
             let active_len = self.history.len() - self.redo_len;
@@ -336,9 +333,9 @@ impl Source {
             self.redo_len = 0;
         }
 
-        let old = self.snap.clone();
+        let old = self.world.clone();
         self.history.push(old);
-        let spatial_dirty = self.snap.update_snapshot(|_old_world| new_world);
+        let spatial_dirty = self.world.update(|_old_world| new_world);
         self.revision += 1;
         if spatial_dirty {
             self.spawn_spatial_build();
@@ -347,7 +344,7 @@ impl Source {
     }
 
     /// Applies an imported world, either on top of the current one or replacing it.
-    pub fn import(&mut self, world: WorldSnapshot, mode: ImportMode) -> Result<(), String> {
+    pub fn import(&mut self, world: World, mode: ImportMode) -> Result<(), String> {
         puffin::profile_function!();
         self.mutate(move |existing| {
             Ok(match mode {
@@ -370,7 +367,7 @@ impl Source {
             return Err("No undos available".into());
         }
         let target_idx = self.history.len() - 1 - self.redo_len;
-        std::mem::swap(&mut self.snap, &mut self.history[target_idx]);
+        std::mem::swap(&mut self.world, &mut self.history[target_idx]);
         self.redo_len += 1;
         self.revision += 1;
         self.spawn_spatial_build();
@@ -384,7 +381,7 @@ impl Source {
         }
         self.redo_len -= 1;
         let target_idx = self.history.len() - 1 - self.redo_len;
-        std::mem::swap(&mut self.snap, &mut self.history[target_idx]);
+        std::mem::swap(&mut self.world, &mut self.history[target_idx]);
         self.revision += 1;
         self.spawn_spatial_build();
         Ok(())
@@ -395,8 +392,8 @@ impl Source {
     pub fn new() -> Self {
         let (spatial_tx, spatial_rx) = mpsc::channel();
         Self {
-            snap: WorldSnapshot::default(),
-            prev_frame_snap: WorldSnapshot::default(),
+            world: World::default(),
+            prev_frame_world: World::default(),
             history: Vec::new(),
             redo_len: 0,
             revision: 0,
@@ -408,16 +405,16 @@ impl Source {
 }
 
 impl std::ops::Deref for Source {
-    type Target = WorldSnapshot;
+    type Target = World;
     fn deref(&self) -> &Self::Target {
-        &self.snap
+        &self.world
     }
 }
 
 /// The save file format.
 #[derive(Serialize, Deserialize, Clone)]
 pub enum SaveFile {
-    V1(WorldSnapshot),
+    V1(World),
 }
 
 impl ExportObject for SaveFile {
@@ -434,14 +431,14 @@ impl TryFrom<SaveFile> for Source {
     type Error = &'static str;
     fn try_from(value: SaveFile) -> Result<Self, Self::Error> {
         match value {
-            SaveFile::V1(snap) => {
+            SaveFile::V1(world) => {
                 let (spatial_tx, spatial_rx) = mpsc::channel();
                 let source = Self {
-                    prev_frame_snap: snap.clone(),
+                    prev_frame_world: world.clone(),
                     history: Vec::new(),
                     redo_len: 0,
                     revision: 0,
-                    snap,
+                    world,
                     spatial: SpatialCache::default(),
                     spatial_tx,
                     spatial_rx,
@@ -453,8 +450,8 @@ impl TryFrom<SaveFile> for Source {
     }
 }
 
-impl From<WorldSnapshot> for SaveFile {
-    fn from(value: WorldSnapshot) -> Self {
+impl From<World> for SaveFile {
+    fn from(value: World) -> Self {
         Self::V1(value)
     }
 }

@@ -14,7 +14,7 @@ use krilla::text::{Font, TextDirection};
 use krilla::{Data, Document};
 use paiagram_core::route::{MareyCache, RouteInterval, StationRecord};
 use paiagram_core::time::Tick;
-use paiagram_core::{CanvasLength, RouteKey, WorldSnapshot};
+use paiagram_core::{CanvasLength, RouteKey, World};
 
 /// 1 PDF point is 1/72 inch, whereas [`CanvasLength`] is measured in millimetres.
 const PT_PER_MM: f64 = 72.0 / 25.4;
@@ -44,7 +44,7 @@ pub enum GraphyFormat {
 
 #[derive(Clone)]
 pub struct ExportGraphy {
-    pub snap: WorldSnapshot,
+    pub world: World,
     pub route: RouteKey,
     pub cache: MareyCache,
     pub format: GraphyFormat,
@@ -68,7 +68,7 @@ impl paiagram_rw::ExportObject for ExportGraphy {
                     .first()
                     .and_then(|data| Font::new(krilla_data(data), 0))
                     .ok_or_else(|| io::Error::other("no usable font was provided"))?;
-                let document = new_document(&self.snap, self.route, &self.cache, font)
+                let document = new_document(&self.world, self.route, &self.cache, font)
                     .ok_or_else(|| io::Error::other("failed to build the PDF document"))?;
                 writer.write_all(&document)
             }
@@ -87,13 +87,14 @@ fn krilla_data(data: &Cow<'static, [u8]>) -> Data {
 }
 
 fn new_document(
-    snap: &WorldSnapshot,
+    world: &World,
     route_key: RouteKey,
     cache: &MareyCache,
     font: Font,
 ) -> Option<Vec<u8>> {
-    let route = snap.routes.get(&route_key)?;
-    let (station_heights, station_names, total_height_mm) = station_lines(snap, &route.intervals.0);
+    let route = world.routes.get(&route_key)?;
+    let (station_heights, station_names, total_height_mm) =
+        station_lines(world, &route.intervals.0);
 
     // Time span covered by the Marey chart, padded a little on both sides. When the cache is empty,
     // fall back to a whole day so there is still something to look at.
@@ -184,7 +185,7 @@ fn new_document(
     );
 
     // Trip (Marey) lines.
-    draw_trips(snap, cache, &station_heights, &mut surface, to_x, to_y);
+    draw_trips(world, cache, &station_heights, &mut surface, to_x, to_y);
 
     // Station labels, drawn last so they stay legible on top of the Marey lines.
     if station_names.iter().any(|name| !name.is_empty()) {
@@ -213,7 +214,7 @@ fn new_document(
 /// The vertical position (in canvas millimetres) of the start of every route interval, the name
 /// of the station at that position, and the total height of the Marey chart.
 fn station_lines(
-    snap: &WorldSnapshot,
+    world: &World,
     intervals: &[RouteInterval],
 ) -> (Vec<CanvasLength>, Vec<String>, f64) {
     let mut heights = Vec::with_capacity(intervals.len());
@@ -221,22 +222,22 @@ fn station_lines(
     let mut total = 0.0_f64;
     for interval in intervals {
         heights.push(CanvasLength(total));
-        names.push(station_name(snap, &interval.station_record).unwrap_or_default());
+        names.push(station_name(world, &interval.station_record).unwrap_or_default());
         total += interval.canvas_length.unwrap_or_else(|| CanvasLength::from_cm(1.5)).0;
     }
     (heights, names, total)
 }
 
 /// The name of the station an interval's [`StationRecord`] belongs to.
-fn station_name(snap: &WorldSnapshot, record: &StationRecord) -> Option<String> {
+fn station_name(world: &World, record: &StationRecord) -> Option<String> {
     let station = match record {
         StationRecord::All(key) => *key,
         StationRecord::Some(nodes) => {
             let node = nodes.first()?;
-            snap.graph.nodes().get(node)?.parent
+            world.graph.nodes().get(node)?.parent
         }
     };
-    snap.stations.get(&station).map(|station| station.name.to_string())
+    world.stations.get(&station).map(|station| station.name.to_string())
 }
 
 /// The earliest and latest time (in ticks) covered by the cached trip polylines.
@@ -313,7 +314,7 @@ fn time_label(time: paiagram_core::time::TimetableTime, level: usize) -> String 
 }
 
 fn draw_trips(
-    snap: &WorldSnapshot,
+    world: &World,
     cache: &MareyCache,
     station_heights: &[CanvasLength],
     surface: &mut Surface<'_>,
@@ -321,21 +322,22 @@ fn draw_trips(
     to_y: impl Fn(f64) -> f32,
 ) {
     for (trip_key, polylines) in &cache.map {
-        let Some(trip) = snap.trips.get(trip_key) else {
+        let Some(trip) = world.trips.get(trip_key) else {
             continue;
         };
-        let stroke = trip.service_class.and_then(|key| snap.service_classes.get(&key)).map_or_else(
-            || gray_stroke(1.0, 1.0),
-            |class| {
-                let [r, g, b, a] = class.style.color.to_array();
-                Stroke {
-                    paint: rgb::Color::new(r, g, b).into(),
-                    width: class.style.width as f32,
-                    opacity: NormalizedF32::new(a as f32 / 255.0).unwrap_or(NormalizedF32::ONE),
-                    ..Stroke::default()
-                }
-            },
-        );
+        let stroke =
+            trip.service_class.and_then(|key| world.service_classes.get(&key)).map_or_else(
+                || gray_stroke(1.0, 1.0),
+                |class| {
+                    let [r, g, b, a] = class.style.color.to_array();
+                    Stroke {
+                        paint: rgb::Color::new(r, g, b).into(),
+                        width: class.style.width as f32,
+                        opacity: NormalizedF32::new(a as f32 / 255.0).unwrap_or(NormalizedF32::ONE),
+                        ..Stroke::default()
+                    }
+                },
+            );
 
         for polyline in polylines {
             // Each entry spans `arr`..`dep` at one placement, so it contributes two points at

@@ -1,7 +1,7 @@
 use std::sync::mpsc;
 
 use paiagram_core::route::MareyCache;
-use paiagram_core::{Key, Wfc, WorldSnapshot};
+use paiagram_core::{Key, Wfc, World};
 use paiagram_selection::SelectedItems;
 use rquickjs::class::Trace;
 use rquickjs::{Ctx, JsLifetime, Object, Value};
@@ -65,7 +65,7 @@ impl<D, C> From<JsWfc<D, C>> for Wfc<D, C> {
 #[rquickjs::class(rename_all = "camelCase")]
 pub struct JsRuntimeData {
     #[qjs(skip_trace)]
-    pub snap: WorldSnapshot,
+    pub world: World,
     #[qjs(skip_trace)]
     pub selected_items: SelectedItems,
 }
@@ -92,16 +92,16 @@ impl JsRuntimeData {
 
     /// Returns every route key in the world.
     pub fn route_info<'js>(&self, ctx: Ctx<'js>) -> Ret<'js> {
-        let keys: Vec<_> = self.snap.routes.keys().copied().collect();
+        let keys: Vec<_> = self.world.routes.keys().copied().collect();
         rquickjs_serde::to_value(ctx, keys).map_err(format_serde_err(Self::route_info))
     }
 
     /// Returns a plain object mapping each trip key (as a decimal string) to its Marey lines.
     pub fn marey_cache<'js>(&self, ctx: Ctx<'js>) -> Ret<'js> {
         let caches = Object::new(ctx.clone())?;
-        for route in self.snap.routes.values() {
+        for route in self.world.routes.values() {
             let mut cache = MareyCache::default();
-            route.intervals.populate_trips(&self.snap, &mut cache);
+            route.intervals.populate_trips(&self.world, &mut cache);
             for (trip_key, polylines) in &cache.map {
                 let value = rquickjs_serde::to_value(ctx.clone(), polylines)
                     .map_err(format_serde_err(Self::marey_cache))?;

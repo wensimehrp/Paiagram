@@ -182,7 +182,7 @@ impl Tab for MareyTab {
             .pivot(Align2::RIGHT_TOP);
         window.show(ui.ctx(), |ui: &mut Ui| {
             if ui.button("Update cache").clicked() {
-                route.intervals.populate_trips(&app.snap, &mut self.cache);
+                route.intervals.populate_trips(&app.world, &mut self.cache);
             }
             if ui.button("Export PDF").clicked() {
                 let fonts = ui.fonts(|fonts| {
@@ -198,7 +198,7 @@ impl Tab for MareyTab {
                     ret
                 });
                 paiagram_export::ExportGraphy {
-                    snap: app.snap.clone(),
+                    world: app.world.clone(),
                     route: self.key,
                     cache: self.cache.clone(),
                     format: GraphyFormat::Pdf,
@@ -440,7 +440,7 @@ fn main_display(tab: &mut MareyTab, app: &mut App, ui: &mut Ui) {
                     Either::Right(d) => schedule.shift_dep(entry_id, d),
                 }
             }
-            let Some(polylines) = route.intervals.populate_schedule(&app.snap, &schedule) else {
+            let Some(polylines) = route.intervals.populate_schedule(&app.world, &schedule) else {
                 continue;
             };
             let polylines = polylines.clone();
@@ -499,7 +499,7 @@ fn main_display(tab: &mut MareyTab, app: &mut App, ui: &mut Ui) {
             }
         }
 
-        route.intervals.populate_schedule(&app.snap, &schedule).into_iter().flatten().for_each(
+        route.intervals.populate_schedule(&app.world, &schedule).into_iter().flatten().for_each(
             |polyline| {
                 draw_polyline(&tab.navi, &polyline, &station_heights, &mut painter, stroke);
             },

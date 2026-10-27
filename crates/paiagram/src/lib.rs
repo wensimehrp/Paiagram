@@ -231,10 +231,10 @@ impl<'w> Behavior<MainTab> for MainTabViewer<'w> {
                 ScrollArea::vertical().show_rows(
                     ui,
                     ui.spacing().interact_size.y,
-                    self.app.snap.routes.len(),
+                    self.app.world.routes.len(),
                     |ui, range| {
                         for (route_key, info) in
-                            &self.app.snap.routes.skip(range.start).take(range.count())
+                            &self.app.world.routes.skip(range.start).take(range.count())
                         {
                             ui.menu_button(info.name.as_str(), |ui| {
                                 if ui.button("Graph").clicked() {
@@ -358,13 +358,13 @@ pub fn show_ui(
                 }
                 ui.separator();
                 if ui.button("Save .paia").clicked() {
-                    let new_file: SaveFile = app.snap.clone().into();
+                    let new_file: SaveFile = app.world.clone().into();
                     new_file.write_to_file(app.file_write_state.clone());
                 }
                 ui.separator();
                 if ui.button("Export .oud").clicked() {
                     ExportOuDia {
-                        world: app.snap.clone(),
+                        world: app.world.clone(),
                         route: RouteKey::new(),
                         is_oudia_second: false,
                     }
@@ -372,7 +372,7 @@ pub fn show_ui(
                 }
                 if ui.button("Export GTFS").clicked() {
                     ExportGtfs {
-                        snap: app.snap.clone(),
+                        world: app.world.clone(),
                     }
                     .write_to_file(app.file_write_state.clone());
                 }

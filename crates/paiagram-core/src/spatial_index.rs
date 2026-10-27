@@ -3,7 +3,7 @@ use rayon::join;
 use rstar::{AABB, Envelope, RTree, RTreeObject};
 
 use crate::time::{TDuration, TimetableTime};
-use crate::{IntervalKey, LonLat, NodeKey, TripKey, WorldSnapshot};
+use crate::{IntervalKey, LonLat, NodeKey, TripKey, World};
 
 /// Spatial caches used for fast geographic lookups.
 ///
@@ -17,15 +17,15 @@ pub struct SpatialCache {
 }
 
 impl SpatialCache {
-    pub fn build(snap: &WorldSnapshot) -> Self {
+    pub fn build(world: &World) -> Self {
         puffin::profile_function!();
         // temp solution
         let (intervals, (nodes, trip_legs)) = join(
-            || IntervalsRTree::from_world(snap.clone()),
+            || IntervalsRTree::from_world(world.clone()),
             || {
                 join(
-                    || NodesRTree::from_world(snap.clone()),
-                    || TripLegsRTree::from_world(snap.clone()),
+                    || NodesRTree::from_world(world.clone()),
+                    || TripLegsRTree::from_world(world.clone()),
                 )
             },
         );
@@ -128,15 +128,15 @@ pub struct IntervalsRTree(RTree<IntervalRTreeObject>);
 
 impl IntervalsRTree {
     /// Build the tree from every interval in the world's graph.
-    fn from_world(snap: WorldSnapshot) -> Self {
+    fn from_world(world: World) -> Self {
         puffin::profile_function!();
-        let objects = snap
+        let objects = world
             .graph
             .intervals()
             .iter()
             .map(|(interval_key, interval)| IntervalRTreeObject {
                 interval_key: *interval_key,
-                nodes: interval.positions(*interval_key, snap.graph.nodes()).collect(),
+                nodes: interval.positions(*interval_key, world.graph.nodes()).collect(),
             })
             .collect();
         Self(RTree::bulk_load(objects))
@@ -157,9 +157,9 @@ pub struct NodesRTree(RTree<NodeRTreeObject>);
 
 impl NodesRTree {
     /// Build the tree from every node in the world's graph.
-    fn from_world(snap: WorldSnapshot) -> Self {
+    fn from_world(world: World) -> Self {
         puffin::profile_function!();
-        let objects = snap
+        let objects = world
             .graph
             .nodes()
             .iter()
@@ -182,11 +182,11 @@ pub struct TripLegsRTree(RTree<TripLegRTreeObject>);
 
 impl TripLegsRTree {
     /// Build the tree from the estimated legs of every trip.
-    fn from_world(snap: WorldSnapshot) -> Self {
+    fn from_world(world: World) -> Self {
         puffin::profile_function!();
         let mut objects = Vec::new();
-        for (trip_key, trip) in snap.trips.iter() {
-            trip.schedule.estimates(&snap.graph, |estimates| {
+        for (trip_key, trip) in world.trips.iter() {
+            trip.schedule.estimates(&world.graph, |estimates| {
                 for [(curr_est, curr), (next_est, next)] in estimates.array_windows() {
                     let (Some(curr_est), Some(next_est)) = (curr_est, next_est) else {
                         continue;
@@ -195,11 +195,11 @@ impl TripLegsRTree {
                         continue;
                     }
                     let interval_key = IntervalKey::new(curr.node_key(), next.node_key());
-                    let Some(interval) = snap.graph.intervals().get(&interval_key) else {
+                    let Some(interval) = world.graph.intervals().get(&interval_key) else {
                         continue;
                     };
                     objects.push(TripLegRTreeObject {
-                        interval: interval.positions(interval_key, snap.graph.nodes()).collect(),
+                        interval: interval.positions(interval_key, world.graph.nodes()).collect(),
                         is_hi_to_lo: curr.node_key() == interval_key.hi,
                         trip_key: *trip_key,
                         curr_arr: curr_est.arr,

@@ -4,7 +4,7 @@ use either::Either;
 use paiagram_core::time::TimetableTime;
 use paiagram_core::trip::TravelMode::{self, At, Flexible, For};
 use paiagram_core::trip::{EstimateEntry, TEntry, TEntryId, TEstimate, TripSchedule};
-use paiagram_core::{TripKey, WorldSnapshot};
+use paiagram_core::{TripKey, World};
 use paiagram_selection::SelectedItems;
 use serde::{Deserialize, Serialize};
 
@@ -53,7 +53,7 @@ fn show_trip(tab: &mut TripTab, app: &mut App, ui: &mut Ui) {
     let start_frame = |ui, text, key| {
         Frame::new().inner_margin(6.0).show(ui, |ui| {
             ui.heading(text);
-            select_a_trip(ui, key, &app.snap);
+            select_a_trip(ui, key, &app.world);
         });
     };
 
@@ -124,7 +124,7 @@ fn show_trip(tab: &mut TripTab, app: &mut App, ui: &mut Ui) {
                 }
             }
         });
-        select_a_trip(ui, &mut tab.trip_key, &app.snap);
+        select_a_trip(ui, &mut tab.trip_key, &app.world);
     });
 
     ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
@@ -138,7 +138,7 @@ fn show_trip(tab: &mut TripTab, app: &mut App, ui: &mut Ui) {
                 ui.visuals_mut().widgets.inactive.weak_bg_fill = Color32::TRANSPARENT;
                 schedule.estimates(&app.graph, |estimates| {
                     for (estimate, entry) in estimates.into_iter().copied() {
-                        row_ui(&schedule, estimates, estimate, entry, &app.snap, ui);
+                        row_ui(&schedule, estimates, estimate, entry, &app.world, ui);
                         ui.end_row();
                     }
                     if matches!(app.selected_items, SelectedItems::TripExtension(_))
@@ -155,9 +155,9 @@ fn show_trip(tab: &mut TripTab, app: &mut App, ui: &mut Ui) {
     });
 }
 
-fn select_a_trip(ui: &mut Ui, existing_key: &mut Option<TripKey>, snap: &WorldSnapshot) {
+fn select_a_trip(ui: &mut Ui, existing_key: &mut Option<TripKey>, world: &World) {
     let selected_text = existing_key.map_or("Current selected trip", |key| {
-        snap.trips.get(&key).map_or("Unknown", |wfc| &wfc.name)
+        world.trips.get(&key).map_or("Unknown", |wfc| &wfc.name)
     });
     let combo_box = ComboBox::from_id_salt("Selected existing trip").selected_text(selected_text);
     combo_box.show_ui(ui, |ui| {
@@ -165,9 +165,9 @@ fn select_a_trip(ui: &mut Ui, existing_key: &mut Option<TripKey>, snap: &WorldSn
         ScrollArea::vertical().show_rows(
             ui,
             ui.spacing().interact_size.y,
-            snap.trips.len(),
+            world.trips.len(),
             |ui, range| {
-                for (key, trip) in snap.trips.iter().skip(range.start).take(range.count()) {
+                for (key, trip) in world.trips.iter().skip(range.start).take(range.count()) {
                     ui.selectable_value(existing_key, Some(*key), trip.name.as_str());
                 }
             },
@@ -180,16 +180,16 @@ fn row_ui(
     estimates: &[(Option<TEstimate>, EstimateEntry)],
     estimate: Option<TEstimate>,
     entry: EstimateEntry,
-    snap: &WorldSnapshot,
+    world: &World,
     ui: &mut Ui,
 ) {
     puffin::profile_function!();
     const BTN_SIZE: Vec2 = vec2(70.0, 18.0);
-    let Some(node) = snap.graph.nodes().get(&entry.node_key()) else {
+    let Some(node) = world.graph.nodes().get(&entry.node_key()) else {
         ui.label("No station");
         return;
     };
-    if let Some(stn) = snap.stations.get(&node.parent) {
+    if let Some(stn) = world.stations.get(&node.parent) {
         let mut text = RichText::new(stn.name.as_str());
         if matches!(entry, EstimateEntry::Derived(..)) {
             text = text.weak();

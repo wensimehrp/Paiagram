@@ -14,7 +14,7 @@ use crate::time::TimetableTime;
 use crate::trip::{TEntry, TEntryId, TravelMode, TripSchedule};
 use crate::{
     Interval, IntervalKey, LonLat, Node, NodeKey, Route, RouteKey, ServiceClass, ServiceClassKey,
-    Station, StationKey, StrokeStyle, Trip, TripKey, Wfc, WorldSnapshot,
+    Station, StationKey, StrokeStyle, Trip, TripKey, Wfc, World,
 };
 
 pub(super) enum OudFileType<'a> {
@@ -22,11 +22,9 @@ pub(super) enum OudFileType<'a> {
     OuDia(&'a [u8]),
 }
 
-pub(crate) fn parse_oudia(
-    stream: OudFileType,
-) -> Result<WorldSnapshot, Box<dyn std::error::Error>> {
+pub(crate) fn parse_oudia(stream: OudFileType) -> Result<World, Box<dyn std::error::Error>> {
     puffin::profile_function!();
-    let mut world = WorldSnapshot::default();
+    let mut world = World::default();
     let root = match stream {
         OudFileType::OuDiaSecond(s) => parse_oud2_to_ir(s)?,
         OudFileType::OuDia(buf) => parse_oud_to_ir(buf)?,
@@ -191,20 +189,20 @@ mod test {
     #[test]
     fn test_generate() -> V {
         let test_str = include_str!("../../../paiagram-oudia/test/sample.oud2");
-        let snap = parse_oudia(OudFileType::OuDiaSecond(test_str))?;
-        dbg!(snap);
+        let imported = parse_oudia(OudFileType::OuDiaSecond(test_str))?;
+        dbg!(imported);
         Ok(())
     }
 
     #[test]
     fn sample_applies_cleanly() -> V {
         let test_str = include_str!("../../../paiagram-oudia/test/sample.oud2");
-        let snap = parse_oudia(OudFileType::OuDiaSecond(test_str))?;
-        assert!(!snap.trips.is_empty(), "sample should contain trips");
+        let imported = parse_oudia(OudFileType::OuDiaSecond(test_str))?;
+        assert!(!imported.trips.is_empty(), "sample should contain trips");
         // Applying the imported world is what runs `update_diff`, which looks up the
         // interval between each pair of consecutive trip entries.
-        let mut world = crate::WorldSnapshot::default();
-        world.update_snapshot(|_| snap.clone());
+        let mut world = crate::World::default();
+        world.update(|_| imported.clone());
         Ok(())
     }
 }

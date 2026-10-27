@@ -130,7 +130,7 @@ impl<'a> walkers::Plugin for MapPlugin<'a> {
         let mut trip_leg_text = Vec::new();
         let mut node_text = Vec::new();
 
-        let draw_world = source.snap.clone();
+        let draw_world = source.world.clone();
 
         if let SelectedItems::Nodes(nodes) = &selected_items
             && nodes.len() == 1

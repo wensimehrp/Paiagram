@@ -3,7 +3,7 @@
 
 use std::io;
 
-use crate::WorldSnapshot;
+use crate::World;
 use crate::import::oudia::OudFileType;
 use crate::time::TimetableDuration;
 use crate::units::time::TimetableTime;
@@ -66,10 +66,10 @@ impl ImportType {
     }
 }
 
-pub fn make_snapshot(
+pub fn make_world(
     data: &[u8],
     import_content: ImportType,
-) -> Result<WorldSnapshot, Box<dyn std::error::Error>> {
+) -> Result<World, Box<dyn std::error::Error>> {
     puffin::profile_function!();
     match import_content {
         ImportType::Pyetgr => {

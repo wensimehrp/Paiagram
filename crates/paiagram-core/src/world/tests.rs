@@ -5,28 +5,21 @@ use smallvec::smallvec;
 
 use super::*;
 use crate::graph::IntervalDirection;
-use crate::import::{ImportMode, ImportType, make_snapshot};
+use crate::import::{ImportMode, ImportType, make_world};
 use crate::time::TimetableTime;
 use crate::trip::{TEntry, TEntryId, TravelMode, TripSchedule};
 use crate::{
     Interval, LonLat, Node, NodeKey, Source, Station, StationKey, TripKey, Vehicle, VehicleKey,
 };
 
-fn populated_world() -> (
-    WorldSnapshot,
-    StationKey,
-    NodeKey,
-    NodeKey,
-    VehicleKey,
-    TripKey,
-) {
+fn populated_world() -> (World, StationKey, NodeKey, NodeKey, VehicleKey, TripKey) {
     let station = StationKey::new();
     let a = NodeKey::new();
     let b = NodeKey::new();
     let vehicle = VehicleKey::new();
     let trip = TripKey::new();
 
-    let mut world = WorldSnapshot::default();
+    let mut world = World::default();
     world.stations.insert(
         station,
         Wfc::new(Station {
@@ -84,32 +77,32 @@ fn populated_world() -> (
     (world, station, a, b, vehicle, trip)
 }
 
-fn assert_same_world(a: &WorldSnapshot, b: &WorldSnapshot) {
+fn assert_same_world(a: &World, b: &World) {
     // don't use assert_eq since they print A LOT when not eq
     assert!(a == b);
 }
 
-/// Remove every top-level entity introduced by `snapshot` from `target`.
-fn remove_snapshot(target: &mut WorldSnapshot, snapshot: &WorldSnapshot) {
-    for key in snapshot.graph.intervals.keys() {
+/// Remove every top-level entity introduced by `world` from `target`.
+fn remove_world(target: &mut World, world: &World) {
+    for key in world.graph.intervals.keys() {
         target.graph.remove_interval(key);
     }
-    for key in snapshot.graph.nodes.keys() {
+    for key in world.graph.nodes.keys() {
         target.graph.nodes.remove(key);
     }
-    for key in snapshot.stations.keys() {
+    for key in world.stations.keys() {
         target.stations.remove(key);
     }
-    for key in snapshot.vehicles.keys() {
+    for key in world.vehicles.keys() {
         target.vehicles.remove(key);
     }
-    for key in snapshot.trips.keys() {
+    for key in world.trips.keys() {
         target.trips.remove(key);
     }
-    for key in snapshot.service_classes.keys() {
+    for key in world.service_classes.keys() {
         target.service_classes.remove(key);
     }
-    for key in snapshot.routes.keys() {
+    for key in world.routes.keys() {
         target.routes.remove(key);
     }
 }
@@ -117,7 +110,7 @@ fn remove_snapshot(target: &mut WorldSnapshot, snapshot: &WorldSnapshot) {
 #[test]
 fn building_a_world_populates_derived_caches() {
     let (new, station, a, b, vehicle, trip) = populated_world();
-    let (world, spatial_dirty) = WorldSnapshot::default().update_diff(new);
+    let (world, spatial_dirty) = World::default().update_diff(new);
 
     let interval = IntervalKey::new(a, b);
     assert_eq!(
@@ -139,7 +132,7 @@ fn building_a_world_populates_derived_caches() {
 #[test]
 fn removing_a_trip_removes_it_from_derived_caches() {
     let (new, _station, a, b, vehicle, trip) = populated_world();
-    let (world, _) = WorldSnapshot::default().update_diff(new);
+    let (world, _) = World::default().update_diff(new);
 
     let mut changed = world.clone();
     changed.trips.remove(&trip);
@@ -154,7 +147,7 @@ fn removing_a_trip_removes_it_from_derived_caches() {
 #[test]
 fn removing_an_interval_updates_adjacency() {
     let (new, _station, a, b, _vehicle, _trip) = populated_world();
-    let (world, _) = WorldSnapshot::default().update_diff(new);
+    let (world, _) = World::default().update_diff(new);
 
     let mut changed = world.clone();
     changed.graph.remove_interval(&IntervalKey::new(a, b));
@@ -166,7 +159,7 @@ fn removing_an_interval_updates_adjacency() {
 #[test]
 fn moving_a_node_updates_station_caches() {
     let (new, station, a, b, _vehicle, _trip) = populated_world();
-    let (world, _) = WorldSnapshot::default().update_diff(new);
+    let (world, _) = World::default().update_diff(new);
 
     let new_station = StationKey::new();
     let mut changed = world.clone();
@@ -195,7 +188,7 @@ fn moving_a_node_updates_station_caches() {
 #[test]
 fn updating_a_trips_vehicles_moves_its_cache_entry() {
     let (new, _station, _a, _b, old_vehicle, trip) = populated_world();
-    let (world, _) = WorldSnapshot::default().update_diff(new);
+    let (world, _) = World::default().update_diff(new);
 
     let new_vehicle = VehicleKey::new();
     let mut changed = world.clone();
@@ -218,14 +211,14 @@ fn updating_a_trips_vehicles_moves_its_cache_entry() {
 }
 
 #[test]
-fn undoing_imports_matches_removing_their_snapshots() -> Result<(), Box<dyn std::error::Error>> {
+fn undoing_imports_matches_removing_their_worlds() -> Result<(), Box<dyn std::error::Error>> {
     use ImportMode::{Merge, Replace};
 
     let bytes = include_bytes!("../../../paiagram-oudia/test/sample.oud2");
     let imported = [
-        make_snapshot(bytes, ImportType::OuDiaSecond)?,
-        make_snapshot(bytes, ImportType::OuDiaSecond)?,
-        make_snapshot(bytes, ImportType::OuDiaSecond)?,
+        make_world(bytes, ImportType::OuDiaSecond)?,
+        make_world(bytes, ImportType::OuDiaSecond)?,
+        make_world(bytes, ImportType::OuDiaSecond)?,
     ];
 
     for modes in [
@@ -242,35 +235,35 @@ fn undoing_imports_matches_removing_their_snapshots() -> Result<(), Box<dyn std:
         let mut after = Vec::with_capacity(imported.len());
 
         for (world, mode) in imported.iter().zip(modes) {
-            let before = source.snap.clone();
+            let before = source.world.clone();
             source.import(world.clone(), mode).unwrap();
 
             match mode {
                 // A replace discards everything that came before it.
                 Replace => {
-                    let (expected, _) = WorldSnapshot::default().update_diff(world.clone());
-                    assert_same_world(&source.snap, &expected);
+                    let (expected, _) = World::default().update_diff(world.clone());
+                    assert_same_world(&source.world, &expected);
                 }
-                // A merge only adds `world` to the previous snapshot.
+                // A merge only adds `world` to the previous world.
                 Merge => {
-                    let mut target = source.snap.clone();
-                    remove_snapshot(&mut target, world);
-                    let mut removed = source.snap.clone();
-                    removed.update_snapshot(|_| target);
+                    let mut target = source.world.clone();
+                    remove_world(&mut target, world);
+                    let mut removed = source.world.clone();
+                    removed.update(|_| target);
                     assert_same_world(&removed, &before);
                 }
             }
 
-            after.push(source.snap.clone());
+            after.push(source.world.clone());
         }
 
-        // Undo restores each intermediate snapshot, then the empty world.
+        // Undo restores each intermediate world, then the empty world.
         for expected in after.iter().rev().skip(1) {
             source.undo().unwrap();
-            assert_same_world(&source.snap, expected);
+            assert_same_world(&source.world, expected);
         }
         source.undo().unwrap();
-        assert_same_world(&source.snap, &WorldSnapshot::default());
+        assert_same_world(&source.world, &World::default());
     }
 
     Ok(())

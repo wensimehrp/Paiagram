@@ -2,9 +2,7 @@ use std::io::{self, Write};
 
 use paiagram_core::time::{TTime, TimetableTime};
 use paiagram_core::trip::{EstimateEntry, TravelMode};
-use paiagram_core::{
-    Key, NodeKey, ServiceClassKey, StationKey, TripKey, Wgs84LonLat, WorldSnapshot,
-};
+use paiagram_core::{Key, NodeKey, ServiceClassKey, StationKey, TripKey, Wgs84LonLat, World};
 use paiagram_rw::ExportObject;
 use zip::ZipWriter;
 use zip::write::FileOptions;
@@ -19,7 +17,7 @@ const CALENDAR_START_DATE: &str = "20000101";
 const CALENDAR_END_DATE: &str = "21001231";
 
 pub struct ExportGtfs {
-    pub snap: WorldSnapshot,
+    pub world: World,
 }
 
 impl ExportObject for ExportGtfs {
@@ -30,10 +28,10 @@ impl ExportObject for ExportGtfs {
     fn write_content<W: io::Write + io::Seek>(&mut self, writer: &mut W) -> io::Result<()> {
         let mut writer = ZipWriter::new(writer);
         write_agency(&mut writer)?;
-        write_stops(&mut writer, &self.snap)?;
-        write_routes(&mut writer, &self.snap)?;
-        write_trips(&mut writer, &self.snap)?;
-        write_stop_times(&mut writer, &self.snap)?;
+        write_stops(&mut writer, &self.world)?;
+        write_routes(&mut writer, &self.world)?;
+        write_trips(&mut writer, &self.world)?;
+        write_stop_times(&mut writer, &self.world)?;
         write_calendar(&mut writer)?;
         write_feed_info(&mut writer)?;
         writer.finish()?;
@@ -50,10 +48,7 @@ fn write_agency<W: Write + io::Seek>(writer: &mut ZipWriter<W>) -> io::Result<()
     Ok(())
 }
 
-fn write_stops<W: Write + io::Seek>(
-    writer: &mut ZipWriter<W>,
-    snap: &WorldSnapshot,
-) -> io::Result<()> {
+fn write_stops<W: Write + io::Seek>(writer: &mut ZipWriter<W>, world: &World) -> io::Result<()> {
     writer.start_file("stops.txt", FileOptions::DEFAULT)?;
     let mut csv = csv::Writer::from_writer(writer);
     csv.write_record([
@@ -66,7 +61,7 @@ fn write_stops<W: Write + io::Seek>(
     ])?;
 
     // A Paiagram station becomes a GTFS parent station...
-    for (key, station) in &snap.stations {
+    for (key, station) in &world.stations {
         let pos = Wgs84LonLat::from(station.pos);
         csv.write_record([
             station_id(*key),
@@ -79,7 +74,7 @@ fn write_stops<W: Write + io::Seek>(
     }
 
     // ...and each of its nodes becomes a platform/stop below it.
-    for (key, node) in snap.graph.nodes() {
+    for (key, node) in world.graph.nodes() {
         let pos = Wgs84LonLat::from(node.pos);
         csv.write_record([
             node_id(*key),
@@ -95,10 +90,7 @@ fn write_stops<W: Write + io::Seek>(
     Ok(())
 }
 
-fn write_routes<W: Write + io::Seek>(
-    writer: &mut ZipWriter<W>,
-    snap: &WorldSnapshot,
-) -> io::Result<()> {
+fn write_routes<W: Write + io::Seek>(writer: &mut ZipWriter<W>, world: &World) -> io::Result<()> {
     writer.start_file("routes.txt", FileOptions::DEFAULT)?;
     let mut csv = csv::Writer::from_writer(writer);
     csv.write_record([
@@ -110,7 +102,7 @@ fn write_routes<W: Write + io::Seek>(
         "route_color",
     ])?;
 
-    for (key, class) in &snap.service_classes {
+    for (key, class) in &world.service_classes {
         let [r, g, b, _] = class.style.color.to_srgba_unmultiplied();
         csv.write_record([
             service_class_id(*key),
@@ -123,7 +115,7 @@ fn write_routes<W: Write + io::Seek>(
     }
 
     // Trips without a service class still need a valid `route_id`.
-    if snap.trips.iter().any(|(_, trip)| trip.service_class.is_none()) {
+    if world.trips.iter().any(|(_, trip)| trip.service_class.is_none()) {
         csv.write_record([
             ROUTE_UNKNOWN_ID.to_string(),
             AGENCY_ID.to_string(),
@@ -138,10 +130,7 @@ fn write_routes<W: Write + io::Seek>(
     Ok(())
 }
 
-fn write_trips<W: Write + io::Seek>(
-    writer: &mut ZipWriter<W>,
-    snap: &WorldSnapshot,
-) -> io::Result<()> {
+fn write_trips<W: Write + io::Seek>(writer: &mut ZipWriter<W>, world: &World) -> io::Result<()> {
     writer.start_file("trips.txt", FileOptions::DEFAULT)?;
     let mut csv = csv::Writer::from_writer(writer);
     csv.write_record([
@@ -152,7 +141,7 @@ fn write_trips<W: Write + io::Seek>(
         "trip_headsign",
     ])?;
 
-    for (key, trip) in &snap.trips {
+    for (key, trip) in &world.trips {
         let route_id = trip
             .service_class
             .map(service_class_id)
@@ -161,7 +150,7 @@ fn write_trips<W: Write + io::Seek>(
             .schedule
             .entries()
             .last()
-            .and_then(|entry| snap.graph.nodes().get(&entry.node))
+            .and_then(|entry| world.graph.nodes().get(&entry.node))
             .map_or_else(String::new, |node| node.name.to_string());
         csv.write_record([
             route_id,
@@ -178,7 +167,7 @@ fn write_trips<W: Write + io::Seek>(
 
 fn write_stop_times<W: Write + io::Seek>(
     writer: &mut ZipWriter<W>,
-    snap: &WorldSnapshot,
+    world: &World,
 ) -> io::Result<()> {
     writer.start_file("stop_times.txt", FileOptions::DEFAULT)?;
     let mut csv = csv::Writer::from_writer(writer);
@@ -190,11 +179,11 @@ fn write_stop_times<W: Write + io::Seek>(
         "stop_sequence",
     ])?;
 
-    for (key, trip) in &snap.trips {
+    for (key, trip) in &world.trips {
         let trip_id = trip_id(*key);
         // `estimates` also contains derived nodes along the graph path between two
         // scheduled stops. Only pinned entries are actual stops of the trip.
-        let estimates = trip.schedule.estimates(&snap.graph, |estimates| estimates.to_vec());
+        let estimates = trip.schedule.estimates(&world.graph, |estimates| estimates.to_vec());
         let mut stop_sequence = 0usize;
         for (estimate, entry) in estimates {
             let EstimateEntry::Pinned(entry) = entry else {

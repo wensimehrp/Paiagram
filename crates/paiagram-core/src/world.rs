@@ -2,18 +2,15 @@ use ecow::EcoVec;
 
 use crate::graph::Graph;
 use crate::trip::TripSchedule;
-use crate::{IntervalKey, Trip, Wfc, WorldSnapshot};
+use crate::{IntervalKey, Trip, Wfc, World};
 
 #[cfg(test)]
 mod tests;
 
-impl WorldSnapshot {
+impl World {
     /// Mutates the world and updates its derived caches. Returns whether the spatial index needs
     /// to be rebuilt.
-    pub(crate) fn update_snapshot(
-        &mut self,
-        f: impl FnOnce(WorldSnapshot) -> WorldSnapshot,
-    ) -> bool {
+    pub(crate) fn update(&mut self, f: impl FnOnce(World) -> World) -> bool {
         puffin::profile_function!();
         let new_world = f(self.clone());
         let (updated, spatial_dirty) = self.update_diff(new_world);
@@ -21,13 +18,13 @@ impl WorldSnapshot {
         spatial_dirty
     }
 
-    /// Given the new world snapshot, update the cache. Returns the updated world snapshot and
+    /// Given the new world, update the cache. Returns the updated world and
     /// whether its spatial data changed.
-    /// The new snapshot is applied as a diff against the old one.
-    fn update_diff(&self, new: WorldSnapshot) -> (WorldSnapshot, bool) {
+    /// The new world is applied as a diff against the old one.
+    fn update_diff(&self, new: World) -> (World, bool) {
         puffin::profile_function!();
         // The new world is only a source of changed values. Caches are derived from the old
-        // snapshot and patched incrementally; anything only present in the new snapshot's cache is
+        // world and patched incrementally; anything only present in the new world's cache is
         // discarded.
         use imbl::ordmap::DiffItem::{Add, Remove, Update};
         let mut ret = self.clone();
@@ -188,7 +185,7 @@ fn fresh<D: Clone, C: Default>(value: &Wfc<D, C>) -> Wfc<D, C> {
     }
 }
 
-/// Replace an entry's data while preserving the cache maintained by the old snapshot.
+/// Replace an entry's data while preserving the cache maintained by the old world.
 fn updated<D: Clone, C: Clone>(old: &Wfc<D, C>, new: &Wfc<D, C>) -> Wfc<D, C> {
     Wfc {
         data: new.data.clone(),
@@ -196,12 +193,7 @@ fn updated<D: Clone, C: Clone>(old: &Wfc<D, C>, new: &Wfc<D, C>) -> Wfc<D, C> {
     }
 }
 
-fn add_trip_to_caches(
-    ret: &mut WorldSnapshot,
-    trip_key: crate::TripKey,
-    trip: &Trip,
-    graph: &Graph,
-) {
+fn add_trip_to_caches(ret: &mut World, trip_key: crate::TripKey, trip: &Trip, graph: &Graph) {
     for_each_trip_interval(&trip.schedule, graph, |interval_key| {
         if let Some(interval) = ret.graph.intervals.get_mut(&interval_key) {
             insert_sorted(&mut interval.cache.trips, trip_key);
@@ -214,12 +206,7 @@ fn add_trip_to_caches(
     }
 }
 
-fn remove_trip_from_caches(
-    ret: &mut WorldSnapshot,
-    trip_key: crate::TripKey,
-    trip: &Trip,
-    graph: &Graph,
-) {
+fn remove_trip_from_caches(ret: &mut World, trip_key: crate::TripKey, trip: &Trip, graph: &Graph) {
     for_each_trip_interval(&trip.schedule, graph, |interval_key| {
         if let Some(interval) = ret.graph.intervals.get_mut(&interval_key) {
             remove_sorted(&mut interval.cache.trips, &trip_key);

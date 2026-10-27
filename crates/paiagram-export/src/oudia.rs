@@ -1,8 +1,8 @@
-use paiagram_core::{RouteKey, WorldSnapshot};
+use paiagram_core::{RouteKey, World};
 use paiagram_oudia::{OuDiaIo, Root, Route, SerializeToOud, Structure, Time as OudTime};
 
 pub struct ExportOuDia {
-    pub world: WorldSnapshot,
+    pub world: World,
     pub route: RouteKey,
     pub is_oudia_second: bool,
 }
@@ -26,7 +26,7 @@ impl paiagram_rw::ExportObject for ExportOuDia {
     }
 }
 
-fn make_root(world: &WorldSnapshot) -> Root {
+fn make_root(world: &World) -> Root {
     Root {
         file_type: "this".into(),
         file_type_app_comment: None,

@@ -20,8 +20,7 @@ use crate::trip::{TEntry, TEntryId, TravelMode, TripSchedule};
 use crate::units::distance::Distance;
 use crate::{
     Interval, IntervalKey, LonLat, Node, NodeKey, Route, RouteKey, ServiceClass, ServiceClassKey,
-    Station as PaiagramStation, StationKey, StrokeStyle, Trip as PaiagramTrip, TripKey, Wfc,
-    WorldSnapshot,
+    Station as PaiagramStation, StationKey, StrokeStyle, Trip as PaiagramTrip, TripKey, Wfc, World,
 };
 
 /// The root structure of the qETRC JSON data
@@ -128,9 +127,9 @@ struct Config<'a> {
     default_colors: FxHashMap<Cow<'a, str>, &'a str>,
 }
 
-pub(super) fn parse_pyetgr(data: &[u8]) -> Option<WorldSnapshot> {
+pub(super) fn parse_pyetgr(data: &[u8]) -> Option<World> {
     puffin::profile_function!();
-    let mut world = WorldSnapshot::default();
+    let mut world = World::default();
     let root: Root = match serde_json::from_slice(data) {
         Ok(r) => r,
         Err(e) => {

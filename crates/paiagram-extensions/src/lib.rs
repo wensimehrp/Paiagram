@@ -5,7 +5,7 @@ use std::sync::{Arc, LazyLock};
 pub mod config_ui;
 
 use config_ui::{ConfigUi, ReturnValueMap};
-use paiagram_core::WorldSnapshot;
+use paiagram_core::World;
 use parking_lot::Mutex;
 use rayon::spawn;
 use rquickjs::{CatchResultExt, Class, Context, Ctx, Function, Module, Object, Runtime, Value};
@@ -22,7 +22,7 @@ pub enum RunningStatus<T> {
 }
 
 pub type ConfigRunningStatus = RunningStatus<Vec<ConfigUi>>;
-pub type ScriptRunningStatus = RunningStatus<Option<WorldSnapshot>>;
+pub type ScriptRunningStatus = RunningStatus<Option<World>>;
 
 static RQUICKJS_RUNTIME: LazyLock<Runtime> = LazyLock::new(|| Runtime::new().unwrap());
 
@@ -66,7 +66,7 @@ pub fn run_script(
                 let entry: Function = module.get("run")?;
                 let io = io.expect("run always receives io");
                 entry.call::<_, ()>((world.clone(), return_values, io))?;
-                Ok(Some(std::mem::take(&mut world.borrow_mut().snap)))
+                Ok(Some(std::mem::take(&mut world.borrow_mut().world)))
             },
         );
         *status.lock() = ScriptRunningStatus::Finished(result);
@@ -162,7 +162,7 @@ mod tests {
         let _ = TripKey::new();
         let trip = TripKey::new();
         let data = JsRuntimeData {
-            snap: WorldSnapshot::default(),
+            world: World::default(),
             selected_items: SelectedItem::Trip(trip.into()).into(),
         };
 

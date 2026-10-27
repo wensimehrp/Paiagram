@@ -136,7 +136,7 @@ fn main_display(tab: &mut ExtensionTab, app: &mut crate::App, ui: &mut Ui) {
         {
             eval_config(
                 JsRuntimeData {
-                    snap: app.snap.clone(),
+                    world: app.world.clone(),
                     selected_items: app.selected_items.clone(),
                 },
                 tab.config_running_status.clone(),
@@ -146,7 +146,7 @@ fn main_display(tab: &mut ExtensionTab, app: &mut crate::App, ui: &mut Ui) {
         if ui.button("Run script").clicked() {
             run_script(
                 JsRuntimeData {
-                    snap: app.snap.clone(),
+                    world: app.world.clone(),
                     selected_items: app.selected_items.clone(),
                 },
                 JsIo {

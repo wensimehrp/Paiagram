@@ -17,7 +17,7 @@ use crate::graph::Graph;
 use crate::trip::{EstimateEntry, TEstimate, TripSchedule};
 use crate::{
     CanvasLength, Distance, NodeCollection, NodeKey, NodeKeyHashMap, StationCollection, StationKey,
-    TripKey, TripKeyHashMap, WorldSnapshot,
+    TripKey, TripKeyHashMap, World,
 };
 
 /// What to account as a part of the station
@@ -64,16 +64,16 @@ pub struct RouteInterval {
 impl RouteInterval {
     fn progresses<'a>(
         &'a self,
-        snap: &'a WorldSnapshot,
+        world: &'a World,
         next_stn_nodes: &'a [NodeKey],
     ) -> impl Iterator<Item = (NodeKey, Option<f32>)> + 'a {
-        let curr_stn_nodes = self.station_record.nodes(&snap.stations);
+        let curr_stn_nodes = self.station_record.nodes(&world.stations);
         std::iter::chain(&self.nodes, curr_stn_nodes).map(|node_key| {
             (
                 *node_key,
                 gen_progress(
                     node_key,
-                    &snap.graph,
+                    &world.graph,
                     &self.nodes,
                     curr_stn_nodes,
                     next_stn_nodes,
@@ -132,19 +132,19 @@ pub struct MareyCache {
 impl RouteIntervals {
     fn progresses<'a>(
         &'a self,
-        snap: &'a WorldSnapshot,
+        world: &'a World,
     ) -> impl Iterator<Item = impl Iterator<Item = (NodeKey, Option<f32>)>> + 'a {
         self.0.array_windows().map(|[curr, next]| {
-            let next_stn_nodes = next.station_record.nodes(&snap.stations);
-            curr.progresses(snap, next_stn_nodes)
+            let next_stn_nodes = next.station_record.nodes(&world.stations);
+            curr.progresses(world, next_stn_nodes)
         })
     }
 
-    fn prepare_lookup(&self, snap: &WorldSnapshot) -> NodeKeyHashMap<Vec<(u32, f32)>> {
+    fn prepare_lookup(&self, world: &World) -> NodeKeyHashMap<Vec<(u32, f32)>> {
         puffin::profile_function!();
         // Where each graph node sits on the Marey chart: every `(line index, progress)` placement.
         let mut node_lookup: NodeKeyHashMap<Vec<(u32, f32)>> = NodeKeyHashMap::default();
-        for (key, progress) in self.progresses(snap).enumerate().flat_map(|(idx, it)| {
+        for (key, progress) in self.progresses(world).enumerate().flat_map(|(idx, it)| {
             it.filter_map(move |(key, distance)| Some((key, (idx as u32, distance?))))
         }) {
             match node_lookup.get_mut(&key) {
@@ -166,7 +166,7 @@ impl RouteIntervals {
             && let Some(line_index) = self.0.len().checked_sub(2)
         {
             let progress = (line_index as u32, 1.0);
-            for &node_key in last.station_record.nodes(&snap.stations) {
+            for &node_key in last.station_record.nodes(&world.stations) {
                 let entries = node_lookup.entry(node_key).or_default();
                 if !entries.contains(&progress) {
                     entries.push(progress);
@@ -177,18 +177,18 @@ impl RouteIntervals {
         node_lookup
     }
 
-    pub fn get_passing_trips(&self, snap: &WorldSnapshot) -> Vec<TripKey> {
+    pub fn get_passing_trips(&self, world: &World) -> Vec<TripKey> {
         puffin::profile_function!();
         let mut trip_keys: Vec<TripKey> = self
             .0
             .iter()
             .flat_map(|route_interval| {
                 std::iter::chain(
-                    route_interval.station_record.nodes(&snap.stations),
+                    route_interval.station_record.nodes(&world.stations),
                     &route_interval.nodes,
                 )
             })
-            .flat_map(|node_key| snap.graph.outgoing_intervals(*node_key))
+            .flat_map(|node_key| world.graph.outgoing_intervals(*node_key))
             .flat_map(|(_, wfc)| &wfc.cache.trips)
             .copied()
             .collect();
@@ -198,43 +198,39 @@ impl RouteIntervals {
     }
 
     /// Populates trips into a Marey cache
-    pub fn populate_trips(&self, snap: &WorldSnapshot, cache: &mut MareyCache) {
+    pub fn populate_trips(&self, world: &World, cache: &mut MareyCache) {
         puffin::profile_function!();
-        let node_lookup = self.prepare_lookup(snap);
-        let trip_keys = self.get_passing_trips(snap);
+        let node_lookup = self.prepare_lookup(world);
+        let trip_keys = self.get_passing_trips(world);
 
         cache.map.clear();
         for trip_key in &trip_keys {
-            let Some(trip) = snap.trips.get(trip_key) else {
+            let Some(trip) = world.trips.get(trip_key) else {
                 continue;
             };
             prep_segments::prep_single_segment(
                 &trip.schedule,
                 cache.map.entry(*trip_key).or_default(),
-                &snap.graph,
+                &world.graph,
                 |entry| node_lookup.get(&entry.node_key()).map_or(&[], Vec::as_slice),
             )
         }
     }
 
     /// Populates a single schedule into the Marey cache
-    pub fn populate_schedule(
-        &self,
-        snap: &WorldSnapshot,
-        schedule: &TripSchedule,
-    ) -> Option<TripBucket> {
-        let node_lookup = self.prepare_lookup(snap);
+    pub fn populate_schedule(&self, world: &World, schedule: &TripSchedule) -> Option<TripBucket> {
+        let node_lookup = self.prepare_lookup(world);
         let mut bucket = TripBucket::new();
-        prep_segments::prep_single_segment(schedule, &mut bucket, &snap.graph, |entry| {
+        prep_segments::prep_single_segment(schedule, &mut bucket, &world.graph, |entry| {
             node_lookup.get(&entry.node_key()).map_or(&[], Vec::as_slice)
         });
         Some(bucket)
     }
 
-    pub fn populate_route_timetable(&self, snap: &WorldSnapshot) -> RouteTimetable {
+    pub fn populate_route_timetable(&self, world: &World) -> RouteTimetable {
         puffin::profile_function!();
         let mut marey_cache = MareyCache::default();
-        self.populate_trips(snap, &mut marey_cache);
+        self.populate_trips(world, &mut marey_cache);
         RouteTimetable::new(
             marey_cache,
             self.0.iter().map(|entry| &entry.station_record),

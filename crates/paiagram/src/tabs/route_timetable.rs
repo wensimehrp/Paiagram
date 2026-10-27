@@ -58,11 +58,11 @@ impl super::Tab for RouteTimetableTab {
         ui.horizontal(|ui| {
             puffin::profile_scope!("timetable_toolbar");
             if ui.button("refresh cache").clicked() {
-                self.cache = route.intervals.populate_route_timetable(&app.snap);
+                self.cache = route.intervals.populate_route_timetable(&app.world);
             }
             if ui.button("Export .csv").clicked() {
                 puffin::profile_scope!("export_csv");
-                RouteTimetableExport(self.cache.clone(), app.snap.clone())
+                RouteTimetableExport(self.cache.clone(), app.world.clone())
                     .write_to_file(Default::default());
             }
             ui.checkbox(&mut self.show_estimates, "Show estimates");
@@ -143,8 +143,8 @@ impl super::Tab for RouteTimetableTab {
 }
 
 /// Left panel: the station names and their per-row display modes.
-fn show_station_header<'a, 'snap>(
-    app: &'snap crate::App,
+fn show_station_header<'a, 'world>(
+    app: &'world crate::App,
     ui: &mut Ui,
     cell_size: Vec2,
     station_records: impl Iterator<Item = (&'a StationRecord, &'a mut StationDisplayMode)>,
@@ -160,8 +160,8 @@ fn show_station_header<'a, 'snap>(
         .show(ui, |ui| {
             for (record, display_mode) in station_records {
                 let station_name = record
-                    .station_key(app.snap.graph.nodes())
-                    .and_then(|key| app.snap.stations.get(key))
+                    .station_key(app.world.graph.nodes())
+                    .and_then(|key| app.world.stations.get(key))
                     .map_or_default(|wfc| wfc.name.as_str());
                 let mut cell_size = cell_size;
                 cell_size.y *= display_mode.bits().count_ones().at_least(1) as f32;
@@ -236,13 +236,13 @@ fn show_trip_header(
         columns.len(),
         |ui, rect, _row_range, col_range| {
             for (col_idx, (key, _)) in columns[col_range].iter().enumerate() {
-                let name = app.snap.trips.get(key).map_or_default(|wfc| wfc.name.as_str());
+                let name = app.world.trips.get(key).map_or_default(|wfc| wfc.name.as_str());
                 let fill = app
-                    .snap
+                    .world
                     .trips
                     .get(key)
                     .and_then(|wfc| wfc.service_class)
-                    .and_then(|class_key| app.snap.service_classes.get(&class_key))
+                    .and_then(|class_key| app.world.service_classes.get(&class_key))
                     .map(|wfc| wfc.style.color)
                     .unwrap_or(ui.visuals().faint_bg_color);
                 let cell_rect = Rect::from_min_size(
@@ -365,7 +365,7 @@ fn show_grid<'a>(
                         && let Either::Left(RouteTimetableEntry::Active((_, entry))) = entry
                     {
                         let track_name = app
-                            .snap
+                            .world
                             .graph
                             .nodes()
                             .get(&entry.node_key())

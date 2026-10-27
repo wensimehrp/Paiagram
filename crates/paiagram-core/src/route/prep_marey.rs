@@ -7,7 +7,7 @@ use paiagram_rw::ExportObject;
 
 use crate::route::{MareyCache, StationRecord};
 use crate::trip::{EstimateEntry, TEstimate};
-use crate::{TripKey, WorldSnapshot};
+use crate::{TripKey, World};
 
 #[derive(Clone, Copy)]
 pub enum RouteTimetableEntry {
@@ -152,7 +152,7 @@ impl RouteTimetable {
     }
 
     // TODO: handle outbound export
-    fn to_csv_string(&self, snap: &WorldSnapshot) -> Result<String, Box<dyn std::error::Error>> {
+    fn to_csv_string(&self, world: &World) -> Result<String, Box<dyn std::error::Error>> {
         let mut writer = Writer::from_writer(vec![]);
 
         // header
@@ -161,7 +161,7 @@ impl RouteTimetable {
             .station_records
             .iter()
             .map(|(record, _, _)| {
-                record.station_key(&snap.graph.nodes).and_then(|key| snap.stations.get(key))
+                record.station_key(&world.graph.nodes).and_then(|key| world.stations.get(key))
             })
             .map(|wfc| wfc.map_or_default(|wfc| wfc.name.as_str()))
         {
@@ -172,7 +172,7 @@ impl RouteTimetable {
         // trips
         let mut entry_fmt_buf = String::with_capacity(24);
         for (trip_key, times) in &self.inbound_columns {
-            let trip_name = snap.trips.get(trip_key).map_or_default(|wfc| wfc.name.as_str());
+            let trip_name = world.trips.get(trip_key).map_or_default(|wfc| wfc.name.as_str());
             writer.write_field(trip_name)?;
             let mut written = 0;
             for ((_, stn_display, _), entry) in std::iter::zip(&self.station_records, times) {
@@ -213,7 +213,7 @@ impl RouteTimetable {
     }
 }
 
-pub struct RouteTimetableExport(pub RouteTimetable, pub WorldSnapshot);
+pub struct RouteTimetableExport(pub RouteTimetable, pub World);
 
 impl ExportObject for RouteTimetableExport {
     fn filename(&self) -> String {
