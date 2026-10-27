@@ -163,7 +163,7 @@ mod tests {
         let trip = TripKey::new();
         let data = JsRuntimeData {
             snap: WorldSnapshot::default(),
-            selected_items: SelectedItem::Trip(trip).into(),
+            selected_items: SelectedItem::Trip(trip.into()).into(),
         };
 
         let runtime = Runtime::new().unwrap();

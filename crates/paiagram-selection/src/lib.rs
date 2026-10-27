@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 #![doc = include_str!("../README.md")]
 
-use paiagram_core::trip::TEntryId;
-use paiagram_core::units::time::TimetableTime;
+use either::Either;
+use paiagram_core::time::{TDuration, TimetableTime};
+use paiagram_core::trip::{TEntryId, TEstimate};
 use paiagram_core::{IntervalKey, LonLat, NodeKey, RouteKey, ServiceClassKey, StationKey, TripKey};
 use serde::Serialize;
 use vec1::{Vec1, vec1};
@@ -75,18 +76,46 @@ macro_rules! gen_selected_items {
     };
 }
 
+#[derive(Clone, Serialize)]
+pub struct TripSelection {
+    pub trip_key: TripKey,
+    #[serde(skip)]
+    pub editing_offset: Option<(TEntryId, TEstimate, Either<TDuration, TDuration>)>,
+}
+
+impl TripSelection {
+    pub fn new(trip_key: TripKey) -> Self {
+        Self {
+            trip_key,
+            editing_offset: None,
+        }
+    }
+}
+
+impl From<TripKey> for TripSelection {
+    fn from(value: TripKey) -> Self {
+        Self::new(value)
+    }
+}
+
+impl PartialEq for TripSelection {
+    fn eq(&self, other: &Self) -> bool {
+        self.trip_key == other.trip_key
+    }
+}
+
 gen_selected_items! {
     type (Station, Stations) = StationKey;                  // Moving stations and creating routes
     type (Node, Nodes) = NodeKey;                           // Moving nodes
     type (Interval, Intervals) = IntervalKey;               // No use yet
-    type (Trip, Trips) = TripKey;                           // No use yet
+    type (Trip, Trips) = TripSelection;                     // Select and shift current trip
     type (TEntry, TEntries) = (TripKey, u64);               // Batch edit times
     type (ServiceClass, ServiceClasses) = ServiceClassKey;  // Batch edit color
     type (Route, Routes) = RouteKey;
     no_single_selection {
-        type Coordinate = (LonLat, String);                 // Add new station
-        type TripExtension = TripKey;                       // Extend current trip
-        type RouteExtension = ();                           // Extend current route
+        type Coordinate = (LonLat, String);                               // Add new station
+        type TripExtension = (TripKey, Option<(NodeKey, TimetableTime)>); // Extend current trip
+        type RouteExtension = ();                                         // Extend current route
     }
 }
 
