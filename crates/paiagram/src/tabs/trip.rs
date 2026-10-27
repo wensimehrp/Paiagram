@@ -1,20 +1,22 @@
 use egui::*;
 use egui_i18n::tr;
+use either::Either;
 use paiagram_core::time::TimetableTime;
 use paiagram_core::trip::TravelMode::{self, At, Flexible, For};
-use paiagram_core::trip::{EstimateEntry, TEstimate, TripSchedule};
+use paiagram_core::trip::{EstimateEntry, TEntry, TEntryId, TEstimate, TripSchedule};
 use paiagram_core::{TripKey, WorldSnapshot};
 use paiagram_selection::SelectedItems;
 use serde::{Deserialize, Serialize};
 
 use super::Tab;
+use crate::App;
 use crate::widgets::{DurationDragValue, TimeDragValue};
-use crate::{App, UiCommand};
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Default)]
 pub(crate) struct TripTab {
     trip_key: Option<TripKey>,
     show_derived: bool,
+    #[serde(skip)]
     name_edit_buf: Option<String>,
 }
 
@@ -48,48 +50,70 @@ impl TripTab {
 fn show_trip(tab: &mut TripTab, app: &mut App, ui: &mut Ui) {
     puffin::profile_function!();
     let snap = &app.source.snap;
-    let trip_key = tab.trip_key.or(match &app.selected_items {
-        SelectedItems::Trips(trips) => Some(*trips.first()),
-        _ => None,
-    });
-    let select_a_trip = |ui: &mut Ui, existing_key: &mut Option<TripKey>| {
-        let selected_text = existing_key.map_or("Current selected trip", |key| {
-            snap.trips.get(&key).map_or("Unknown", |wfc| &wfc.name)
+
+    let start_frame = |ui, text, key| {
+        Frame::new().inner_margin(6.0).show(ui, |ui| {
+            ui.heading(text);
+            select_a_trip(ui, key, &app.snap);
         });
-        let combo_box =
-            ComboBox::from_id_salt("Selected existing trip").selected_text(selected_text);
-        combo_box.show_ui(ui, |ui| {
-            ui.selectable_value(existing_key, None, "Current selected trip");
-            ScrollArea::vertical().show_rows(
-                ui,
-                ui.spacing().interact_size.y,
-                app.trips.len(),
-                |ui, range| {
-                    for (key, trip) in app.trips.iter().skip(range.start).take(range.count()) {
-                        ui.selectable_value(existing_key, Some(*key), trip.name.as_str());
+    };
+
+    let (trip_name, schedule) = match tab.trip_key {
+        Some(trip_key) => {
+            if let Some(trip) = app.trips.get(&trip_key) {
+                (trip.name.as_str(), trip.schedule.clone())
+            } else {
+                start_frame(ui, "Trip does not exist", &mut tab.trip_key);
+                return;
+            }
+        }
+        None => match &app.selected_items {
+            SelectedItems::Trips(trips) => {
+                let selection = trips.first();
+                if let Some(trip) = app.trips.get(&selection.trip_key) {
+                    let mut schedule = trip.schedule.clone();
+                    if let Some((id, _, offset)) = selection.editing_offset {
+                        match offset {
+                            Either::Left(d) => schedule.shift_arr_or_pass(id, d),
+                            Either::Right(d) => schedule.shift_dep(id, d),
+                        }
                     }
-                },
-            );
-        });
+                    (trip.name.as_str(), schedule)
+                } else {
+                    start_frame(ui, "Trip does not exist", &mut tab.trip_key);
+                    return;
+                }
+            }
+            SelectedItems::TripExtension((trip_key, focused_pos)) => {
+                if let Some(trip) = app.trips.get(trip_key) {
+                    let mut schedule = trip.schedule.clone();
+                    if let Some((node, t)) = *focused_pos {
+                        schedule.push(TEntry {
+                            node,
+                            arr_or_pass: TravelMode::At(t),
+                            dep: None,
+                            id: unsafe { TEntryId::dummy() },
+                        });
+                    }
+                    (trip.name.as_str(), schedule)
+                } else {
+                    start_frame(ui, "Trip does not exist", &mut tab.trip_key);
+                    return;
+                }
+            }
+            _ => {
+                start_frame(
+                    ui,
+                    "Select a trip to display the schedule",
+                    &mut tab.trip_key,
+                );
+                return;
+            }
+        },
     };
-    let Some(trip_key) = trip_key else {
-        Frame::new().inner_margin(6.0).show(ui, |ui| {
-            ui.heading("No trips selected");
-            select_a_trip(ui, &mut tab.trip_key);
-        });
-        return;
-    };
-    let Some(trip) = snap.trips.get(&trip_key) else {
-        Frame::new().inner_margin(6.0).show(ui, |ui| {
-            ui.heading("Selected trip doesn't exist");
-            select_a_trip(ui, &mut tab.trip_key);
-        });
-        return;
-    };
-    Frame::new().inner_margin(6.0).show(ui, |ui| {
-        ui.heading(trip.name.as_str());
-        select_a_trip(ui, &mut tab.trip_key);
-    });
+
+    start_frame(ui, trip_name, &mut tab.trip_key);
+
     ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
         Frame::new().inner_margin(6.0).show(ui, |ui| {
             Grid::new("trip ui").num_columns(2).striped(true).show(ui, |ui| {
@@ -98,18 +122,16 @@ fn show_trip(tab: &mut TripTab, app: &mut App, ui: &mut Ui) {
                 ui.end_row();
                 // Remove button background
                 ui.visuals_mut().widgets.inactive.weak_bg_fill = Color32::TRANSPARENT;
-                trip.schedule.estimates(&snap.graph, |estimates| {
+                schedule.estimates(&snap.graph, |estimates| {
                     for (estimate, entry) in estimates.into_iter().copied() {
-                        row_ui(
-                            trip_key,
-                            &trip.schedule,
-                            estimates,
-                            estimate,
-                            entry,
-                            snap,
-                            ui,
-                        );
+                        row_ui(&schedule, estimates, estimate, entry, snap, ui);
                         ui.end_row();
+                    }
+                    if matches!(app.selected_items, SelectedItems::TripExtension(_)) {
+                        ui.label("Extending trip").scroll_to_me_animation(
+                            Some(Align::Max),
+                            style::ScrollAnimation::none(),
+                        );
                     }
                 });
             });
@@ -117,8 +139,27 @@ fn show_trip(tab: &mut TripTab, app: &mut App, ui: &mut Ui) {
     });
 }
 
+fn select_a_trip(ui: &mut Ui, existing_key: &mut Option<TripKey>, snap: &WorldSnapshot) {
+    let selected_text = existing_key.map_or("Current selected trip", |key| {
+        snap.trips.get(&key).map_or("Unknown", |wfc| &wfc.name)
+    });
+    let combo_box = ComboBox::from_id_salt("Selected existing trip").selected_text(selected_text);
+    combo_box.show_ui(ui, |ui| {
+        ui.selectable_value(existing_key, None, "Current selected trip");
+        ScrollArea::vertical().show_rows(
+            ui,
+            ui.spacing().interact_size.y,
+            snap.trips.len(),
+            |ui, range| {
+                for (key, trip) in snap.trips.iter().skip(range.start).take(range.count()) {
+                    ui.selectable_value(existing_key, Some(*key), trip.name.as_str());
+                }
+            },
+        );
+    });
+}
+
 fn row_ui(
-    trip_key: TripKey,
     schedule: &TripSchedule,
     estimates: &[(Option<TEstimate>, EstimateEntry)],
     estimate: Option<TEstimate>,

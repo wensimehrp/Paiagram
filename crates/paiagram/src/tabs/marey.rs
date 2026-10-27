@@ -1,7 +1,6 @@
 use ecow::eco_vec;
 use egui::*;
 use either::Either;
-use itertools::Itertools;
 use paiagram_core::route::MareyCache;
 use paiagram_core::time::{TDuration, Tick, TimetableTime};
 use paiagram_core::trip::{TEntry, TEntryId, TEstimate, TravelMode, TripSchedule};
@@ -32,7 +31,6 @@ pub(crate) struct MareyTab {
     navi: MareyTabNavigation,
     cache: MareyCache,
     callback: gpu_draw::MareyCallback,
-    current_editing_entry: Option<(TripKey, (TEntryId, TEstimate, Either<TDuration, TDuration>))>,
 }
 
 /// [`MareyTab`] w/o cache for serde
@@ -55,7 +53,6 @@ impl From<MareyTabNoCache> for MareyTab {
             navi,
             cache: MareyCache::default(),
             callback: gpu_draw::MareyCallback::new(key),
-            current_editing_entry: None,
         }
     }
 }
@@ -67,7 +64,6 @@ impl MareyTab {
             navi: MareyTabNavigation::default(),
             cache: MareyCache::default(),
             callback: gpu_draw::MareyCallback::new(key),
-            current_editing_entry: None,
         }
     }
 }
@@ -179,6 +175,7 @@ impl Tab for MareyTab {
             return;
         };
         let window = Window::new("123")
+            .id(ui.scope_id().with("123"))
             .auto_sized()
             .title_bar(false)
             .fixed_pos(ui.clip_rect().shrink(8.0).right_top())
@@ -385,11 +382,11 @@ fn main_display(tab: &mut MareyTab, app: &mut App, ui: &mut Ui) {
         && matches!(app.selected_items.take(), SelectedItems::None)
     {
         if let Some(trip_key) = select_trip_from_pos(tab, pointer_pos, &station_heights) {
-            app.selected_items.replace(SelectedItem::Trip(trip_key));
+            app.selected_items.replace(SelectedItem::Trip(trip_key.into()));
         } else if response.double_clicked()
             // TODO: also show the route when hovering in another trip panel?
-            && let station_idx = find_nearest_station_idx_from_pos(&station_heights, pointer_pos, &tab.navi)
-            && let Some(interval) = route.intervals.0.get(station_idx)
+            && let Some(station_idx) = find_nearest_station_idx_from_pos(&station_heights, pointer_pos, &tab.navi)
+            && let interval = &route.intervals.0[station_idx]
             && let Some(station_key) = interval.station_record.station_key(app.source.graph.nodes())
             && let Some(station) = app.source.stations.get(station_key)
             && let Some(node) = station.cache.nodes.first()
@@ -415,13 +412,16 @@ fn main_display(tab: &mut MareyTab, app: &mut App, ui: &mut Ui) {
                 );
                 Ok(world)
             });
-            app.selected_items = SelectedItems::TripExtension(trip_key);
+            app.selected_items = SelectedItems::TripExtension((trip_key, None));
         }
     }
 
     // display and edit zone
-    if let SelectedItems::Trips(trips) = &app.selected_items {
-        for trip_key in trips {
+    if matches!(app.selected_items, SelectedItems::Trips(_))
+        && let SelectedItems::Trips(mut trips) = app.selected_items.take()
+    {
+        for selected in trips.iter_mut() {
+            let trip_key = &selected.trip_key;
             let Some(trip) = app.source.trips.get(trip_key) else {
                 continue;
             };
@@ -434,9 +434,7 @@ fn main_display(tab: &mut MareyTab, app: &mut App, ui: &mut Ui) {
                 color: style.color,
             };
             let mut schedule = trip.schedule.clone();
-            if let Some((key, (entry_id, _base_estimate, shift))) = tab.current_editing_entry
-                && key == *trip_key
-            {
+            if let Some((entry_id, _base_estimate, shift)) = selected.editing_offset {
                 match shift {
                     Either::Left(d) => schedule.shift_arr_or_pass(entry_id, d),
                     Either::Right(d) => schedule.shift_dep(entry_id, d),
@@ -445,6 +443,7 @@ fn main_display(tab: &mut MareyTab, app: &mut App, ui: &mut Ui) {
             let Some(polylines) = route.intervals.populate_schedule(&app.snap, &schedule) else {
                 continue;
             };
+            let polylines = polylines.clone();
             let ret = show_focused_trips::show_focused_trip(
                 &schedule,
                 stroke,
@@ -456,45 +455,65 @@ fn main_display(tab: &mut MareyTab, app: &mut App, ui: &mut Ui) {
                 &mut painter,
                 polylines,
                 *trip_key,
-                tab.current_editing_entry.map(|it| it.1.1),
+                selected.editing_offset.map(|it| it.1),
             );
-            tab.current_editing_entry = ret.map(|it| (*trip_key, it));
+            selected.editing_offset = ret;
         }
-    } else if let &SelectedItems::TripExtension(trip_key) = &app.selected_items
+        app.selected_items = SelectedItems::Trips(trips);
+    } else if let &SelectedItems::TripExtension((trip_key, focused_pos)) = &app.selected_items
         && let Some(trip) = app.trips.get(&trip_key)
-        && let Some(pointer_pos) = ui.pointer_hover_pos()
-        && let station_idx =
-            find_nearest_station_idx_from_pos(&station_heights, pointer_pos, &tab.navi)
-        && let Some(interval) = route.intervals.0.get(station_idx)
-        && let Some(station_key) = interval.station_record.station_key(app.source.graph.nodes())
-        && let Some(station) = app.source.stations.get(station_key)
-        && let Some(&node) = station.cache.nodes.first()
     {
-        let t = tab.navi.screen_x_to_logical_x(pointer_pos.x).to_timetable_time();
-        let stroke = Stroke::new(3.0, Color32::RED);
         let mut schedule = trip.schedule.clone();
-        let current_entry = |id: TEntryId| TEntry {
-            node,
-            arr_or_pass: TravelMode::At(t),
-            dep: None,
-            id,
-        };
-        schedule.push(current_entry(unsafe { TEntryId::dummy() }));
-        for polyline in
-            route.intervals.populate_schedule(&app.snap, &schedule).into_iter().flatten()
+        let stroke = Stroke::new(3.0, Color32::RED);
+
+        let focused_pos = if let Some(pointer_pos) = ui.pointer_hover_pos()
+            && let Some(station_idx) =
+                find_nearest_station_idx_from_pos(&station_heights, pointer_pos, &tab.navi)
+            && let Some(interval) = route.intervals.0.get(station_idx)
+            && let Some(station_key) = interval.station_record.station_key(app.source.graph.nodes())
+            && let Some(station) = app.source.stations.get(station_key)
+            && let Some(node) = station.cache.nodes.first()
         {
-            draw_polyline(&tab.navi, &polyline, &station_heights, &mut painter, stroke);
+            Some((
+                *node,
+                tab.navi.screen_x_to_logical_x(pointer_pos.x).to_timetable_time(),
+            ))
+        } else {
+            focused_pos
+        };
+
+        if let Some((focused_node, focused_time)) = focused_pos {
+            let current_entry = |id: TEntryId| TEntry {
+                node: focused_node,
+                arr_or_pass: TravelMode::At(focused_time),
+                dep: None,
+                id,
+            };
+            schedule.push(current_entry(unsafe { TEntryId::dummy() }));
+            if response.clicked() {
+                let _ = app.mutate(|mut world| {
+                    let trip = world.trips.get_mut(&trip_key).ok_or("wtf?")?;
+                    trip.schedule.push(current_entry(TEntryId::new()));
+                    Ok(world)
+                });
+            }
         }
-        if response.clicked() {
-            let _ = app.mutate(|mut world| {
-                let trip = world.trips.get_mut(&trip_key).ok_or("wtf?")?;
-                trip.schedule.push(current_entry(TEntryId::new()));
-                Ok(world)
-            });
-        } else if response.secondary_clicked() {
+
+        route.intervals.populate_schedule(&app.snap, &schedule).into_iter().flatten().for_each(
+            |polyline| {
+                draw_polyline(&tab.navi, &polyline, &station_heights, &mut painter, stroke);
+            },
+        );
+
+        app.selected_items = SelectedItems::TripExtension((trip_key, focused_pos));
+
+        if response.secondary_clicked() {
             app.selected_items = SelectedItems::None;
         }
-    } else if let Some(pos) = ui.input(|r| r.pointer.latest_pos()) {
+    }
+    if let Some(pos) = ui.pointer_hover_pos()
+        && ui.ui_contains_pointer()
+    {
         paint_time_cursor(
             &tab.navi,
             &station_heights,
@@ -550,30 +569,31 @@ fn select_trip_from_pos(
         })
 }
 
-// SAFETY: we only call if there is at least one station in station_heights
 fn find_nearest_station_idx_from_pos(
     station_heights: &[CanvasLength],
     pos: Pos2,
     navi: &MareyTabNavigation,
-) -> usize {
-    if let Some(&first) = station_heights.first()
-        && navi.screen_y_to_logical_y(pos.y) < first
-    {
-        0
+) -> Option<usize> {
+    if station_heights.is_empty() {
+        return None;
+    }
+    let target_y = navi.screen_y_to_logical_y(pos.y);
+    let idx = station_heights.partition_point(|&height| height < target_y);
+
+    if idx == 0 {
+        Some(0)
+    } else if idx >= station_heights.len() {
+        Some(station_heights.len() - 1)
     } else {
-        station_heights
-            .iter()
-            .map(|&height| navi.logical_y_to_screen_y(height))
-            .tuple_windows()
-            .enumerate()
-            .find_map(|(idx, (prev, next))| {
-                let mid = (prev + next) / 2.0;
-                (prev..=mid)
-                    .contains(&pos.y)
-                    .then_some(idx)
-                    .or((mid..=next).contains(&pos.y).then_some(idx + 1))
-            })
-            .unwrap_or(station_heights.len() - 1)
+        let prev = station_heights[idx - 1];
+        let next = station_heights[idx];
+        let mid = CanvasLength((prev.0 + next.0) / 2.0);
+
+        if target_y <= mid {
+            Some(idx - 1)
+        } else {
+            Some(idx)
+        }
     }
 }
 
@@ -588,7 +608,10 @@ fn paint_time_cursor(
 ) {
     let stroke = Stroke::new(1.5, Color32::RED);
     let (pointer_t, pointer_distance) = navi.screen_pos_to_xy(pointer_pos);
-    let station_idx = find_nearest_station_idx_from_pos(station_heights, pointer_pos, navi);
+    let Some(station_idx) = find_nearest_station_idx_from_pos(station_heights, pointer_pos, navi)
+    else {
+        return;
+    };
     let dt = ui.input(|input| input.stable_dt).at_most(0.1);
     let mut requires_repaint = false;
     let new_logical_y = station_heights[station_idx];
