@@ -5,7 +5,6 @@ mod command_palette;
 mod config;
 mod font;
 mod load;
-mod selection;
 mod tabs;
 mod timer;
 mod widgets;
