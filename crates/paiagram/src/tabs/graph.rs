@@ -87,21 +87,27 @@ impl<'a> walkers::Plugin for MapPlugin<'a> {
         _map_memory: &MapMemory,
     ) {
         puffin::profile_function!();
-        let coor_min = projector.unproject(response.rect.left_top().to_vec2());
-        let coor_min: LonLat = Wgs84LonLat {
-            lon: coor_min.x(),
-            lat: coor_min.y(),
-        }
-        .into();
-        let coor_max = projector.unproject(response.rect.right_bottom().to_vec2());
-        let coor_max: LonLat = Wgs84LonLat {
-            lon: coor_max.x(),
-            lat: coor_max.y(),
-        }
-        .into();
+
+        let pos_to_lon_lat = |pos: Pos2| -> LonLat {
+            let coor = projector.unproject(pos.to_vec2());
+            Wgs84LonLat {
+                lon: coor.x(),
+                lat: coor.y(),
+            }
+            .into()
+        };
+
+        let lon_lat_to_pos = |coor: LonLat| {
+            let wgs84_lon_lat: Wgs84LonLat = coor.into();
+            projector.project(lon_lat(wgs84_lon_lat.lon, wgs84_lon_lat.lat)).to_pos2()
+        };
+
+        let coor_min = pos_to_lon_lat(response.rect.left_top());
+        let coor_max = pos_to_lon_lat(response.rect.right_bottom());
 
         let interact_pos = if response.clicked()
             && let Some(pos) = response.interact_pointer_pos()
+            && !matches!(self.app.selected_items, SelectedItems::Nodes(_))
             && matches!(self.app.selected_items.take(), SelectedItems::None)
         {
             Some(pos)
@@ -110,11 +116,6 @@ impl<'a> walkers::Plugin for MapPlugin<'a> {
         };
 
         const SELECTION_THRESHOLD_SQUARE: f32 = ICON_HALF_SIZE * ICON_HALF_SIZE;
-
-        let lon_lat_to_pos = |coor: LonLat| {
-            let wgs84_lon_lat: Wgs84LonLat = coor.into();
-            projector.project(lon_lat(wgs84_lon_lat.lon, wgs84_lon_lat.lat)).to_pos2()
-        };
 
         let mut callback = gpu_draw::GraphCallback::new();
         callback.populate_uniforms(response.rect);
@@ -129,6 +130,62 @@ impl<'a> walkers::Plugin for MapPlugin<'a> {
         let mut trip_leg_text = Vec::new();
         let mut node_text = Vec::new();
 
+        let draw_world = source.snap.clone();
+
+        if let SelectedItems::Nodes(nodes) = &selected_items
+            && nodes.len() == 1
+            && let node_key = nodes.first()
+            && let Some(node) = source.graph.nodes().get(node_key)
+            && let Some(pointer_pos) = ui.pointer_hover_pos()
+        {
+            let match_rect = Rect::from_pos(pointer_pos).expand(30.0);
+            let matched_station = source
+                .spatial()
+                .nodes
+                .get(
+                    pos_to_lon_lat(match_rect.left_top()),
+                    pos_to_lon_lat(match_rect.right_bottom()),
+                )
+                .next();
+            let dt = ui.input(|input| input.stable_dt).at_most(0.1);
+            let mut requires_repaint = false;
+            let new_pos =
+                matched_station.map_or(pointer_pos, |matched| lon_lat_to_pos(matched.coor));
+            let smoothed_pos = ui.data_mut(|data| {
+                let smoothed: &mut Pos2 =
+                    data.get_temp_mut_or(ui.scope_id().with("pointer animation"), new_pos);
+                let t = emath::exponential_smooth_factor(0.9, 0.05, dt);
+                *smoothed = smoothed.lerp(new_pos, t);
+                if smoothed.distance_sq(new_pos) < 0.5 {
+                    requires_repaint = true;
+                }
+                *smoothed
+            });
+            if requires_repaint {
+                ui.request_repaint();
+            }
+            ui.painter().line_segment(
+                [lon_lat_to_pos(node.pos), smoothed_pos],
+                Stroke::new(1.0, Color32::RED),
+            );
+            ui.painter().circle(
+                smoothed_pos,
+                6.0,
+                Color32::RED.gamma_multiply(0.8),
+                Stroke::new(1.0, Color32::RED),
+            );
+            if response.clicked()
+                && let Some(matched) = matched_station
+            {
+                let _ = source.mutate(|mut world| {
+                    world.graph.connect_nodes((*node_key, matched.node_key));
+                    Ok(world)
+                });
+            } else if response.secondary_clicked() {
+                *selected_items = SelectedItems::None;
+            }
+        }
+
         {
             puffin::profile_scope!("map_trip_legs");
             for leg in source.spatial().trip_legs.get(
@@ -136,7 +193,7 @@ impl<'a> walkers::Plugin for MapPlugin<'a> {
                 coor_max,
                 TimetableTime(timer.seconds() as i32),
             ) {
-                let Some(trip) = source.trips.get(&leg.trip_key) else {
+                let Some(trip) = draw_world.trips.get(&leg.trip_key) else {
                     continue;
                 };
                 let fill = trip
@@ -169,13 +226,13 @@ impl<'a> walkers::Plugin for MapPlugin<'a> {
                     fill,
                     matches!(
                         selected_items,
-                        SelectedItems::Trips(selected_trips) if selected_trips.contains(&leg.trip_key)
+                        SelectedItems::Trips(selected_trips) if selected_trips.contains(&leg.trip_key.into())
                     ),
                 ));
                 if let Some(interact_pos) = interact_pos
                     && (interact_pos - trip_pos).length_sq() <= SELECTION_THRESHOLD_SQUARE
                 {
-                    selected_items.replace(SelectedItem::Trip(leg.trip_key))
+                    selected_items.replace(SelectedItem::Trip(leg.trip_key.into()))
                 }
             }
         }
@@ -190,7 +247,12 @@ impl<'a> walkers::Plugin for MapPlugin<'a> {
                 });
                 node_text.push((
                     pos,
-                    source.graph.nodes().get(&node.node_key).map_or("<UNKNOWN>", |wfc| &wfc.name),
+                    node.node_key,
+                    draw_world
+                        .graph
+                        .nodes()
+                        .get(&node.node_key)
+                        .map_or("<UNKNOWN>", |wfc| &wfc.name),
                 ));
             }
         }
@@ -218,7 +280,7 @@ impl<'a> walkers::Plugin for MapPlugin<'a> {
 
         {
             puffin::profile_scope!("map_text");
-            for (pos, text) in node_text {
+            for &(pos, node_key, text) in &node_text {
                 ui.painter().text(
                     pos + Vec2::new(8.0, 0.0),
                     Align2::LEFT_CENTER,
@@ -226,6 +288,12 @@ impl<'a> walkers::Plugin for MapPlugin<'a> {
                     FontId::proportional(13.0),
                     ui.visuals().text_color(),
                 );
+                if response.clicked()
+                    && let Some(pointer_pos) = ui.pointer_hover_pos()
+                    && pointer_pos.distance_sq(pos) <= SELECTION_THRESHOLD_SQUARE
+                {
+                    selected_items.replace(SelectedItem::Node(node_key))
+                }
             }
 
             for (pos, text, fill, is_selected) in trip_leg_text {
