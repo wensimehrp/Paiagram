@@ -18,7 +18,11 @@ pollster.workspace = true
 rayon.workspace = true
 rfd.workspace = true
 
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+jiff.workspace = true
+
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 futures-channel.workspace = true
+idb.workspace = true
 wasm-bindgen-futures.workspace = true
 web-sys.workspace = true

@@ -330,6 +330,7 @@ pub fn show_ui(
                     ("Import OuDia", "OuDia", ImportType::OuDia),
                     ("Import qETRC/pyETRC", "pyetgr", ImportType::Pyetgr),
                     ("Import GTFS", "GTFS", ImportType::Gtfs),
+                    ("Import .paia", "Paiagram", ImportType::PaiagramPaia),
                     #[cfg(debug_assertions)]
                     ("Import sample.oud2", "OuDiaSecond", ImportType::BuiltinOud2),
                 ] {

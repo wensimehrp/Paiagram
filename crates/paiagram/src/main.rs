@@ -3,8 +3,10 @@
 use std::path::PathBuf;
 
 use clap::Parser;
-use log::{error, info};
+use log::{error, info, warn};
 use paiagram::{App, UiState};
+use paiagram_core::SaveFile;
+use paiagram_rw::ExportObject;
 use serde::Deserialize;
 use web_time::Instant;
 
@@ -74,6 +76,39 @@ impl eframe::App for PaiagramApp {
             curr_time - self.prev_time,
         );
         self.prev_time = curr_time;
+    }
+    fn auto_save_interval(&self) -> core::time::Duration {
+        core::time::Duration::from_secs(60)
+    }
+    fn save(&mut self, _storage: &mut dyn eframe::Storage) {
+        // we call save but we don't write into the provided storage
+        let world = self.app.world.clone();
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let Some(mut dir) = eframe::storage_dir("paiagram") else {
+                error!("Storage directory not set. Failed to save file");
+                return;
+            };
+            dir.push("autosaves");
+            rayon::spawn(move || {
+                let result = paiagram_rw::autosave::save_to_dir(&dir, move |file| {
+                    SaveFile::from(world).write_content(file)
+                });
+                if let Err(error) = result {
+                    warn!("Failed to write autosave: {error}");
+                }
+            });
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            rayon::spawn(move || {
+                let mut buffer = std::io::Cursor::new(Vec::new());
+                match SaveFile::from(world).write_content(&mut buffer) {
+                    Ok(()) => paiagram_rw::autosave::save_to_indexed_db(buffer.into_inner()),
+                    Err(error) => warn!("Failed to serialize autosave: {error}"),
+                }
+            });
+        }
     }
 }
 

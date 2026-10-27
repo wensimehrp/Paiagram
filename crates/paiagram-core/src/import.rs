@@ -80,7 +80,9 @@ pub fn make_world(
             oudia::parse_oudia(OudFileType::OuDiaSecond(&str::from_utf8(data)?))
         }
         ImportType::Gtfs => gtfs::parse_gtfs(data),
-        ImportType::PaiagramPaia => todo!(),
+        ImportType::PaiagramPaia => {
+            Ok(crate::SaveFile::from_reader(data).map_err(io::Error::other)?.into_world())
+        }
         ImportType::PaiagramRon => todo!(),
         #[cfg(debug_assertions)]
         ImportType::BuiltinOud2 => oudia::parse_oudia(OudFileType::OuDiaSecond(include_str!(
