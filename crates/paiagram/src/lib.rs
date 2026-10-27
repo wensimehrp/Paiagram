@@ -390,6 +390,18 @@ pub fn show_ui(
                 }
             });
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.menu_button("History", |ui| {
+                    ScrollArea::vertical().show_rows(
+                        ui,
+                        ui.spacing().interact_size.y,
+                        app.history().len(),
+                        |ui, range| {
+                            for (idx, _) in app.history()[range].iter().enumerate() {
+                                ui.button(idx.to_string());
+                            }
+                        },
+                    )
+                });
                 if ui.add_enabled(app.source.redoable(), Button::new("Redo")).clicked() {
                     app.source.redo();
                 }

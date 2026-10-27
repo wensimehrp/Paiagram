@@ -292,6 +292,11 @@ impl Source {
         &self.prev_frame_snap
     }
 
+    /// Available history
+    pub fn history(&self) -> &[WorldSnapshot] {
+        &self.history
+    }
+
     /// Saves the current snapshot as the previous frame's. Call once at the start of each frame.
     pub fn begin_frame(&mut self) {
         puffin::profile_function!();
