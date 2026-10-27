@@ -33,6 +33,10 @@ impl PaiagramApp {
         if let Some(render_state) = &cc.wgpu_render_state {
             app.init_gpu(render_state, msaa_samples);
         }
+        // initialize pinyin and romaji search data
+        rayon::spawn(|| {
+            let _ = paiagram::build_matcher("foo bar");
+        });
         Self {
             app,
             ui_state: UiState::default(),
