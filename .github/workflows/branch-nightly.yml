@@ -1,4 +1,4 @@
-name: Nightly Build & Pages Deploy
+name: Build and deploy branch
 
 on:
   push:
@@ -40,7 +40,7 @@ jobs:
       - uses: peaceiris/actions-gh-pages@v4
         with:
           personal_token: ${{ secrets.PERSONAL_TOKEN }}
-          external_repository: WenSimEHRP/Paiagram-Archive
+          external_repository: wensimehrp/Paiagram-Archive
           user_name: github-actions[bot]
           user_email: 41898282+github-actions[bot]@users.noreply.github.com
           publish_branch: main
