@@ -76,10 +76,10 @@ pub(crate) fn parse_oudia(
         let target = (*graph.node_weight(edge_ref.target()).unwrap()) as *const OudStation;
         let (source, _) = *stn_to_node_key.get(&source).unwrap();
         let (target, _) = *stn_to_node_key.get(&target).unwrap();
-        world.graph.insert_interval_entry(
+        world.graph.insert_interval(
             IntervalKey::new(source, target),
             Wfc::new(Interval {
-                nodes: EcoVec::new(),
+                intermediate_nodes: EcoVec::new(),
                 length: NonZeroU32::new(1000),
                 direction: IntervalDirection::Both,
             }),

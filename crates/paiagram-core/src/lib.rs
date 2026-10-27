@@ -21,6 +21,7 @@ use std::sync::mpsc;
 use ecow::{EcoString, EcoVec};
 use egui::Color32;
 pub use graph::IntervalDirection;
+use itertools::chain;
 pub use key_gen::{MAX_CLIENT_ID, client_id, set_client_id};
 use make_type::make_type;
 use nohash_hasher::BuildNoHashHasher;
@@ -167,18 +168,33 @@ make_type! {
     Interval,
     key = graph::SortedKey,
     data {
-        /// The nodes at and between the two nodes this interval connects.
-        /// This includes the starting and ending nodes.
-        /// Thus it must have at least two elements and it is safe to call
-        /// `.unwrap()` on `.first()` and `.last()`.
-        nodes: EcoVec<LonLat>,
-        /// The length of the interval. If the length is None, then it is calculated from nodes.
+        /// The nodes between the two nodes this interval connects.
+        /// Stored in high -> low order
+        intermediate_nodes: EcoVec<LonLat>,
+        /// The length of the interval. If the length is None, then it is calculated from
+        /// the intermediate nodes and the endpoint node positions.
         length: Option<NonZeroU32>,
         direction: graph::IntervalDirection,
     }
     cache {
         /// trips passing this interval
         trips: EcoVec<TripKey>,
+    }
+}
+
+impl Interval {
+    /// The full polyline of the interval, from its high-key endpoint through the
+    /// intermediate positions to its low-key endpoint.
+    pub fn positions(
+        &self,
+        IntervalKey { hi, lo }: IntervalKey,
+        nodes: &NodeCollection,
+    ) -> impl Iterator<Item = LonLat> {
+        chain!(
+            nodes.get(&hi).map(|wfc| wfc.pos),
+            self.intermediate_nodes.iter().cloned(),
+            nodes.get(&lo).map(|wfc| wfc.pos)
+        )
     }
 }
 
@@ -228,7 +244,7 @@ impl WorldSnapshot {
             self.graph.nodes.insert(*key, value.clone());
         }
         for (key, value) in &other.graph.intervals {
-            self.graph.insert_interval_entry(*key, value.clone());
+            self.graph.insert_interval(*key, value.clone());
         }
         for (key, value) in &other.trips {
             self.trips.insert(*key, value.clone());

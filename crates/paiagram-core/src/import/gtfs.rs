@@ -14,8 +14,8 @@
 use std::collections::HashMap;
 use std::io::Cursor;
 
+use ecow::EcoVec;
 use ecow::string::ToEcoString;
-use ecow::{EcoVec, eco_vec};
 use egui::Color32;
 use gtfs_structures::{Gtfs, Stop};
 use smallvec::SmallVec;
@@ -25,9 +25,8 @@ use crate::route::{RouteInterval, RouteIntervals, StationRecord};
 use crate::time::TimetableTime;
 use crate::trip::{TEntry, TEntryId, TravelMode, TripSchedule};
 use crate::{
-    Interval, IntervalKey, LonLat, Node, NodeKey, NodeKeyHashMap, Route, RouteKey, ServiceClass,
-    ServiceClassKey, Station, StationKey, StrokeStyle, Trip, TripKey, Wfc, Wgs84LonLat,
-    WorldSnapshot,
+    Interval, IntervalKey, LonLat, Node, NodeKey, Route, RouteKey, ServiceClass, ServiceClassKey,
+    Station, StationKey, StrokeStyle, Trip, TripKey, Wfc, Wgs84LonLat, WorldSnapshot,
 };
 
 /// The position of a GTFS stop. Missing coordinates default to `(0, 0)`.
@@ -45,7 +44,6 @@ pub(super) fn parse_gtfs(data: &[u8]) -> Result<WorldSnapshot, Box<dyn std::erro
     let mut station_keys: HashMap<String, StationKey> = HashMap::new();
     let mut node_keys: HashMap<String, NodeKey> = HashMap::new();
     let mut node_station: HashMap<String, StationKey> = HashMap::new();
-    let mut node_pos: NodeKeyHashMap<LonLat> = NodeKeyHashMap::default();
 
     for (stop_id, stop) in &gtfs.stops {
         let station_id = stop.parent_station.clone().unwrap_or_else(|| stop_id.clone());
@@ -84,7 +82,6 @@ pub(super) fn parse_gtfs(data: &[u8]) -> Result<WorldSnapshot, Box<dyn std::erro
         );
         node_keys.insert(stop_id.clone(), node_key);
         node_station.insert(stop_id.clone(), station_key);
-        node_pos.insert(node_key, pos);
     }
 
     let mut route_classes: HashMap<String, ServiceClassKey> = HashMap::new();
@@ -130,11 +127,10 @@ pub(super) fn parse_gtfs(data: &[u8]) -> Result<WorldSnapshot, Box<dyn std::erro
                 continue;
             }
             // whoops I forgot to set up nodes
-            let (hi, lo) = if a > b { (a, b) } else { (b, a) };
-            world.graph.insert_interval_entry(
+            world.graph.insert_interval(
                 IntervalKey::new(a, b),
                 Wfc::new(Interval {
-                    nodes: eco_vec![node_pos[&hi], node_pos[&lo]],
+                    intermediate_nodes: EcoVec::new(),
                     length: None,
                     direction: IntervalDirection::Both,
                 }),

@@ -1,21 +1,25 @@
 use super::Interval;
-use crate::{Distance, Wgs84LonLat};
+use crate::{Distance, IntervalKey, NodeCollection, Wgs84LonLat};
 
 impl Interval {
     /// The length of the interval in metres.
     ///
     /// Uses the explicitly-stored length when present; otherwise sums the
-    /// great-circle (Haversine) distances between consecutive points in
-    /// [`Interval::nodes`].
-    pub fn length(&self) -> Distance {
+    /// great-circle (Haversine) distances between consecutive points of
+    /// [`Interval::positions`].
+    pub fn length(&self, key: IntervalKey, nodes: &NodeCollection) -> Distance {
         if let Some(d) = self.length {
             return Distance(d.get() as i32);
         };
-        let total: f64 = self
-            .nodes
-            .windows(2)
-            .map(|w| Wgs84LonLat::from(w[0]).distance_to_meters(Wgs84LonLat::from(w[1])))
-            .sum();
+
+        let mut total = 0.0;
+        let mut prev = None;
+        for pos in self.positions(key, nodes) {
+            if let Some(prev) = prev {
+                total += Wgs84LonLat::from(prev).distance_to_meters(Wgs84LonLat::from(pos));
+            }
+            prev = Some(pos);
+        }
         Distance(total.round() as i32)
     }
 }

@@ -106,16 +106,16 @@ impl WorldSnapshot {
             spatial_dirty = true;
             match diff {
                 Add(key, interval) => {
-                    ret.graph.insert_interval_entry(*key, fresh(interval));
+                    ret.graph.insert_interval(*key, fresh(interval));
                 }
                 Remove(key, _) => {
-                    ret.graph.remove_interval_entry(key);
+                    ret.graph.remove_interval(key);
                 }
                 Update {
                     old: (key, old),
                     new: (_, new_interval),
                 } => {
-                    ret.graph.insert_interval_entry(*key, updated(old, new_interval));
+                    ret.graph.insert_interval(*key, updated(old, new_interval));
                 }
             }
         }

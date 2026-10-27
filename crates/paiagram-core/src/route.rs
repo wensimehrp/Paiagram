@@ -99,7 +99,8 @@ fn gen_progress(
         let source = *source;
         graph.outgoing_intervals(source).filter_map(move |(interval_key, interval)| {
             let target = interval_key.other(source);
-            is_part_of_interval(&target).then_some((target, interval.length()))
+            is_part_of_interval(&target)
+                .then_some((target, interval.length(interval_key, graph.nodes())))
         })
     };
     let distance_to_source = curr_stn_nodes
@@ -157,6 +158,22 @@ impl RouteIntervals {
                 }
             }
         }
+
+        // `progresses` only walks pairs of stations, so the last station is never the `curr`
+        // station of a segment and would otherwise be missing from the lookup. Place it at the
+        // end of the final segment so trips connect to it.
+        if let Some(last) = self.0.last()
+            && let Some(line_index) = self.0.len().checked_sub(2)
+        {
+            let progress = (line_index as u32, 1.0);
+            for &node_key in last.station_record.nodes(&snap.stations) {
+                let entries = node_lookup.entry(node_key).or_default();
+                if !entries.contains(&progress) {
+                    entries.push(progress);
+                }
+            }
+        }
+
         node_lookup
     }
 

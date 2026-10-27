@@ -40,19 +40,19 @@ pub(super) fn prep_single_segment<'a>(
                 previous_indices = node_lookup(next_entry);
             }
             for it in local_edges.drain(..) {
-                push_to_bucket(it)
+                push_to_bucket(it);
             }
-            return;
+            continue;
         }
 
         let Some(estimate) = curr_estimate else {
             for it in local_edges.drain(..) {
-                push_to_bucket(it)
+                push_to_bucket(it);
             }
             if let Some((_, next_entry)) = next {
                 previous_indices = node_lookup(next_entry);
             }
-            return;
+            continue;
         };
 
         let mut next_local_edges: Vec<Vec<BucketPoint>> = Vec::new();
@@ -99,7 +99,7 @@ pub(super) fn prep_single_segment<'a>(
         }
 
         for it in local_edges.drain(..) {
-            push_to_bucket(it)
+            push_to_bucket(it);
         }
 
         local_edges = next_local_edges;
@@ -109,6 +109,6 @@ pub(super) fn prep_single_segment<'a>(
     }
 
     for it in local_edges.drain(..) {
-        push_to_bucket(it)
+        push_to_bucket(it);
     }
 }

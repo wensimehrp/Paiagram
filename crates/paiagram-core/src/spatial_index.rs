@@ -85,7 +85,7 @@ impl RTreeObject for IntervalRTreeObject {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Copy)]
 pub struct NodeRTreeObject {
     pub node_key: NodeKey,
     pub coor: LonLat,
@@ -136,7 +136,7 @@ impl IntervalsRTree {
             .iter()
             .map(|(interval_key, interval)| IntervalRTreeObject {
                 interval_key: *interval_key,
-                nodes: interval.nodes.clone(),
+                nodes: interval.positions(*interval_key, snap.graph.nodes()).collect(),
             })
             .collect();
         Self(RTree::bulk_load(objects))
@@ -199,7 +199,7 @@ impl TripLegsRTree {
                         continue;
                     };
                     objects.push(TripLegRTreeObject {
-                        interval: interval.nodes.clone(),
+                        interval: interval.positions(interval_key, snap.graph.nodes()).collect(),
                         is_hi_to_lo: curr.node_key() == interval_key.hi,
                         trip_key: *trip_key,
                         curr_arr: curr_est.arr,

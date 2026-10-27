@@ -2,13 +2,14 @@
 #![doc = include_str!("trip/README.md")]
 
 use std::cell::RefCell;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use ecow::EcoVec;
 use serde::{Deserialize, Serialize};
 
 use crate::graph::Graph;
 use crate::time::{TDuration, TTime, TimetableDuration, TimetableTime};
-use crate::{Distance, IntervalCollection, IntervalKey, NodeKey};
+use crate::{Distance, IntervalKey, NodeKey};
 
 /// Travel mode. Travel mode defines how the vehicle travels.
 #[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq)]
@@ -37,7 +38,7 @@ impl TravelMode {
 
 #[derive(Clone, Serialize, Deserialize, Copy, Debug, PartialEq, Hash)]
 pub struct TEntryId(u32);
-static NEXT_ENTRY_ID: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
+static NEXT_ENTRY_ID: AtomicU32 = AtomicU32::new(1);
 
 impl TEntryId {
     /// Create a new dummy ID.
@@ -46,7 +47,7 @@ impl TEntryId {
     }
     /// Create a new unique entry ID.
     pub fn new() -> Self {
-        Self(NEXT_ENTRY_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
+        Self(NEXT_ENTRY_ID.fetch_add(1, Ordering::Relaxed))
     }
 }
 
@@ -292,8 +293,8 @@ impl TripSchedule {
         self.entries
             .array_windows()
             .flat_map(|[curr, next]| {
-                let dijkstra_path = graph
-                    .dijkstra(curr.node, next.node)
+                let shortest_path = graph
+                    .shortest_path(curr.node, next.node)
                     .map_or_default(|(mut nodes, _)| {
                         nodes.pop(); // cut the end
                         nodes
@@ -301,7 +302,7 @@ impl TripSchedule {
                     .into_iter()
                     .skip(1) // cut the start
                     .map(EstimateEntry::Derived);
-                std::iter::chain([EstimateEntry::Pinned(*curr)], dijkstra_path)
+                std::iter::chain([EstimateEntry::Pinned(*curr)], shortest_path)
             })
             .chain(self.entries.last().copied().map(EstimateEntry::Pinned))
     }
@@ -318,7 +319,6 @@ impl TripSchedule {
     {
         // The departure time and node of the last stable timepoint. `For` modes are
         // relative to it, and it anchors the distance-based estimates.
-        let itv = &graph.intervals;
         let mut prev_stable: Option<(TTime, NodeKey)> = None;
         for entry in self.full_route(graph) {
             let se = make_se(entry);
@@ -333,7 +333,7 @@ impl TripSchedule {
                 // A stable timepoint unwinds all pending flexible entries.
                 StackElem::AtAt(node, at, dt) => {
                     if let Some((prev_t, prev_n)) = prev_stable {
-                        unwind(itv, esb, otb, prev_t, prev_n, node, at - prev_t);
+                        unwind(graph, esb, otb, prev_t, prev_n, node, at - prev_t);
                     } else {
                         esb.clear();
                     }
@@ -342,7 +342,7 @@ impl TripSchedule {
                 }
                 StackElem::ForAt(node, ad, dt) => {
                     if let Some((prev_t, prev_n)) = prev_stable {
-                        let ok = unwind(itv, esb, otb, prev_t, prev_n, node, ad);
+                        let ok = unwind(graph, esb, otb, prev_t, prev_n, node, ad);
                         otb.push((
                             ok.then(|| TEstimate {
                                 arr: prev_t + ad,
@@ -360,7 +360,7 @@ impl TripSchedule {
                 }
                 StackElem::ForFor(node, ad, dd) => {
                     if let Some((prev_t, prev_n)) = prev_stable {
-                        let ok = unwind(itv, esb, otb, prev_t, prev_n, node, ad);
+                        let ok = unwind(graph, esb, otb, prev_t, prev_n, node, ad);
                         if ok {
                             let arr = prev_t + ad;
                             let dep = arr + dd;
@@ -388,10 +388,10 @@ impl TripSchedule {
 /// The time is distributed proportionally to the lengths of the intervals along the
 /// way; the time spent dwelling at the flexible nodes does not count towards the
 /// travel time. The resolved estimates are written back into the corresponding output
-/// slots. Returns `false` if some interval along the way cannot be found in `itv`; the
+/// slots. Returns `false` if some interval along the way cannot be found in the graph; the
 /// pending entries are then left without estimates.
 fn unwind(
-    itv: &IntervalCollection,
+    graph: &Graph,
     esb: &mut Vec<EstimateSketch>,
     otb: &mut Vec<OutputInner>,
     prev_t: TTime,
@@ -404,7 +404,7 @@ fn unwind(
             return Some(Distance::ZERO);
         }
         let key = IntervalKey::new(a, b);
-        itv.get(&key).map(|e| e.length())
+        graph.intervals.get(&key).map(|e| e.length(key, graph.nodes()))
     };
     // Dwelling does not count towards the average velocity.
     let stop_dur: TDuration = esb.iter().map(|s| s.dur).sum();

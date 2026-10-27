@@ -4807,6 +4807,7 @@ dependencies = [
 name = "paiagram-selection"
 version = "0.1.3"
 dependencies = [
+ "either",
  "paiagram-core",
  "serde",
  "vec1",

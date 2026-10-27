@@ -44,10 +44,10 @@ fn populated_world() -> (
             },
         );
     }
-    world.graph.insert_interval_entry(
+    world.graph.insert_interval(
         IntervalKey::new(a, b),
         Wfc::new(Interval {
-            nodes: eco_vec![LonLat::ZERO, LonLat::ZERO],
+            intermediate_nodes: eco_vec![],
             length: None,
             direction: IntervalDirection::Both,
         }),
@@ -92,7 +92,7 @@ fn assert_same_world(a: &WorldSnapshot, b: &WorldSnapshot) {
 /// Remove every top-level entity introduced by `snapshot` from `target`.
 fn remove_snapshot(target: &mut WorldSnapshot, snapshot: &WorldSnapshot) {
     for key in snapshot.graph.intervals.keys() {
-        target.graph.remove_interval_entry(key);
+        target.graph.remove_interval(key);
     }
     for key in snapshot.graph.nodes.keys() {
         target.graph.nodes.remove(key);
@@ -157,7 +157,7 @@ fn removing_an_interval_updates_adjacency() {
     let (world, _) = WorldSnapshot::default().update_diff(new);
 
     let mut changed = world.clone();
-    changed.graph.remove_interval_entry(&IntervalKey::new(a, b));
+    changed.graph.remove_interval(&IntervalKey::new(a, b));
     let (updated, _) = world.update_diff(changed);
 
     assert_eq!(updated.graph.neighbor_intervals(a).count(), 0);

@@ -3,8 +3,8 @@
 use std::borrow::Cow;
 use std::num::NonZeroU32;
 
+use ecow::EcoVec;
 use ecow::string::ToEcoString;
-use ecow::{EcoVec, eco_vec};
 use egui::Color32;
 use itertools::Itertools;
 use log::warn;
@@ -206,10 +206,10 @@ pub(super) fn parse_pyetgr(data: &[u8]) -> Option<WorldSnapshot> {
         {
             let length = curr_stn.distance_km - prev_stn.distance_km;
             let length = Distance::from_km(length).0;
-            world.graph.insert_interval_entry(
+            world.graph.insert_interval(
                 IntervalKey::new(prev_key, curr_key),
                 Wfc::new(Interval {
-                    nodes: eco_vec![],
+                    intermediate_nodes: EcoVec::new(),
                     length: NonZeroU32::new(length as u32),
                     direction: IntervalDirection::Both,
                 }),
