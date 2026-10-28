@@ -210,3 +210,39 @@ widget-at = At
 widget-for = For
 widget-flexible = Flexible
 widget-non-stop = Non-stop
+
+time-just-now = Just now
+
+time-ago-seconds = { $count ->
+    [one] {$count} second ago
+   *[other] {$count} seconds ago
+}
+time-ago-minutes = { $count ->
+    [one] {$count} minute ago
+   *[other] {$count} minutes ago
+}
+time-ago-hours = { $count ->
+    [one] {$count} hour ago
+   *[other] {$count} hours ago
+}
+time-ago-days = { $count ->
+    [one] {$count} day ago
+   *[other] {$count} days ago
+}
+
+time-in-seconds = In { $count ->
+    [one] {$count} second
+   *[other] {$count} seconds
+}
+time-in-minutes = In { $count ->
+    [one] {$count} minute
+   *[other] {$count} minutes
+}
+time-in-hours = In { $count ->
+    [one] {$count} hour
+   *[other] {$count} hours
+}
+time-in-days = In { $count ->
+    [one] {$count} day
+   *[other] {$count} days
+}

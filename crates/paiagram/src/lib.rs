@@ -4,6 +4,7 @@
 mod command_palette;
 mod config;
 mod font;
+mod human_time;
 mod load;
 mod tabs;
 mod timer;
