@@ -56,7 +56,7 @@ wgsl_bindgen.workspace = true
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 jiff = { workspace = true, features = ["js"] }
 js-sys.workspace = true
-serde_html_form = "0.4.0"
+serde_html_form.workspace = true
 wasm-bindgen-futures.workspace = true
 wasm-bindgen-rayon.workspace = true
 web-sys.workspace = true

@@ -113,7 +113,7 @@ struct Arguments {
     #[arg(
         short = 'o',
         long = "open",
-        help = "Path to a .paiagram file (or any other compatible file formats) to open on startup",
+        help = "Path to a .paia file (or any other compatible file formats) to open on startup",
         num_args = 1..
     )]
     #[serde(default)]
