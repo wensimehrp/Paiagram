@@ -1,7 +1,34 @@
-pub mod autosave;
-pub mod read;
-pub mod save;
-pub mod write;
+#[cfg(target_arch = "wasm32")]
+mod paiagram_idb {
+    pub const DATABASE: &str = "paiagram";
+    pub const VERSION: u32 = 1;
+}
+
+#[cfg(target_arch = "wasm32")]
+pub mod list_files {
+    mod web;
+    pub use web::*;
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub mod list_files {
+    mod native;
+    pub use native::*;
+}
+
+#[cfg(target_arch = "wasm32")]
+pub mod save {
+    pub const MAX_AUTOSAVES: usize = 10;
+    mod web;
+    pub use web::*;
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub mod save {
+    pub const MAX_AUTOSAVES: usize = 10;
+    mod native;
+    pub use native::*;
+}
 
 use std::io::{self, Cursor, Seek, Write};
 use std::sync::Arc;
@@ -9,13 +36,43 @@ use std::sync::Arc;
 use log::{info, warn};
 use parking_lot::Mutex;
 #[cfg(target_arch = "wasm32")]
-use web_sys::js_sys::{Array, Uint8Array};
-#[cfg(target_arch = "wasm32")]
-use web_sys::wasm_bindgen::JsCast;
-#[cfg(target_arch = "wasm32")]
-use web_sys::wasm_bindgen::JsValue;
-#[cfg(target_arch = "wasm32")]
-use web_sys::{Blob, BlobPropertyBag, HtmlAnchorElement, Url};
+use web_sys::{
+    self,
+    js_sys::{Array, Uint8Array},
+    wasm_bindgen::{JsCast, JsValue},
+    {Blob, BlobPropertyBag, HtmlAnchorElement, Url},
+};
+
+/// The category to store the file in
+#[derive(Clone, Copy, Debug)]
+pub enum SaveCategory {
+    /// A normal save file
+    Save,
+    /// An automatically crated save file
+    Autosave,
+}
+
+/// The names of the saves available for loading.
+#[derive(Clone, Debug, Default)]
+pub struct AvailableSaves {
+    pub saves: Vec<String>,
+    pub autosaves: Vec<String>,
+}
+
+impl SaveCategory {
+    /// Converts the category to a key namespace for IndexedDB.
+    fn to_str(self) -> &'static str {
+        match self {
+            SaveCategory::Save => "normal_saves",
+            SaveCategory::Autosave => "autosaves",
+        }
+    }
+    /// Converts the category to a &Path for use in the filesystem
+    #[cfg(not(target_arch = "wasm32"))]
+    fn to_path(self) -> &'static std::path::Path {
+        std::path::Path::new(self.to_str())
+    }
+}
 
 #[derive(Default)]
 pub enum FileWriteState {
@@ -85,6 +142,10 @@ pub trait ExportObject: Sized + Send + 'static {
     }
 }
 
+/// Downloads the file in the browser.
+///
+/// This function must be run in the main thread. As a result, almost all file operations in
+/// Paiagram must be completed on the main thread.
 #[cfg(target_arch = "wasm32")]
 fn download_file(filename: &str, content: &[u8]) -> Result<(), JsValue> {
     info!("Downloading `{}` ({} bytes)", filename, content.len());

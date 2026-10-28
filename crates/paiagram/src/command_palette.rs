@@ -90,10 +90,10 @@ impl CommandPalette {
 
         #[rustfmt::skip]
         let panel_info: [(EcoString, MatchedType); 4] = [
-            (tr!("tab-start").into(), MatchedType::Tab(|| MainTab::Start(StartTab)),),
-            (tr!("tab-settings").into(), MatchedType::Tab(|| MainTab::Config(ConfigTab)),),
-            (tr!("tab-graph").into(), MatchedType::Tab(|| MainTab::Graph(GraphTab::default()))),
-            ("Load OuDiaSecond".into(), MatchedType::LoadOuDiaSecond),
+            (tr!("tab-start").into(),       MatchedType::Tab(|| MainTab::Start(StartTab::default())),),
+            (tr!("tab-settings").into(),    MatchedType::Tab(|| MainTab::Config(ConfigTab)),),
+            (tr!("tab-graph").into(),       MatchedType::Tab(|| MainTab::Graph(GraphTab::default()))),
+            ("Load OuDiaSecond".into(),     MatchedType::LoadOuDiaSecond),
         ];
 
         let candidates_iter = panel_info

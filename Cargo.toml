@@ -63,7 +63,7 @@ futures-channel = "0.3"
 git-version = "0.3.9"
 gtfs-structures = { version = "0.50.1", default-features = false }
 ib-matcher = { version = "0.4.3", features = ["pinyin", "romaji"] }
-idb = { version = "0.6.5", default-features = false }
+idb = "0.6.5"
 image = { version = "0.25.10", default-features = false, features = ["png"] }
 imbl = { version = "7.0.2", features = ["debug", "serde"] }
 itertools = "0.14.0"

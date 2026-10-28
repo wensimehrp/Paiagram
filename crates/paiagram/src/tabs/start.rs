@@ -1,82 +1,174 @@
-use egui::{Pos2, Stroke, Ui};
+use std::sync::mpsc;
+
+use egui::*;
 use egui_i18n::tr;
+use log::error;
+use paiagram_rw::list_files::{self, Result};
+use paiagram_rw::{AvailableSaves, SaveCategory};
 use serde::{Deserialize, Serialize};
 
 use super::Tab;
 use crate::App;
 use crate::widgets::{LOGO_COORDINATES, LogoStroke};
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Default)]
-pub(crate) struct StartTab;
+#[derive(Serialize, Deserialize)]
+#[serde(into = "StartTabNoCache", from = "StartTabNoCache")]
+pub(crate) struct StartTab {
+    available_files: Option<AvailableSaves>,
+    available_file_tx: mpsc::Sender<Result<AvailableSaves>>,
+    available_file_rx: mpsc::Receiver<Result<AvailableSaves>>,
+}
+
+impl Clone for StartTab {
+    fn clone(&self) -> Self {
+        Self::default()
+    }
+}
+
+impl Default for StartTab {
+    fn default() -> Self {
+        let (tx, rx) = mpsc::channel();
+        Self {
+            available_files: None,
+            available_file_rx: rx,
+            available_file_tx: tx,
+        }
+    }
+}
+
+impl PartialEq for StartTab {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct StartTabNoCache;
+
+impl From<StartTab> for StartTabNoCache {
+    fn from(_value: StartTab) -> Self {
+        Self
+    }
+}
+
+impl From<StartTabNoCache> for StartTab {
+    fn from(_value: StartTabNoCache) -> Self {
+        Self::default()
+    }
+}
 
 impl Tab for StartTab {
     const NAME: &'static str = "Start";
-    fn main_display(&mut self, app: &mut App, ui: &mut Ui) {
-        puffin::profile_function!();
-        let painter = ui.painter();
-        let stroke = Stroke::new(20.0, ui.visuals().window_stroke.color);
-        for coord in LOGO_COORDINATES {
-            match *coord {
-                LogoStroke::_2(extend1, pos1, pos2, extend2) => {
-                    let pos1: Pos2 = pos1.into();
-                    let pos2: Pos2 = pos2.into();
-                    let pos1 = if extend1 {
-                        extend_to_clip_edge(pos1 * 20.0, pos2 * 20.0, ui.clip_rect()) / 20.0
-                    } else {
-                        pos1
-                    };
-                    let pos2 = if extend2 {
-                        extend_to_clip_edge(pos2 * 20.0, pos1 * 20.0, ui.clip_rect()) / 20.0
-                    } else {
-                        pos2
-                    };
-                    let pos1 = pos1 + (pos1 - pos2).normalized() * 0.5;
-                    let pos2 = pos2 + (pos2 - pos1).normalized() * 0.5;
-                    painter.line_segment([pos1 * 20.0, pos2 * 20.0], stroke)
-                }
-                LogoStroke::_3(extend1, pos1, pos2, pos3, extend2) => {
-                    let pos1: Pos2 = pos1.into();
-                    let pos2: Pos2 = pos2.into();
-                    let pos3: Pos2 = pos3.into();
-                    let pos1 = if extend1 {
-                        extend_to_clip_edge(pos1 * 20.0, pos2 * 20.0, ui.clip_rect()) / 20.0
-                    } else {
-                        pos1
-                    };
-                    let pos3 = if extend2 {
-                        extend_to_clip_edge(pos3 * 20.0, pos2 * 20.0, ui.clip_rect()) / 20.0
-                    } else {
-                        pos3
-                    };
-                    let pos1 = pos1 + (pos1 - pos2).normalized() * 0.5;
-                    let pos3 = pos3 + (pos3 - pos2).normalized() * 0.5;
-                    painter.line(vec![pos1 * 20.0, pos2 * 20.0, pos3 * 20.0], stroke)
-                }
-            };
-        }
-        ui.vertical_centered_justified(|ui| {
-            ui.set_max_width((300.0_f32.min(ui.available_width()) - 10.0).max(1.0));
-            ui.horizontal_centered(|ui| {
-                ui.heading(tr!("program-name"));
-                egui::Grid::new("start info grid").num_columns(2).show(ui, |ui| {
-                    ui.label(tr!("tab-start-amount-vehicles"));
-                    ui.label(app.vehicles.len().to_string());
-                    ui.end_row();
-                    ui.label(tr!("tab-start-amount-trips"));
-                    ui.label(app.trips.len().to_string());
-                    ui.end_row();
-                    ui.label(tr!("tab-start-amount-stations"));
-                    ui.label(app.stations.len().to_string());
-                    ui.end_row();
-                    ui.label(tr!("tab-start-amount-intervals"));
-                    ui.label(app.graph.intervals().len().to_string());
-                    ui.end_row();
-                });
-            })
-        });
-    }
     fn title(&self) -> egui::WidgetText {
         tr!("tab-start").into()
+    }
+    fn main_display(&mut self, app: &mut App, ui: &mut Ui) {
+        puffin::profile_function!();
+
+        let logo_stroke = Stroke::new(25.0, ui.visuals().window_stroke.color);
+        draw_logo(ui.painter(), logo_stroke, ui.clip_rect());
+
+        let refresh = if self.available_files.is_none() {
+            self.available_files = Some(AvailableSaves::default());
+            true
+        } else {
+            false
+        } || ui.button("Refresh").clicked();
+
+        if refresh {
+            #[cfg(target_arch = "wasm32")]
+            list_files::list_all_saves(self.available_file_tx.clone());
+            #[cfg(not(target_arch = "wasm32"))]
+            if let Some(path) = eframe::storage_dir("paiagram") {
+                list_files::list_all_saves(self.available_file_tx.clone(), path);
+            }
+        }
+
+        if let Ok(files) = self.available_file_rx.try_recv() {
+            match files {
+                Ok(files) => self.available_files = Some(files),
+                Err(e) => error!("Failed to scan available files: {e}"),
+            }
+        }
+
+        if let Some(available_files) = &self.available_files
+            && let Some((category, key)) = show_available_save(ui, available_files)
+        {}
+    }
+}
+
+fn show_available_save(ui: &mut Ui, available: &AvailableSaves) -> Option<(SaveCategory, String)> {
+    let mut selected = None;
+    ScrollArea::vertical().show(ui, |ui| {
+        for (title, category, keys) in [
+            (
+                "Autosaves",
+                SaveCategory::Autosave,
+                available.autosaves.as_slice(),
+            ),
+            ("Saves", SaveCategory::Save, available.saves.as_slice()),
+        ] {
+            if keys.is_empty() {
+                continue;
+            }
+            ui.heading(title);
+            for key in keys {
+                if ui.button(key).clicked() {
+                    selected = Some((category, key.clone()));
+                }
+            }
+            ui.add_space(8.0);
+        }
+    });
+    selected
+}
+
+fn draw_logo(painter: &Painter, stroke: Stroke, rect: Rect) {
+    let origin = rect.min;
+    let to_screen = |pos: Vec2| origin + pos * 20.0;
+    let to_local = |pos: Pos2| (pos - origin) / 20.0;
+
+    for coord in LOGO_COORDINATES {
+        match *coord {
+            LogoStroke::_2(extend1, vec1, vec2, extend2) => {
+                let vec1: Vec2 = vec1.into();
+                let vec2: Vec2 = vec2.into();
+                let vec1 = if extend1 {
+                    to_local(extend_to_clip_edge(to_screen(vec1), to_screen(vec2), rect))
+                } else {
+                    vec1
+                };
+                let vec2 = if extend2 {
+                    to_local(extend_to_clip_edge(to_screen(vec2), to_screen(vec1), rect))
+                } else {
+                    vec2
+                };
+                let vec1 = vec1 + (vec1 - vec2).normalized() * 0.5;
+                let vec2 = vec2 + (vec2 - vec1).normalized() * 0.5;
+                painter.line_segment([to_screen(vec1), to_screen(vec2)], stroke)
+            }
+            LogoStroke::_3(extend1, vec1, vec2, vec3, extend2) => {
+                let vec1: Vec2 = vec1.into();
+                let vec2: Vec2 = vec2.into();
+                let vec3: Vec2 = vec3.into();
+                let vec1 = if extend1 {
+                    to_local(extend_to_clip_edge(to_screen(vec1), to_screen(vec2), rect))
+                } else {
+                    vec1
+                };
+                let vec3 = if extend2 {
+                    to_local(extend_to_clip_edge(to_screen(vec3), to_screen(vec2), rect))
+                } else {
+                    vec3
+                };
+                let vec1 = vec1 + (vec1 - vec2).normalized() * 0.5;
+                let vec3 = vec3 + (vec3 - vec2).normalized() * 0.5;
+                painter.line(
+                    vec![to_screen(vec1), to_screen(vec2), to_screen(vec3)],
+                    stroke,
+                )
+            }
+        };
     }
 }
 

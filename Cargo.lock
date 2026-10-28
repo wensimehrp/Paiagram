@@ -3302,6 +3302,7 @@ dependencies = [
  "js-sys",
  "num-traits",
  "thiserror 2.0.21",
+ "tokio",
  "wasm-bindgen",
  "web-sys",
 ]
