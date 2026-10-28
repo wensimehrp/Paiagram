@@ -19,11 +19,14 @@ rustflags = [
 [target.x86_64-unknown-linux-gnu]
 linker = "clang"
 rustflags = [
-  "-C",
-  "link-arg=-fuse-ld=mold",
-  # Pack R_X86_64_RELATIVE relocations into the compact RELR format.
-  "-C",
-  "link-arg=-Wl,-z,pack-relative-relocs",
+  "-Clink-arg=-fuse-ld=mold",  # use the mold linker
+  "-Clink-arg=-Wl,-z,pack-relative-relocs",  # use RT_RELR
+  # Remove unreferenced sections, see
+  # https://github.com/rui314/mold/blob/d04c073d0aca43a553e45cb802ae2064775c5a21/docs/mold.md?plain=1#L622-L623
+  "-Clink-arg=-Wl,--gc-sections",
+  # Identical code folding, see
+  # https://github.com/rui314/mold/blob/d04c073d0aca43a553e45cb802ae2064775c5a21/docs/mold.md?plain=1#L634-L662
+  "-Clink-arg=-Wl,--icf=all",
 ]
 
 [unstable]

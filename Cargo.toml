@@ -28,15 +28,18 @@ ecow = { version = "0.3.1", features = ["serde"] }
 # egui stuff
 eframe = {
   version = "0.37.0",
+  default-features = false,
   features = [
-    "default_fonts",
     "accesskit",
+    "clipboard",
     "links",
     "persistence",
+    "system_fonts",
     "wayland",
     "web_screen_reader",
     "wgpu",
-  ]
+    "x11",
+  ],
 }
 egui = {
   version = "0.37.0",
