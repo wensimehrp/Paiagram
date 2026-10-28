@@ -64,6 +64,7 @@
     divider(),
     chapter-path("misc/extensions"),
     chapter-path("misc/web"),
+    chapter-path("misc/debugging"),
     chapter("docs/changelog", content: [
       #title[Changelog]
       #cmarker.render(label-prefix: "changelog-", read("../CHANGELOG.md"), h1-level: 0)
@@ -75,6 +76,6 @@
 
       #cmarker.render(label-prefix: "license-", read("../LICENSE.md"))
     ]),
-    chapter-path("notes"),
+    chapter-path("misc/notes"),
   ),
 )
