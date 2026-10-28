@@ -18,7 +18,13 @@ rustflags = [
 
 [target.x86_64-unknown-linux-gnu]
 linker = "clang"
-rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+rustflags = [
+  "-C",
+  "link-arg=-fuse-ld=mold",
+  # Pack R_X86_64_RELATIVE relocations into the compact RELR format.
+  "-C",
+  "link-arg=-Wl,-z,pack-relative-relocs",
+]
 
 [unstable]
 build-std = ["std", "panic_abort"]
