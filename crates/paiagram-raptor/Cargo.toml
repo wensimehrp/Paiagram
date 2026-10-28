@@ -13,4 +13,4 @@ categories.workspace = true
 
 [dependencies]
 paiagram-core.workspace = true
-raptor = "0.2.0"
+raptor.workspace = true

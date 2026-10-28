@@ -58,7 +58,7 @@
             pkg-config
             makeWrapper
           ];
-          buildInputs = runtimeLibs ++ [ pkgs.openssl ];
+          buildInputs = runtimeLibs;
 
           postInstall = ''
             wrapProgram $out/bin/paiagram \
@@ -71,7 +71,6 @@
             buildInputs = [
               rustToolchain
               pkg-config
-              openssl # TODO: remove this
               just
               wget
               p7zip
