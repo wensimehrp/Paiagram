@@ -34,9 +34,16 @@ pub(crate) static TIMETABLE_FONT_ID: LazyLock<FontId> =
 
 pub(crate) fn load_default_font(ctx: Context, font_name: Arc<Mutex<String>>) {
     let mut definitions = FontDefinitions::default();
+    // custom timetable font
     definitions
         .families
         .entry(FontFamily::Name("timetable font".into()))
+        .or_default()
+        .insert(0, "Paiagram-Timetable-Font".into());
+    // monospace fallback. DO NOT USE MONOSPACE FOR TIMETABLE STUFF
+    definitions
+        .families
+        .entry(FontFamily::Monospace)
         .or_default()
         .insert(0, "Paiagram-Timetable-Font".into());
     ctx.all_styles_mut(|s| {

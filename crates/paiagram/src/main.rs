@@ -19,7 +19,7 @@ use web_time::Instant;
 #[cfg(target_arch = "wasm32")]
 #[unsafe(no_mangle)]
 pub extern "C" fn __rquickjs_host_now_us() -> f64 {
-    js_sys::Date::now() * 1000.0
+    web_sys::js_sys::Date::now() * 1000.0
 }
 
 struct PaiagramApp {
