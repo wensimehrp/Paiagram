@@ -2,6 +2,8 @@
 
 use idb::{DatabaseEvent, Factory, ObjectStoreParams, TransactionMode};
 use log::{error, info, warn};
+use web_sys::js_sys::Uint8Array;
+use web_sys::wasm_bindgen::JsValue;
 
 use crate::save::MAX_AUTOSAVES;
 use crate::{ExportObject, SaveCategory, paiagram_idb};
@@ -50,11 +52,11 @@ async fn _save_to_indexed_db(bytes: Vec<u8>, category: SaveCategory) -> Result<(
     let store = transaction.object_store(category.to_str())?;
 
     let timestamp_key = jiff::Timestamp::now().to_string();
-    let key = web_sys::wasm_bindgen::JsValue::from_str(&timestamp_key);
+    let key = JsValue::from_str(&timestamp_key);
 
-    let js_array = web_sys::js_sys::Uint8Array::new_with_length(bytes.len() as u32);
+    let js_array = Uint8Array::new_with_length(bytes.len() as u32);
     js_array.copy_from(&bytes);
-    let value: web_sys::wasm_bindgen::JsValue = js_array.into();
+    let value: JsValue = js_array.into();
 
     store.put(&value, Some(&key))?.await?;
 

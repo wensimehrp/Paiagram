@@ -12,6 +12,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+anyhow.workspace = true
 bytemuck.workspace = true
 clap.workspace = true
 ecow.workspace = true
@@ -20,7 +21,6 @@ egui.workspace = true
 egui_extras.workspace = true
 egui-i18n.workspace = true
 egui_tiles.workspace = true
-ehttp.workspace = true
 either.workspace = true
 env_logger.workspace = true
 fdg-sim.workspace = true
@@ -43,6 +43,7 @@ pollster.workspace = true
 puffin.workspace = true
 puffin_egui.workspace = true
 rayon.workspace = true
+reqwest.workspace = true
 rfd.workspace = true
 serde.workspace = true
 walkers.workspace = true

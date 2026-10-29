@@ -1,5 +1,6 @@
 use std::sync::{Arc, LazyLock};
 
+use anyhow::{Context as _, bail};
 use egui::mutex::RwLock;
 use egui::{Context, FontDefinitions, FontFamily, FontId, TextStyle};
 use fontdb::{Database, Family, ID};
@@ -11,20 +12,6 @@ pub(crate) static FONT_DATABASE: LazyLock<RwLock<Database>> = LazyLock::new(|| {
     db.load_system_fonts();
     RwLock::new(db)
 });
-
-#[cfg(target_arch = "wasm32")]
-const WASM_FONT_NAME: &str = "SarasaUiCL-Regular.ttf";
-
-/// Load browser fonts via the local font access api.
-/// See <https://developer.mozilla.org/en-US/docs/Web/API/Local_Font_Access_API>.
-/// This basically only works on Chromium browsers.
-#[cfg(target_arch = "wasm32")]
-fn load_browser_fonts(db: &mut Database) -> Option<()> {
-    use web_sys;
-    let available_fonts = web_sys::window()?.query_local_fonts().ok()?;
-    // TODO
-    Some(())
-}
 
 pub(crate) static TIMETABLTE_TEXT_STYLE: LazyLock<TextStyle> =
     LazyLock::new(|| TextStyle::Name("timetable font".into()));
@@ -80,29 +67,40 @@ pub(crate) fn load_default_font(ctx: Context, font_name: Arc<Mutex<String>>) {
 
 #[cfg(target_arch = "wasm32")]
 fn load_sarasa_cl(ctx: Context, font_name: Arc<Mutex<String>>) {
+    const WASM_FONT_NAME: &str = "SarasaUiCL-Regular.ttf";
     wasm_bindgen_futures::spawn_local(async move {
-        info!("Downloading `{WASM_FONT_NAME}`");
-        let res = match ehttp::fetch_async(ehttp::Request::get(WASM_FONT_NAME)).await {
-            Err(e) => {
-                warn!("Failed to fetch font `{WASM_FONT_NAME}`. Reason: {e}");
-                return;
+        let parse = async move || -> anyhow::Result<_> {
+            info!("Downloading `{WASM_FONT_NAME}`");
+            let window = web_sys::window().context("Browser window should be always present")?;
+            let base_url = match window.location().href() {
+                Err(_) => bail!("Failed to get window href"),
+                Ok(href) => href,
+            };
+            let query_url = format!("{base_url}/{WASM_FONT_NAME}");
+            let res = reqwest::get(query_url.clone())
+                .await
+                .with_context(|| format!("Failed to get font from {query_url}"))?;
+            if !res.status().is_success() {
+                bail!("Response did not success, got code {}", res.status());
             }
-            Ok(res) => res,
+            res.bytes().await.context("Failed to get bytes from response")
         };
-        if !res.ok {
-            warn!(
-                "Failed to fetch font `{WASM_FONT_NAME}`. Got status code `{}`",
-                res.status
-            );
+        match parse().await {
+            Err(e) => {
+                warn!("Failed to fetch font {WASM_FONT_NAME}: {e}")
+            }
+            Ok(bytes) => {
+                let face_id = FONT_DATABASE
+                    .write()
+                    .load_font_source(fontdb::Source::Binary(Arc::new(bytes)))[0];
+                load_font_to_egui(
+                    face_id,
+                    ctx.clone(),
+                    font_name,
+                    ctx.fonts(|r| r.definitions().clone()),
+                );
+            }
         }
-        let face_id =
-            FONT_DATABASE.write().load_font_source(fontdb::Source::Binary(Arc::new(res.bytes)))[0];
-        load_font_to_egui(
-            face_id,
-            ctx.clone(),
-            font_name,
-            ctx.fonts(|r| r.definitions().clone()),
-        );
     });
 }
 
