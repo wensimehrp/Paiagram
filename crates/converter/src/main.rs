@@ -1,11 +1,11 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use js_sys::Array;
 use paiagram_oudia::{OuDiaIo, Root, parse_to_ast};
 use wasm_bindgen::convert::FromWasmAbi;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
+use web_sys::js_sys::Array;
 use web_sys::{
     Document, DragEvent, Event, EventTarget, File, HtmlAnchorElement, HtmlButtonElement,
     HtmlInputElement, HtmlSelectElement, HtmlTextAreaElement,
