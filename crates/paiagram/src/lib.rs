@@ -11,23 +11,22 @@ mod tabs;
 mod timer;
 mod widgets;
 
-use std::sync::{Arc, mpsc};
+use std::sync::mpsc;
 
 pub use config::AppLanguage;
-use egui::{Button, DragValue, Frame, Id, OpenUrl, Panel, Popup, ScrollArea, Ui};
+use egui::*;
 use egui_i18n::tr;
 use egui_tiles::{
     Behavior, ContainerKind, SimplificationOptions, Tile, TileId, Tiles, Tree, UiResponse,
 };
 pub use emergency_save::{setup_emergency_save, update_emergency_save};
-use log::{error, info};
+use log::{error, info, warn};
 use paiagram_core::import::{ImportMode, ImportType};
 use paiagram_core::time::TimetableTime;
-use paiagram_core::{RouteKey, SaveData, Source};
+use paiagram_core::{RouteKey, SaveData, Source, World};
 use paiagram_export::{ExportGtfs, ExportOuDia};
-use paiagram_rw::{ExportObject, WriteResult};
+use paiagram_rw::{ExportObject, LoadResult, WriteResult};
 use paiagram_selection::SelectedItems;
-use parking_lot::Mutex;
 use rfd::AsyncFileDialog;
 use serde::{Deserialize, Serialize};
 use tabs::all_tabs::*;
@@ -37,7 +36,6 @@ pub use wasm_bindgen_rayon::init_thread_pool;
 pub use widgets::search::build_matcher;
 
 use crate::command_palette::CommandPalette;
-use crate::load::FileLoadState;
 use crate::timer::GlobalTimer;
 
 pub struct App {
@@ -45,9 +43,13 @@ pub struct App {
     timer: GlobalTimer,
     preferences: config::Preferences,
     settings: config::Settings,
-    ui_action_queue: Vec<UiCommand>,
     selected_items: SelectedItems,
-    file_load_state: Arc<Mutex<FileLoadState>>,
+
+    // action and file operation transmitters and receivers
+    ui_action_tx: mpsc::Sender<UiCommand>,
+    ui_action_rx: mpsc::Receiver<UiCommand>,
+    world_read_tx: mpsc::Sender<LoadResult<(World, ImportMode)>>,
+    world_read_rx: mpsc::Receiver<LoadResult<(World, ImportMode)>>,
     pub file_write_tx: mpsc::Sender<WriteResult>,
     file_write_rx: mpsc::Receiver<WriteResult>,
 }
@@ -59,16 +61,21 @@ pub struct UiState {
 }
 
 impl App {
+    /// Creates a new app instance
     pub fn new(ctx: &egui::Context) -> Self {
+        let (ui_action_tx, ui_action_rx) = mpsc::channel();
         let (file_write_tx, file_write_rx) = mpsc::channel();
+        let (world_read_tx, world_read_rx) = mpsc::channel();
         Self {
             source: Source::new(),
             timer: GlobalTimer::new(),
             preferences: config::Preferences::new(ctx),
             settings: config::Settings::default(),
-            ui_action_queue: Vec::with_capacity(100),
             selected_items: SelectedItems::None,
-            file_load_state: Arc::new(Mutex::new(FileLoadState::Idle)),
+            ui_action_tx,
+            ui_action_rx,
+            world_read_tx,
+            world_read_rx,
             file_write_tx,
             file_write_rx,
         }
@@ -83,7 +90,7 @@ impl App {
     }
     /// Apply UI commands and change the main ui state
     fn apply_ui_commands(&mut self, mus: &mut MainUiState) {
-        for cmd in self.ui_action_queue.drain(..) {
+        for cmd in self.ui_action_rx.try_iter() {
             match cmd {
                 UiCommand::OpenOrFocus(tab) => mus.open_or_focus(tab),
             }
@@ -209,8 +216,6 @@ impl<'w> Behavior<MainTab> for MainTabViewer<'w> {
         _tile_id: TileId,
         _tabs: &egui_tiles::Tabs,
     ) {
-        // wtf???
-        let mut ui_action_queue = std::mem::take(&mut self.app.ui_action_queue);
         ui.menu_button("+", |ui| {
             ScrollArea::vertical().show(ui, |ui| {
                 #[rustfmt::skip]
@@ -224,11 +229,11 @@ impl<'w> Behavior<MainTab> for MainTabViewer<'w> {
                 ];
                 for (text, tab) in tabs {
                     if ui.button(text).clicked() {
-                        ui_action_queue.push(UiCommand::OpenOrFocus(tab()));
+                        self.app.ui_action_tx.send(UiCommand::OpenOrFocus(tab()));
                     }
                 }
                 if self.app.preferences.dev_mode && ui.button("Profiler").clicked() {
-                    ui_action_queue.push(UiCommand::OpenOrFocus(MainTab::Profiler(
+                    self.app.ui_action_tx.send(UiCommand::OpenOrFocus(MainTab::Profiler(
                         ProfilerTab::default(),
                     )));
                 }
@@ -242,12 +247,12 @@ impl<'w> Behavior<MainTab> for MainTabViewer<'w> {
                         {
                             ui.menu_button(info.name.as_str(), |ui| {
                                 if ui.button("Graph").clicked() {
-                                    ui_action_queue.push(UiCommand::OpenOrFocus(MainTab::Marey(
-                                        MareyTab::new(*route_key),
-                                    )));
+                                    self.app.ui_action_tx.send(UiCommand::OpenOrFocus(
+                                        MainTab::Marey(MareyTab::new(*route_key)),
+                                    ));
                                 }
                                 if ui.button("Route Timetable").clicked() {
-                                    ui_action_queue.push(UiCommand::OpenOrFocus(
+                                    self.app.ui_action_tx.send(UiCommand::OpenOrFocus(
                                         MainTab::RouteTimetable(RouteTimetableTab::new(*route_key)),
                                     ));
                                 }
@@ -257,7 +262,6 @@ impl<'w> Behavior<MainTab> for MainTabViewer<'w> {
                 );
             })
         });
-        self.app.ui_action_queue = ui_action_queue;
     }
 }
 
@@ -270,13 +274,32 @@ pub fn show_ui(
     puffin::GlobalProfiler::lock().new_frame();
     puffin::profile_function!();
     app.source.begin_frame();
-    while let Ok(result) = app.file_write_rx.try_recv() {
+
+    for result in app.file_write_rx.try_iter() {
+        ui.request_repaint();
         match result {
             WriteResult::Success(path) => info!("Saved `{}`", path.display()),
             WriteResult::Error(error) => {
                 error!("Failed to write file: {error}");
             }
-            WriteResult::Aborted => {}
+            WriteResult::Aborted => {
+                warn!("Write operation aborted")
+            }
+        }
+    }
+    for result in app.world_read_rx.try_iter() {
+        ui.request_repaint();
+        puffin::profile_scope!("file_load");
+        match result {
+            LoadResult::Aborted => {
+                info!("Load aborted");
+            }
+            LoadResult::Success((new_world, mode)) => {
+                let _ = app.source.import(new_world, mode);
+            }
+            LoadResult::Failed(e) => {
+                error!("Failed to load world: {e}");
+            }
         }
     }
     {
@@ -287,31 +310,7 @@ pub fn show_ui(
         puffin::profile_scope!("apply_ui_commands");
         app.apply_ui_commands(&mut ui_state.mus);
     }
-    if let Some(mut lock) = app.file_load_state.try_lock() {
-        puffin::profile_scope!("file_load");
-        match &*lock {
-            FileLoadState::Idle => {}
-            FileLoadState::Processing => {
-                egui::Modal::new(Id::unique("write modal")).show(ui.ctx(), |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label("Loading data...");
-                        ui.spinner();
-                    })
-                });
-            }
-            FileLoadState::Done(_) => {
-                let FileLoadState::Done(world) = std::mem::take(&mut *lock) else {
-                    unreachable!();
-                };
-                match world {
-                    Ok((new_world, mode)) => {
-                        let _ = app.source.import(new_world, mode);
-                    }
-                    Err(s) => {}
-                }
-            }
-        }
-    }
+
     Panel::top("top panel").exact_size(32.0).show(ui, |ui| {
         puffin::profile_scope!("top_panel");
         ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
@@ -363,8 +362,7 @@ pub fn show_ui(
                                 dialog,
                                 import_type,
                                 import_mode,
-                                app.file_load_state.clone(),
-                                ui.ctx().clone(),
+                                app.world_read_tx.clone(),
                             );
                             ui.close();
                         }

@@ -164,3 +164,11 @@ pub trait ExportObject: Sized + Send + 'static {
         });
     }
 }
+
+// write =========================================
+
+pub enum LoadResult<T> {
+    Success(T),
+    Aborted,
+    Failed(anyhow::Error),
+}

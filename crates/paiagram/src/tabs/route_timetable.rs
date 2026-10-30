@@ -13,9 +13,9 @@ use paiagram_core::{RouteKey, TripKey};
 use paiagram_rw::ExportObject;
 use serde::{Deserialize, Serialize};
 
-use crate::UiCommand;
 use crate::font::TIMETABLTE_TEXT_STYLE;
 use crate::tabs::trip::TripTab;
+use crate::{App, UiCommand};
 
 #[derive(Clone, Serialize, Deserialize)]
 pub(crate) struct RouteTimetableTab {
@@ -217,7 +217,7 @@ fn show_station_header<'a, 'world>(
 
 /// Top panel: trip names, following the grid's horizontal scroll.
 fn show_trip_header(
-    app: &mut crate::App,
+    app: &App,
     ui: &mut Ui,
     cell_size: Vec2,
     columns: &[(TripKey, EcoVec<RouteTimetableEntry>)],
@@ -277,9 +277,9 @@ fn show_trip_header(
                     .on_hover_text(format!("Click to open the trip\n{name}"))
                     .clicked()
                 {
-                    app.ui_action_queue.push(UiCommand::OpenOrFocus(super::MainTab::Trip(
+                    app.ui_action_tx.send(UiCommand::OpenOrFocus(super::MainTab::Trip(
                         TripTab::new(*key),
-                    )))
+                    )));
                 }
             }
         },

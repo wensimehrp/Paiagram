@@ -11,10 +11,12 @@ use paiagram_rw::{SaveCategory, WriteResult};
 /// stored upon a panic.
 static WORLD_BACKUP: ArcSwapOption<World> = ArcSwapOption::const_empty();
 
+/// Updates the backup emergency save at [`WORLD_BACKUP`].
 pub fn update_emergency_save(new_world: World) {
     WORLD_BACKUP.store(Some(Arc::new(new_world)));
 }
 
+/// Set up the emergency save pipeline
 pub fn setup_emergency_save() {
     let default_hook = panic::take_hook();
     panic::set_hook(Box::new(move |info| {
@@ -27,18 +29,17 @@ fn _setup_emergency_save(panic_info: &PanicHookInfo<'_>) {
     eprintln!("An unexpected error occurred. The app has panicked and crashed.");
     eprintln!("Panic info: {:?}", panic_info);
 
-    // Lock-free load from global backup
     let Some(world_guard) = WORLD_BACKUP.load_full() else {
         eprintln!("Failed to create backup: no world stored in backup");
         return;
     };
 
     let world: &World = &world_guard;
-    let now = format!("{}_emergency_save", jiff::Timestamp::now());
-    eprintln!("Attempting to create save `{now}`...");
+    eprintln!("Attempting to create emergency save...");
 
-    let save = SaveData::from((*world).clone());
+    let save = SaveData::from(world.clone());
     let (tx, rx) = mpsc::channel();
+
     SaveCategory::Emergency.save(save, tx);
     match rx.recv_timeout(Duration::from_secs(30)) {
         Ok(result) => match result {

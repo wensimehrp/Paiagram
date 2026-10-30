@@ -1,6 +1,8 @@
 use std::sync::mpsc;
 
 use idb::{Database, DatabaseEvent, Factory, ObjectStoreParams, TransactionMode};
+use web_sys::js_sys::Uint8Array;
+use web_sys::wasm_bindgen::JsValue;
 
 use crate::{AvailableSaves, SaveCategory, paiagram_idb};
 
@@ -25,7 +27,7 @@ async fn open_database() -> Result<Database> {
 
 impl SaveCategory {
     /// Lists the saves of this category.
-    pub async fn list_files(self) -> Result<Vec<String>> {
+    pub async fn list_files(&self) -> Result<Vec<String>> {
         let db = open_database().await?;
 
         let transaction = db.transaction(&[self.category_str()], TransactionMode::ReadOnly)?;
@@ -34,6 +36,22 @@ impl SaveCategory {
         let keys = store.get_all_keys(None, None)?.await?;
 
         Ok(keys.into_iter().filter_map(|key| key.as_string()).collect())
+    }
+    /// Read this save from this category
+    pub async fn load_file(&self, filename: &str) -> Result<Vec<u8>> {
+        let db = open_database().await?;
+
+        let transaction = db.transaction(&[self.category_str()], TransactionMode::ReadOnly)?;
+        let store = transaction.object_store(self.category_str())?;
+
+        let target_key = JsValue::from_str(filename);
+
+        Ok(store
+            .get(target_key)?
+            .await?
+            .map(Uint8Array::from)
+            .map(|arr| arr.to_vec())
+            .unwrap_or_default())
     }
 }
 
@@ -48,29 +66,4 @@ pub fn list_all_saves(tx: mpsc::Sender<Result<AvailableSaves>>) {
         };
         let _ = tx.send(result.await);
     });
-}
-
-pub async fn load_save(category: SaveCategory, key_str: Option<&str>) -> Result<Option<Vec<u8>>> {
-    let db = open_database().await?;
-
-    let transaction = db.transaction(&[category.category_str()], TransactionMode::ReadOnly)?;
-    let store = transaction.object_store(category.category_str())?;
-
-    let target_key = match key_str {
-        Some(k) => web_sys::wasm_bindgen::JsValue::from_str(k),
-        None => {
-            let keys = store.get_all_keys(None, None)?.await?;
-            let Some(last_key) = keys.into_iter().last() else {
-                return Ok(None);
-            };
-            last_key
-        }
-    };
-
-    let Some(js_value) = store.get(target_key)?.await? else {
-        return Ok(None);
-    };
-
-    let uint8_array = web_sys::js_sys::Uint8Array::from(js_value);
-    Ok(Some(uint8_array.to_vec()))
 }

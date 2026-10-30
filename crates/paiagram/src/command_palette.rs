@@ -128,7 +128,7 @@ impl CommandPalette {
                 None
             }
         } {
-            app.ui_action_queue.push(UiCommand::OpenOrFocus(tab));
+            app.ui_action_tx.send(UiCommand::OpenOrFocus(tab));
         }
         self.clear();
     }

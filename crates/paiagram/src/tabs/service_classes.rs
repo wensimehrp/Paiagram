@@ -139,7 +139,7 @@ impl Tab for ServiceClassesTab {
                 })
             });
             if let Some(action) = scroll_area.inner {
-                app.ui_action_queue.push(action);
+                app.ui_action_tx.send(action);
             }
         });
     }

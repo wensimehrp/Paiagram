@@ -71,7 +71,6 @@ impl super::Tab for IntervalsTab {
                 },
             );
         });
-        let mut ui_action_queue = std::mem::take(&mut app.ui_action_queue);
         CentralPanel::no_frame().show(ui, |ui| {
             puffin::profile_scope!("interval_details");
             let Some(interval) = self.focused else {
@@ -89,7 +88,7 @@ impl super::Tab for IntervalsTab {
                             continue;
                         };
                         if ui.button(trip.name.as_str()).clicked() {
-                            ui_action_queue.push(UiCommand::OpenOrFocus(MainTab::Trip(
+                            app.ui_action_tx.send(UiCommand::OpenOrFocus(MainTab::Trip(
                                 TripTab::new(*trip_key),
                             )));
                         }
@@ -97,6 +96,5 @@ impl super::Tab for IntervalsTab {
                 })
             });
         });
-        app.ui_action_queue = ui_action_queue;
     }
 }

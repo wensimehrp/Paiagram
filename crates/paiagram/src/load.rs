@@ -1,8 +1,8 @@
-use std::sync::Arc;
+use std::sync::mpsc;
 
 use paiagram_core::World;
 use paiagram_core::import::{ImportMode, ImportType, make_world};
-use parking_lot::Mutex;
+use paiagram_rw::LoadResult;
 use rfd::AsyncFileDialog;
 
 #[derive(Clone, Default)]
@@ -17,38 +17,38 @@ pub(crate) fn load_file(
     dialog: AsyncFileDialog,
     import_type: ImportType,
     import_mode: ImportMode,
-    state: Arc<Mutex<FileLoadState>>,
-    ctx: egui::Context,
+    world_tx: mpsc::Sender<LoadResult<(World, ImportMode)>>,
 ) {
-    *state.lock() = FileLoadState::Processing;
-    let process = async move {
-        let data = if cfg_select! {
-            debug_assertions => matches!(import_type, ImportType::BuiltinOud2),
-            _ => false,
-        } {
-            Vec::new()
+    let pick_data = async {
+        let handle = dialog.pick_file().await;
+        if let Some(handle) = handle {
+            Some(handle.read().await)
         } else {
-            let data = dialog.pick_file().await;
-            let Some(data) = data else {
-                *state.lock() = FileLoadState::Idle;
-                return;
-            };
-            *state.lock() = FileLoadState::Processing;
-            data.read().await
+            None
+        }
+    };
+    let process = async move {
+        #[cfg(debug_assertions)]
+        let data = if matches!(import_type, ImportType::BuiltinOud2) {
+            Some(Vec::new())
+        } else {
+            pick_data.await
         };
-        let (tx, rx) = futures_channel::oneshot::channel();
+        #[cfg(not(debug_assertions))]
+        let data = pick_data.await;
+        let Some(data) = data else {
+            world_tx.send(LoadResult::Aborted);
+            return;
+        };
         // for some reason egui's Context doesn't implement Send on wasm32. This means it can't be
         // send to the rayon thread.
         // Use a tx rx pair from futures_channel instead.
         rayon::spawn(move || {
-            let new_world = make_world(&data, import_type)
-                .map(|world| (world, import_mode))
-                .map_err(|e| e.to_string());
-            *state.lock() = FileLoadState::Done(new_world);
-            let _ = tx.send(());
+            match make_world(&data, import_type) {
+                Ok(world) => world_tx.send(LoadResult::Success((world, import_mode))),
+                Err(e) => world_tx.send(LoadResult::Failed(anyhow::anyhow!("{e}"))),
+            };
         });
-        let _ = rx.await;
-        ctx.request_repaint();
     };
     #[cfg(target_arch = "wasm32")]
     {
@@ -56,6 +56,6 @@ pub(crate) fn load_file(
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let _ = std::thread::spawn(move || pollster::block_on(process));
+        let _ = rayon::spawn(move || pollster::block_on(process));
     }
 }

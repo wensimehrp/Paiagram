@@ -2,7 +2,7 @@ use egui::*;
 use paiagram_core::*;
 use serde::{Deserialize, Serialize};
 
-use crate::UiCommand;
+use crate::{App, UiCommand};
 
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq)]
 pub(crate) struct StationTab {
@@ -20,13 +20,7 @@ impl super::Tab for StationTab {
         };
         ScrollArea::both().show(ui, |ui| {
             Frame::new().inner_margin(6).show(ui, |ui| {
-                station_ui(
-                    &stn.data,
-                    &stn.cache,
-                    &app.source,
-                    &mut app.ui_action_queue,
-                    ui,
-                );
+                station_ui(&stn.data, &stn.cache, &app, ui);
             })
         });
     }
@@ -35,13 +29,7 @@ impl super::Tab for StationTab {
     }
 }
 
-fn station_ui(
-    stn: &Station,
-    cache: &StationCache,
-    source: &Source,
-    ui_cmds: &mut Vec<UiCommand>,
-    ui: &mut Ui,
-) {
+fn station_ui(stn: &Station, cache: &StationCache, app: &App, ui: &mut Ui) {
     puffin::profile_function!();
     ui.heading(stn.name.as_str());
     let mut all_trips: Vec<TripKey> = Vec::new();

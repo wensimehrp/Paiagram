@@ -1,10 +1,12 @@
 use std::sync::mpsc;
 
+use anyhow::Context;
 use egui::*;
 use egui_i18n::tr;
 use log::error;
-use paiagram_rw::list_files::{self, Result};
-use paiagram_rw::{AvailableSaves, SaveCategory};
+use paiagram_core::SaveData;
+use paiagram_core::import::ImportMode;
+use paiagram_rw::{AvailableSaves, LoadResult, SaveCategory, list_files};
 use serde::{Deserialize, Serialize};
 
 use super::Tab;
@@ -15,8 +17,8 @@ use crate::widgets::{LOGO_COORDINATES, LogoStroke};
 #[serde(into = "StartTabNoCache", from = "StartTabNoCache")]
 pub(crate) struct StartTab {
     available_files: Option<AvailableSaves>,
-    available_file_tx: mpsc::Sender<Result<AvailableSaves>>,
-    available_file_rx: mpsc::Receiver<Result<AvailableSaves>>,
+    available_file_tx: mpsc::Sender<list_files::Result<AvailableSaves>>,
+    available_file_rx: mpsc::Receiver<list_files::Result<AvailableSaves>>,
 }
 
 impl Clone for StartTab {
@@ -88,7 +90,46 @@ impl Tab for StartTab {
 
         if let Some(available_files) = &self.available_files
             && let Some((category, key)) = show_available_save(ui, available_files)
-        {}
+        {
+            let world_read_tx = app.world_read_tx.clone();
+            #[cfg(target_arch = "wasm32")]
+            wasm_bindgen_futures::spawn_local(async move {
+                let data = match category.load_file(&key).await {
+                    Ok(d) => d,
+                    Err(e) => {
+                        let _ = world_read_tx.send(LoadResult::Failed(anyhow::anyhow!("{e}")));
+                        return;
+                    }
+                };
+                rayon::spawn(move || {
+                    let world = SaveData::from_reader(data.as_slice());
+                    let _ = world_read_tx.send(match world {
+                        Ok(data) => {
+                            let SaveData::V1(world) = data;
+                            LoadResult::Success((world, ImportMode::Replace))
+                        }
+                        Err(e) => LoadResult::Failed(anyhow::anyhow!("{e}")),
+                    });
+                });
+            });
+            #[cfg(not(target_arch = "wasm32"))]
+            rayon::spawn(move || {
+                let result = || {
+                    let data =
+                        category.load_file(&key).context("Failed to load file from category")?;
+                    SaveData::from_reader(data.as_slice()).map_err(|e| anyhow::anyhow!("{e}")).map(
+                        |data| {
+                            let SaveData::V1(world) = data;
+                            world
+                        },
+                    )
+                };
+                let _ = world_read_tx.send(match result() {
+                    Ok(world) => LoadResult::Success((world, ImportMode::Replace)),
+                    Err(e) => LoadResult::Failed(e),
+                });
+            });
+        }
     }
 }
 
@@ -114,8 +155,8 @@ fn show_available_save(ui: &mut Ui, available: &AvailableSaves) -> Option<(SaveC
             for key in keys {
                 if ui.button(key).clicked() {
                     selected = Some((category, key.clone()));
+                    return;
                 }
-                return;
             }
             ui.add_space(8.0);
         }
