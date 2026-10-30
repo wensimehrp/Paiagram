@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
 use std::panic::{self, PanicHookInfo};
-use std::sync::{Arc, mpsc};
-use std::time::Duration;
+use std::path::Path;
+use std::sync::Arc;
 
 use arc_swap::ArcSwapOption;
+use log::error;
 use paiagram_core::{SaveData, World};
-use paiagram_rw::{SaveCategory, WriteResult};
 
 /// A backup for the current world. The content stored in this variable would be serialized and
 /// stored upon a panic.
@@ -26,31 +26,81 @@ pub fn setup_emergency_save() {
 }
 
 fn _setup_emergency_save(panic_info: &PanicHookInfo<'_>) {
-    eprintln!("An unexpected error occurred. The app has panicked and crashed.");
-    eprintln!("Panic info: {:?}", panic_info);
+    error!("An unexpected error occurred. The app has panicked and crashed.");
+    error!("Panic info: {:?}", panic_info);
 
     let Some(world_guard) = WORLD_BACKUP.load_full() else {
-        eprintln!("Failed to create backup: no world stored in backup");
+        error!("Failed to create backup: no world stored in backup");
         return;
     };
 
     let world: &World = &world_guard;
-    eprintln!("Attempting to create emergency save...");
+    error!("Attempting to create emergency save...");
 
-    let save = SaveData::from(world.clone());
-    let (tx, rx) = mpsc::channel();
+    #[allow(unused_mut)]
+    let mut save = SaveData::from(world.clone());
 
-    SaveCategory::Emergency.save(save, tx);
-    match rx.recv_timeout(Duration::from_secs(30)) {
-        Ok(result) => match result {
-            WriteResult::Aborted => eprintln!("Write was aborted"),
-            WriteResult::Error(e) => eprintln!("Error while writing file: {}", e),
-            WriteResult::Success(path) => {
-                eprintln!("Successfully wrote to `{}`", path.display())
-            }
-        },
-        Err(e) => {
-            eprintln!("Failed to save file: {}", e)
+    #[cfg(target_arch = "wasm32")]
+    {
+        use paiagram_rw::ExportObject;
+        let filename = format!(
+            "paiagram-emergency-{}.{}",
+            jiff::Timestamp::now().to_string().replace(':', "-"),
+            save.extension(),
+        );
+        match save.write_to_vec(save.default_buf()) {
+            Ok(bytes) => match paiagram_rw::save::download_file(&filename, &bytes) {
+                Ok(()) => error!("Emergency save downloaded as `{filename}`"),
+                Err(e) => error!("Failed to download emergency save: {e:?}"),
+            },
+            Err(e) => error!("Failed to serialize emergency save: {e}"),
         }
-    };
+        show_dialog(Path::new(&filename));
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        use paiagram_rw::{SaveCategory, WriteResult};
+        let (tx, rx) = std::sync::mpsc::channel();
+
+        SaveCategory::Emergency.save(save, tx);
+        match rx.recv_timeout(std::time::Duration::from_secs(30)) {
+            Ok(result) => match result {
+                WriteResult::Aborted => error!("Write was aborted"),
+                WriteResult::Error(e) => error!("Error while writing file: {}", e),
+                WriteResult::Success(path) => {
+                    error!("Successfully wrote to `{}`", path.display());
+                    show_dialog(&path);
+                }
+            },
+            Err(e) => {
+                error!("Failed to save file: {}", e)
+            }
+        }
+    }
+}
+
+fn show_dialog(path: &Path) {
+    let desc = format!(
+        "The app has crashed. An emergency save at {} has been created.",
+        path.display()
+    );
+    let title = "Emergency Save";
+    cfg_select! {
+        target_arch = "wasm32" => wasm_bindgen_futures::spawn_local(async move {
+            rfd::AsyncMessageDialog::new()
+                .set_title(title)
+                .set_description(desc)
+                .set_level(rfd::MessageLevel::Error)
+                .show()
+                .await;
+        }),
+        _ => {
+            rfd::MessageDialog::new()
+                .set_title(title)
+                .set_description(desc)
+                .set_level(rfd::MessageLevel::Error)
+                .show();
+        }
+    }
 }

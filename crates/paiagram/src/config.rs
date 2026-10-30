@@ -152,6 +152,13 @@ impl egui::Widget for &mut Preferences {
                 ui.label("Developer Mode");
                 ui.checkbox(&mut self.dev_mode, "");
                 ui.end_row();
+                if cfg!(debug_assertions) && self.dev_mode {
+                    ui.label(RichText::new("Trigger panic").color(Color32::RED));
+                    if ui.button("Trigger").clicked() {
+                        panic!("Manually triggered panic.");
+                    }
+                    ui.end_row();
+                }
                 ui.label("Font");
                 egui::ComboBox::from_id_salt("font selection")
                     .selected_text(
