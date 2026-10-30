@@ -39,19 +39,17 @@ fn _setup_emergency_save(panic_info: &PanicHookInfo<'_>) {
 
     let save = SaveData::from((*world).clone());
     let (tx, rx) = mpsc::channel();
-    rayon::spawn(move || {
-        match rx.recv_timeout(Duration::from_secs(30)) {
-            Ok(result) => match result {
-                WriteResult::Aborted => eprintln!("Write was aborted"),
-                WriteResult::Error(e) => eprintln!("Error while writing file: {}", e),
-                WriteResult::Success(path) => {
-                    eprintln!("Successfully wrote to `{}`", path.display())
-                }
-            },
-            Err(e) => {
-                eprintln!("Failed to save file: {}", e)
-            }
-        };
-    });
     SaveCategory::Emergency.save(save, tx);
+    match rx.recv_timeout(Duration::from_secs(30)) {
+        Ok(result) => match result {
+            WriteResult::Aborted => eprintln!("Write was aborted"),
+            WriteResult::Error(e) => eprintln!("Error while writing file: {}", e),
+            WriteResult::Success(path) => {
+                eprintln!("Successfully wrote to `{}`", path.display())
+            }
+        },
+        Err(e) => {
+            eprintln!("Failed to save file: {}", e)
+        }
+    };
 }
