@@ -228,7 +228,7 @@ fn show_trip_handles(
                         });
                     }
                     let duration = trip_schedule.estimates(&source.graph, |estimates| {
-                        trip_schedule.arr_to_dur(estimates, entry.id)
+                        trip_schedule.dur_since_prev_stable(estimates, entry.id)
                     });
                     let btn = Button::new("For").right_text(
                         RichText::from(

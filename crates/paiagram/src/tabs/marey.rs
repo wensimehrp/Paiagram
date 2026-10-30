@@ -1,8 +1,7 @@
 use ecow::eco_vec;
 use egui::*;
-use either::Either;
 use paiagram_core::route::MareyCache;
-use paiagram_core::time::{TDuration, Tick, TimetableTime};
+use paiagram_core::time::{Tick, TimetableTime};
 use paiagram_core::trip::{TEntry, TEntryId, TEstimate, TravelMode, TripSchedule};
 use paiagram_core::{CanvasLength, Route, RouteCache, RouteKey, Trip, TripKey, Wfc};
 use paiagram_export::GraphyFormat;
@@ -23,6 +22,7 @@ use super::{Navigatable, Tab};
 use crate::App;
 use crate::font::TIMETABLE_FONT_ID;
 use crate::tabs::marey::show_focused_trips::draw_polyline;
+use crate::trip_schedule_visual::WithVisualMod;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(into = "MareyTabNoCache", from = "MareyTabNoCache")]
@@ -433,13 +433,7 @@ fn main_display(tab: &mut MareyTab, app: &mut App, ui: &mut Ui) {
                 width: lerp(style.width as f32..=5.0, animation_progress),
                 color: style.color,
             };
-            let mut schedule = trip.schedule.clone();
-            if let Some((entry_id, _base_estimate, shift)) = selected.editing_offset {
-                match shift {
-                    Either::Left(d) => schedule.shift_arr_or_pass(entry_id, d),
-                    Either::Right(d) => schedule.shift_dep(entry_id, d),
-                }
-            }
+            let schedule = trip.schedule.clone().with_entry_shift(selected.editing_offset);
             let Some(polylines) = route.intervals.populate_schedule(&app.world, &schedule) else {
                 continue;
             };
@@ -463,7 +457,6 @@ fn main_display(tab: &mut MareyTab, app: &mut App, ui: &mut Ui) {
     } else if let &SelectedItems::TripExtension((trip_key, focused_pos)) = &app.selected_items
         && let Some(trip) = app.trips.get(&trip_key)
     {
-        let mut schedule = trip.schedule.clone();
         let stroke = Stroke::new(3.0, Color32::RED);
 
         let focused_pos = if let Some(pointer_pos) = ui.pointer_hover_pos()
@@ -482,21 +475,21 @@ fn main_display(tab: &mut MareyTab, app: &mut App, ui: &mut Ui) {
             focused_pos
         };
 
-        if let Some((focused_node, focused_time)) = focused_pos {
-            let current_entry = |id: TEntryId| TEntry {
-                node: focused_node,
-                arr_or_pass: TravelMode::At(focused_time),
-                dep: None,
-                id,
-            };
-            schedule.push(current_entry(unsafe { TEntryId::dummy() }));
-            if response.clicked() {
-                let _ = app.mutate(|mut world| {
-                    let trip = world.trips.get_mut(&trip_key).ok_or("wtf?")?;
-                    trip.schedule.push(current_entry(TEntryId::new()));
-                    Ok(world)
+        let schedule = trip.schedule.clone().with_pushed_entry(focused_pos);
+
+        if response.clicked()
+            && let Some((focused_node, focused_time)) = focused_pos
+        {
+            let _ = app.mutate(|mut world| {
+                let trip = world.trips.get_mut(&trip_key).ok_or("wtf?")?;
+                trip.schedule.push(TEntry {
+                    node: focused_node,
+                    arr_or_pass: TravelMode::At(focused_time),
+                    dep: None,
+                    id: TEntryId::new(),
                 });
-            }
+                Ok(world)
+            });
         }
 
         route.intervals.populate_schedule(&app.world, &schedule).into_iter().flatten().for_each(

@@ -115,7 +115,8 @@ fn gen_progress(
         .map(|(_, distance)| distance)
         .min()?
         .0 as f32;
-    Some(distance_to_source / (distance_to_source + distance_to_target))
+    let ratio = distance_to_source / (distance_to_source + distance_to_target);
+    Some(if ratio.is_nan() { 0.0 } else { ratio })
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]

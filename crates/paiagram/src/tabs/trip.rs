@@ -1,15 +1,15 @@
 use egui::*;
 use egui_i18n::tr;
-use either::Either;
 use paiagram_core::time::TimetableTime;
 use paiagram_core::trip::TravelMode::{self, At, Flexible, For};
-use paiagram_core::trip::{EstimateEntry, TEntry, TEntryId, TEstimate, TripSchedule};
+use paiagram_core::trip::{EstimateEntry, TEstimate, TripSchedule};
 use paiagram_core::{TripKey, World};
 use paiagram_selection::SelectedItems;
 use serde::{Deserialize, Serialize};
 
 use super::Tab;
 use crate::App;
+use crate::trip_schedule_visual::WithVisualMod;
 use crate::widgets::{DurationDragValue, TimeDragValue};
 
 #[derive(Serialize, Deserialize, Clone, Default)]
@@ -79,25 +79,9 @@ fn show_trip(tab: &mut TripTab, app: &mut App, ui: &mut Ui) {
         trip.schedule.clone()
     } else if let SelectedItems::Trips(trips) = &app.selected_items {
         let selected_trip = trips.first();
-        let mut schedule = trip.schedule.clone();
-        if let Some((id, _, offset)) = selected_trip.editing_offset {
-            match offset {
-                Either::Left(d) => schedule.shift_arr_or_pass(id, d),
-                Either::Right(d) => schedule.shift_dep(id, d),
-            }
-        }
-        schedule
+        trip.schedule.clone().with_entry_shift(selected_trip.editing_offset)
     } else if let &SelectedItems::TripExtension((_, focused_pos)) = &app.selected_items {
-        let mut schedule = trip.schedule.clone();
-        if let Some((node, t)) = focused_pos {
-            schedule.push(TEntry {
-                node,
-                arr_or_pass: TravelMode::At(t),
-                dep: None,
-                id: unsafe { TEntryId::dummy() },
-            });
-        }
-        schedule
+        trip.schedule.clone().with_pushed_entry(focused_pos)
     } else {
         unreachable!();
     };
@@ -131,8 +115,7 @@ fn show_trip(tab: &mut TripTab, app: &mut App, ui: &mut Ui) {
         Frame::new().inner_margin(6.0).show(ui, |ui| {
             Grid::new("trip ui").num_columns(2).striped(true).show(ui, |ui| {
                 ui.label("Station");
-                ui.label("Arrival/Pass");
-                ui.label("Departure");
+                ui.label("Arrival/Pass/Departure");
                 ui.end_row();
                 // Remove button background
                 ui.visuals_mut().widgets.inactive.weak_bg_fill = Color32::TRANSPARENT;
@@ -264,7 +247,7 @@ fn row_ui(
         };
         // display departure stuff and change mode
         let t = estimate.map(|e| e.arr).unwrap_or_default();
-        let d = schedule.arr_to_dur(estimates, entry.id).unwrap_or_default();
+        let d = schedule.dur_since_prev_stable(estimates, entry.id).unwrap_or_default();
         let mut new_mode = None;
         if ui.add(TimeDragValue(t, &mut None)).clicked() {
             new_mode = Some(TravelMode::At(t));

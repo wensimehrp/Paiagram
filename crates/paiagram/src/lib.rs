@@ -9,6 +9,7 @@ mod human_time;
 mod load;
 mod tabs;
 mod timer;
+mod trip_schedule_visual;
 mod widgets;
 
 use std::sync::mpsc;

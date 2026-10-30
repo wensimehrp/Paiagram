@@ -5,14 +5,6 @@ use paiagram_core::import::{ImportMode, ImportType, make_world};
 use paiagram_rw::LoadResult;
 use rfd::AsyncFileDialog;
 
-#[derive(Clone, Default)]
-pub(crate) enum FileLoadState {
-    #[default]
-    Idle,
-    Processing,
-    Done(Result<(World, ImportMode), String>),
-}
-
 pub(crate) fn load_file(
     dialog: AsyncFileDialog,
     import_type: ImportType,
@@ -37,14 +29,14 @@ pub(crate) fn load_file(
         #[cfg(not(debug_assertions))]
         let data = pick_data.await;
         let Some(data) = data else {
-            world_tx.send(LoadResult::Aborted);
+            let _ = world_tx.send(LoadResult::Aborted);
             return;
         };
         // for some reason egui's Context doesn't implement Send on wasm32. This means it can't be
         // send to the rayon thread.
         // Use a tx rx pair from futures_channel instead.
         rayon::spawn(move || {
-            match make_world(&data, import_type) {
+            let _ = match make_world(&data, import_type) {
                 Ok(world) => world_tx.send(LoadResult::Success((world, import_mode))),
                 Err(e) => world_tx.send(LoadResult::Failed(anyhow::anyhow!("{e}"))),
             };

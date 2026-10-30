@@ -78,6 +78,7 @@ pub struct TripSchedule {
 }
 
 impl TripSchedule {
+    /// Create a new trip schedule
     pub fn new(entries: EcoVec<TEntry>) -> Self {
         Self { entries }
     }
@@ -87,11 +88,13 @@ impl TripSchedule {
         &self.entries
     }
 
+    /// Push a new entry to the end of the schedule
     pub fn push(&mut self, new: TEntry) {
         self.entries.push(new);
     }
 
-    pub fn arr_to_dur(
+    /// The duration of an entry since the previuos stable timepoint.
+    pub fn dur_since_prev_stable(
         &self,
         estimates: &[(Option<TEstimate>, EstimateEntry)],
         id: TEntryId,
