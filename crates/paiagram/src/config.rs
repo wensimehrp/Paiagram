@@ -12,14 +12,6 @@ use crate::font::{FONT_DATABASE, load_default_font, load_font_to_egui};
 use crate::widgets::DurationDragValue;
 use crate::widgets::search::search;
 
-#[derive(Default, PartialEq)]
-pub(crate) enum LevelOfDetailMode {
-    #[default]
-    X1,
-    X2,
-    X4,
-}
-
 /// Create the language definitions. See the call site in the source code for details.
 macro_rules! make_lang {
     {
@@ -85,7 +77,6 @@ impl Default for AppLanguage {
 
 pub(crate) struct Preferences {
     pub dev_mode: bool,
-    pub aa: bool,
     pub theme_preference: ThemePreference,
     pub language: AppLanguage,
     pub font_name: Arc<Mutex<String>>,
@@ -98,7 +89,6 @@ impl Preferences {
         let ret = Self {
             theme_preference: ThemePreference::default(),
             dev_mode: cfg!(debug_assertions),
-            aa: true,
             language: AppLanguage::default(),
             font_name: font_name.clone(),
         };
@@ -159,9 +149,6 @@ impl egui::Widget for &mut Preferences {
                         ui.set_theme(self.theme_preference);
                     });
                 ui.end_row();
-                ui.label("Antialiasing");
-                ui.checkbox(&mut self.aa, "");
-                ui.end_row();
                 ui.label("Developer Mode");
                 ui.checkbox(&mut self.dev_mode, "");
                 ui.end_row();
@@ -173,8 +160,8 @@ impl egui::Widget for &mut Preferences {
                     .height(300.0)
                     .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
                     .show_ui(ui, |ui| {
-                        let query_id = ui.id().with("query text");
-                        let candidate_id = ui.id().with("query candidates");
+                        let query_id = ui.scope_id().with("query text");
+                        let candidate_id = ui.scope_id().with("query candidates");
                         let mut query: String =
                             ui.data_mut(|w| w.remove_temp(query_id)).unwrap_or_default();
                         let mut matches: Vec<usize> =
