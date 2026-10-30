@@ -5,7 +5,6 @@ mod command_palette;
 mod config;
 mod emergency_save;
 mod font;
-mod global_states;
 mod human_time;
 mod load;
 mod tabs;
@@ -47,7 +46,6 @@ pub struct App {
     preferences: config::Preferences,
     settings: config::Settings,
     ui_action_queue: Vec<UiCommand>,
-    command_error: Option<String>,
     selected_items: SelectedItems,
     file_load_state: Arc<Mutex<FileLoadState>>,
     pub file_write_tx: mpsc::Sender<WriteResult>,
@@ -69,7 +67,6 @@ impl App {
             preferences: config::Preferences::new(ctx),
             settings: config::Settings::default(),
             ui_action_queue: Vec::with_capacity(100),
-            command_error: None,
             selected_items: SelectedItems::None,
             file_load_state: Arc::new(Mutex::new(FileLoadState::Idle)),
             file_write_tx,
@@ -278,7 +275,6 @@ pub fn show_ui(
             WriteResult::Success(path) => info!("Saved `{}`", path.display()),
             WriteResult::Error(error) => {
                 error!("Failed to write file: {error}");
-                app.command_error = Some(format!("Failed to write file: {error}"));
             }
             WriteResult::Aborted => {}
         }
