@@ -11,14 +11,14 @@ rustdoc-args = ["--cfg", "docsrs"]
 all-features = true
 
 [dependencies]
-derive_more = { version = "2.1.1", features = ["full"] }
+derive_more.workspace = true
 either.workspace = true
 encoding_rs.workspace = true
 log.workspace = true
 paiagram-oudia-macros.workspace = true
 paste.workspace = true
-pest = "2.8.6"
-pest_consume = "1.1.3"
+pest.workspace = true
+pest_consume.workspace = true
 petgraph.workspace = true
 serde = { version = "1.0.228", features = ["derive"], optional = true }
 smallvec.workspace = true

@@ -216,12 +216,16 @@ impl RouteTimetable {
 pub struct RouteTimetableExport(pub RouteTimetable, pub World);
 
 impl ExportObject for RouteTimetableExport {
-    fn filename(&self) -> String {
-        "exported.csv".into()
+    fn extension(&self) -> &str {
+        "csv"
     }
-    fn write_content<W: std::io::Write>(&mut self, writer: &mut W) -> std::io::Result<()> {
+    fn default_filename(&self) -> &str {
+        "exported"
+    }
+    fn write_to_vec(&mut self, mut buf: Vec<u8>) -> std::io::Result<Vec<u8>> {
         let csv =
             self.0.to_csv_string(&self.1).map_err(|e| std::io::Error::other(e.to_string()))?;
-        writer.write_all(csv.as_bytes())
+        buf.extend_from_slice(csv.as_bytes());
+        Ok(buf)
     }
 }

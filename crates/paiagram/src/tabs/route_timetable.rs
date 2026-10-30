@@ -63,7 +63,7 @@ impl super::Tab for RouteTimetableTab {
             if ui.button("Export .csv").clicked() {
                 puffin::profile_scope!("export_csv");
                 RouteTimetableExport(self.cache.clone(), app.world.clone())
-                    .write_to_file(Default::default());
+                    .write_via_interface(app.file_write_tx.clone());
             }
             ui.checkbox(&mut self.show_estimates, "Show estimates");
             ui.checkbox(&mut self.show_inbound, "Show Inbound");

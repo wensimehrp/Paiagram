@@ -32,11 +32,21 @@ pub struct JsDataExporter {
 }
 
 impl paiagram_rw::ExportObject for JsDataExporter {
-    fn write_content<W: std::io::Write>(&mut self, writer: &mut W) -> std::io::Result<()> {
-        writer.write_all(self.content.as_bytes())
+    fn extension(&self) -> &str {
+        std::path::Path::new(&self.filename)
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .unwrap_or("txt")
     }
-    fn filename(&self) -> String {
-        self.filename.clone()
+    fn default_filename(&self) -> &str {
+        std::path::Path::new(&self.filename)
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .unwrap_or(&self.filename)
+    }
+    fn write_to_vec(&mut self, mut buf: Vec<u8>) -> std::io::Result<Vec<u8>> {
+        buf.extend_from_slice(self.content.as_bytes());
+        Ok(buf)
     }
 }
 

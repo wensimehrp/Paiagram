@@ -52,15 +52,17 @@ pub struct ExportGraphy {
 }
 
 impl paiagram_rw::ExportObject for ExportGraphy {
-    fn filename(&self) -> String {
-        let extension = match self.format {
-            GraphyFormat::Pdf => ".pdf",
-            GraphyFormat::Svg => ".svg",
-            GraphyFormat::Png => ".png",
-        };
-        format!("exported{}", extension)
+    fn extension(&self) -> &str {
+        match self.format {
+            GraphyFormat::Pdf => "pdf",
+            GraphyFormat::Svg => "svg",
+            GraphyFormat::Png => "png",
+        }
     }
-    fn write_content<W: io::Write>(&mut self, writer: &mut W) -> io::Result<()> {
+    fn default_filename(&self) -> &str {
+        "exported"
+    }
+    fn write_to_vec(&mut self, mut buf: Vec<u8>) -> io::Result<Vec<u8>> {
         match self.format {
             GraphyFormat::Pdf => {
                 let font = self
@@ -70,7 +72,8 @@ impl paiagram_rw::ExportObject for ExportGraphy {
                     .ok_or_else(|| io::Error::other("no usable font was provided"))?;
                 let document = new_document(&self.world, self.route, &self.cache, font)
                     .ok_or_else(|| io::Error::other("failed to build the PDF document"))?;
-                writer.write_all(&document)
+                buf.extend_from_slice(&document);
+                Ok(buf)
             }
             GraphyFormat::Svg | GraphyFormat::Png => {
                 todo!()

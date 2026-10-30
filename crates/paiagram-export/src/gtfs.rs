@@ -21,12 +21,14 @@ pub struct ExportGtfs {
 }
 
 impl ExportObject for ExportGtfs {
-    fn filename(&self) -> String {
-        "exported.zip".into()
+    fn extension(&self) -> &str {
+        "zip"
     }
-
-    fn write_content<W: io::Write + io::Seek>(&mut self, writer: &mut W) -> io::Result<()> {
-        let mut writer = ZipWriter::new(writer);
+    fn default_filename(&self) -> &str {
+        "exported"
+    }
+    fn write_to_vec(&mut self, buf: Vec<u8>) -> io::Result<Vec<u8>> {
+        let mut writer = ZipWriter::new(io::Cursor::new(buf));
         write_agency(&mut writer)?;
         write_stops(&mut writer, &self.world)?;
         write_routes(&mut writer, &self.world)?;
@@ -34,8 +36,8 @@ impl ExportObject for ExportGtfs {
         write_stop_times(&mut writer, &self.world)?;
         write_calendar(&mut writer)?;
         write_feed_info(&mut writer)?;
-        writer.finish()?;
-        Ok(())
+        let cursor = writer.finish()?;
+        Ok(cursor.into_inner())
     }
 }
 

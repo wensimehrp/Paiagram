@@ -3,13 +3,9 @@
 use std::path::PathBuf;
 
 use clap::Parser;
-#[cfg(not(target_arch = "wasm32"))]
-use log::warn;
-use log::{error, info};
+use log::{error, info, warn};
 use paiagram::{App, UiState};
-use paiagram_core::SaveFile;
-#[cfg(not(target_arch = "wasm32"))]
-use paiagram_rw::ExportObject;
+use paiagram_core::SaveData;
 use paiagram_rw::SaveCategory;
 use serde::Deserialize;
 use web_time::Instant;
@@ -87,22 +83,10 @@ impl eframe::App for PaiagramApp {
     fn save(&mut self, _storage: &mut dyn eframe::Storage) {
         // we call save but we don't write into the provided storage
         let world = self.app.world.clone();
-        #[cfg(not(target_arch = "wasm32"))]
-        rayon::spawn(move || {
-            let Some(dir) = eframe::storage_dir("paiagram") else {
-                error!("Storage directory not set. Failed to save file");
-                return;
-            };
-            if let Err(error) =
-                paiagram_rw::save::save_to_dir(&dir, SaveCategory::Autosave, move |file| {
-                    SaveFile::from(world).write_content(file)
-                })
-            {
-                warn!("Failed to write autosave: {error}");
-            }
-        });
-        #[cfg(target_arch = "wasm32")]
-        paiagram_rw::save::save_to_indexed_db(SaveFile::from(world), SaveCategory::Autosave);
+        SaveCategory::Autosave.save(SaveData::from(world), self.app.file_write_tx.clone());
+    }
+    fn logic(&mut self, _ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        paiagram::update_emergency_save(self.app.world.clone());
     }
 }
 
@@ -125,6 +109,7 @@ struct Arguments {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result<()> {
+    paiagram::setup_emergency_save();
     env_logger::init();
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -149,6 +134,8 @@ fn main() -> eframe::Result<()> {
 fn main() {
     use eframe::wasm_bindgen::JsCast as _;
     use eframe::web_sys;
+
+    paiagram::setup_emergency_save();
 
     // Redirect `log` message to `console.log` and friends:
     eframe::WebLogger::init(log::LevelFilter::Debug).ok();

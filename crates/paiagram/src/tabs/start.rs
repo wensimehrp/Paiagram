@@ -76,12 +76,7 @@ impl Tab for StartTab {
         } || ui.button("Refresh").clicked();
 
         if refresh {
-            #[cfg(target_arch = "wasm32")]
             list_files::list_all_saves(self.available_file_tx.clone());
-            #[cfg(not(target_arch = "wasm32"))]
-            if let Some(path) = eframe::storage_dir("paiagram") {
-                list_files::list_all_saves(self.available_file_tx.clone(), path);
-            }
         }
 
         if let Ok(files) = self.available_file_rx.try_recv() {
@@ -99,14 +94,18 @@ impl Tab for StartTab {
 
 fn show_available_save(ui: &mut Ui, available: &AvailableSaves) -> Option<(SaveCategory, String)> {
     let mut selected = None;
-    ScrollArea::vertical().show(ui, |ui| {
+    ScrollArea::vertical().show(ui, |ui: &mut Ui| {
         for (title, category, keys) in [
             (
                 "Autosaves",
                 SaveCategory::Autosave,
                 available.autosaves.as_slice(),
             ),
-            ("Saves", SaveCategory::Save, available.saves.as_slice()),
+            (
+                "Saves",
+                SaveCategory::Save(None),
+                available.saves.as_slice(),
+            ),
         ] {
             if keys.is_empty() {
                 continue;
@@ -116,6 +115,7 @@ fn show_available_save(ui: &mut Ui, available: &AvailableSaves) -> Option<(SaveC
                 if ui.button(key).clicked() {
                     selected = Some((category, key.clone()));
                 }
+                return;
             }
             ui.add_space(8.0);
         }

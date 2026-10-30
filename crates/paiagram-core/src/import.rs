@@ -81,7 +81,7 @@ pub fn make_world(
         }
         ImportType::Gtfs => gtfs::parse_gtfs(data),
         ImportType::PaiagramPaia => {
-            Ok(crate::SaveFile::from_reader(data).map_err(io::Error::other)?.into_world())
+            Ok(crate::SaveData::from_reader(data).map_err(io::Error::other)?.into_world())
         }
         ImportType::PaiagramRon => todo!(),
         #[cfg(debug_assertions)]

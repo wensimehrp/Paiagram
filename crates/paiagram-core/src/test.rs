@@ -5,7 +5,7 @@ use std::io::Cursor;
 use paiagram_rw::ExportObject;
 
 use crate::import::{ImportType, make_world};
-use crate::{SaveFile, Source, World};
+use crate::{SaveData, Source, World};
 
 const SAMPLE_OUD2: &[u8] = include_bytes!("../../paiagram-oudia/test/sample.oud2");
 
@@ -18,17 +18,15 @@ fn save_file_round_trips_a_world() {
     let world = sample_world();
     assert!(!world.trips.is_empty());
 
-    // Write the save file into memory, exactly as `write_to_file` does before the file dialog.
-    let mut cursor = Cursor::new(Vec::new());
-    SaveFile::from(world.clone())
-        .write_content(&mut cursor)
+    // Serialize the save file into memory, exactly as `write_and_open_dialog` does.
+    let bytes = SaveData::from(world.clone())
+        .write_to_vec(Vec::new())
         .expect("writing the save file should succeed");
-    let bytes = cursor.into_inner();
 
     assert!(bytes.starts_with(b"PAIA"));
 
     let save_file =
-        SaveFile::from_reader(bytes.as_slice()).expect("reading the save file should succeed");
+        SaveData::from_reader(bytes.as_slice()).expect("reading the save file should succeed");
     let source = Source::try_from(save_file).expect("a save file should become a source");
     assert_eq!(source.world, world);
 }
@@ -46,14 +44,14 @@ fn save_file_writes_and_reads_a_real_file() {
     ));
 
     {
-        let mut file = std::fs::File::create(&path).expect("the test file should be created");
-        SaveFile::from(world.clone())
-            .write_content(&mut file)
+        let bytes = SaveData::from(world.clone())
+            .write_to_vec(Vec::new())
             .expect("writing the save file should succeed");
+        std::fs::write(&path, bytes).expect("the test file should be created");
     }
 
     let file = std::fs::File::open(&path).expect("the test file should be readable");
-    let save_file = SaveFile::from_reader(file).expect("reading the save file should succeed");
+    let save_file = SaveData::from_reader(file).expect("reading the save file should succeed");
     let source = Source::try_from(save_file).expect("a save file should become a source");
     assert_eq!(source.world, world);
 
@@ -62,6 +60,6 @@ fn save_file_writes_and_reads_a_real_file() {
 
 #[test]
 fn save_file_rejects_a_file_without_magic_bytes() {
-    assert!(SaveFile::from_reader(Cursor::new(b"NOPE".as_slice())).is_err());
-    assert!(SaveFile::from_reader(Cursor::new(b"".as_slice())).is_err());
+    assert!(SaveData::from_reader(Cursor::new(b"NOPE".as_slice())).is_err());
+    assert!(SaveData::from_reader(Cursor::new(b"".as_slice())).is_err());
 }

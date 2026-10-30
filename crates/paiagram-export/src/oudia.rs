@@ -1,3 +1,5 @@
+use std::io::Write;
+
 use paiagram_core::{RouteKey, World};
 use paiagram_oudia::{OuDiaIo, Root, Route, SerializeToOud, Structure, Time as OudTime};
 
@@ -8,21 +10,25 @@ pub struct ExportOuDia {
 }
 
 impl paiagram_rw::ExportObject for ExportOuDia {
-    fn filename(&self) -> String {
-        "exported.oud".into()
+    fn extension(&self) -> &str {
+        "oud"
     }
-    fn write_content<W: std::io::Write>(&mut self, writer: &mut W) -> std::io::Result<()> {
+    fn default_filename(&self) -> &str {
+        "exported"
+    }
+    fn write_to_vec(&mut self, mut buf: Vec<u8>) -> std::io::Result<Vec<u8>> {
         let root = make_root(&self.world);
         let Structure::Struct(_, inner) = root.to_structure() else {
             unreachable!();
         };
         if self.is_oudia_second {
             // UTF-8
-            inner.serialize_oud_to(writer)
+            inner.serialize_oud_to(&mut buf)?;
         } else {
             // Doesn't have UTF-8
-            writer.write_all(&inner.to_shift_jis_string()?)
+            buf.write_all(&inner.to_shift_jis_string()?)?;
         }
+        Ok(buf)
     }
 }
 

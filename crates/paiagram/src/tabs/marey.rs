@@ -168,7 +168,7 @@ impl Tab for MareyTab {
     }
     fn main_display(&mut self, app: &mut App, ui: &mut Ui) {
         puffin::profile_function!();
-        self.callback.populate_entry_segments(&self.cache, &app.source);
+        self.callback.populate_entry_segments(&self.cache, &app);
         let Some(route) = app.routes.get(&self.key) else {
             ui.centered_and_justified(|ui| ui.heading("Route does not exist"));
             self.cache.map.clear();
@@ -204,7 +204,7 @@ impl Tab for MareyTab {
                     format: GraphyFormat::Pdf,
                     fonts,
                 }
-                .write_to_file(app.file_write_state.clone());
+                .write_via_interface(app.file_write_tx.clone());
             }
         });
         Frame::canvas(ui.style())
@@ -304,7 +304,7 @@ fn main_display(tab: &mut MareyTab, app: &mut App, ui: &mut Ui) {
 
     draw_time_lines(&mut painter, &tab.navi);
 
-    let Some(route) = app.source.routes.get(&tab.key).cloned() else {
+    let Some(route) = app.routes.get(&tab.key).cloned() else {
         return;
     };
 
@@ -316,7 +316,7 @@ fn main_display(tab: &mut MareyTab, app: &mut App, ui: &mut Ui) {
         |(mut acc, height_so_far), interval| {
             let Some(station) = interval
                 .station_record
-                .station_key(app.source.graph.nodes())
+                .station_key(app.graph.nodes())
                 .and_then(|key| app.stations.get(key))
             else {
                 return (acc, height_so_far);
@@ -387,8 +387,8 @@ fn main_display(tab: &mut MareyTab, app: &mut App, ui: &mut Ui) {
             // TODO: also show the route when hovering in another trip panel?
             && let Some(station_idx) = find_nearest_station_idx_from_pos(&station_heights, pointer_pos, &tab.navi)
             && let interval = &route.intervals.0[station_idx]
-            && let Some(station_key) = interval.station_record.station_key(app.source.graph.nodes())
-            && let Some(station) = app.source.stations.get(station_key)
+            && let Some(station_key) = interval.station_record.station_key(app.graph.nodes())
+            && let Some(station) = app.stations.get(station_key)
             && let Some(node) = station.cache.nodes.first()
         {
             let t = tab.navi.screen_x_to_logical_x(pointer_pos.x).to_timetable_time();
@@ -422,12 +422,12 @@ fn main_display(tab: &mut MareyTab, app: &mut App, ui: &mut Ui) {
     {
         for selected in trips.iter_mut() {
             let trip_key = &selected.trip_key;
-            let Some(trip) = app.source.trips.get(trip_key) else {
+            let Some(trip) = app.trips.get(trip_key) else {
                 continue;
             };
             let style = trip
                 .service_class
-                .and_then(|key| app.source.service_classes.get(&key))
+                .and_then(|key| app.service_classes.get(&key))
                 .map_or_default(|class| class.style);
             let stroke = Stroke {
                 width: lerp(style.width as f32..=5.0, animation_progress),
@@ -470,8 +470,8 @@ fn main_display(tab: &mut MareyTab, app: &mut App, ui: &mut Ui) {
             && let Some(station_idx) =
                 find_nearest_station_idx_from_pos(&station_heights, pointer_pos, &tab.navi)
             && let Some(interval) = route.intervals.0.get(station_idx)
-            && let Some(station_key) = interval.station_record.station_key(app.source.graph.nodes())
-            && let Some(station) = app.source.stations.get(station_key)
+            && let Some(station_key) = interval.station_record.station_key(app.graph.nodes())
+            && let Some(station) = app.stations.get(station_key)
             && let Some(node) = station.cache.nodes.first()
         {
             Some((

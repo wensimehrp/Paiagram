@@ -3,14 +3,16 @@
 
 mod command_palette;
 mod config;
+mod emergency_save;
 mod font;
+mod global_states;
 mod human_time;
 mod load;
 mod tabs;
 mod timer;
 mod widgets;
 
-use std::sync::Arc;
+use std::sync::{Arc, mpsc};
 
 pub use config::AppLanguage;
 use egui::{Button, DragValue, Frame, Id, OpenUrl, Panel, Popup, ScrollArea, Ui};
@@ -18,12 +20,13 @@ use egui_i18n::tr;
 use egui_tiles::{
     Behavior, ContainerKind, SimplificationOptions, Tile, TileId, Tiles, Tree, UiResponse,
 };
-use log::info;
+pub use emergency_save::{setup_emergency_save, update_emergency_save};
+use log::{error, info};
 use paiagram_core::import::{ImportMode, ImportType};
 use paiagram_core::time::TimetableTime;
-use paiagram_core::{RouteKey, SaveFile, Source};
+use paiagram_core::{RouteKey, SaveData, Source};
 use paiagram_export::{ExportGtfs, ExportOuDia};
-use paiagram_rw::{ExportObject, FileWriteState};
+use paiagram_rw::{ExportObject, WriteResult};
 use paiagram_selection::SelectedItems;
 use parking_lot::Mutex;
 use rfd::AsyncFileDialog;
@@ -47,7 +50,8 @@ pub struct App {
     command_error: Option<String>,
     selected_items: SelectedItems,
     file_load_state: Arc<Mutex<FileLoadState>>,
-    file_write_state: Arc<Mutex<FileWriteState>>,
+    pub file_write_tx: mpsc::Sender<WriteResult>,
+    file_write_rx: mpsc::Receiver<WriteResult>,
 }
 
 #[derive(Default)]
@@ -58,6 +62,7 @@ pub struct UiState {
 
 impl App {
     pub fn new(ctx: &egui::Context) -> Self {
+        let (file_write_tx, file_write_rx) = mpsc::channel();
         Self {
             source: Source::new(),
             timer: GlobalTimer::new(),
@@ -67,7 +72,8 @@ impl App {
             command_error: None,
             selected_items: SelectedItems::None,
             file_load_state: Arc::new(Mutex::new(FileLoadState::Idle)),
-            file_write_state: Arc::new(Mutex::new(FileWriteState::Idle)),
+            file_write_tx,
+            file_write_rx,
         }
     }
     /// Initializes the custom WGPU resources used by the Marey tab's render callback.
@@ -267,6 +273,16 @@ pub fn show_ui(
     puffin::GlobalProfiler::lock().new_frame();
     puffin::profile_function!();
     app.source.begin_frame();
+    while let Ok(result) = app.file_write_rx.try_recv() {
+        match result {
+            WriteResult::Success(path) => info!("Saved `{}`", path.display()),
+            WriteResult::Error(error) => {
+                error!("Failed to write file: {error}");
+                app.command_error = Some(format!("Failed to write file: {error}"));
+            }
+            WriteResult::Aborted => {}
+        }
+    }
     {
         puffin::profile_scope!("command_palette");
         ui_state.command_palette.show(ui.ctx(), app);
@@ -360,8 +376,8 @@ pub fn show_ui(
                 }
                 ui.separator();
                 if ui.button("Save .paia").clicked() {
-                    let new_file: SaveFile = app.world.clone().into();
-                    new_file.write_to_file(app.file_write_state.clone());
+                    let new_file = SaveData::from(app.world.clone());
+                    new_file.write_via_interface(app.file_write_tx.clone());
                 }
                 ui.separator();
                 if ui.button("Export .oud").clicked() {
@@ -370,13 +386,13 @@ pub fn show_ui(
                         route: RouteKey::new(),
                         is_oudia_second: false,
                     }
-                    .write_to_file(app.file_write_state.clone());
+                    .write_via_interface(app.file_write_tx.clone());
                 }
                 if ui.button("Export GTFS").clicked() {
                     ExportGtfs {
                         world: app.world.clone(),
                     }
-                    .write_to_file(app.file_write_state.clone());
+                    .write_via_interface(app.file_write_tx.clone());
                 }
             });
             Popup::menu(&ui.button(tr!("menu-about"))).show(|ui| {

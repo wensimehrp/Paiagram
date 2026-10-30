@@ -100,7 +100,7 @@ impl Tab for ExtensionTab {
 fn main_display(tab: &mut ExtensionTab, app: &mut crate::App, ui: &mut Ui) {
     puffin::profile_function!();
     if let Ok(data) = tab.file_receiver.try_recv() {
-        data.write_to_file(Default::default());
+        data.write_via_interface(app.file_write_tx.clone());
     }
     ui.checkbox(&mut tab.edit_mode, "Edit mode");
     if tab.edit_mode {
