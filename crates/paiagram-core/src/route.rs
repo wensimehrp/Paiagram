@@ -7,9 +7,9 @@ use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 
 mod prep_marey;
-mod prep_segments;
+mod prep_route_timetable;
 
-pub use prep_marey::{
+pub use prep_route_timetable::{
     RouteTimetable, RouteTimetableEntry, RouteTimetableExport, StationDisplayMode,
 };
 
@@ -209,7 +209,7 @@ impl RouteIntervals {
             let Some(trip) = world.trips.get(trip_key) else {
                 continue;
             };
-            prep_segments::prep_single_segment(
+            prep_marey::prep_single_segment(
                 &trip.schedule,
                 cache.map.entry(*trip_key).or_default(),
                 &world.graph,
@@ -222,7 +222,7 @@ impl RouteIntervals {
     pub fn populate_schedule(&self, world: &World, schedule: &TripSchedule) -> Option<TripBucket> {
         let node_lookup = self.prepare_lookup(world);
         let mut bucket = TripBucket::new();
-        prep_segments::prep_single_segment(schedule, &mut bucket, &world.graph, |entry| {
+        prep_marey::prep_single_segment(schedule, &mut bucket, &world.graph, |entry| {
             node_lookup.get(&entry.node_key()).map_or(&[], Vec::as_slice)
         });
         Some(bucket)
