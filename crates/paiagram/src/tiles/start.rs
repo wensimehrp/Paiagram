@@ -61,9 +61,6 @@ impl From<StartTileNoCache> for StartTile {
 
 impl Tile for StartTile {
     const NAME: &'static str = "Start";
-    fn title(&self) -> egui::WidgetText {
-        tr!("tile-start").into()
-    }
     fn main_display(&mut self, app: &mut App, ui: &mut Ui) {
         puffin::profile_function!();
 

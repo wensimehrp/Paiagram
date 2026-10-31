@@ -86,9 +86,6 @@ impl PartialEq for ExtensionTile {
 
 impl Tile for ExtensionTile {
     const NAME: &'static str = "Extension";
-    fn title(&self) -> egui::WidgetText {
-        Self::NAME.into()
-    }
     fn main_display(&mut self, app: &mut crate::App, ui: &mut Ui) {
         puffin::profile_function!();
         Frame::new().inner_margin(6.0).show(ui, |ui| {

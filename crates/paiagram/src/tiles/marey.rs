@@ -73,10 +73,10 @@ impl MareyTile {
             prev_world: None,
         }
     }
-    fn update_cache(&mut self, curr_world: &World) {
+    fn update_cache(&mut self, curr_world: &World) -> bool {
         puffin::profile_function!();
         let Some(curr_route) = curr_world.routes.get(&self.key) else {
-            return;
+            return false;
         };
         // TODO: reuse MareyCache
         let (_rebuild_route, trips_to_rebuild) = match self.prev_world.as_ref() {
@@ -99,6 +99,8 @@ impl MareyTile {
         };
         curr_route.intervals.populate_trips(curr_world, &mut self.cache, trips_to_rebuild);
         self.prev_world = Some(curr_world.clone());
+        self.callback.populate_entry_segments(&self.cache, curr_world);
+        true
     }
 }
 
@@ -198,16 +200,15 @@ impl Navigatable for MareyTileNavigation {
 
 impl Tile for MareyTile {
     const NAME: &'static str = "Marey Diagram";
-    fn title(&self) -> WidgetText {
-        Self::NAME.into()
+    fn title(&self, app: &mut App) -> WidgetText {
+        let name = app.routes.get(&self.key).map_or("Unknown Route", |wfc| &wfc.name);
+        name.into()
     }
     fn main_display(&mut self, app: &mut App, ui: &mut Ui) {
         puffin::profile_function!();
-        self.update_cache(app);
-        self.callback.populate_entry_segments(&self.cache, &app);
-        let Some(route) = app.routes.get(&self.key) else {
+        let trip_exists = self.update_cache(app);
+        if !trip_exists {
             ui.centered_and_justified(|ui| ui.heading("Route does not exist"));
-            self.cache.map.clear();
             return;
         };
         let window = Window::new("123")

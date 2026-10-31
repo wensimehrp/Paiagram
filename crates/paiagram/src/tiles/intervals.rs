@@ -3,7 +3,7 @@ use paiagram_core::{IntervalDirection, IntervalKey};
 use serde::{Deserialize, Serialize};
 
 use crate::tiles::trip::TripTile;
-use crate::{App, UiTile, UiCommand};
+use crate::{App, UiCommand, UiTile};
 
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct IntervalsTile {
@@ -18,9 +18,6 @@ impl PartialEq for IntervalsTile {
 
 impl super::Tile for IntervalsTile {
     const NAME: &'static str = "Intervals";
-    fn title(&self) -> WidgetText {
-        Self::NAME.into()
-    }
     fn main_display(&mut self, app: &mut App, ui: &mut Ui) {
         puffin::profile_function!();
         Panel::left(ui.id().with("interval left panel")).frame(Frame::NONE).show(ui, |ui| {

@@ -49,9 +49,6 @@ impl PartialEq for GraphTile {
 
 impl Tile for GraphTile {
     const NAME: &'static str = "Graph";
-    fn title(&self) -> WidgetText {
-        egui_i18n::tr!("tile-graph").into()
-    }
     fn main_display(&mut self, app: &mut App, ui: &mut Ui) {
         puffin::profile_function!();
         // TODO: remove this

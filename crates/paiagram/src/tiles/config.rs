@@ -34,7 +34,4 @@ impl Tile for ConfigTile {
                 });
         });
     }
-    fn title(&self) -> egui::WidgetText {
-        tr!("tile-config").into()
-    }
 }

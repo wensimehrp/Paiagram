@@ -3,7 +3,7 @@
 
 use eframe::egui_wgpu::{self, wgpu};
 use paiagram_core::route::MareyCache;
-use paiagram_core::{CanvasLength, RouteKey, RouteKeyHashMap, Source};
+use paiagram_core::{CanvasLength, RouteKey, RouteKeyHashMap, World};
 
 use super::gpu_trip::{ShaderEntry, gpu_trip};
 use crate::tiles::Navigatable;
@@ -49,7 +49,7 @@ impl MareyCallback {
         egui_wgpu::Callback::new_paint_callback(rect, self)
     }
 
-    pub fn populate_entry_segments(&mut self, cache: &MareyCache, source: &Source) {
+    pub fn populate_entry_segments(&mut self, cache: &MareyCache, world: &World) {
         puffin::profile_function!();
         self.entry_segments.clear();
         self.stations.clear();
@@ -57,10 +57,10 @@ impl MareyCallback {
             self.stations.push(gpu_trip::CanvasLength::new(idx as f32 * 10.0));
         }
         for (trip_key, polylines) in &cache.map {
-            let Some(trip) = source.trips.get(trip_key) else {
+            let Some(trip) = world.trips.get(trip_key) else {
                 continue;
             };
-            let style = trip.service_class.and_then(|key| source.service_classes.get(&key)).map_or(
+            let style = trip.service_class.and_then(|key| world.service_classes.get(&key)).map_or(
                 gpu_trip::Style {
                     thickness: 1.0,
                     fill_rgba: 0x808080ff,

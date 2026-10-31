@@ -28,9 +28,6 @@ impl PartialEq for TripTile {
 
 impl Tile for TripTile {
     const NAME: &'static str = "Trip";
-    fn title(&self) -> WidgetText {
-        tr!("tile-trip").into()
-    }
     fn main_display(&mut self, app: &mut App, ui: &mut egui::Ui) {
         puffin::profile_function!();
         show_trip(self, app, ui);

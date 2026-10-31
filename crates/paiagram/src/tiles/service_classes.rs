@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use super::Tile;
 use crate::tiles::trip::TripTile;
-use crate::{App, UiTile, UiCommand};
+use crate::{App, UiCommand, UiTile};
 
 #[derive(Default, Clone, Serialize, Deserialize)]
 pub(crate) struct ServiceClassesTile {
@@ -21,9 +21,6 @@ impl PartialEq for ServiceClassesTile {
 
 impl Tile for ServiceClassesTile {
     const NAME: &'static str = "Service Classes";
-    fn title(&self) -> WidgetText {
-        Self::NAME.into()
-    }
     fn main_display(&mut self, app: &mut App, ui: &mut Ui) {
         puffin::profile_function!();
         Panel::left("service classes left panel").frame(Frame::NONE).show(ui, |ui| {

@@ -75,7 +75,7 @@ pub struct TileViewer<'a> {
 
 impl<'w> Behavior<UiTile> for TileViewer<'w> {
     fn tab_title_for_pane(&mut self, pane: &UiTile) -> egui::WidgetText {
-        for_all_tiles!(pane, p, p.title())
+        for_all_tiles!(pane, p, p.title(self.app))
     }
     fn pane_ui(&mut self, ui: &mut Ui, _tile_id: TileId, tile: &mut UiTile) -> UiResponse {
         puffin::profile_function!();

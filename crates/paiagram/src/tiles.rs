@@ -221,7 +221,7 @@ pub(crate) trait Tile {
     /// e.g. the localization or other contents.
     const NAME: &'static str;
     /// The title of the tile
-    fn title(&self) -> WidgetText {
+    fn title(&self, _app: &mut App) -> WidgetText {
         Self::NAME.into()
     }
     /// The main display of the tile.

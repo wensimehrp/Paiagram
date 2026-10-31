@@ -24,9 +24,6 @@ impl super::Tile for StationTile {
             })
         });
     }
-    fn title(&self) -> WidgetText {
-        Self::NAME.into()
-    }
 }
 
 fn station_ui(stn: &Station, cache: &StationCache, app: &App, ui: &mut Ui) {
