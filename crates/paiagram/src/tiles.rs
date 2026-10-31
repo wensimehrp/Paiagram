@@ -29,7 +29,6 @@ macro_rules! define_tiles {
 }
 
 define_tiles!(
-    // classes;
     marey;
     graph;
     route_timetable;

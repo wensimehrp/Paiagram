@@ -1,5 +1,7 @@
 use ecow::eco_vec;
 use egui::*;
+use either::Either;
+use imbl::ordmap::DiffItem;
 use paiagram_core::route::MareyCache;
 use paiagram_core::time::{Tick, TimetableTime};
 use paiagram_core::trip::{TEntry, TEntryId, TEstimate, TravelMode, TripSchedule};
@@ -70,6 +72,33 @@ impl MareyTile {
             callback: gpu_draw::MareyCallback::new(key),
             prev_world: None,
         }
+    }
+    fn update_cache(&mut self, curr_world: &World) {
+        puffin::profile_function!();
+        let Some(curr_route) = curr_world.routes.get(&self.key) else {
+            return;
+        };
+        // TODO: reuse MareyCache
+        let (_rebuild_route, trips_to_rebuild) = match self.prev_world.as_ref() {
+            None => (
+                true,
+                Either::Left(curr_route.intervals.all_passing_trips(curr_world).into_iter()),
+            ),
+            Some(prev_world) => {
+                let rebuild_route = prev_world.graph.nodes().ptr_eq(curr_world.graph.nodes())
+                    || prev_world.graph.intervals().ptr_eq(curr_world.graph.intervals())
+                    || prev_world.routes.get(&self.key) != Some(curr_route);
+                let trips_to_rebuild =
+                    prev_world.trips.diff(&curr_world.trips).map(|diff| match diff {
+                        DiffItem::Add(key, _)
+                        | DiffItem::Remove(key, _)
+                        | DiffItem::Update { old: (key, _), .. } => *key,
+                    });
+                (rebuild_route, Either::Right(trips_to_rebuild))
+            }
+        };
+        curr_route.intervals.populate_trips(curr_world, &mut self.cache, trips_to_rebuild);
+        self.prev_world = Some(curr_world.clone());
     }
 }
 
@@ -174,6 +203,7 @@ impl Tile for MareyTile {
     }
     fn main_display(&mut self, app: &mut App, ui: &mut Ui) {
         puffin::profile_function!();
+        self.update_cache(app);
         self.callback.populate_entry_segments(&self.cache, &app);
         let Some(route) = app.routes.get(&self.key) else {
             ui.centered_and_justified(|ui| ui.heading("Route does not exist"));
@@ -187,9 +217,6 @@ impl Tile for MareyTile {
             .fixed_pos(ui.clip_rect().shrink(8.0).right_top())
             .pivot(Align2::RIGHT_TOP);
         window.show(ui.ctx(), |ui: &mut Ui| {
-            if ui.button("Update cache").clicked() {
-                route.intervals.populate_trips(&app.world, &mut self.cache);
-            }
             if ui.button("Export PDF").clicked() {
                 let fonts = ui.fonts(|fonts| {
                     let mut ret = Vec::new();
@@ -500,7 +527,13 @@ fn main_display(tile: &mut MareyTile, app: &mut App, ui: &mut Ui) {
 
         route.intervals.populate_schedule(&app.world, &schedule).into_iter().flatten().for_each(
             |polyline| {
-                draw_polyline(&tile.navi, &polyline, &station_heights, &mut painter, stroke);
+                draw_polyline(
+                    &tile.navi,
+                    &polyline,
+                    &station_heights,
+                    &mut painter,
+                    stroke,
+                );
             },
         );
 

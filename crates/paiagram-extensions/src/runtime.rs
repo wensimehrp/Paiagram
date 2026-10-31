@@ -111,7 +111,11 @@ impl JsRuntimeData {
         let caches = Object::new(ctx.clone())?;
         for route in self.world.routes.values() {
             let mut cache = MareyCache::default();
-            route.intervals.populate_trips(&self.world, &mut cache);
+            route.intervals.populate_trips(
+                &self.world,
+                &mut cache,
+                route.intervals.all_passing_trips(&self.world).into_iter(),
+            );
             for (trip_key, polylines) in &cache.map {
                 let value = rquickjs_serde::to_value(ctx.clone(), polylines)
                     .map_err(format_serde_err(Self::marey_cache))?;

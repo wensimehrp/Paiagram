@@ -30,6 +30,7 @@ futures-channel.workspace = true
 git-version.workspace = true
 ib-matcher.workspace = true
 image.workspace = true
+imbl.workspace = true
 itertools.workspace = true
 jiff.workspace = true
 log.workspace = true

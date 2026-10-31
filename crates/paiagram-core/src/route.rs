@@ -178,7 +178,7 @@ impl RouteIntervals {
         node_lookup
     }
 
-    pub fn get_passing_trips(&self, world: &World) -> Vec<TripKey> {
+    pub fn all_passing_trips(&self, world: &World) -> Vec<TripKey> {
         puffin::profile_function!();
         let mut trip_keys: Vec<TripKey> = self
             .0
@@ -199,22 +199,26 @@ impl RouteIntervals {
     }
 
     /// Populates trips into a Marey cache
-    pub fn populate_trips(&self, world: &World, cache: &mut MareyCache) {
+    pub fn populate_trips(
+        &self,
+        world: &World,
+        cache: &mut MareyCache,
+        trips_to_rebuild: impl Iterator<Item = TripKey>,
+    ) {
         puffin::profile_function!();
         let node_lookup = self.prepare_lookup(world);
-        let trip_keys = self.get_passing_trips(world);
 
-        cache.map.clear();
-        for trip_key in &trip_keys {
-            let Some(trip) = world.trips.get(trip_key) else {
+        for trip_key in trips_to_rebuild {
+            let Some(trip) = world.trips.get(&trip_key) else {
                 continue;
             };
-            prep_marey::prep_single_segment(
-                &trip.schedule,
-                cache.map.entry(*trip_key).or_default(),
-                &world.graph,
-                |entry| node_lookup.get(&entry.node_key()).map_or(&[], Vec::as_slice),
-            )
+            let bucket = cache.map.entry(trip_key).or_default();
+            prep_marey::prep_single_segment(&trip.schedule, bucket, &world.graph, |entry| {
+                node_lookup.get(&entry.node_key()).map_or(&[], Vec::as_slice)
+            });
+            if bucket.is_empty() {
+                cache.map.remove(&trip_key);
+            }
         }
     }
 
@@ -231,7 +235,11 @@ impl RouteIntervals {
     pub fn populate_route_timetable(&self, world: &World) -> RouteTimetable {
         puffin::profile_function!();
         let mut marey_cache = MareyCache::default();
-        self.populate_trips(world, &mut marey_cache);
+        self.populate_trips(
+            world,
+            &mut marey_cache,
+            self.all_passing_trips(world).into_iter(),
+        );
         RouteTimetable::new(
             marey_cache,
             self.0.iter().map(|entry| &entry.station_record),

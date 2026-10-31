@@ -4434,6 +4434,7 @@ dependencies = [
  "git-version",
  "ib-matcher",
  "image",
+ "imbl",
  "itertools 0.14.0",
  "jiff",
  "log",
