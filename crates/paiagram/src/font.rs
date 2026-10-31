@@ -33,6 +33,12 @@ pub(crate) fn load_default_font(ctx: Context, font_name: Arc<Mutex<String>>) {
         .entry(FontFamily::Monospace)
         .or_default()
         .insert(0, "Paiagram-Timetable-Font".into());
+    // proportional fallback.
+    definitions
+        .families
+        .entry(FontFamily::Proportional)
+        .or_default()
+        .insert(0, "Paiagram-Timetable-Font".into());
     ctx.all_styles_mut(|s| {
         s.text_styles.insert(TIMETABLTE_TEXT_STYLE.clone(), TIMETABLE_FONT_ID.clone());
     });
@@ -47,7 +53,11 @@ pub(crate) fn load_default_font(ctx: Context, font_name: Arc<Mutex<String>>) {
     // egui_material_icons::initialize(&ctx);
     // dynamic query
     match FONT_DATABASE.read().query(&fontdb::Query {
-        families: &[Family::Name("Sarasa UI SC"), Family::SansSerif],
+        families: &[
+            Family::Name("Sarasa UI SC"),
+            Family::Name("Sarasa Gothic SC"),
+            Family::SansSerif,
+        ],
         ..Default::default()
     }) {
         Some(face_id) => {
