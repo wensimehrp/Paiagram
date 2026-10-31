@@ -82,11 +82,15 @@ fn load_sarasa_cl(ctx: Context, font_name: Arc<Mutex<String>>) {
         let parse = async move || -> anyhow::Result<_> {
             info!("Downloading `{WASM_FONT_NAME}`");
             let window = web_sys::window().context("Browser window should be always present")?;
-            let base_url = match window.location().href() {
-                Err(_) => bail!("Failed to get window href"),
-                Ok(href) => href,
-            };
-            let query_url = format!("{base_url}/{WASM_FONT_NAME}");
+            let document =
+                window.document().context("Browser document should be always present")?;
+            // Use the document's <base> URL instead of `location.href`, which also contains the
+            // query string and fragment (e.g. `#dev`) and would corrupt the font URL.
+            let base_url =
+                document.base_uri().ok().flatten().context("Document has no base URI")?;
+            let query_url = web_sys::Url::new_with_base(WASM_FONT_NAME, &base_url)
+                .map_err(|_| anyhow::anyhow!("Failed to resolve the font URL"))?
+                .href();
             let res = reqwest::get(query_url.clone())
                 .await
                 .with_context(|| format!("Failed to get font from {query_url}"))?;
@@ -100,9 +104,15 @@ fn load_sarasa_cl(ctx: Context, font_name: Arc<Mutex<String>>) {
                 warn!("Failed to fetch font {WASM_FONT_NAME}: {e}")
             }
             Ok(bytes) => {
-                let face_id = FONT_DATABASE
+                let Some(face_id) = FONT_DATABASE
                     .write()
-                    .load_font_source(fontdb::Source::Binary(Arc::new(bytes)))[0];
+                    .load_font_source(fontdb::Source::Binary(Arc::new(bytes)))
+                    .into_iter()
+                    .next()
+                else {
+                    warn!("Failed to load font {WASM_FONT_NAME}: no valid font face");
+                    return;
+                };
                 load_font_to_egui(
                     face_id,
                     ctx.clone(),

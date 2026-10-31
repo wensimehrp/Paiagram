@@ -3,7 +3,7 @@
     "short_name": "paiagram",
     "icons": [
         {
-            "src": "./assets/paiagram-adaptive-no-bg.svg",
+            "src": "./paiagram-adaptive-no-bg.svg",
             "sizes": "512x512",
             "type": "image/svg+xml",
             "purpose": "any maskable"
