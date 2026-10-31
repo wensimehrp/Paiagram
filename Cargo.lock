@@ -1083,6 +1083,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "coordtransform"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "19bbb9b12da62ba1ef82b2f4893ddf72e64bf1cd423f26a4f7c5ec0054be2c11"
+
+[[package]]
 name = "core-foundation"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1923,7 +1929,6 @@ dependencies = [
  "nohash-hasher",
  "parking_lot",
  "profiling",
- "rayon",
  "self_cell",
  "serde",
  "skrifa 0.44.0",
@@ -4420,6 +4425,7 @@ dependencies = [
  "arc-swap",
  "bytemuck",
  "clap",
+ "coordtransform",
  "ecow",
  "eframe",
  "egui",
@@ -7172,9 +7178,9 @@ dependencies = [
 
 [[package]]
 name = "walkers"
-version = "0.63.0"
+version = "0.64.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7d5c2e8d2fdbc9e11f99d2d91cbb7aa715751defc1a455acbff1ef6696b4ce4a"
+checksum = "39b650d03bf826b34f0c8827f44a8e51e0556efb3f6346421f866609358068d7"
 dependencies = [
  "bytes",
  "ecolor",
