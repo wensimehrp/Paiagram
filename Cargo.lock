@@ -4528,6 +4528,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "paiagram-i18n"
+version = "0.1.3"
+dependencies = [
+ "fluent",
+]
+
+[[package]]
 name = "paiagram-oudia"
 version = "0.1.3"
 dependencies = [

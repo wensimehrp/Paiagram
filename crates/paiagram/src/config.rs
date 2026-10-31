@@ -42,7 +42,7 @@ macro_rules! make_lang {
             pub fn init() {
                 $(
                     let content = include_str!(concat!(
-                        "../assets/locales/",
+                        "../../paiagram-i18n/locales/",
                         $lang_code,
                         ".ftl",
                     ));
