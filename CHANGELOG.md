@@ -23,6 +23,7 @@ documentation. This changelog includes changes to the following:
 
 - Redesigned <https://paiagram.com> website.
 - Updated `egui` UI framework to version `0.36.2`.
+- Tabs are now tiles
 
 ### Removed
 
@@ -50,15 +51,15 @@ documentation. This changelog includes changes to the following:
 
 ### Breaking
 
-- Removed the Inspector tab.
+- Removed the Inspector tile.
 
 ## 0.1.2 (Apr. 23, 2026)
 
 ### Added
 
-- Text tab.
-- CommonMark rendering for text content in the Text tab.
-- Station tab.
+- Text tile.
+- CommonMark rendering for text content in the Text tile.
+- Station tile.
 - Indicators when the time indicator is outside the viewport.
 
 ### Changed

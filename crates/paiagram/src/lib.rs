@@ -7,9 +7,10 @@ mod emergency_save;
 mod font;
 mod human_time;
 mod load;
-mod tabs;
+mod tiles;
 mod timer;
 mod trip_schedule_visual;
+mod ui_tiles;
 mod widgets;
 
 use std::sync::mpsc;
@@ -17,9 +18,6 @@ use std::sync::mpsc;
 pub use config::AppLanguage;
 use egui::*;
 use egui_i18n::tr;
-use egui_tiles::{
-    Behavior, ContainerKind, SimplificationOptions, Tile, TileId, Tiles, Tree, UiResponse,
-};
 pub use emergency_save::{setup_emergency_save, update_emergency_save};
 use log::{error, info, warn};
 use paiagram_core::import::{ImportMode, ImportType};
@@ -29,9 +27,8 @@ use paiagram_export::{ExportGtfs, ExportOuDia};
 use paiagram_rw::{ExportObject, LoadResult, WriteResult};
 use paiagram_selection::SelectedItems;
 use rfd::AsyncFileDialog;
-use serde::{Deserialize, Serialize};
-use tabs::all_tabs::*;
-use tabs::{MainTab, Tab, for_all_tabs};
+use tiles::{UiTile, for_all_tiles};
+use ui_tiles::{TileViewer, UiTiles};
 #[cfg(target_arch = "wasm32")]
 pub use wasm_bindgen_rayon::init_thread_pool;
 pub use widgets::search::build_matcher;
@@ -58,7 +55,7 @@ pub struct App {
 #[derive(Default)]
 pub struct UiState {
     command_palette: CommandPalette,
-    mus: MainUiState,
+    mus: UiTiles,
 }
 
 impl App {
@@ -81,19 +78,19 @@ impl App {
             file_write_rx,
         }
     }
-    /// Initializes the custom WGPU resources used by the Marey tab's render callback.
+    /// Initializes the custom WGPU resources used by the Marey tile's render callback.
     ///
     /// Call once at startup, once the WGPU backend exists. `msaa_samples` must match the render
     /// pass egui uses (eframe's `NativeOptions::multisampling`).
     pub fn init_gpu(&mut self, render_state: &eframe::egui_wgpu::RenderState, msaa_samples: u32) {
-        crate::tabs::marey::gpu_draw::init(render_state, msaa_samples);
-        crate::tabs::graph::gpu_draw::init(render_state, msaa_samples);
+        crate::tiles::marey::gpu_draw::init(render_state, msaa_samples);
+        crate::tiles::graph::gpu_draw::init(render_state, msaa_samples);
     }
     /// Apply UI commands and change the main ui state
-    fn apply_ui_commands(&mut self, mus: &mut MainUiState) {
+    fn apply_ui_commands(&mut self, mus: &mut UiTiles) {
         for cmd in self.ui_action_rx.try_iter() {
             match cmd {
-                UiCommand::OpenOrFocus(tab) => mus.open_or_focus(tab),
+                UiCommand::OpenOrFocus(tile) => mus.open_or_focus(tile),
             }
         }
     }
@@ -113,157 +110,7 @@ impl std::ops::DerefMut for App {
 }
 
 enum UiCommand {
-    OpenOrFocus(MainTab),
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct MainUiState {
-    tree: Tree<MainTab>,
-    maximized: Option<TileId>,
-}
-
-impl MainUiState {
-    fn open_or_focus(&mut self, tab: MainTab) {
-        let focused_id = if let Some(tile_id) = self.tree.tiles.find_pane(&tab) {
-            // Already exists → just focus it
-            self.tree.make_active(|id, _| id == tile_id);
-            self.tree.set_visible(tile_id, true);
-            tile_id
-        } else {
-            // New pane → add it to the currently focused container
-            self.push_to_focused_leaf(tab)
-        };
-    }
-    fn push_to_focused_leaf(&mut self, new_pane: MainTab) -> TileId {
-        let new_id = self.tree.tiles.insert_pane(new_pane);
-
-        // Try to add it to the same Tabs container that is currently focused
-        if let Some(&active_id) = self.tree.active_tiles().last()
-            && let Some(parent_id) = self.tree.tiles.parent_of(active_id)
-            && let Some(Tile::Container(container)) = self.tree.tiles.get_mut(parent_id)
-            && container.kind() == ContainerKind::Tabs
-        {
-            container.add_child(new_id);
-            self.tree.make_active(|id, _| id == new_id);
-            return new_id;
-        }
-
-        // Fallback: create a new top-level Tabs container
-        let old_root = self.tree.root;
-        let tabs_id = if let Some(old_root) = old_root {
-            self.tree.tiles.insert_tab_tile(vec![old_root, new_id])
-        } else {
-            self.tree.tiles.insert_tab_tile(vec![new_id])
-        };
-        self.tree.root = Some(tabs_id);
-        self.tree.make_active(|id, _| id == new_id);
-        new_id
-    }
-}
-
-impl Default for MainUiState {
-    fn default() -> Self {
-        Self {
-            tree: Tree::new_tabs(
-                Id::unique("main"),
-                vec![
-                    MainTab::Start(StartTab::default()),
-                    MainTab::Config(ConfigTab::default()),
-                ],
-            ),
-            maximized: None,
-        }
-    }
-}
-
-struct MainTabViewer<'a> {
-    app: &'a mut App,
-}
-
-impl<'w> Behavior<MainTab> for MainTabViewer<'w> {
-    fn tab_title_for_pane(&mut self, pane: &MainTab) -> egui::WidgetText {
-        for_all_tabs!(pane, p, p.title())
-    }
-    fn pane_ui(&mut self, ui: &mut Ui, _tile_id: TileId, tab: &mut MainTab) -> UiResponse {
-        puffin::profile_function!();
-        ui.painter().rect_filled(ui.available_rect_before_wrap(), 0, ui.visuals().panel_fill);
-        for_all_tabs!(tab, t, t.main_display(self.app, ui));
-
-        Default::default()
-    }
-    fn simplification_options(&self) -> SimplificationOptions {
-        SimplificationOptions {
-            prune_empty_tabs: true,
-            prune_empty_containers: true,
-            prune_single_child_tabs: false,
-            prune_single_child_containers: true,
-            all_panes_must_have_tabs: true,
-            join_nested_linear_containers: true,
-            flatten_tabs_in_tabs: true,
-        }
-    }
-    fn is_tab_closable(&self, tiles: &Tiles<MainTab>, tile_id: TileId) -> bool {
-        match tiles.get(tile_id) {
-            None => false,
-            Some(Tile::Container(_)) => false,
-            Some(Tile::Pane(MainTab::Start(_))) => false,
-            Some(Tile::Pane(_)) => true,
-        }
-    }
-    fn tab_bar_trailing_ui(
-        &mut self,
-        _tiles: &Tiles<MainTab>,
-        ui: &mut Ui,
-        _tile_id: TileId,
-        _tabs: &egui_tiles::Tabs,
-    ) {
-        ui.menu_button("+", |ui| {
-            ScrollArea::vertical().show(ui, |ui| {
-                #[rustfmt::skip]
-                let tabs: [(_, fn() -> MainTab); 6] = [
-                    ("Intervals",       || MainTab::Intervals(IntervalsTab::default())),
-                    ("Service Classes", || MainTab::ServiceClasses(ServiceClassesTab::default())),
-                    ("Graph",           || MainTab::Graph(GraphTab::default())),
-                    ("Extension",       || MainTab::Extension(ExtensionTab::default())),
-                    ("Config",          || MainTab::Config(ConfigTab::default())),
-                    ("Trip",            || MainTab::Trip(TripTab::default())),
-                ];
-                for (text, tab) in tabs {
-                    if ui.button(text).clicked() {
-                        self.app.ui_action_tx.send(UiCommand::OpenOrFocus(tab()));
-                    }
-                }
-                if self.app.preferences.dev_mode && ui.button("Profiler").clicked() {
-                    self.app.ui_action_tx.send(UiCommand::OpenOrFocus(MainTab::Profiler(
-                        ProfilerTab::default(),
-                    )));
-                }
-                ScrollArea::vertical().show_rows(
-                    ui,
-                    ui.spacing().interact_size.y,
-                    self.app.world.routes.len(),
-                    |ui, range| {
-                        for (route_key, info) in
-                            &self.app.world.routes.skip(range.start).take(range.count())
-                        {
-                            ui.menu_button(info.name.as_str(), |ui| {
-                                if ui.button("Graph").clicked() {
-                                    self.app.ui_action_tx.send(UiCommand::OpenOrFocus(
-                                        MainTab::Marey(MareyTab::new(*route_key)),
-                                    ));
-                                }
-                                if ui.button("Route Timetable").clicked() {
-                                    self.app.ui_action_tx.send(UiCommand::OpenOrFocus(
-                                        MainTab::RouteTimetable(RouteTimetableTab::new(*route_key)),
-                                    ));
-                                }
-                            });
-                        }
-                    },
-                );
-            })
-        });
-    }
+    OpenOrFocus(UiTile),
 }
 
 pub fn show_ui(
@@ -464,8 +311,8 @@ pub fn show_ui(
         })
     });
     egui::CentralPanel::default().frame(Frame::default()).show(ui, |ui| {
-        puffin::profile_scope!("main_tabs");
-        let mut tab_viewer = MainTabViewer { app };
-        ui_state.mus.tree.ui(&mut tab_viewer, ui);
+        puffin::profile_scope!("tiles");
+        let mut tile_viewer = TileViewer { app };
+        ui_state.mus.tree.ui(&mut tile_viewer, ui);
     });
 }

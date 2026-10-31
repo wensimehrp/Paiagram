@@ -3,32 +3,32 @@ use serde::{Deserialize, Serialize};
 
 use crate::App;
 
-macro_rules! define_tabs {
+macro_rules! define_tiles {
     ($(
         $name:ident;
     )*) => { paste::paste! {
         $(
             pub(crate) mod $name;
         )*
-        pub(crate) mod all_tabs {
-            $( pub(crate) use super::$name::[<$name:camel Tab>]; )*
+        pub(crate) mod all_tiles {
+            $( pub(crate) use super::$name::[<$name:camel Tile>]; )*
         }
         #[derive(Serialize, Deserialize, PartialEq)]
-        pub(super) enum MainTab {
-            $( [<$name:camel>](super::tabs::all_tabs::[<$name:camel Tab>]), )*
+        pub(super) enum UiTile {
+            $( [<$name:camel>](super::tiles::all_tiles::[<$name:camel Tile>]), )*
         }
-        macro_rules! for_all_tabs {
-            ($tab:expr, $t:ident, $body:expr) => {
-                match $tab {
-                    $( MainTab::[<$name:camel>]($t) => $body, )*
+        macro_rules! for_all_tiles {
+            ($tile:expr, $t:ident, $body:expr) => {
+                match $tile {
+                    $( UiTile::[<$name:camel>]($t) => $body, )*
                 }
             }
         }
-        pub(super) use for_all_tabs;
+        pub(super) use for_all_tiles;
     } };
 }
 
-define_tabs!(
+define_tiles!(
     // classes;
     marey;
     graph;
@@ -215,16 +215,16 @@ pub(crate) trait Navigatable {
     fn post_navigation(&mut self, _response: &Response) {}
 }
 
-/// Good qualities a tab must have :-)
-pub(crate) trait Tab {
-    /// The internal name of the tab used for identification. This must be a
+/// Good qualities a tile must have :-)
+pub(crate) trait Tile {
+    /// The internal name of the tile used for identification. This must be a
     /// static string. The actual displayed name could be different based on
     /// e.g. the localization or other contents.
     const NAME: &'static str;
-    /// The title of the tab
+    /// The title of the tile
     fn title(&self) -> WidgetText {
         Self::NAME.into()
     }
-    /// The main display of the tab.
+    /// The main display of the tile.
     fn main_display(&mut self, app: &mut App, ui: &mut Ui);
 }

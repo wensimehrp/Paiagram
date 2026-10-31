@@ -6,9 +6,9 @@ use paiagram_core::route::MareyCache;
 use paiagram_core::{CanvasLength, RouteKey, RouteKeyHashMap, Source};
 
 use super::gpu_trip::{ShaderEntry, gpu_trip};
-use crate::tabs::Navigatable;
+use crate::tiles::Navigatable;
 
-/// Per-frame data for one Marey tab, uploaded to the GPU in [`MareyCallback::prepare`].
+/// Per-frame data for one Marey tile, uploaded to the GPU in [`MareyCallback::prepare`].
 #[derive(Clone)]
 pub(super) struct MareyCallback {
     pub route_key: RouteKey,
@@ -27,7 +27,7 @@ impl MareyCallback {
         }
     }
 
-    pub fn populate_uniforms(&mut self, navi: &super::MareyTabNavigation, rect: egui::Rect) {
+    pub fn populate_uniforms(&mut self, navi: &super::MareyTileNavigation, rect: egui::Rect) {
         puffin::profile_function!();
         self.uniforms = gpu_trip::Uniforms::new(
             [rect.width(), rect.height()],
@@ -94,14 +94,14 @@ impl MareyCallback {
     }
 }
 
-/// GPU resources shared by every Marey tab callback.
+/// GPU resources shared by every Marey tile callback.
 ///
 /// Created once at startup by [`init`] and stored in the renderer's `callback_resources`, so it
 /// outlives the egui render pass (the pipeline must not be dropped while it is in use). Buffers
-/// are per-tab, because several Marey tabs can be open at once.
+/// are per-tile, because several Marey tiles can be open at once.
 struct GlobalMareyRendererResources {
     pipeline: wgpu::RenderPipeline,
-    per_tab_resources: RouteKeyHashMap<PerTabMareyRendererResources>,
+    per_tile_resources: RouteKeyHashMap<PerTileMareyRendererResources>,
 }
 
 /// `egui-wgpu` stores callback resources in a `type_map::concurrent::TypeMap`, whose `insert`
@@ -118,7 +118,7 @@ unsafe impl Send for GlobalMareyRendererResources {}
 // SAFETY: see above.
 unsafe impl Sync for GlobalMareyRendererResources {}
 
-struct PerTabMareyRendererResources {
+struct PerTileMareyRendererResources {
     uniforms: wgpu::Buffer,
     entry_segments: wgpu::Buffer,
     stations: wgpu::Buffer,
@@ -176,12 +176,12 @@ impl GlobalMareyRendererResources {
 
         Self {
             pipeline,
-            per_tab_resources: RouteKeyHashMap::default(),
+            per_tile_resources: RouteKeyHashMap::default(),
         }
     }
 }
 
-impl PerTabMareyRendererResources {
+impl PerTileMareyRendererResources {
     fn new(device: &wgpu::Device) -> Self {
         let uniforms = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("marey uniforms"),
@@ -239,9 +239,9 @@ impl egui_wgpu::CallbackTrait for MareyCallback {
         puffin::profile_function!();
         let global: &mut GlobalMareyRendererResources = callback_resources.get_mut().unwrap();
         let resources = global
-            .per_tab_resources
+            .per_tile_resources
             .entry(self.route_key)
-            .or_insert_with(|| PerTabMareyRendererResources::new(device));
+            .or_insert_with(|| PerTileMareyRendererResources::new(device));
 
         // Grow the storage buffers when the data no longer fits, and rebuild the bind group so
         // it points at the new buffers.
@@ -294,7 +294,7 @@ impl egui_wgpu::CallbackTrait for MareyCallback {
     ) {
         puffin::profile_function!();
         let global: &GlobalMareyRendererResources = callback_resources.get().unwrap();
-        let Some(resources) = global.per_tab_resources.get(&self.route_key) else {
+        let Some(resources) = global.per_tile_resources.get(&self.route_key) else {
             return;
         };
         if resources.instance_count == 0 {

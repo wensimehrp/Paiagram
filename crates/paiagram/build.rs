@@ -8,7 +8,7 @@ use wesl::syntax::ModulePath;
 use wesl::{CompileOptions, Compiler, ManglerKind};
 use wgsl_bindgen::{RustWgslTypeMap, WgslBindgenOptionBuilder, WgslTypeSerializeStrategy};
 
-const WESL_PACKAGE_ROOT: &str = "src/tabs";
+const WESL_PACKAGE_ROOT: &str = "src/tiles";
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let out_dir = PathBuf::from(std::env::var("OUT_DIR")?);

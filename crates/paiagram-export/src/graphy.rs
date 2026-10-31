@@ -19,7 +19,7 @@ use paiagram_core::{CanvasLength, RouteKey, World};
 /// 1 PDF point is 1/72 inch, whereas [`CanvasLength`] is measured in millimetres.
 const PT_PER_MM: f64 = 72.0 / 25.4;
 /// Horizontal scale: five minutes of timetable span one centimetre of canvas, matching the
-/// Marey tab's default zoom.
+/// Marey tile's default zoom.
 const TICKS_PER_5_MIN: f64 = 5.0 * 60.0 * 100.0;
 /// Padding (in PDF points) around the Marey chart.
 const MARGIN: f64 = 20.0;
@@ -305,7 +305,7 @@ fn draw_time_lines(
     }
 }
 
-/// The label of a time-scale tick, matching the Marey tab: seconds for the finest levels,
+/// The label of a time-scale tick, matching the Marey tile: seconds for the finest levels,
 /// `H:MM` for the minute levels and the full `HH:MM:SS` for the day level.
 fn time_label(time: paiagram_core::time::TimetableTime, level: usize) -> String {
     let (hours, minutes, seconds, _) = time.to_hmsd();
@@ -344,7 +344,7 @@ fn draw_trips(
 
         for polyline in polylines {
             // Each entry spans `arr`..`dep` at one placement, so it contributes two points at
-            // the same height (mirroring the Marey tab's CPU drawing).
+            // the same height (mirroring the Marey tile's CPU drawing).
             let mut points = Vec::with_capacity(polyline.len() * 2);
             for (estimate, _entry, idx, progress) in polyline {
                 let (Some(start), Some(end)) = (

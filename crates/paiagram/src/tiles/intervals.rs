@@ -2,21 +2,21 @@ use egui::*;
 use paiagram_core::{IntervalDirection, IntervalKey};
 use serde::{Deserialize, Serialize};
 
-use crate::tabs::trip::TripTab;
-use crate::{App, MainTab, UiCommand};
+use crate::tiles::trip::TripTile;
+use crate::{App, UiTile, UiCommand};
 
 #[derive(Serialize, Deserialize, Clone, Default)]
-pub struct IntervalsTab {
+pub struct IntervalsTile {
     focused: Option<IntervalKey>,
 }
 
-impl PartialEq for IntervalsTab {
+impl PartialEq for IntervalsTile {
     fn eq(&self, _other: &Self) -> bool {
         true
     }
 }
 
-impl super::Tab for IntervalsTab {
+impl super::Tile for IntervalsTile {
     const NAME: &'static str = "Intervals";
     fn title(&self) -> WidgetText {
         Self::NAME.into()
@@ -88,8 +88,8 @@ impl super::Tab for IntervalsTab {
                             continue;
                         };
                         if ui.button(trip.name.as_str()).clicked() {
-                            app.ui_action_tx.send(UiCommand::OpenOrFocus(MainTab::Trip(
-                                TripTab::new(*trip_key),
+                            app.ui_action_tx.send(UiCommand::OpenOrFocus(UiTile::Trip(
+                                TripTile::new(*trip_key),
                             )));
                         }
                     }

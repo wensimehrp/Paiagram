@@ -21,48 +21,48 @@ side-panel-details-fallback-1 = 当前选中的页面尚未实现「{ side-panel
 side-panel-details-fallback-2 = { side-panel-edit-fallback-2 }
 side-panel-export-fallback-1 = 当前选中的页面尚未实现「{ side-panel-export }」功能栏
 side-panel-export-fallback-2 = 太可恶了这个作者怎么什么都没有做
-# Tabs
-# Start tab
-tab-start = 开始
-tab-start-merge-stations-by-name = 按名称合并车站
-tab-start-amount-vehicles = 车辆数量：
-tab-start-amount-trips = 车次数量：
-tab-start-amount-stations = 车站数量：
-tab-start-amount-platforms = 站台数量：
-tab-start-amount-intervals = 区间数量：
-tab-start-version = 版本：{ $version }
-tab-start-revision = 开发号：{ $revision }
-tab-start-description = 使用 egui 与 Bevy 打造的高性能运输时刻表编辑与分析工具
-# Settings tab
-tab-settings = 设置
-# Diagram tab
-tab-diagram = 运行图
-tab-diagram-export-typst-diagram-output = Typst 输出长度：{ $bytes } 字节
-# Graph tab
-tab-graph = 线路网
-tab-graph-new-displayed-line = 新建基线
-tab-graph-new-displayed-line-desc = 新建基线。基线可用于显示运行图
-tab-graph-auto-arrange = 自动整理线路网
-tab-graph-auto-arrange-desc = 使用力导向布局算法自动整理线路网。调整下方参数以改变布局效果。
-tab-graph-auto-arrange-iterations = 迭代次数
-tab-graph-arrange-via-osm = 通过 OSM 整理
-tab-graph-arrange-button = 整理
-tab-graph-arrange-mode-force = 力导向
-tab-graph-arrange-mode-osm = OSM
-tab-graph-arrange-progress = 整理（{ $mode }）进度：{ $finished }/{ $total } | 重试排队：{ $queued_retry }
+# Tiles
+# Start tile
+tile-start = 开始
+tile-start-merge-stations-by-name = 按名称合并车站
+tile-start-amount-vehicles = 车辆数量：
+tile-start-amount-trips = 车次数量：
+tile-start-amount-stations = 车站数量：
+tile-start-amount-platforms = 站台数量：
+tile-start-amount-intervals = 区间数量：
+tile-start-version = 版本：{ $version }
+tile-start-revision = 开发号：{ $revision }
+tile-start-description = 使用 egui 与 Bevy 打造的高性能运输时刻表编辑与分析工具
+# Settings tile
+tile-settings = 设置
+# Diagram tile
+tile-diagram = 运行图
+tile-diagram-export-typst-diagram-output = Typst 输出长度：{ $bytes } 字节
+# Graph tile
+tile-graph = 线路网
+tile-graph-new-displayed-line = 新建基线
+tile-graph-new-displayed-line-desc = 新建基线。基线可用于显示运行图
+tile-graph-auto-arrange = 自动整理线路网
+tile-graph-auto-arrange-desc = 使用力导向布局算法自动整理线路网。调整下方参数以改变布局效果。
+tile-graph-auto-arrange-iterations = 迭代次数
+tile-graph-arrange-via-osm = 通过 OSM 整理
+tile-graph-arrange-button = 整理
+tile-graph-arrange-mode-force = 力导向
+tile-graph-arrange-mode-osm = OSM
+tile-graph-arrange-progress = 整理（{ $mode }）进度：{ $finished }/{ $total } | 重试排队：{ $queued_retry }
 # tip: use local examples of area names
-tab-graph-arrange-via-osm-desc =
-    利用在线资源整理当前线路网。本功能使用 OpenStreetMap 数据，点击「{ tab-graph-arrange-button }」即表示同意 OpenStreetMap 的使用条款。
+tile-graph-arrange-via-osm-desc =
+    利用在线资源整理当前线路网。本功能使用 OpenStreetMap 数据，点击「{ tile-graph-arrange-button }」即表示同意 OpenStreetMap 的使用条款。
     可以填写一个区域名称以限制查询范围（如：北京市、温州市）。
-tab-graph-arrange-via-osm-terms = 使用条款
-tab-graph-osm-area-name = 过滤区域：
-tab-graph-animation = 动画控制
-tab-graph-animation-desc = 控制动态运行图动画。
-tab-graph-underlay-none = 无
-tab-graph-underlay-openstreetmap = OpenStreetMap
-tab-graph-underlay-amap = 高德地图（AutoNavi）
-tab-graph-underlay-chiriin = 日本地理院地图
-# Trip tab
+tile-graph-arrange-via-osm-terms = 使用条款
+tile-graph-osm-area-name = 过滤区域：
+tile-graph-animation = 动画控制
+tile-graph-animation-desc = 控制动态运行图动画。
+tile-graph-underlay-none = 无
+tile-graph-underlay-openstreetmap = OpenStreetMap
+tile-graph-underlay-amap = 高德地图（AutoNavi）
+tile-graph-underlay-chiriin = 日本地理院地图
+# Trip tile
 trip-table-station = 车站
 trip-table-arrival = 到达
 trip-table-departure = 发车
@@ -105,14 +105,14 @@ colour-stone = 石色
 read-file-prompt = 读取 { $name }…
 read-file-title = 读取 { $name } 文件
 read-file-filetype = { $name } 文件
-tab-diagram-save-typst-module = 保存 Typst 模块
-tab-diagram-save-typst-module-desc = 渲染 JSON 数据必须使用 Typst 模块
-tab-diagram-export-json-data = 将运行图导出为 JSON
-tab-diagram-export-json-data-desc = 将当前运行图导出为 JSON
-tab-diagram-export-typst-timetable = 输出为时刻表（Typst）
-tab-diagram-export-typst-timetable-desc = 将当前运行图之时刻表导出为 Typst 时刻表。导出的时刻表可根据需要在任意文本编辑器内进一步编辑
-tab-diagram-export-json-timetable = 导出为时刻表（JSON）
-tab-diagram-export-json-timetable-desc = 将当前运行图之时刻表导出为 JSON 文件。导出的时刻表可根据需要使用其他工具处理
+tile-diagram-save-typst-module = 保存 Typst 模块
+tile-diagram-save-typst-module-desc = 渲染 JSON 数据必须使用 Typst 模块
+tile-diagram-export-json-data = 将运行图导出为 JSON
+tile-diagram-export-json-data-desc = 将当前运行图导出为 JSON
+tile-diagram-export-typst-timetable = 输出为时刻表（Typst）
+tile-diagram-export-typst-timetable-desc = 将当前运行图之时刻表导出为 Typst 时刻表。导出的时刻表可根据需要在任意文本编辑器内进一步编辑
+tile-diagram-export-json-timetable = 导出为时刻表（JSON）
+tile-diagram-export-json-timetable-desc = 将当前运行图之时刻表导出为 JSON 文件。导出的时刻表可根据需要使用其他工具处理
 menu-import-url-heading = 从网址导入
 menu-import-url-desc = 从互联网下载文件并导入派途
 menu-url-label = 网址：
@@ -146,7 +146,7 @@ menu-sync-system-clock = 与系统时钟同步
 menu-maximized-view = 最大化视口
 menu-undo = 撤销
 menu-redo = 重做
-tab-classes = 种别
+tile-classes = 种别
 classes-name = 种别名
 classes-count = 数量
 classes-color = 颜色
@@ -160,10 +160,10 @@ diagram-arrival-time = 到达时间：
 diagram-already-editing = 正在编辑中…
 graph-create-new-route = 新建路线
 graph-new-station = 新车站
-tab-route-timetable = 路线时刻表
+tile-route-timetable = 路线时刻表
 route-timetable-sort-entries = 排序项目
 route-timetable-stations = 车站
-tab-priority-graph = 优先等级图
+tile-priority-graph = 优先等级图
 settings-developer-mode = 开发者模式
 settings-antialiasing-options = 抗锯齿选项
 settings-off = 关
@@ -171,11 +171,11 @@ settings-on = 开
 settings-lod-mode = 细节层次控制
 settings-lod-2x = 2×
 settings-lod-4x = 4×
-tab-station = 车站
+tile-station = 车站
 station-include-non-stop = 包含不停站车次
-tab-text = 文本信息
+tile-text = 文本信息
 text-markdown-hint = 可在此处使用 Markdown
-tab-trip = 车次
+tile-trip = 车次
 widget-at = 定时
 widget-for = 用时
 widget-flexible = 不定时

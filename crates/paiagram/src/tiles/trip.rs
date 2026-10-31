@@ -7,29 +7,29 @@ use paiagram_core::{TripKey, World};
 use paiagram_selection::SelectedItems;
 use serde::{Deserialize, Serialize};
 
-use super::Tab;
+use super::Tile;
 use crate::App;
 use crate::trip_schedule_visual::WithVisualMod;
 use crate::widgets::{DurationDragValue, TimeDragValue};
 
 #[derive(Serialize, Deserialize, Clone, Default)]
-pub(crate) struct TripTab {
+pub(crate) struct TripTile {
     trip_key: Option<TripKey>,
     show_derived: bool,
     #[serde(skip)]
     name_edit_buf: Option<String>,
 }
 
-impl PartialEq for TripTab {
+impl PartialEq for TripTile {
     fn eq(&self, other: &Self) -> bool {
         self.trip_key == other.trip_key
     }
 }
 
-impl Tab for TripTab {
+impl Tile for TripTile {
     const NAME: &'static str = "Trip";
     fn title(&self) -> WidgetText {
-        tr!("tab-trip").into()
+        tr!("tile-trip").into()
     }
     fn main_display(&mut self, app: &mut App, ui: &mut egui::Ui) {
         puffin::profile_function!();
@@ -37,7 +37,7 @@ impl Tab for TripTab {
     }
 }
 
-impl TripTab {
+impl TripTile {
     pub(crate) fn new(trip_key: TripKey) -> Self {
         Self {
             trip_key: Some(trip_key),
@@ -47,7 +47,7 @@ impl TripTab {
     }
 }
 
-fn show_trip(tab: &mut TripTab, app: &mut App, ui: &mut Ui) {
+fn show_trip(tile: &mut TripTile, app: &mut App, ui: &mut Ui) {
     puffin::profile_function!();
 
     let start_frame = |ui, text, key| {
@@ -57,7 +57,7 @@ fn show_trip(tab: &mut TripTab, app: &mut App, ui: &mut Ui) {
         });
     };
 
-    let Some(trip_key) = tab.trip_key.or(match &app.selected_items {
+    let Some(trip_key) = tile.trip_key.or(match &app.selected_items {
         SelectedItems::Trips(trips) => Some(trips.first().trip_key),
         SelectedItems::TripExtension((trip_key, _)) => Some(*trip_key),
         _ => None,
@@ -65,17 +65,17 @@ fn show_trip(tab: &mut TripTab, app: &mut App, ui: &mut Ui) {
         start_frame(
             ui,
             "Select a trip to display the schedule",
-            &mut tab.trip_key,
+            &mut tile.trip_key,
         );
         return;
     };
 
     let Some(trip) = app.trips.get(&trip_key) else {
-        start_frame(ui, "The selected trip does not exist", &mut tab.trip_key);
+        start_frame(ui, "The selected trip does not exist", &mut tile.trip_key);
         return;
     };
 
-    let schedule = if tab.trip_key.is_some() {
+    let schedule = if tile.trip_key.is_some() {
         trip.schedule.clone()
     } else if let SelectedItems::Trips(trips) = &app.selected_items {
         let selected_trip = trips.first();
@@ -90,7 +90,7 @@ fn show_trip(tab: &mut TripTab, app: &mut App, ui: &mut Ui) {
 
     Frame::new().inner_margin(6.0).show(ui, |ui| {
         ui.horizontal(|ui| {
-            if let Some(buf) = &mut tab.name_edit_buf {
+            if let Some(buf) = &mut tile.name_edit_buf {
                 ui.text_edit_singleline(buf);
                 if ui.button("Finish").clicked() {
                     let _ = app.mutate(|mut world| {
@@ -99,16 +99,16 @@ fn show_trip(tab: &mut TripTab, app: &mut App, ui: &mut Ui) {
                         trip.name.push_str(buf);
                         Ok(world)
                     });
-                    tab.name_edit_buf = None;
+                    tile.name_edit_buf = None;
                 }
             } else {
                 ui.heading(trip_name.as_str());
                 if ui.button("Edit").clicked() {
-                    tab.name_edit_buf = Some(trip_name.to_string());
+                    tile.name_edit_buf = Some(trip_name.to_string());
                 }
             }
         });
-        select_a_trip(ui, &mut tab.trip_key, &app.world);
+        select_a_trip(ui, &mut tile.trip_key, &app.world);
     });
 
     ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {

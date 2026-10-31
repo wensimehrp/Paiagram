@@ -18,62 +18,62 @@ side-panel-details = Details
 side-panel-export = Export
 
 # fallback messages
-side-panel-edit-fallback-1 = This tab hasn't implemented the {side-panel-edit} display yet.
+side-panel-edit-fallback-1 = This tile hasn't implemented the {side-panel-edit} display yet.
 side-panel-edit-fallback-2 = This is considered a bug. Feel free to open a ticket on GitHub!
-side-panel-details-fallback-1 = This tab hasn't implemented the {side-panel-details} display yet.
+side-panel-details-fallback-1 = This tile hasn't implemented the {side-panel-details} display yet.
 side-panel-details-fallback-2 = This is considered a bug. Feel free to open a ticket on GitHub!
-side-panel-export-fallback-1 = This tab hasn't implemented the {side-panel-export} display yet.
+side-panel-export-fallback-1 = This tile hasn't implemented the {side-panel-export} display yet.
 side-panel-export-fallback-2 = This is considered a bug. Feel free to open a ticket on GitHub!
 
-# Tabs
-# Start tab
-tab-start = Start
-tab-start-merge-stations-by-name = Merge stations by name
-tab-start-amount-vehicles = Amount of vehicles:
-tab-start-amount-trips = Amount of trips:
-tab-start-amount-stations = Amount of stations:
-tab-start-amount-platforms = Amount of platforms:
-tab-start-amount-intervals = Amount of intervals:
-tab-start-version = Version: {$version}
-tab-start-revision = Revision: {$revision}
-tab-start-description = A high-performance transport timetable diagramming and analysis tool built with egui and Bevy.
-# Config tab
-tab-config = Config
-# Diagram tab
-tab-diagram = Diagram
-tab-diagram-save-typst-module = Save Typst module
-tab-diagram-save-typst-module-desc = You must use the Typst module to render your JSON data.
-tab-diagram-export-json-data = Export diagram as JSON
-tab-diagram-export-json-data-desc = Export the current diagram to JSON.
-tab-diagram-export-typst-diagram-output = Typst output length: {$bytes} bytes
-tab-diagram-export-typst-timetable = Export to timetable (Typst)
-tab-diagram-export-typst-timetable-desc = Export the current diagram's timetable to a Typst timetable. The exported timetable can be further customized in your preferred editor.
-tab-diagram-export-json-timetable = Export to timetable (JSON)
-tab-diagram-export-json-timetable-desc = Export the current diagram's timetable to a JSON file. The exported timetable can be further processed with other tools.
-# Graph tab
-tab-graph = Graph
-tab-graph-new-displayed-line = Create new displayed line
-tab-graph-new-displayed-line-desc = Create a new displayed line. The new line would be used as the foundation of a diagram.
-tab-graph-auto-arrange = Auto-arrange graph
-tab-graph-auto-arrange-desc = Automatically arrange the graph using a force-directed layout algorithm. You can tweak the parameters below to adjust the layout.
-tab-graph-auto-arrange-iterations = Iterations
-tab-graph-arrange-via-osm = Arrange via OSM
-tab-graph-arrange-button = Arrange
-tab-graph-arrange-mode-force = Force
-tab-graph-arrange-mode-osm = OSM
-tab-graph-arrange-progress = Arrange ({$mode}) progress: {$finished}/{$total} | retry queued: {$queued_retry}
+# Tiles
+# Start tile
+tile-start = Start
+tile-start-merge-stations-by-name = Merge stations by name
+tile-start-amount-vehicles = Amount of vehicles:
+tile-start-amount-trips = Amount of trips:
+tile-start-amount-stations = Amount of stations:
+tile-start-amount-platforms = Amount of platforms:
+tile-start-amount-intervals = Amount of intervals:
+tile-start-version = Version: {$version}
+tile-start-revision = Revision: {$revision}
+tile-start-description = A high-performance transport timetable diagramming and analysis tool built with egui and Bevy.
+# Config tile
+tile-config = Config
+# Diagram tile
+tile-diagram = Diagram
+tile-diagram-save-typst-module = Save Typst module
+tile-diagram-save-typst-module-desc = You must use the Typst module to render your JSON data.
+tile-diagram-export-json-data = Export diagram as JSON
+tile-diagram-export-json-data-desc = Export the current diagram to JSON.
+tile-diagram-export-typst-diagram-output = Typst output length: {$bytes} bytes
+tile-diagram-export-typst-timetable = Export to timetable (Typst)
+tile-diagram-export-typst-timetable-desc = Export the current diagram's timetable to a Typst timetable. The exported timetable can be further customized in your preferred editor.
+tile-diagram-export-json-timetable = Export to timetable (JSON)
+tile-diagram-export-json-timetable-desc = Export the current diagram's timetable to a JSON file. The exported timetable can be further processed with other tools.
+# Graph tile
+tile-graph = Graph
+tile-graph-new-displayed-line = Create new displayed line
+tile-graph-new-displayed-line-desc = Create a new displayed line. The new line would be used as the foundation of a diagram.
+tile-graph-auto-arrange = Auto-arrange graph
+tile-graph-auto-arrange-desc = Automatically arrange the graph using a force-directed layout algorithm. You can tweak the parameters below to adjust the layout.
+tile-graph-auto-arrange-iterations = Iterations
+tile-graph-arrange-via-osm = Arrange via OSM
+tile-graph-arrange-button = Arrange
+tile-graph-arrange-mode-force = Force
+tile-graph-arrange-mode-osm = OSM
+tile-graph-arrange-progress = Arrange ({$mode}) progress: {$finished}/{$total} | retry queued: {$queued_retry}
 # tip: use local examples of area names
-tab-graph-arrange-via-osm-desc = Use online sources to arrange the current the graph. This leverages OpenStreetMap data, and by clicking "{tab-graph-arrange-button}" you agree to OpenStreetMap's Terms of Use. You can query with an optional area name to limit the scope (e.g., Vancouver, Halifax).
-tab-graph-arrange-via-osm-terms = Terms of Use
-tab-graph-osm-area-name = Area filter:
-tab-graph-animation = Animation controls
-tab-graph-animation-desc = Animate trains on the graph.
-tab-graph-underlay-none = None
-tab-graph-underlay-openstreetmap = OpenStreetMap
-tab-graph-underlay-amap = Amap
-tab-graph-underlay-chiriin = Chiri-in Chizu
+tile-graph-arrange-via-osm-desc = Use online sources to arrange the current the graph. This leverages OpenStreetMap data, and by clicking "{tile-graph-arrange-button}" you agree to OpenStreetMap's Terms of Use. You can query with an optional area name to limit the scope (e.g., Vancouver, Halifax).
+tile-graph-arrange-via-osm-terms = Terms of Use
+tile-graph-osm-area-name = Area filter:
+tile-graph-animation = Animation controls
+tile-graph-animation-desc = Animate trains on the graph.
+tile-graph-underlay-none = None
+tile-graph-underlay-openstreetmap = OpenStreetMap
+tile-graph-underlay-amap = Amap
+tile-graph-underlay-chiriin = Chiri-in Chizu
 
-# Trip tab
+# Trip tile
 trip-table-station = Station
 trip-table-arrival = Arrival
 trip-table-departure = Departure
@@ -157,13 +157,13 @@ menu-maximized-view = Maximized view
 menu-undo = Undo
 menu-redo = Redo
 
-# Classes Tab
-tab-classes = Classes
+# Classes Tile
+tile-classes = Classes
 classes-name = Class name
 classes-count = Count
 classes-color = Color
 
-# Diagram Tab
+# Diagram Tile
 diagram-export-oudia = Export to OuDia
 diagram-use-global-timer = Use global timer
 diagram-create-new-trip-scratch = Create a new trip from scratch
@@ -173,19 +173,19 @@ diagram-find-route-between = Find a route between...
 diagram-arrival-time = Arrival Time:
 diagram-already-editing = Already editing...
 
-# Graph Tab
+# Graph Tile
 graph-create-new-route = Create new route
 graph-new-station = New Station
 
-# Route Timetable Tab
-tab-route-timetable = Route Timetable
+# Route Timetable Tile
+tile-route-timetable = Route Timetable
 route-timetable-sort-entries = Sort entries
 route-timetable-stations = Stations
 
-# Priority Graph Tab
-tab-priority-graph = Priority Graph
+# Priority Graph Tile
+tile-priority-graph = Priority Graph
 
-# Settings Tab
+# Settings Tile
 settings-developer-mode = Developer Mode
 settings-antialiasing-options = Antialiasing Options
 settings-off = Off
@@ -194,16 +194,16 @@ settings-lod-mode = LOD Mode
 settings-lod-2x = 2×
 settings-lod-4x = 4×
 
-# Station Tab
-tab-station = Station
+# Station Tile
+tile-station = Station
 station-include-non-stop = Include non-stop
 
-# Text Tab
-tab-text = Text message
+# Text Tile
+tile-text = Text message
 text-markdown-hint = You may use markdown here
 
-# Trip Tab
-tab-trip = Trip
+# Trip Tile
+tile-trip = Trip
 
 # Widgets
 widget-at = At

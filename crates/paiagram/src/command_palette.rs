@@ -3,8 +3,8 @@ use egui::{Context, Key, Modifiers, NumExt, Stroke, Ui};
 use egui_i18n::tr;
 use paiagram_core::{RouteKey, StationKey, TripKey};
 
-use super::MainTab;
-use crate::tabs::all_tabs::*;
+use super::UiTile;
+use crate::tiles::all_tiles::*;
 use crate::widgets::search::build_matcher;
 use crate::{App, UiCommand};
 
@@ -21,7 +21,7 @@ enum MatchedType {
     Route(RouteKey),
     Station(StationKey),
     Trip(TripKey),
-    Tab(fn() -> MainTab),
+    Tile(fn() -> UiTile),
     LoadOuDiaSecond,
 }
 
@@ -90,9 +90,9 @@ impl CommandPalette {
 
         #[rustfmt::skip]
         let panel_info: [(EcoString, MatchedType); 4] = [
-            (tr!("tab-start").into(),       MatchedType::Tab(|| MainTab::Start(StartTab::default())),),
-            (tr!("tab-settings").into(),    MatchedType::Tab(|| MainTab::Config(ConfigTab)),),
-            (tr!("tab-graph").into(),       MatchedType::Tab(|| MainTab::Graph(GraphTab::default()))),
+            (tr!("tile-start").into(),       MatchedType::Tile(|| UiTile::Start(StartTile::default())),),
+            (tr!("tile-settings").into(),    MatchedType::Tile(|| UiTile::Config(ConfigTile)),),
+            (tr!("tile-graph").into(),       MatchedType::Tile(|| UiTile::Graph(GraphTile::default()))),
             ("Load OuDiaSecond".into(),     MatchedType::LoadOuDiaSecond),
         ];
 
@@ -118,17 +118,17 @@ impl CommandPalette {
         else {
             return;
         };
-        if let Some(tab) = match item {
-            MatchedType::Route(k) => Some(MainTab::Marey(MareyTab::new(k))),
+        if let Some(tile) = match item {
+            MatchedType::Route(k) => Some(UiTile::Marey(MareyTile::new(k))),
             MatchedType::Station(k) => None,
-            MatchedType::Trip(k) => Some(MainTab::Trip(TripTab::new(k))),
-            MatchedType::Tab(f) => Some(f()),
+            MatchedType::Trip(k) => Some(UiTile::Trip(TripTile::new(k))),
+            MatchedType::Tile(f) => Some(f()),
             MatchedType::LoadOuDiaSecond => {
                 // TODO
                 None
             }
         } {
-            app.ui_action_tx.send(UiCommand::OpenOrFocus(tab));
+            app.ui_action_tx.send(UiCommand::OpenOrFocus(tile));
         }
         self.clear();
     }
@@ -155,7 +155,7 @@ impl CommandPalette {
                     MatchedType::Route(_) => "(Route)",
                     MatchedType::Station(_) => "(Station)",
                     MatchedType::Trip(_) => "(Trip)",
-                    MatchedType::Tab(_) => "(Tab)",
+                    MatchedType::Tile(_) => "(Tile)",
                     _ => "(Action)",
                 }),
             );

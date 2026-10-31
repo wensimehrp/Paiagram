@@ -3,7 +3,7 @@
 A route timetable shows the times of trips running on a specific route. The first column is all
 stations in the route, and each column after the first column lists a trip travelling on the route.
 Each row displays when a trip arrives or depart from a station, or the platform/track the trip will
-be staying at. The route timetable tab in Paiagram is based on Japanse train route timetables (e.g.
+be staying at. The route timetable tile in Paiagram is based on Japanse train route timetables (e.g.
 the table in https://but.tw/font/).
 
 The table includes these elements:

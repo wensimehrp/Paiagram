@@ -9,25 +9,25 @@ use paiagram_core::import::ImportMode;
 use paiagram_rw::{AvailableSaves, LoadResult, SaveCategory, list_files};
 use serde::{Deserialize, Serialize};
 
-use super::Tab;
+use super::Tile;
 use crate::App;
 use crate::widgets::{LOGO_COORDINATES, LogoStroke};
 
 #[derive(Serialize, Deserialize)]
-#[serde(into = "StartTabNoCache", from = "StartTabNoCache")]
-pub(crate) struct StartTab {
+#[serde(into = "StartTileNoCache", from = "StartTileNoCache")]
+pub(crate) struct StartTile {
     available_files: Option<AvailableSaves>,
     available_file_tx: mpsc::Sender<list_files::Result<AvailableSaves>>,
     available_file_rx: mpsc::Receiver<list_files::Result<AvailableSaves>>,
 }
 
-impl Clone for StartTab {
+impl Clone for StartTile {
     fn clone(&self) -> Self {
         Self::default()
     }
 }
 
-impl Default for StartTab {
+impl Default for StartTile {
     fn default() -> Self {
         let (tx, rx) = mpsc::channel();
         Self {
@@ -38,31 +38,31 @@ impl Default for StartTab {
     }
 }
 
-impl PartialEq for StartTab {
+impl PartialEq for StartTile {
     fn eq(&self, _other: &Self) -> bool {
         true
     }
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-struct StartTabNoCache;
+struct StartTileNoCache;
 
-impl From<StartTab> for StartTabNoCache {
-    fn from(_value: StartTab) -> Self {
+impl From<StartTile> for StartTileNoCache {
+    fn from(_value: StartTile) -> Self {
         Self
     }
 }
 
-impl From<StartTabNoCache> for StartTab {
-    fn from(_value: StartTabNoCache) -> Self {
+impl From<StartTileNoCache> for StartTile {
+    fn from(_value: StartTileNoCache) -> Self {
         Self::default()
     }
 }
 
-impl Tab for StartTab {
+impl Tile for StartTile {
     const NAME: &'static str = "Start";
     fn title(&self) -> egui::WidgetText {
-        tr!("tab-start").into()
+        tr!("tile-start").into()
     }
     fn main_display(&mut self, app: &mut App, ui: &mut Ui) {
         puffin::profile_function!();

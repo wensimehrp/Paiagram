@@ -3,13 +3,13 @@ use egui_extras::{Size, StripBuilder};
 use egui_i18n::tr;
 use serde::{Deserialize, Serialize};
 
-use super::Tab;
+use super::Tile;
 use crate::App;
 
 #[derive(Serialize, Deserialize, Clone, Default, PartialEq)]
-pub(crate) struct ConfigTab;
+pub(crate) struct ConfigTile;
 
-impl Tab for ConfigTab {
+impl Tile for ConfigTile {
     const NAME: &'static str = "Configuration";
     fn main_display(&mut self, app: &mut App, ui: &mut Ui) {
         puffin::profile_function!();
@@ -35,6 +35,6 @@ impl Tab for ConfigTab {
         });
     }
     fn title(&self) -> egui::WidgetText {
-        tr!("tab-config").into()
+        tr!("tile-config").into()
     }
 }

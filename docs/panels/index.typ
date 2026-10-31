@@ -4,14 +4,14 @@ Paiagram features a tiling system that allows you to conveniently split and orga
 
 = The Tiling System
 
-The tiling system allows you to group multiple tabs or tab groups together. You can horizontally or
+The tiling system allows you to group multiple tiles or tile groups together. You can horizontally or
 vertically split your workspace into many parts to quickly switch between tasks.
 
 = Commands Panel
 
-You can use the shortcut `Ctrl+P` to open the command panel, and quickly open tabs from the command
+You can use the shortcut `Ctrl+P` to open the command panel, and quickly open tiles from the command
 panel. You can search up station, route, and trip names from the command panel to quickly open
-station, route, and trip tabs.
+station, route, and trip tiles.
 
 == Searching Chinese and Japanese Names with Pinyin and Romaji
 

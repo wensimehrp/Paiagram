@@ -5,11 +5,11 @@ use serde::{Deserialize, Serialize};
 use crate::{App, UiCommand};
 
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq)]
-pub(crate) struct StationTab {
+pub(crate) struct StationTile {
     stn_key: StationKey,
 }
 
-impl super::Tab for StationTab {
+impl super::Tile for StationTile {
     const NAME: &'static str = "Station";
     fn main_display(&mut self, app: &mut crate::App, ui: &mut Ui) {
         puffin::profile_function!();

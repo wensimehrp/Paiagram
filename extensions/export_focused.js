@@ -108,13 +108,13 @@ export function run(world, params, io) {
     );
 }
 
-// Mirrors the Marey tab's own drawing (`tabs/marey.rs`, `gpu_trip.wesl`):
+// Mirrors the Marey tile's own drawing (`tiles/marey.rs`, `gpu_trip.wesl`):
 //   * each cached point is `(estimate, entry, idx, progress)`;
 //   * a point is drawn as an arrival + departure at the same height, i.e. a horizontal dwell;
 //   * its height is `mix(station_heights[idx], station_heights[idx + 1], progress)`, where every
 //     interval's canvas length defaults to 1.5 cm = 15 mm, so it is `15 * (idx + progress)` mm.
 //
-// The axes use the Marey tab's fixed scales — `minutesPerCm` minutes span one centimetre
+// The axes use the Marey tile's fixed scales — `minutesPerCm` minutes span one centimetre
 // horizontally, one millimetre of canvas is one millimetre vertically — and the whole thing is then
 // fitted with a single uniform factor, so the lines keep their true shape.
 function mareyToSvg(polylines, options) {

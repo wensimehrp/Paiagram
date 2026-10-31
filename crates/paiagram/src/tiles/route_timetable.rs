@@ -14,11 +14,11 @@ use paiagram_rw::ExportObject;
 use serde::{Deserialize, Serialize};
 
 use crate::font::TIMETABLTE_TEXT_STYLE;
-use crate::tabs::trip::TripTab;
+use crate::tiles::trip::TripTile;
 use crate::{App, UiCommand};
 
 #[derive(Clone, Serialize, Deserialize)]
-pub(crate) struct RouteTimetableTab {
+pub(crate) struct RouteTimetableTile {
     /// Scroll offset shared by the row header, column header and main grid.
     scroll: Vec2,
     route_key: RouteKey,
@@ -28,13 +28,13 @@ pub(crate) struct RouteTimetableTab {
     show_inbound: bool,
 }
 
-impl PartialEq for RouteTimetableTab {
+impl PartialEq for RouteTimetableTile {
     fn eq(&self, other: &Self) -> bool {
         self.route_key == other.route_key
     }
 }
 
-impl RouteTimetableTab {
+impl RouteTimetableTile {
     pub fn new(route_key: RouteKey) -> Self {
         Self {
             scroll: Vec2::ZERO,
@@ -46,7 +46,7 @@ impl RouteTimetableTab {
     }
 }
 
-impl super::Tab for RouteTimetableTab {
+impl super::Tile for RouteTimetableTile {
     const NAME: &'static str = "Route timetable";
     fn main_display(&mut self, app: &mut crate::App, ui: &mut Ui) {
         puffin::profile_function!();
@@ -277,8 +277,8 @@ fn show_trip_header(
                     .on_hover_text(format!("Click to open the trip\n{name}"))
                     .clicked()
                 {
-                    app.ui_action_tx.send(UiCommand::OpenOrFocus(super::MainTab::Trip(
-                        TripTab::new(*key),
+                    app.ui_action_tx.send(UiCommand::OpenOrFocus(super::UiTile::Trip(
+                        TripTile::new(*key),
                     )));
                 }
             }

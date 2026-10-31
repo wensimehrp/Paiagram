@@ -3,23 +3,23 @@ use paiagram_core::trip::TravelMode;
 use paiagram_core::{Key, ServiceClassKey};
 use serde::{Deserialize, Serialize};
 
-use super::Tab;
-use crate::tabs::trip::TripTab;
-use crate::{App, MainTab, UiCommand};
+use super::Tile;
+use crate::tiles::trip::TripTile;
+use crate::{App, UiTile, UiCommand};
 
 #[derive(Default, Clone, Serialize, Deserialize)]
-pub(crate) struct ServiceClassesTab {
+pub(crate) struct ServiceClassesTile {
     #[serde(skip)]
     selected_class: Option<ServiceClassKey>,
 }
 
-impl PartialEq for ServiceClassesTab {
+impl PartialEq for ServiceClassesTile {
     fn eq(&self, _other: &Self) -> bool {
         true
     }
 }
 
-impl Tab for ServiceClassesTab {
+impl Tile for ServiceClassesTile {
     const NAME: &'static str = "Service Classes";
     fn title(&self) -> WidgetText {
         Self::NAME.into()
@@ -131,7 +131,7 @@ impl Tab for ServiceClassesTab {
                         chunk.iter().fold(acc, |acc, &(trip_key, name, time)| {
                             let resp = ui.button(name).clicked();
                             acc.or(resp.then(|| {
-                                UiCommand::OpenOrFocus(MainTab::Trip(TripTab::new(trip_key)))
+                                UiCommand::OpenOrFocus(UiTile::Trip(TripTile::new(trip_key)))
                             }))
                         })
                     })

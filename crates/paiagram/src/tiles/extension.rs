@@ -13,11 +13,11 @@ use paiagram_rw::ExportObject;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 
-use super::Tab;
+use super::Tile;
 
 #[derive(Serialize, Deserialize)]
-#[serde(into = "ExtensionTabNoCache", from = "ExtensionTabNoCache")]
-pub struct ExtensionTab {
+#[serde(into = "ExtensionTileNoCache", from = "ExtensionTileNoCache")]
+pub struct ExtensionTile {
     script_text: String,
     // wasm only allows saving file on the main thread
     file_receiver: Receiver<JsDataExporter>,
@@ -30,16 +30,16 @@ pub struct ExtensionTab {
     script_eval_err: Option<String>,
 }
 
-impl Clone for ExtensionTab {
+impl Clone for ExtensionTile {
     fn clone(&self) -> Self {
-        ExtensionTabNoCache {
+        ExtensionTileNoCache {
             script_text: self.script_text.clone(),
         }
         .into()
     }
 }
 
-impl Default for ExtensionTab {
+impl Default for ExtensionTile {
     fn default() -> Self {
         let (file_sender, file_receiver) = channel();
         Self {
@@ -57,20 +57,20 @@ impl Default for ExtensionTab {
 }
 
 #[derive(Serialize, Deserialize)]
-struct ExtensionTabNoCache {
+struct ExtensionTileNoCache {
     script_text: String,
 }
 
-impl From<ExtensionTab> for ExtensionTabNoCache {
-    fn from(value: ExtensionTab) -> Self {
+impl From<ExtensionTile> for ExtensionTileNoCache {
+    fn from(value: ExtensionTile) -> Self {
         Self {
             script_text: value.script_text,
         }
     }
 }
 
-impl From<ExtensionTabNoCache> for ExtensionTab {
-    fn from(value: ExtensionTabNoCache) -> Self {
+impl From<ExtensionTileNoCache> for ExtensionTile {
+    fn from(value: ExtensionTileNoCache) -> Self {
         Self {
             script_text: value.script_text,
             ..Default::default()
@@ -78,13 +78,13 @@ impl From<ExtensionTabNoCache> for ExtensionTab {
     }
 }
 
-impl PartialEq for ExtensionTab {
+impl PartialEq for ExtensionTile {
     fn eq(&self, _other: &Self) -> bool {
         true
     }
 }
 
-impl Tab for ExtensionTab {
+impl Tile for ExtensionTile {
     const NAME: &'static str = "Extension";
     fn title(&self) -> egui::WidgetText {
         Self::NAME.into()
@@ -97,13 +97,13 @@ impl Tab for ExtensionTab {
     }
 }
 
-fn main_display(tab: &mut ExtensionTab, app: &mut crate::App, ui: &mut Ui) {
+fn main_display(tile: &mut ExtensionTile, app: &mut crate::App, ui: &mut Ui) {
     puffin::profile_function!();
-    if let Ok(data) = tab.file_receiver.try_recv() {
+    if let Ok(data) = tile.file_receiver.try_recv() {
         data.write_via_interface(app.file_write_tx.clone());
     }
-    ui.checkbox(&mut tab.edit_mode, "Edit mode");
-    if tab.edit_mode {
+    ui.checkbox(&mut tile.edit_mode, "Edit mode");
+    if tile.edit_mode {
         let theme = egui_extras::syntax_highlighting::CodeTheme::from_memory(ui.ctx(), ui.style());
         let mut layouter = |ui: &egui::Ui, buf: &dyn egui::TextBuffer, wrap_width: f32| {
             let mut layout_job = egui_extras::syntax_highlighting::highlight(
@@ -118,7 +118,7 @@ fn main_display(tab: &mut ExtensionTab, app: &mut crate::App, ui: &mut Ui) {
         };
         ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
             ui.add(
-                TextEdit::multiline(&mut tab.script_text)
+                TextEdit::multiline(&mut tile.script_text)
                     .code_editor()
                     .layouter(&mut layouter)
                     .desired_width(f32::INFINITY),
@@ -128,9 +128,9 @@ fn main_display(tab: &mut ExtensionTab, app: &mut crate::App, ui: &mut Ui) {
     }
     ui.horizontal(|ui| {
         if ui.button("Refresh").clicked()
-            || (tab.config_ui.is_none()
+            || (tile.config_ui.is_none()
                 && matches!(
-                    tab.config_running_status.try_lock(),
+                    tile.config_running_status.try_lock(),
                     Some(inner) if matches!(*inner, ConfigRunningStatus::Idle)
                 ))
         {
@@ -139,8 +139,8 @@ fn main_display(tab: &mut ExtensionTab, app: &mut crate::App, ui: &mut Ui) {
                     world: app.world.clone(),
                     selected_items: app.selected_items.clone(),
                 },
-                tab.config_running_status.clone(),
-                tab.script_text.as_str().into(),
+                tile.config_running_status.clone(),
+                tile.script_text.as_str().into(),
             );
         }
         if ui.button("Run script").clicked() {
@@ -150,14 +150,14 @@ fn main_display(tab: &mut ExtensionTab, app: &mut crate::App, ui: &mut Ui) {
                     selected_items: app.selected_items.clone(),
                 },
                 JsIo {
-                    file_sender: tab.file_sender.clone(),
+                    file_sender: tile.file_sender.clone(),
                 },
-                tab.return_value_map.clone(),
-                tab.script_running_status.clone(),
-                tab.script_text.as_str().into(),
+                tile.return_value_map.clone(),
+                tile.script_running_status.clone(),
+                tile.script_text.as_str().into(),
             );
         }
-        if let Some(mut result) = tab.config_running_status.try_lock() {
+        if let Some(mut result) = tile.config_running_status.try_lock() {
             if matches!(*result, ConfigRunningStatus::Running) {
                 ui.horizontal(|ui| {
                     ui.spinner();
@@ -167,12 +167,12 @@ fn main_display(tab: &mut ExtensionTab, app: &mut crate::App, ui: &mut Ui) {
                 && let ConfigRunningStatus::Finished(result) = std::mem::take(&mut *result)
             {
                 if let Ok(result) = &result {
-                    tab.return_value_map = default_return_values(result);
+                    tile.return_value_map = default_return_values(result);
                 };
-                tab.config_ui = Some(result.map_err(|e| e.to_string()));
+                tile.config_ui = Some(result.map_err(|e| e.to_string()));
             }
         }
-        if let Some(mut result) = tab.script_running_status.try_lock() {
+        if let Some(mut result) = tile.script_running_status.try_lock() {
             if matches!(*result, ScriptRunningStatus::Running) {
                 ui.horizontal(|ui| {
                     ui.spinner();
@@ -182,22 +182,22 @@ fn main_display(tab: &mut ExtensionTab, app: &mut crate::App, ui: &mut Ui) {
                 && let ScriptRunningStatus::Finished(result) = std::mem::take(&mut *result)
             {
                 match result {
-                    Ok(world) => tab.script_eval_err = None,
-                    Err(e) => tab.script_eval_err = Some(e.to_string()),
+                    Ok(world) => tile.script_eval_err = None,
+                    Err(e) => tile.script_eval_err = Some(e.to_string()),
                 }
             }
         }
     });
-    if let Some(err) = &tab.script_eval_err {
+    if let Some(err) = &tile.script_eval_err {
         ui.label(err);
     }
-    let Some(config_ui) = &tab.config_ui else {
+    let Some(config_ui) = &tile.config_ui else {
         return;
     };
     ScrollArea::vertical().auto_shrink(false).show(ui, |ui| match config_ui {
         Ok(config_ui) => ConfigUiList {
             ui_definition: config_ui,
-            return_value: &mut tab.return_value_map,
+            return_value: &mut tile.return_value_map,
         }
         .show_ui(ui),
         Err(msg) => {

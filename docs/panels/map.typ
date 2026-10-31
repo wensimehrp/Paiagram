@@ -1,6 +1,6 @@
 #title[Map] <map>
 
-The map tab provides a global overview of your network. The tab is also the main interface for you
+The map tile provides a global overview of your network. The tile is also the main interface for you
 to interact with your network.
 
 = Viewing

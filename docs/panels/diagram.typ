@@ -1,6 +1,6 @@
 #title[Diagram]
 
-The diagram tab displays a #link("https://en.wikipedia.org/wiki/Charles_Ibry")[Marey diagram], which
+The diagram tile displays a #link("https://en.wikipedia.org/wiki/Charles_Ibry")[Marey diagram], which
 is fundamentally a time--distance graph, that can be used to track vehicles' relative positions at
 specific times.
 

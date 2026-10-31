@@ -11,9 +11,9 @@ use paiagram_core::trip::{EstimateEntry, TEntryId, TEstimate, TravelMode, TripSc
 use paiagram_core::{CanvasLength, Source, TripKey};
 
 use crate::font::TIMETABLE_FONT_ID;
-use crate::tabs::Navigatable;
-use crate::tabs::marey::MareyTabNavigation;
-use crate::tabs::marey::label_placement::label_placement;
+use crate::tiles::Navigatable;
+use crate::tiles::marey::MareyTileNavigation;
+use crate::tiles::marey::label_placement::label_placement;
 use crate::widgets::buttons;
 
 pub fn show_focused_trip<'a>(
@@ -22,7 +22,7 @@ pub fn show_focused_trip<'a>(
     source: &mut Source,
     animation_progress: f32,
     ui: &mut Ui,
-    tab: &mut super::MareyTab,
+    tile: &mut super::MareyTile,
     station_heights: &[CanvasLength],
     painter: &mut Painter,
     polylines: TripBucket,
@@ -33,10 +33,10 @@ pub fn show_focused_trip<'a>(
     let text_color = ui.visuals().text_color().gamma_multiply(animation_progress);
 
     polylines.iter().fold(None, |acc, polyline| {
-        let points = draw_polyline(&tab.navi, polyline, station_heights, painter, stroke);
+        let points = draw_polyline(&tile.navi, polyline, station_heights, painter, stroke);
         let ret = show_trip_handles(
             trip_schedule,
-            tab,
+            tile,
             source,
             polyline,
             &points,
@@ -55,7 +55,7 @@ pub fn show_focused_trip<'a>(
 /// Returns the screen-space positions of the arrival/departure pairs, so that
 /// [`show_trip_handles`] can place its handles on top of the line.
 pub fn draw_polyline(
-    navi: &MareyTabNavigation,
+    navi: &MareyTileNavigation,
     polyline: &[BucketPoint],
     station_heights: &[CanvasLength],
     painter: &mut Painter,
@@ -83,7 +83,7 @@ pub fn draw_polyline(
 /// Returns the time patch produced by dragging a handle, if any.
 fn show_trip_handles(
     trip_schedule: &TripSchedule,
-    tab: &super::MareyTab,
+    tile: &super::MareyTile,
     source: &mut Source,
     polyline: &[BucketPoint],
     points: &[Pos2],
@@ -197,7 +197,7 @@ fn show_trip_handles(
                 arr_visuals.bg_fill,
             );
             let delta_t = ui.input(|r| r.pointer.latest_pos()).map_or(TDuration::ZERO, |p| {
-                tab.navi.screen_x_to_logical_x(p.x).to_timetable_time() - estimate_entry.arr
+                tile.navi.screen_x_to_logical_x(p.x).to_timetable_time() - estimate_entry.arr
             });
             if curr_arr_response.drag_stopped() {
                 let _ = source.mutate(|mut world| {
@@ -285,7 +285,7 @@ fn show_trip_handles(
                 dep_visuals.bg_fill,
             );
             let delta_t = ui.input(|r| r.pointer.latest_pos()).map_or(TDuration::ZERO, |p| {
-                tab.navi.screen_x_to_logical_x(p.x).to_timetable_time() - estimate_entry.dep
+                tile.navi.screen_x_to_logical_x(p.x).to_timetable_time() - estimate_entry.dep
             });
             if curr_dep_response.drag_stopped() {
                 let _ = source.mutate(|mut world| {

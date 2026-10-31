@@ -3,7 +3,7 @@ use egui::*;
 use paiagram_core::route::MareyCache;
 use paiagram_core::time::{Tick, TimetableTime};
 use paiagram_core::trip::{TEntry, TEntryId, TEstimate, TravelMode, TripSchedule};
-use paiagram_core::{CanvasLength, Route, RouteCache, RouteKey, Trip, TripKey, Wfc};
+use paiagram_core::{CanvasLength, Route, RouteCache, RouteKey, Trip, TripKey, Wfc, World};
 use paiagram_export::GraphyFormat;
 use paiagram_rw::ExportObject;
 use serde::{Deserialize, Serialize};
@@ -18,73 +18,79 @@ mod show_focused_trips;
 
 use paiagram_selection::{SelectedItem, SelectedItems};
 
-use super::{Navigatable, Tab};
+use super::{Navigatable, Tile};
 use crate::App;
 use crate::font::TIMETABLE_FONT_ID;
-use crate::tabs::marey::show_focused_trips::draw_polyline;
+use crate::tiles::marey::show_focused_trips::draw_polyline;
 use crate::trip_schedule_visual::WithVisualMod;
 
 #[derive(Clone, Serialize, Deserialize)]
-#[serde(into = "MareyTabNoCache", from = "MareyTabNoCache")]
-pub(crate) struct MareyTab {
+#[serde(into = "MareyTileNoCache", from = "MareyTileNoCache")]
+pub(crate) struct MareyTile {
     key: RouteKey,
-    navi: MareyTabNavigation,
+    navi: MareyTileNavigation,
     cache: MareyCache,
     callback: gpu_draw::MareyCallback,
+    /// We store the world to compare the cache. World is just a set of shared pointers so it is
+    /// relatively cheap
+    prev_world: Option<World>,
 }
 
-/// [`MareyTab`] w/o cache for serde
+/// [`MareyTile`] w/o cache for serde
 #[derive(Clone, Serialize, Deserialize)]
-struct MareyTabNoCache {
+struct MareyTileNoCache {
     key: RouteKey,
-    navi: MareyTabNavigation,
+    navi: MareyTileNavigation,
 }
 
-impl From<MareyTab> for MareyTabNoCache {
-    fn from(MareyTab { key, navi, .. }: MareyTab) -> Self {
+impl From<MareyTile> for MareyTileNoCache {
+    fn from(MareyTile { key, navi, .. }: MareyTile) -> Self {
         Self { key, navi }
     }
 }
 
-impl From<MareyTabNoCache> for MareyTab {
-    fn from(MareyTabNoCache { key, navi }: MareyTabNoCache) -> Self {
+impl From<MareyTileNoCache> for MareyTile {
+    fn from(MareyTileNoCache { key, navi }: MareyTileNoCache) -> Self {
         Self {
             key,
             navi,
             cache: MareyCache::default(),
             callback: gpu_draw::MareyCallback::new(key),
+            prev_world: None,
         }
     }
 }
 
-impl MareyTab {
+impl MareyTile {
     pub fn new(key: RouteKey) -> Self {
         Self {
             key,
-            navi: MareyTabNavigation::default(),
+            navi: MareyTileNavigation::default(),
             cache: MareyCache::default(),
             callback: gpu_draw::MareyCallback::new(key),
+            prev_world: None,
         }
     }
 }
 
-impl PartialEq for MareyTab {
+impl PartialEq for MareyTile {
     fn eq(&self, other: &Self) -> bool {
         self.key == other.key
     }
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-struct MareyTabNavigation {
+struct MareyTileNavigation {
     x_offset: Tick,
     y_offset: CanvasLength,
     zoom: Vec2,
     #[serde(skip, default = "default_visible_rect")]
     visible_rect: Rect,
+    #[serde(skip, default)]
     max_height: CanvasLength,
 }
 
-impl Default for MareyTabNavigation {
+impl Default for MareyTileNavigation {
     fn default() -> Self {
         // Default horizontal scale: five minutes of time span one centimetre of canvas.
         let five_minutes_in_ticks = TimetableTime::from_hms(0, 5, 0).to_ticks().0 as f32;
@@ -103,7 +109,7 @@ fn default_visible_rect() -> Rect {
     Rect::NOTHING
 }
 
-impl Navigatable for MareyTabNavigation {
+impl Navigatable for MareyTileNavigation {
     type XOffset = Tick;
     type YOffset = CanvasLength;
 
@@ -161,7 +167,7 @@ impl Navigatable for MareyTabNavigation {
     }
 }
 
-impl Tab for MareyTab {
+impl Tile for MareyTile {
     const NAME: &'static str = "Marey Diagram";
     fn title(&self) -> WidgetText {
         Self::NAME.into()
@@ -217,7 +223,7 @@ impl Tab for MareyTab {
     }
 }
 
-fn draw_time_lines(painter: &mut Painter, navi: &MareyTabNavigation) {
+fn draw_time_lines(painter: &mut Painter, navi: &MareyTileNavigation) {
     puffin::profile_function!();
     const MAX_SCREEN_WIDTH: f64 = 64.0;
     const MIN_SCREEN_WIDTH: f64 = 32.0;
@@ -295,16 +301,16 @@ fn draw_time_lines(painter: &mut Painter, navi: &MareyTabNavigation) {
     }
 }
 
-fn main_display(tab: &mut MareyTab, app: &mut App, ui: &mut Ui) {
+fn main_display(tile: &mut MareyTile, app: &mut App, ui: &mut Ui) {
     puffin::profile_function!();
     let (response, mut painter) =
         ui.allocate_painter(ui.available_size_before_wrap(), Sense::click_and_drag());
-    tab.navi.visible_rect = response.rect;
-    tab.navi.handle_navigation(ui, &response);
+    tile.navi.visible_rect = response.rect;
+    tile.navi.handle_navigation(ui, &response);
 
-    draw_time_lines(&mut painter, &tab.navi);
+    draw_time_lines(&mut painter, &tile.navi);
 
-    let Some(route) = app.routes.get(&tab.key).cloned() else {
+    let Some(route) = app.routes.get(&tile.key).cloned() else {
         return;
     };
 
@@ -325,7 +331,7 @@ fn main_display(tab: &mut MareyTab, app: &mut App, ui: &mut Ui) {
                 width: 0.6,
                 color: Color32::GRAY,
             };
-            let mut y = tab.navi.logical_y_to_screen_y(height_so_far);
+            let mut y = tile.navi.logical_y_to_screen_y(height_so_far);
             station_line_stroke.round_center_to_pixel(ui.pixels_per_point(), &mut y);
             painter.hline(response.rect.x_range(), y, station_line_stroke);
             painter.text(
@@ -343,17 +349,17 @@ fn main_display(tab: &mut MareyTab, app: &mut App, ui: &mut Ui) {
         },
     );
 
-    tab.navi.max_height = max_height;
+    tile.navi.max_height = max_height;
 
     // paint the station lines and Marey lines
-    tab.callback.populate_stations(station_heights.iter().copied());
-    tab.callback.populate_uniforms(&tab.navi, response.rect);
-    painter.add(tab.callback.clone().paint_callback(response.rect));
+    tile.callback.populate_stations(station_heights.iter().copied());
+    tile.callback.populate_uniforms(&tile.navi, response.rect);
+    painter.add(tile.callback.clone().paint_callback(response.rect));
 
     // current time overlay
     {
         let seconds = app.timer.seconds();
-        let mut x = tab.navi.logical_x_to_screen_x(Tick::from_seconds_f64(seconds));
+        let mut x = tile.navi.logical_x_to_screen_x(Tick::from_seconds_f64(seconds));
         let stroke = Stroke::new(2.0, Color32::RED);
         stroke.round_center_to_pixel(ui.pixels_per_point(), &mut x);
         painter.vline(x, response.rect.y_range(), stroke);
@@ -381,17 +387,17 @@ fn main_display(tab: &mut MareyTab, app: &mut App, ui: &mut Ui) {
         && !matches!(app.selected_items, SelectedItems::TripExtension(_)) // it has its own state
         && matches!(app.selected_items.take(), SelectedItems::None)
     {
-        if let Some(trip_key) = select_trip_from_pos(tab, pointer_pos, &station_heights) {
+        if let Some(trip_key) = select_trip_from_pos(tile, pointer_pos, &station_heights) {
             app.selected_items.replace(SelectedItem::Trip(trip_key.into()));
         } else if response.double_clicked()
             // TODO: also show the route when hovering in another trip panel?
-            && let Some(station_idx) = find_nearest_station_idx_from_pos(&station_heights, pointer_pos, &tab.navi)
+            && let Some(station_idx) = find_nearest_station_idx_from_pos(&station_heights, pointer_pos, &tile.navi)
             && let interval = &route.intervals.0[station_idx]
             && let Some(station_key) = interval.station_record.station_key(app.graph.nodes())
             && let Some(station) = app.stations.get(station_key)
             && let Some(node) = station.cache.nodes.first()
         {
-            let t = tab.navi.screen_x_to_logical_x(pointer_pos.x).to_timetable_time();
+            let t = tile.navi.screen_x_to_logical_x(pointer_pos.x).to_timetable_time();
             let trip_key = TripKey::new();
             let id = TEntryId::new();
             let new_entry = TEntry {
@@ -444,7 +450,7 @@ fn main_display(tab: &mut MareyTab, app: &mut App, ui: &mut Ui) {
                 &mut app.source,
                 animation_progress,
                 ui,
-                tab,
+                tile,
                 &station_heights,
                 &mut painter,
                 polylines,
@@ -461,7 +467,7 @@ fn main_display(tab: &mut MareyTab, app: &mut App, ui: &mut Ui) {
 
         let focused_pos = if let Some(pointer_pos) = ui.pointer_hover_pos()
             && let Some(station_idx) =
-                find_nearest_station_idx_from_pos(&station_heights, pointer_pos, &tab.navi)
+                find_nearest_station_idx_from_pos(&station_heights, pointer_pos, &tile.navi)
             && let Some(interval) = route.intervals.0.get(station_idx)
             && let Some(station_key) = interval.station_record.station_key(app.graph.nodes())
             && let Some(station) = app.stations.get(station_key)
@@ -469,7 +475,7 @@ fn main_display(tab: &mut MareyTab, app: &mut App, ui: &mut Ui) {
         {
             Some((
                 *node,
-                tab.navi.screen_x_to_logical_x(pointer_pos.x).to_timetable_time(),
+                tile.navi.screen_x_to_logical_x(pointer_pos.x).to_timetable_time(),
             ))
         } else {
             focused_pos
@@ -494,7 +500,7 @@ fn main_display(tab: &mut MareyTab, app: &mut App, ui: &mut Ui) {
 
         route.intervals.populate_schedule(&app.world, &schedule).into_iter().flatten().for_each(
             |polyline| {
-                draw_polyline(&tab.navi, &polyline, &station_heights, &mut painter, stroke);
+                draw_polyline(&tile.navi, &polyline, &station_heights, &mut painter, stroke);
             },
         );
 
@@ -508,7 +514,7 @@ fn main_display(tab: &mut MareyTab, app: &mut App, ui: &mut Ui) {
         && ui.ui_contains_pointer()
     {
         paint_time_cursor(
-            &tab.navi,
+            &tile.navi,
             &station_heights,
             pos,
             ui,
@@ -520,7 +526,7 @@ fn main_display(tab: &mut MareyTab, app: &mut App, ui: &mut Ui) {
 }
 
 fn select_trip_from_pos(
-    tab: &MareyTab,
+    tile: &MareyTile,
     ptr_pos: Pos2,
     station_heights: &[CanvasLength],
 ) -> Option<TripKey> {
@@ -529,10 +535,10 @@ fn select_trip_from_pos(
     // The same point mapping as when drawing (see the display zone in `main_display`), so that
     // what is selected matches what is drawn. Each entry spans `arr`..`dep` at one placement.
     let points = |estimate: &TEstimate, idx: u32, progress: f32| {
-        let x1 = tab.navi.logical_x_to_screen_x(estimate.arr.to_ticks());
-        let x2 = tab.navi.logical_x_to_screen_x(estimate.dep.to_ticks());
-        let curr_y = tab.navi.logical_y_to_screen_y(station_heights[idx as usize]);
-        let next_y = tab.navi.logical_y_to_screen_y(station_heights[idx as usize + 1]);
+        let x1 = tile.navi.logical_x_to_screen_x(estimate.arr.to_ticks());
+        let x2 = tile.navi.logical_x_to_screen_x(estimate.dep.to_ticks());
+        let curr_y = tile.navi.logical_y_to_screen_y(station_heights[idx as usize]);
+        let next_y = tile.navi.logical_y_to_screen_y(station_heights[idx as usize + 1]);
         let y = lerp(curr_y..=next_y, progress);
         [Pos2::new(x1, y), Pos2::new(x2, y)]
     };
@@ -547,7 +553,7 @@ fn select_trip_from_pos(
         (p1 + t * diff - ptr_pos).length_sq() <= SELECT_RADIUS * SELECT_RADIUS
     };
 
-    tab.cache
+    tile.cache
         .map
         .iter()
         .flat_map(|(k, v)| v.iter().map(move |l| (k, l)))
@@ -565,7 +571,7 @@ fn select_trip_from_pos(
 fn find_nearest_station_idx_from_pos(
     station_heights: &[CanvasLength],
     pos: Pos2,
-    navi: &MareyTabNavigation,
+    navi: &MareyTileNavigation,
 ) -> Option<usize> {
     if station_heights.is_empty() {
         return None;
@@ -591,7 +597,7 @@ fn find_nearest_station_idx_from_pos(
 }
 
 fn paint_time_cursor(
-    navi: &MareyTabNavigation,
+    navi: &MareyTileNavigation,
     station_heights: &[CanvasLength],
     pointer_pos: Pos2,
     ui: &mut Ui,

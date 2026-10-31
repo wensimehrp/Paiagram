@@ -3,11 +3,11 @@ use egui::*;
 // use puffin::FrameView;
 use serde::{Deserialize, Serialize};
 
-use super::Tab;
+use super::Tile;
 use crate::App;
 
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
-pub(crate) struct ProfilerTab;
+pub(crate) struct ProfilerTile;
 
 // TODO: implement profile data dumping
 // related issue: https://github.com/EmbarkStudios/puffin/issues/290
@@ -26,7 +26,7 @@ pub(crate) struct ProfilerTab;
 //     }
 // }
 
-impl Tab for ProfilerTab {
+impl Tile for ProfilerTile {
     const NAME: &'static str = "Profiler";
 
     fn main_display(&mut self, app: &mut App, ui: &mut Ui) {
