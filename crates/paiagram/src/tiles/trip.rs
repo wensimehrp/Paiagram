@@ -2,7 +2,7 @@ use egui::*;
 use paiagram_core::time::TimetableTime;
 use paiagram_core::trip::TravelMode::{self, At, Flexible, For};
 use paiagram_core::trip::{EstimateEntry, TEstimate, TripSchedule};
-use paiagram_core::{TripKey, World};
+use paiagram_core::{NodeKey, TripKey, World};
 use paiagram_selection::SelectedItems;
 use serde::{Deserialize, Serialize};
 
@@ -106,41 +106,43 @@ fn show_trip(tile: &mut TripTile, app: &mut App, ui: &mut Ui) {
                 }
             }
         });
-        select_a_trip(ui, &mut tile.trip_key, &app.world);
-        let selected_text_atoms = current_service_class
-            .and_then(|key| app.service_classes.get(&key))
-            .map_or("Unknown".into_atoms(), |wfc| {
-                service_class_button_atoms(wfc).into_atoms()
-            });
-        let combo_box = ComboBox::from_id_salt("change current trip service class")
-            .selected_text(selected_text_atoms)
-            .show_ui(ui, |ui| {
-                let ret = ui.button("None").clicked().then_some(None);
-                let scroll_area = ScrollArea::vertical().show_rows(
-                    ui,
-                    ui.spacing().interact_size.y,
-                    app.service_classes.len(),
-                    |ui, range| {
-                        app.service_classes.iter().skip(range.start).take(range.count()).fold(
-                            ret,
-                            |ret, (key, service_class)| {
-                                ret.or(Button::new(service_class_button_atoms(service_class))
-                                    .atom_ui(ui)
-                                    .clicked()
-                                    .then_some(Some(*key)))
-                            },
-                        )
-                    },
-                );
-                scroll_area.inner
-            });
-        if let Some(Some(new_service_class)) = combo_box.inner {
-            let _ = app.mutate(|mut world| {
-                let trip = world.trips.get_mut(&trip_key).ok_or("wtf?")?;
-                trip.service_class = new_service_class;
-                Ok(world)
-            });
-        }
+        ui.horizontal_wrapped(|ui| {
+            select_a_trip(ui, &mut tile.trip_key, &app.world);
+            let selected_text_atoms = current_service_class
+                .and_then(|key| app.service_classes.get(&key))
+                .map_or("Unknown".into_atoms(), |wfc| {
+                    service_class_button_atoms(wfc).into_atoms()
+                });
+            let combo_box = ComboBox::from_id_salt("change current trip service class")
+                .selected_text(selected_text_atoms)
+                .show_ui(ui, |ui| {
+                    let ret = ui.button("None").clicked().then_some(None);
+                    let scroll_area = ScrollArea::vertical().show_rows(
+                        ui,
+                        ui.spacing().interact_size.y,
+                        app.service_classes.len(),
+                        |ui, range| {
+                            app.service_classes.iter().skip(range.start).take(range.count()).fold(
+                                ret,
+                                |ret, (key, service_class)| {
+                                    ret.or(Button::new(service_class_button_atoms(service_class))
+                                        .atom_ui(ui)
+                                        .clicked()
+                                        .then_some(Some(*key)))
+                                },
+                            )
+                        },
+                    );
+                    scroll_area.inner
+                });
+            if let Some(Some(new_service_class)) = combo_box.inner {
+                let _ = app.mutate(|mut world| {
+                    let trip = world.trips.get_mut(&trip_key).ok_or("wtf?")?;
+                    trip.service_class = new_service_class;
+                    Ok(world)
+                });
+            }
+        })
     });
 
     ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
@@ -152,9 +154,11 @@ fn show_trip(tile: &mut TripTile, app: &mut App, ui: &mut Ui) {
                 // Remove button background
                 ui.visuals_mut().widgets.inactive.weak_bg_fill = Color32::TRANSPARENT;
                 schedule.estimates(&app.graph, |estimates| {
-                    for (estimate, entry) in estimates.into_iter().copied() {
+                    show_cursor_to_insert_at_idx(ui, 0);
+                    for (idx, (estimate, entry)) in estimates.into_iter().copied().enumerate() {
                         row_ui(&schedule, estimates, estimate, entry, &app.world, ui);
                         ui.end_row();
+                        show_cursor_to_insert_at_idx(ui, idx + 1);
                     }
                     if matches!(app.selected_items, SelectedItems::TripExtension(_))
                         && !ui.ui_contains_pointer()
@@ -329,4 +333,36 @@ fn row_ui(
             // });
         }
     });
+}
+
+fn show_cursor_to_insert_at_idx(ui: &mut Ui, idx: usize) -> Option<NodeKey> {
+    let left = ui.min_rect().left_bottom();
+    let right = ui.min_rect().right_bottom() + vec2(10.0, 0.0);
+    let rect = Rect::from_pos(right).expand(8.0);
+    let resp = ui
+        .interact(
+            rect,
+            ui.scope_id().with(("insert entry", idx)),
+            Sense::click(),
+        )
+        .on_hover_text("Insert entry to timetable at this position");
+    let mut stroke = Stroke::new(2.0, Color32::TRANSPARENT);
+    if resp.contains_pointer() {
+        stroke.color = Color32::RED;
+    }
+    if resp.is_pointer_button_down_on() {
+        stroke.color = Color32::DARK_RED;
+    }
+    {
+        let stroke = if stroke.color == Color32::TRANSPARENT {
+            Stroke::new(1.0, ui.visuals().strong_text_color())
+        } else {
+            stroke
+        };
+        let rect = rect.shrink(4.0);
+        ui.painter().line_segment([rect.center_top(), rect.center_bottom()], stroke);
+        ui.painter().line_segment([rect.right_center(), rect.left_center()], stroke);
+    }
+    ui.painter().line_segment([left, rect.left_center()], stroke);
+    None
 }
