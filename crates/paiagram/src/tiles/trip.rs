@@ -1,5 +1,4 @@
 use egui::*;
-use egui_i18n::tr;
 use paiagram_core::time::TimetableTime;
 use paiagram_core::trip::TravelMode::{self, At, Flexible, For};
 use paiagram_core::trip::{EstimateEntry, TEstimate, TripSchedule};
@@ -110,7 +109,9 @@ fn show_trip(tile: &mut TripTile, app: &mut App, ui: &mut Ui) {
         select_a_trip(ui, &mut tile.trip_key, &app.world);
         let selected_text_atoms = current_service_class
             .and_then(|key| app.service_classes.get(&key))
-            .map_or("Unknown".into_atoms(), service_class_button_atoms);
+            .map_or("Unknown".into_atoms(), |wfc| {
+                service_class_button_atoms(wfc).into_atoms()
+            });
         let combo_box = ComboBox::from_id_salt("change current trip service class")
             .selected_text(selected_text_atoms)
             .show_ui(ui, |ui| {

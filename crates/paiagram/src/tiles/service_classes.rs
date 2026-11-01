@@ -1,6 +1,8 @@
 use egui::*;
 use paiagram_core::trip::TravelMode;
-use paiagram_core::{Key, ServiceClass, ServiceClassCache, ServiceClassKey, Wfc};
+use paiagram_core::{
+    Key, ServiceClass, ServiceClassCache, ServiceClassKey, ServiceClassKeyHashMap, Wfc,
+};
 use serde::{Deserialize, Serialize};
 
 use super::Tile;
@@ -23,7 +25,14 @@ impl Tile for ServiceClassesTile {
     const NAME: &'static str = "Service Classes";
     fn main_display(&mut self, app: &mut App, ui: &mut Ui) {
         puffin::profile_function!();
-        Panel::left("service classes left panel").frame(Frame::NONE).show(ui, |ui| {
+        let mut class_trip_count = ServiceClassKeyHashMap::default();
+        for (_, trip) in &app.trips {
+            let Some(service_class_key) = trip.service_class else {
+                return;
+            };
+            *class_trip_count.entry(service_class_key).or_insert(0usize) += 1usize;
+        }
+        Panel::left("service classes left panel").show(ui, |ui| {
             puffin::profile_scope!("service_class_list");
             let spacing = ui.spacing().interact_size.y;
             let rows = app.service_classes.len();
@@ -33,9 +42,19 @@ impl Tile for ServiceClassesTile {
                     (&app.service_classes).iter().skip(row_range.start).take(row_range.count());
                 let show_entries = |ui: &mut Ui, selected| {
                     entries.fold(selected, |selected, (&sc_key, service_class)| {
+                        let (stroke_atom, name_atom) = service_class_button_atoms(service_class);
                         Button::selectable(
                             selected == Some(sc_key),
-                            service_class_button_atoms(service_class),
+                            (
+                                stroke_atom,
+                                name_atom.atom_grow(true).atom_shrink(true),
+                                class_trip_count
+                                    .get(&sc_key)
+                                    .copied()
+                                    .unwrap_or(0)
+                                    .to_string()
+                                    .atom_align(Align2::RIGHT_CENTER),
+                            ),
                         )
                         .truncate()
                         .atom_ui(ui)
@@ -44,13 +63,11 @@ impl Tile for ServiceClassesTile {
                         .or(selected)
                     })
                 };
-                Frame::new().inner_margin(6.0).show(ui, |ui| {
-                    self.selected_class = ui
-                        .with_layout(Layout::top_down_justified(egui::Align::Min), |ui| {
-                            show_entries(ui, self.selected_class)
-                        })
-                        .inner;
-                });
+                self.selected_class = ui
+                    .with_layout(Layout::top_down_justified(egui::Align::Min), |ui| {
+                        show_entries(ui, self.selected_class)
+                    })
+                    .inner;
             });
         });
         CentralPanel::default_margins().show(ui, |ui| {
@@ -124,7 +141,7 @@ impl Tile for ServiceClassesTile {
 
 pub fn service_class_button_atoms<'a>(
     service_class: &'a Wfc<ServiceClass, ServiceClassCache>,
-) -> Atoms<'a> {
+) -> (Atom<'a>, Atom<'a>) {
     let service_class_str = service_class.name.as_str();
     let stroke_atom = Atom::paint([35.0, 15.0], |ui, args| {
         let rect = args.rect;
@@ -143,5 +160,5 @@ pub fn service_class_button_atoms<'a>(
         .atom_grow(true)
         .atom_shrink(true)
         .atom_align(Align2::LEFT_CENTER);
-    (stroke_atom, class_name_atom).into_atoms()
+    (stroke_atom, class_name_atom)
 }
