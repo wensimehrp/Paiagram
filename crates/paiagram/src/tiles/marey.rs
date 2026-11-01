@@ -664,7 +664,7 @@ fn paint_time_cursor(
             data.get_temp_mut_or(ui.scope_id().with("pointer animation"), new_logical_y);
         let t = emath::exponential_smooth_factor(0.9, 0.05, dt);
         *smoothed = CanvasLength(lerp(smoothed.0..=new_logical_y.0, t as f64));
-        if (*smoothed - new_logical_y).0.abs() > 0.5 {
+        if (*smoothed - new_logical_y).0.abs() > 0.1 {
             requires_repaint = true;
         }
         *smoothed
