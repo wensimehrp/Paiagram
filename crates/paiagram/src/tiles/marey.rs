@@ -485,7 +485,9 @@ fn main_display(tile: &mut MareyTile, app: &mut App, ui: &mut Ui) {
                 *trip_key,
                 selected.editing_offset.map(|it| it.1),
             );
-            selected.editing_offset = ret;
+            if response.contains_pointer() {
+                selected.editing_offset = ret;
+            }
         }
         app.selected_items = SelectedItems::Trips(trips);
     } else if let &SelectedItems::TripExtension((trip_key, focused_pos)) = &app.selected_items
