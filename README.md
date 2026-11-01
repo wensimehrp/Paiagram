@@ -1,12 +1,10 @@
 <!--typst-begin-exclude-->
 
-# Paiagram
+<p align="center">
+  <img src="./assets/paiagram-white-with-shadow-bg.svg">
+</p>
 
-[![Workflow Status](https://github.com/WenSimEHRP/Paiagram/actions/workflows/nightly.yml/badge.svg)](https://github.com/WenSimEHRP/Paiagram/actions/workflows/nightly.yml)
-[![Workflow Status](https://github.com/WenSimEHRP/Paiagram/actions/workflows/docs.yml/badge.svg)](https://github.com/WenSimEHRP/Paiagram/actions/workflows/docs.yml)
-![GitHub License](https://img.shields.io/github/license/wensimehrp/paiagram)
-[![Website](https://img.shields.io/website?url=https%3A%2F%2Fpaiagram.com&up_message=Try%20it%20online!&down_message=Service%20down&logo=github&label=Web%20build)](https://paiagram.com)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/WenSimEHRP/Paiagram)
+# Paiagram
 
 ---
 
