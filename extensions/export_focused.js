@@ -1,5 +1,13 @@
 // SPDX-License-Identifier: MPL-2.0
 
+export const metadata = {
+    id: "paiagram.export_focused",
+    name: "Export Focused Trip",
+    description: "Export the focused trip's Marey lines as an SVG",
+    version: "0.1.0",
+    author: "Paiagram",
+};
+
 const DEFAULTS = Object.freeze({
     minutesPerCm: 5,
     strokeWidth: 1.5,

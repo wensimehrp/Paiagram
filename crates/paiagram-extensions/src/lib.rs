@@ -1,22 +1,80 @@
 // SPDX-License-Identifier: MPL-2.0
 #![doc = include_str!("../README.md")]
 
-use std::sync::{Arc, LazyLock};
+use std::sync::{Arc, LazyLock, mpsc};
 pub mod config_ui;
 
 use config_ui::{ConfigUi, ReturnValueMap};
 use paiagram_core::World;
 use parking_lot::Mutex;
-use rayon::spawn;
-use rquickjs::{CatchResultExt, Class, Context, Ctx, Function, Module, Object, Runtime, Value};
+use rquickjs::{
+    CatchResultExt, Class, Context, Ctx, Function, Module, Object, Runtime, Value, WriteOptions,
+};
+pub use rquickjs::{Error, Result};
+use serde::Deserialize;
 
-mod runtime;
-pub use runtime::{JsDataExporter, JsIo, JsRuntimeData};
+mod runtime_data;
+pub use runtime_data::{JsDataExporter, JsIo, JsRuntimeData};
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct Metadata {
+    pub id: String,
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub version: Option<String>,
+    pub author: Option<String>,
+}
+
+impl Metadata {
+    pub fn parse<'js>(_ctx: &Ctx<'js>, value: Value<'js>) -> Result<Self> {
+        rquickjs_serde::from_value(value).map_err(|err| {
+            Error::new_from_js_message("rquickjs-serde", "Metadata", err.to_string())
+        })
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct ByteCodes {
+    inner: Arc<[u8]>,
+    pub metadata: Metadata,
+}
+
+impl ByteCodes {
+    pub fn compile(script_str: &str) -> Result<Self> {
+        let ctx = Context::full(&RQUICKJS_RUNTIME).unwrap();
+        ctx.with(|ctx| {
+            install_console(&ctx)?;
+            let script_error = |err: rquickjs::CaughtError<'_>| {
+                Error::new_from_js_message("script", "extension", err.to_string())
+            };
+            let module = Module::declare(ctx.clone(), "extension.js", script_str)
+                .catch(&ctx)
+                .map_err(script_error)?;
+            let bytes = module.write(WriteOptions::default()).catch(&ctx).map_err(script_error)?;
+            let (module, promise) = module.eval().catch(&ctx).map_err(script_error)?;
+            promise.finish::<()>().catch(&ctx).map_err(script_error)?;
+            let metadata_val: Value = module.get("metadata").catch(&ctx).map_err(script_error)?;
+            let metadata = Metadata::parse(&ctx, metadata_val)?;
+            Ok(Self {
+                inner: bytes.into(),
+                metadata,
+            })
+        })
+    }
+}
+
+/// Compile the script into bytecodes and extract its metadata
+pub fn compile_script(script_str: Arc<str>, sender: mpsc::Sender<Result<ByteCodes>>) {
+    rayon::spawn(move || {
+        let _ = sender.send(ByteCodes::compile(&script_str));
+    });
+}
 
 #[derive(Default, Debug)]
 pub enum RunningStatus<T> {
     Running,
-    Finished(rquickjs::Result<T>),
+    Finished(Result<T>),
     #[default]
     Idle,
 }
@@ -30,20 +88,15 @@ static RQUICKJS_RUNTIME: LazyLock<Runtime> = LazyLock::new(|| Runtime::new().unw
 pub fn eval_config(
     runtime_data: JsRuntimeData,
     status: Arc<Mutex<ConfigRunningStatus>>,
-    script_str: Arc<str>,
+    bytecodes: ByteCodes,
 ) {
     *status.lock() = ConfigRunningStatus::Running;
-    spawn(move || {
-        let result = with_context(
-            runtime_data,
-            None,
-            &script_str,
-            |ctx, module, world, _io| {
-                let entry: Function = module.get("config_ui")?;
-                let value: Value = entry.call((world,))?;
-                ConfigUi::parse_many(ctx, value)
-            },
-        );
+    rayon::spawn(move || {
+        let result = with_context(runtime_data, None, &bytecodes, |ctx, module, world, _io| {
+            let entry: Function = module.get("config_ui")?;
+            let value: Value = entry.call((world,))?;
+            ConfigUi::parse_many(ctx, value)
+        });
         *status.lock() = ConfigRunningStatus::Finished(result);
     });
 }
@@ -54,14 +107,14 @@ pub fn run_script(
     io: JsIo,
     return_values: ReturnValueMap,
     status: Arc<Mutex<ScriptRunningStatus>>,
-    script_str: Arc<str>,
+    bytecodes: ByteCodes,
 ) {
     *status.lock() = ScriptRunningStatus::Running;
-    spawn(move || {
+    rayon::spawn(move || {
         let result = with_context(
             runtime_data,
             Some(io),
-            &script_str,
+            &bytecodes,
             |_ctx, module, world, io| {
                 let entry: Function = module.get("run")?;
                 let io = io.expect("run always receives io");
@@ -76,14 +129,14 @@ pub fn run_script(
 fn with_context<T>(
     runtime_data: JsRuntimeData,
     io: Option<JsIo>,
-    script_str: &str,
+    bytecodes: &ByteCodes,
     f: impl for<'js> FnOnce(
         &Ctx<'js>,
         Module<'js, rquickjs::module::Evaluated>,
         Class<'js, JsRuntimeData>,
         Option<Class<'js, JsIo>>,
-    ) -> rquickjs::Result<T>,
-) -> rquickjs::Result<T> {
+    ) -> Result<T>,
+) -> Result<T> {
     let ctx = Context::full(&RQUICKJS_RUNTIME).unwrap();
     ctx.with(|ctx| {
         install_console(&ctx)?;
@@ -91,17 +144,18 @@ fn with_context<T>(
         let io = io.map(|io| Class::instance(ctx.clone(), io)).transpose()?;
 
         let script_error = |err: rquickjs::CaughtError<'_>| {
-            rquickjs::Error::new_from_js_message("script", "extension", err.to_string())
+            Error::new_from_js_message("script", "extension", err.to_string())
         };
-        let module = Module::declare(ctx.clone(), "extension.js", script_str)
+        // SAFETY: `bytecodes.inner` was produced by `Module::write` on a valid declared module.
+        let module = unsafe { Module::load(ctx.clone(), &bytecodes.inner) }
             .catch(&ctx)
             .map_err(script_error)?;
         let (module, promise) = module.eval().catch(&ctx).map_err(script_error)?;
         promise.finish::<()>().catch(&ctx).map_err(script_error)?;
 
-        f(&ctx, module, world, io).catch(&ctx).map_err(|err| {
-            rquickjs::Error::new_from_js_message("entry point", "extension", err.to_string())
-        })
+        f(&ctx, module, world, io)
+            .catch(&ctx)
+            .map_err(|err| Error::new_from_js_message("entry point", "extension", err.to_string()))
     })
 }
 
@@ -131,7 +185,7 @@ const CONSOLE_SHIM: &str = r#"
 "#;
 
 /// Installs the standard `console` global, whose methods forward to the `log` crate.
-fn install_console<'js>(ctx: &Ctx<'js>) -> rquickjs::Result<()> {
+fn install_console<'js>(ctx: &Ctx<'js>) -> Result<()> {
     let log_fn = Function::new(ctx.clone(), |level: u32, message: String| {
         let level = match level {
             2 => log::Level::Debug,
@@ -175,5 +229,23 @@ mod tests {
             let first: BigInt = trips.get(0).unwrap();
             assert_eq!(first.to_i64().unwrap() as u64, trip.to_bits());
         });
+    }
+
+    #[test]
+    fn compile_and_eval_bytecode() {
+        let script = include_str!("../../../extensions/export_focused.js");
+        let bytecodes = ByteCodes::compile(script).unwrap();
+        assert_eq!(bytecodes.metadata.id, "paiagram.export_focused");
+        let data = JsRuntimeData {
+            world: World::default(),
+            selected_items: paiagram_selection::SelectedItems::None,
+        };
+        let ui = with_context(data, None, &bytecodes, |ctx, module, world, _io| {
+            let entry: Function = module.get("config_ui")?;
+            let value: Value = entry.call((world,))?;
+            ConfigUi::parse_many(ctx, value)
+        })
+        .unwrap();
+        assert!(!ui.is_empty());
     }
 }

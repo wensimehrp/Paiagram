@@ -5644,6 +5644,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6657979a24d543e5fc66f32cef2f47ca82ce8eb55cec5f7d59a12b7b570bbf24"
 dependencies = [
  "hashbrown 0.17.1",
+ "phf 0.14.0",
  "relative-path",
  "rquickjs-sys",
 ]
@@ -5656,6 +5657,8 @@ checksum = "0a2ea9adb03b669c933482ff740b683cd36be7cef23891657a8ccb850401d286"
 dependencies = [
  "convert_case 0.12.0",
  "indexmap",
+ "phf_generator 0.14.0",
+ "phf_shared 0.14.0",
  "proc-macro-crate 3.5.0",
  "proc-macro2",
  "quote",

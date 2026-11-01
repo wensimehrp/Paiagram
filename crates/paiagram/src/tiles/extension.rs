@@ -1,13 +1,12 @@
-use std::sync::Arc;
-use std::sync::mpsc::{Receiver, Sender, channel};
+use std::sync::{Arc, mpsc};
 
 use egui::*;
 use paiagram_extensions::config_ui::{
     ConfigUi, ConfigUiList, ReturnValueMap, default_return_values,
 };
 use paiagram_extensions::{
-    ConfigRunningStatus, JsDataExporter, JsIo, JsRuntimeData, ScriptRunningStatus, eval_config,
-    run_script,
+    ByteCodes, ConfigRunningStatus, JsDataExporter, JsIo, JsRuntimeData, ScriptRunningStatus,
+    compile_script, eval_config, run_script,
 };
 use paiagram_rw::ExportObject;
 use parking_lot::Mutex;
@@ -20,14 +19,39 @@ use super::Tile;
 pub struct ExtensionTile {
     script_text: String,
     // wasm only allows saving file on the main thread
-    file_receiver: Receiver<JsDataExporter>,
-    file_sender: Sender<JsDataExporter>,
+    file_receiver: mpsc::Receiver<JsDataExporter>,
+    file_sender: mpsc::Sender<JsDataExporter>,
+    bytecodes: Option<paiagram_extensions::Result<ByteCodes>>,
+    bytecodes_receiver: mpsc::Receiver<paiagram_extensions::Result<ByteCodes>>,
+    bytecodes_sender: mpsc::Sender<paiagram_extensions::Result<ByteCodes>>,
     edit_mode: bool,
     config_running_status: Arc<Mutex<ConfigRunningStatus>>,
     script_running_status: Arc<Mutex<ScriptRunningStatus>>,
     config_ui: Option<Result<Vec<ConfigUi>, String>>,
     return_value_map: ReturnValueMap,
     script_eval_err: Option<String>,
+}
+
+impl ExtensionTile {
+    pub fn new(script_text: String) -> Self {
+        let (file_sender, file_receiver) = mpsc::channel();
+        let (bytecodes_sender, bytecodes_receiver) = mpsc::channel();
+        compile_script(script_text.as_str().into(), bytecodes_sender.clone());
+        Self {
+            script_text,
+            file_receiver,
+            file_sender,
+            bytecodes: None,
+            bytecodes_receiver,
+            bytecodes_sender,
+            edit_mode: false,
+            config_running_status: Default::default(),
+            script_running_status: Default::default(),
+            config_ui: None,
+            return_value_map: Default::default(),
+            script_eval_err: None,
+        }
+    }
 }
 
 impl Clone for ExtensionTile {
@@ -41,18 +65,7 @@ impl Clone for ExtensionTile {
 
 impl Default for ExtensionTile {
     fn default() -> Self {
-        let (file_sender, file_receiver) = channel();
-        Self {
-            script_text: include_str!("../../../../extensions/export_focused.js").into(),
-            file_receiver,
-            file_sender,
-            edit_mode: false,
-            config_running_status: Default::default(),
-            script_running_status: Default::default(),
-            config_ui: None,
-            return_value_map: Default::default(),
-            script_eval_err: None,
-        }
+        Self::new(include_str!("../../../../extensions/export_focused.js").into())
     }
 }
 
@@ -71,16 +84,16 @@ impl From<ExtensionTile> for ExtensionTileNoCache {
 
 impl From<ExtensionTileNoCache> for ExtensionTile {
     fn from(value: ExtensionTileNoCache) -> Self {
-        Self {
-            script_text: value.script_text,
-            ..Default::default()
-        }
+        Self::new(value.script_text)
     }
 }
 
 impl PartialEq for ExtensionTile {
-    fn eq(&self, _other: &Self) -> bool {
-        true
+    fn eq(&self, other: &Self) -> bool {
+        let (Some(Ok(self_bc)), Some(Ok(other_bc))) = (&self.bytecodes, &other.bytecodes) else {
+            return false;
+        };
+        self_bc.metadata.id == other_bc.metadata.id
     }
 }
 
@@ -99,7 +112,11 @@ fn main_display(tile: &mut ExtensionTile, app: &mut crate::App, ui: &mut Ui) {
     if let Ok(data) = tile.file_receiver.try_recv() {
         data.write_via_interface(app.file_write_tx.clone());
     }
-    ui.checkbox(&mut tile.edit_mode, "Edit mode");
+    if let Ok(bytecodes) = tile.bytecodes_receiver.try_recv() {
+        tile.bytecodes = Some(bytecodes);
+        tile.config_ui = None;
+    }
+    let edit_changed = ui.checkbox(&mut tile.edit_mode, "Edit mode").changed();
     if tile.edit_mode {
         let theme = egui_extras::syntax_highlighting::CodeTheme::from_memory(ui.ctx(), ui.style());
         let mut layouter = |ui: &egui::Ui, buf: &dyn egui::TextBuffer, wrap_width: f32| {
@@ -114,15 +131,40 @@ fn main_display(tile: &mut ExtensionTile, app: &mut crate::App, ui: &mut Ui) {
             ui.fonts_mut(|f| f.layout_job(layout_job))
         };
         ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
-            ui.add(
+            let res = ui.add(
                 TextEdit::multiline(&mut tile.script_text)
                     .code_editor()
                     .layouter(&mut layouter)
                     .desired_width(f32::INFINITY),
             );
+            if res.changed() {
+                tile.bytecodes = None;
+                tile.config_ui = None;
+            }
         });
         return;
     }
+    if edit_changed && tile.bytecodes.is_none() {
+        compile_script(
+            tile.script_text.as_str().into(),
+            tile.bytecodes_sender.clone(),
+        );
+    }
+    let Some(bytecodes) = &tile.bytecodes else {
+        ui.horizontal(|ui| {
+            ui.spinner();
+            ui.label("Compiling script...");
+        });
+        return;
+    };
+    let bytecodes = match bytecodes {
+        Ok(bytecodes) => bytecodes,
+        Err(err) => {
+            ui.label("Error while compiling script:");
+            ui.label(err.to_string());
+            return;
+        }
+    };
     ui.horizontal(|ui| {
         if ui.button("Refresh").clicked()
             || (tile.config_ui.is_none()
@@ -137,7 +179,7 @@ fn main_display(tile: &mut ExtensionTile, app: &mut crate::App, ui: &mut Ui) {
                     selected_items: app.selected_items.clone(),
                 },
                 tile.config_running_status.clone(),
-                tile.script_text.as_str().into(),
+                bytecodes.clone(),
             );
         }
         if ui.button("Run script").clicked() {
@@ -151,7 +193,7 @@ fn main_display(tile: &mut ExtensionTile, app: &mut crate::App, ui: &mut Ui) {
                 },
                 tile.return_value_map.clone(),
                 tile.script_running_status.clone(),
-                tile.script_text.as_str().into(),
+                bytecodes.clone(),
             );
         }
         if let Some(mut result) = tile.config_running_status.try_lock() {

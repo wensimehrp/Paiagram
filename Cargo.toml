@@ -105,7 +105,7 @@ rayon = "1.12.0"
 reqwest = "0.13.5"
 rfd = "0.17.2"
 ron = "0.12.3"
-rquickjs = { version = "0.14.0", features = ["macro", "parallel", "rust-alloc"] }
+rquickjs = { version = "0.14.0", features = ["macro", "parallel", "phf", "rust-alloc"] }
 rquickjs-serde = { git = "https://github.com/wensimehrp/rquickjs-serde.git", branch = "bigint" }
 rstar = "0.12.2"
 rustc-hash = "2.1.3"

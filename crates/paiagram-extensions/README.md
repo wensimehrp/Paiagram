@@ -10,8 +10,10 @@ languages transpiled to JavaScript), or any other language compiled to
 
 ## JavaScript
 
-Extensions are ES modules. An extension exports two required entry points:
+Extensions are ES modules. An extension exports metadata and two required entry points:
 
+- `export const metadata` declares the extension's metadata (`id`, `name`, `description`, `version`,
+  and `author`).
 - `export function config_ui(world)` declares the configuration UI, returning an array of elements
   for the host to render. It is evaluated when the extension's panel is opened and never commits
   world changes. This function may not produce any side effects other than printing to the console.
