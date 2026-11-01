@@ -511,7 +511,7 @@ fn main_display(tile: &mut MareyTile, app: &mut App, ui: &mut Ui) {
 
         let schedule = trip.schedule.clone().with_pushed_entry(focused_pos);
 
-        if response.clicked()
+        if response.double_clicked()
             && let Some((focused_node, focused_time)) = focused_pos
         {
             let _ = app.mutate(|mut world| {
