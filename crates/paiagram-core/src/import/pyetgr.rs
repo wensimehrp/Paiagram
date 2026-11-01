@@ -35,7 +35,6 @@ struct Root<'a> {
     // qETRC has the line field and the lines array, both contains line data.
     // pyETRC only has the `line` field, while qETRC uses both to support multiple lines.
     // To keep compatibility with pyETRC, we keep the `line` field as is,
-    // The lines would be chained together later with std::iter::once and chain
     /// A single [`Line`]
     line: Line<'a>,
     /// Additional [`Line`]s. This field does not exist in pyETRC, only in
@@ -43,9 +42,6 @@ struct Root<'a> {
     #[serde(default)]
     lines: Vec<Line<'a>>,
     /// Vehicles in the qETRC data.
-    /// They are named "circuits" in the original qETRC data. A "circuit" refers
-    /// to a train that runs a set of tripss in a given period, which
-    /// matches the concept of [`Vehicle`] in Paiagram.
     #[serde(rename = "circuits", default)]
     vehicles: Vec<Vehicle<'a>>,
     #[serde(default)]
@@ -124,7 +120,7 @@ struct VehicleServiceEntry<'a> {
 #[derive(Deserialize, Default)]
 struct Config<'a> {
     #[serde(borrow, default)]
-    default_colors: FxHashMap<Cow<'a, str>, &'a str>,
+    default_colors: FxHashMap<Cow<'a, str>, Cow<'a, str>>,
 }
 
 pub(super) fn parse_pyetgr(data: &[u8]) -> Option<World> {
@@ -143,8 +139,8 @@ pub(super) fn parse_pyetgr(data: &[u8]) -> Option<World> {
         // #RRGGBB
         // 0123456
         let (r, g, b) = (
-            u8::from_str_radix(&color[3..=4], 16).unwrap(),
             u8::from_str_radix(&color[1..=2], 16).unwrap(),
+            u8::from_str_radix(&color[3..=4], 16).unwrap(),
             u8::from_str_radix(&color[5..=6], 16).unwrap(),
         );
         let key = ServiceClassKey::new();
@@ -253,7 +249,7 @@ pub(super) fn parse_pyetgr(data: &[u8]) -> Option<World> {
             Wfc::new(PaiagramTrip {
                 name: trip.trip_number[0].to_eco_string(),
                 schedule: TripSchedule::new(entries),
-                service_class: None,
+                service_class: service_class_map.get(&*trip.service_class).copied(),
                 vehicles: SmallVec::new(),
             }),
         );
