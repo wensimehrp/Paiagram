@@ -396,7 +396,7 @@ fn main_display(tile: &mut GraphTile, app: &mut App, ui: &mut Ui) {
 /// Decodes the embedded trip icon and uploads it as an egui texture. Every trip uses the same
 /// texture, so egui batches all icon quads into one draw call.
 fn load_trip_icon(ctx: &egui::Context) -> TextureHandle {
-    let decoded = image::load_from_memory(include_bytes!("../../assets/raicho_485.png"))
+    let decoded = image::load_from_memory(include_bytes!("../../../../assets/raicho_485.png"))
         .expect("the embedded trip icon must be a valid PNG")
         .into_rgba8();
 
