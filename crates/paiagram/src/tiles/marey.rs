@@ -495,7 +495,8 @@ fn main_display(tile: &mut MareyTile, app: &mut App, ui: &mut Ui) {
     {
         let stroke = Stroke::new(3.0, Color32::RED);
 
-        let focused_pos = if let Some(pointer_pos) = ui.pointer_hover_pos()
+        let focused_pos = if response.contains_pointer()
+            && let Some(pointer_pos) = ui.pointer_hover_pos()
             && let Some(station_idx) =
                 find_nearest_station_idx_from_pos(&station_heights, pointer_pos, &tile.navi)
             && let Some(interval) = route.intervals.0.get(station_idx)
