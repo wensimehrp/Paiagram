@@ -518,12 +518,21 @@ fn main_display(tile: &mut MareyTile, app: &mut App, ui: &mut Ui) {
         {
             let _ = app.mutate(|mut world| {
                 let trip = world.trips.get_mut(&trip_key).ok_or("wtf?")?;
-                trip.schedule.push(TEntry {
-                    node: focused_node,
-                    arr_or_pass: TravelMode::At(focused_time),
-                    dep: None,
-                    id: TEntryId::new(),
-                });
+                if let Some(prev_entry) = trip.schedule.entries().last()
+                    && prev_entry.node == focused_node
+                {
+                    // merge if same node
+                    let prev_id = prev_entry.id;
+                    trip.schedule.set_dep_mode(prev_id, Some(TravelMode::At(focused_time)));
+                } else {
+                    // create new entry if different nodes
+                    trip.schedule.push(TEntry {
+                        node: focused_node,
+                        arr_or_pass: TravelMode::At(focused_time),
+                        dep: None,
+                        id: TEntryId::new(),
+                    })
+                };
                 Ok(world)
             });
         }
