@@ -1,6 +1,6 @@
 use egui::*;
 use paiagram_core::trip::TravelMode;
-use paiagram_core::{Key, ServiceClassKey};
+use paiagram_core::{Key, ServiceClass, ServiceClassCache, ServiceClassKey, Wfc};
 use serde::{Deserialize, Serialize};
 
 use super::Tile;
@@ -33,29 +33,9 @@ impl Tile for ServiceClassesTile {
                     (&app.service_classes).iter().skip(row_range.start).take(row_range.count());
                 let show_entries = |ui: &mut Ui, selected| {
                     entries.fold(selected, |selected, (&sc_key, service_class)| {
-                        let service_class_str = service_class.name.as_str();
-                        let stroke_atom = Atom::paint([35.0, 15.0], |ui, args| {
-                            let rect = args.rect;
-                            let stroke = Stroke::new(
-                                service_class.style.width as f32 * 1.0,
-                                service_class.style.color,
-                            );
-                            ui.painter()
-                                .line_segment([rect.left_center(), rect.right_center()], stroke);
-                            let stroke = Stroke::new(2.0, service_class.style.color);
-                            ui.painter()
-                                .line_segment([rect.left_top(), rect.left_bottom()], stroke);
-                        })
-                        .atom_grow(false)
-                        .atom_shrink(false)
-                        .atom_align(Align2::LEFT_CENTER);
-                        let class_name_atom = Atom::from(service_class_str)
-                            .atom_grow(true)
-                            .atom_shrink(true)
-                            .atom_align(Align2::LEFT_CENTER);
-                        egui::Button::selectable(
+                        Button::selectable(
                             selected == Some(sc_key),
-                            (stroke_atom, class_name_atom),
+                            service_class_button_atoms(service_class),
                         )
                         .truncate()
                         .atom_ui(ui)
@@ -140,4 +120,28 @@ impl Tile for ServiceClassesTile {
             }
         });
     }
+}
+
+pub fn service_class_button_atoms<'a>(
+    service_class: &'a Wfc<ServiceClass, ServiceClassCache>,
+) -> Atoms<'a> {
+    let service_class_str = service_class.name.as_str();
+    let stroke_atom = Atom::paint([35.0, 15.0], |ui, args| {
+        let rect = args.rect;
+        let stroke = Stroke::new(
+            service_class.style.width as f32 * 1.0,
+            service_class.style.color,
+        );
+        ui.painter().line_segment([rect.left_center(), rect.right_center()], stroke);
+        let stroke = Stroke::new(2.0, service_class.style.color);
+        ui.painter().line_segment([rect.left_top(), rect.left_bottom()], stroke);
+    })
+    .atom_grow(false)
+    .atom_shrink(false)
+    .atom_align(Align2::LEFT_CENTER);
+    let class_name_atom = Atom::from(service_class_str)
+        .atom_grow(true)
+        .atom_shrink(true)
+        .atom_align(Align2::LEFT_CENTER);
+    (stroke_atom, class_name_atom).into_atoms()
 }

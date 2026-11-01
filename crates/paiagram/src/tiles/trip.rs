@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use super::Tile;
 use crate::App;
+use crate::tiles::service_classes::service_class_button_atoms;
 use crate::trip_schedule_visual::WithVisualMod;
 use crate::widgets::{DurationDragValue, TimeDragValue};
 
@@ -84,6 +85,7 @@ fn show_trip(tile: &mut TripTile, app: &mut App, ui: &mut Ui) {
     };
 
     let trip_name = trip.name.clone();
+    let current_service_class = trip.service_class;
 
     Frame::new().inner_margin(6.0).show(ui, |ui| {
         ui.horizontal(|ui| {
@@ -106,6 +108,38 @@ fn show_trip(tile: &mut TripTile, app: &mut App, ui: &mut Ui) {
             }
         });
         select_a_trip(ui, &mut tile.trip_key, &app.world);
+        let selected_text_atoms = current_service_class
+            .and_then(|key| app.service_classes.get(&key))
+            .map_or("Unknown".into_atoms(), service_class_button_atoms);
+        let combo_box = ComboBox::from_id_salt("change current trip service class")
+            .selected_text(selected_text_atoms)
+            .show_ui(ui, |ui| {
+                let ret = ui.button("None").clicked().then_some(None);
+                let scroll_area = ScrollArea::vertical().show_rows(
+                    ui,
+                    ui.spacing().interact_size.y,
+                    app.service_classes.len(),
+                    |ui, range| {
+                        app.service_classes.iter().skip(range.start).take(range.count()).fold(
+                            ret,
+                            |ret, (key, service_class)| {
+                                ret.or(Button::new(service_class_button_atoms(service_class))
+                                    .atom_ui(ui)
+                                    .clicked()
+                                    .then_some(Some(*key)))
+                            },
+                        )
+                    },
+                );
+                scroll_area.inner
+            });
+        if let Some(Some(new_service_class)) = combo_box.inner {
+            let _ = app.mutate(|mut world| {
+                let trip = world.trips.get_mut(&trip_key).ok_or("wtf?")?;
+                trip.service_class = new_service_class;
+                Ok(world)
+            });
+        }
     });
 
     ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
