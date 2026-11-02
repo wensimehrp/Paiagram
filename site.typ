@@ -67,7 +67,7 @@ exit 0
         "url('https://github.com/user-attachments/assets/a0449615-0bdd-43fe-8b6a-d100d4d5f410');"
       },
       h.div(
-        class: "flex flex-col my-40 p-5 font-regular mx-auto items-center",
+        class: "flex flex-col my-40 p-5 font-regular mx-auto mx-auto max-w-6xl",
         {
           h.h1(class: "text-5xl md:text-8xl font-bold")[PAIAGRAM]
           h.h2(class: "text-4xl md:text-6xl")[Marey with ease]
