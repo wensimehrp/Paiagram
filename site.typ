@@ -42,6 +42,11 @@ exit 0
     #h.meta(name: "viewport", content: "width=device-width, initial-scale=1")
     #h.link(rel: "icon", type: "image/svg+xml", href: "data:image/svg+xml;base64," + icon-base64)
     #h.title("Paiagram")
+    #h.elem("script", attrs: (
+      defer: "",
+      src: "https://umami-theta-pink.vercel.app/script.js",
+      data-website-id: "958a845f-415f-459e-b5a5-7bae194ba9c2",
+    ))
     #h.style(
       ```css
       @import url('https://fonts.googleapis.com/css2?family=Lato:ital,wght@0,100;0,300;0,400;0,700;0,900;1,100;1,300;1,400;1,700;1,900&display=swap');

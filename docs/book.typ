@@ -22,8 +22,8 @@
       // tracking script
       html.elem("script", attrs: (
         defer: "",
-        src: "https://cloud.umami.is/script.js",
-        data-website-id: "067cd05f-b395-4813-916c-2063c383685f",
+        src: "https://umami-theta-pink.vercel.app/script.js",
+        data-website-id: "958a845f-415f-459e-b5a5-7bae194ba9c2",
       ))
       // icon font
       html.link(
