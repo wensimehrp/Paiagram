@@ -52,49 +52,52 @@ exit 0
     )
   ]
   #h.body(class: "bg-white dark:bg-zinc-900")[
-    // First section
     #h.section(
-      class: "w-full p-5 -z-50 bg-emerald-700 dark:bg-emerald-900",
+      class: {
+        "w-full p-5 bg-cover bg-center bg-no-repeat"
+        " shadow-[inset_0_-4px_6px_-1px_rgba(0,0,0,0.1)]"
+      },
+      style: {
+        "background-image: "
+        "url('https://github.com/user-attachments/assets/a0449615-0bdd-43fe-8b6a-d100d4d5f410');"
+      },
       h.div(
-        class: {
-          "mx-auto flex flex-col md:grid md:grid-cols-[0.7fr_1fr] text-white gap-10 p-5 md:p-10"
-          " max-w-6xl"
-        },
+        class: "flex flex-col my-40 p-5 font-regular mx-auto items-center",
         {
-          h.div(class: "text-5xl md:text-6xl font-bold flex flex-col justify-center gap-3")[
-            #h.span(class: "text-shadow-sm")[Marey charts, reimagined.]
-            #let a = h.a.with(class: {
-              "py-3 px-6 bg-gray-300/50 rounded-sm backdrop-blur-sm text-2xl w-full"
-              " shadow-sm hover:shadow-lg hover:bg-black/30 transition-all"
-              " flex flex-col [&>small]:text-sm"
-            })
-            #a(href: "./latest-snapshot", {
-              h.span[Try it Online]
-              h.small[Run the latest version]
-            }) <online-version>
-            #a(href: "docs/index.html", {
-              h.span[Read the Docs]
-              h.small[Read the online documentation]
-            })
-            #a(href: links.repo, {
-              h.span[Repository]
-              h.small[Browse the source and talk about Paiagram]
-            })
-          ]
-          h.div(
-            class: "flex justify-center items-center",
-            image(bytes(
-              read("/assets/paiagram-no-bg.svg").replace(
-                "stroke=\"#000\"",
-                "stroke=\"#fff\"",
-              ),
-            )),
-          )
+          h.h1(class: "text-5xl md:text-8xl font-bold")[PAIAGRAM]
+          h.h2(class: "text-4xl md:text-6xl")[Marey with ease]
         },
       ),
     )
+    #h.div(class: {
+      "flex flex-row flex-wrap px-5 my-10 max-w-5xl justify-between gap-5 mx-auto"
+      " text-black dark:text-white"
+    })[
+      #let a = h.a.with(class: {
+        "block flex-1 flex flex-col text-lg border-b-4 px-8 pb-2 pt-4 border-teal-700"
+        " hover:bg-gray-500/50 whitespace-nowrap"
+      })
+      #a(href: "./latest-snapshot", {
+        h.span[Try it Online]
+        h.small[Run the latest snapshot]
+      }) <online-version>
+      #a(href: "docs/index.html", {
+        h.span[Documentation]
+        h.small[Read the docs]
+      })
+      #a(href: links.repo, {
+        h.span[Repository]
+        h.small[Browse the source]
+      })
+      #a(href: links.repo + "/discussions", {
+        h.span[Discussions]
+        h.small[Official discussion zone]
+      })
+    ]
     // Explanation
-    #h.article(class: "prose prose-zinc dark:prose-invert mx-auto my-10 max-w-3xl p-5 md:p-10")[
+    #h.article(
+      class: "prose prose-zinc dark:prose-invert mx-auto my-10 max-w-3xl p-5 md:p-10",
+    )[
       #import "@preview/cmarker:0.1.10"
       #cmarker.render(read("README.md"), h1-level: 0)
     ]
