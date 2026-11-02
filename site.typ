@@ -31,7 +31,7 @@ exit 0
 #import "@preview/based:0.2.0"
 #import "docs/links.typ": links
 
-#let icon-base64 = based.encode64(read("crates/paiagram/assets/paiagram-adaptive-no-bg.svg"))
+#let icon-base64 = based.encode64(read("/assets/paiagram-adaptive-no-bg.svg"))
 
 #context [#asset("main-styles.css", typhoon.tailwind-css()) <main-styles>]
 
@@ -88,7 +88,7 @@ exit 0
           h.div(
             class: "flex justify-center items-center",
             image(bytes(
-              read("crates/paiagram/assets/paiagram-no-bg.svg").replace(
+              read("/assets/paiagram-no-bg.svg").replace(
                 "stroke=\"#000\"",
                 "stroke=\"#fff\"",
               ),

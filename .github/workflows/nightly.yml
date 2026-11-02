@@ -1,16 +1,16 @@
-name: Nightly Build & Pages Deploy
+name: Build nightly version and deploy pages
 
 on:
   push:
     branches:
       - main
     paths:
-      - 'Cargo.*'
-      - 'flake.*'
-      - 'crates/**'
-      - '.cargo/**'
-      - 'web/nightly/**'
-      - '.github/workflows/nightly.yml'
+      - "Cargo.*"
+      - "flake.*"
+      - "crates/**"
+      - ".cargo/**"
+      - "web/nightly/**"
+      - ".github/workflows/nightly.yml"
   workflow_dispatch:
 
 concurrency:
@@ -24,7 +24,7 @@ jobs:
   build-and-deploy-wasm:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: DeterminateSystems/nix-installer-action@v20
       - uses: DeterminateSystems/magic-nix-cache-action@v13
       - uses: Swatinem/rust-cache@v2

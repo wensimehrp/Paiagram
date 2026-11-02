@@ -10,7 +10,7 @@ The table includes these elements:
 
 #html.div({
   import "@preview/based:0.2.0"
-  let font-bytes = read("/crates/paiagram/assets/fonts/Paiagram-Timetable-Font.ttf", encoding: none)
+  let font-bytes = read("/assets/fonts/Paiagram-Timetable-Font.ttf", encoding: none)
   let font-base64 = "data:font/truetype;charset=utf-8;base64," + based.base64.encode(font-bytes)
   let css-block = ```css
   @font-face {

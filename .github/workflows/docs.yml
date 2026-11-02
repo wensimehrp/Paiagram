@@ -21,15 +21,13 @@ jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-        with:
-          submodules: true
+      - uses: actions/checkout@v7
       - uses: extractions/setup-just@v3
       - uses: DeterminateSystems/nix-installer-action@v20
       - uses: DeterminateSystems/magic-nix-cache-action@v13
 
-      - name: Compile docs
-        run: nix develop ./docs/template#default --command ./docs/book.typ ./dist --root .
+      - name: Compile site
+        run: ./site.typ compile
 
       - name: Deploy
         uses: peaceiris/actions-gh-pages@v4
