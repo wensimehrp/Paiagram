@@ -30,10 +30,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Download Sarasa fonts
-        run: nix develop .#default --command just get-fonts
+        run: nix develop .#default --command just download-font
 
       - name: Prepare Pages artifact
-        run: nix develop .#default --command just prep-wasm
+        run: nix develop .#default --command just release-wasm-app
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
@@ -45,7 +45,7 @@ jobs:
         uses: peaceiris/actions-gh-pages@v4
         with:
           personal_token: ${{ secrets.PERSONAL_TOKEN }}
-          external_repository: WenSimEHRP/Paiagram-Archive
+          external_repository: wensimehrp/Paiagram-archive
           user_name: github-actions[bot]
           user_email: 41898282+github-actions[bot]@users.noreply.github.com
           publish_branch: main

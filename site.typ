@@ -68,7 +68,7 @@ exit 0
               " shadow-sm hover:shadow-lg hover:bg-black/30 transition-all"
               " flex flex-col [&>small]:text-sm"
             })
-            #a(href: "https://example.com", {
+            #a(href: "./latest-snapshot", {
               h.span[Try it Online]
               h.small[Run the latest version]
             }) <online-version>
@@ -77,12 +77,8 @@ exit 0
               h.small[Read the online documentation]
             })
             #a(href: links.repo, {
-              h.span[See the Source]
-              h.small[Browse the source code]
-            })
-            #a(href: "https://github.com/wensimehrp/Paiagram/discussions", {
-              h.span[Official Discussion Zone]
-              h.small[Talk about Paiagram]
+              h.span[Repository]
+              h.small[Browse the source and talk about Paiagram]
             })
           ]
           h.div(
