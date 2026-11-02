@@ -1,4 +1,4 @@
-name: Build nightly version and deploy pages
+name: Build snapshot and push to archive
 
 on:
   push:
@@ -39,7 +39,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: wasm-pages
-          path: ./dist/nightly
+          path: ./dist/app
 
       - name: Deploy
         uses: peaceiris/actions-gh-pages@v4
@@ -49,5 +49,5 @@ jobs:
           user_name: github-actions[bot]
           user_email: 41898282+github-actions[bot]@users.noreply.github.com
           publish_branch: main
-          publish_dir: ./dist/nightly
-          destination_dir: nightly
+          publish_dir: ./dist/app
+          destination_dir: new-snapshot
