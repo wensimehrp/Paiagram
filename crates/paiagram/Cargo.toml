@@ -1,0 +1,65 @@
+[package]
+name = "paiagram"
+version.workspace = true
+edition.workspace = true
+description.workspace = true
+documentation.workspace = true
+readme.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+arc-swap.workspace = true
+bytemuck.workspace = true
+clap.workspace = true
+coordtransform.workspace = true
+ecow.workspace = true
+eframe.workspace = true
+egui.workspace = true
+egui_extras.workspace = true
+egui-i18n.workspace = true
+egui_tiles.workspace = true
+either.workspace = true
+env_logger.workspace = true
+fdg-sim.workspace = true
+fontdb.workspace = true
+futures-channel.workspace = true
+git-version.workspace = true
+ib-matcher.workspace = true
+image.workspace = true
+imbl.workspace = true
+itertools.workspace = true
+jiff.workspace = true
+log.workspace = true
+paiagram-core.workspace = true
+paiagram-export.workspace = true
+paiagram-extensions.workspace = true
+paiagram-rw.workspace = true
+paiagram-selection.workspace = true
+parking_lot.workspace = true
+paste.workspace = true
+pollster.workspace = true
+puffin.workspace = true
+puffin_egui.workspace = true
+rayon.workspace = true
+reqwest.workspace = true
+rfd.workspace = true
+serde.workspace = true
+walkers.workspace = true
+web-time.workspace = true
+wgpu.workspace = true  # workaround for wgsl_bindgen
+
+[build-dependencies]
+wesl.workspace = true
+wgsl_bindgen.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+jiff = { workspace = true, features = ["js"] }
+serde_html_form.workspace = true
+wasm-bindgen-futures.workspace = true
+wasm-bindgen-rayon.workspace = true
+web-sys.workspace = true

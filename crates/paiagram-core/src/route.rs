@@ -1,340 +1,248 @@
-//! # Route
-//! Routes are slices of the graph that can be used as the foundation of
-//! diagrams. Diagrams use routes as their station list.
+// SPDX-License-Identifier: MPL-2.0
+#![doc = include_str!("route/README.md")]
 
-use bevy::ecs::entity::EntityHashSet;
-use bevy::prelude::*;
-use moonshine_core::prelude::{MapEntities, ReflectMapEntities};
+use ecow::EcoVec;
+use pathfinding::prelude::dijkstra;
+use serde::{Deserialize, Serialize};
+use smallvec::SmallVec;
 
-pub struct RoutePlugin;
-impl Plugin for RoutePlugin {
-    fn build(&self, app: &mut App) {
-        app.add_observer(auto_update_length)
-            .add_observer(sort_route_by_direction_trips)
-            .add_systems(Update, (update_route_trips, auto_generate_display_modes));
-    }
-}
+mod prep_marey;
+mod prep_route_timetable;
 
-use crate::entry::{EntryMode, EntryQuery};
+pub use prep_route_timetable::{
+    RouteTimetable, RouteTimetableEntry, RouteTimetableExport, StationDisplayMode,
+};
+
 use crate::graph::Graph;
-use crate::interval::{Interval, UpdateInterval};
-use crate::station::{ParentStationOrStation, Platform, PlatformEntries, Station, StationQuery};
-use crate::trip::TripQuery;
+use crate::trip::{EstimateEntry, TEstimate, TripSchedule};
+use crate::{
+    CanvasLength, Distance, NodeCollection, NodeKey, NodeKeyHashMap, StationCollection, StationKey,
+    TripKey, TripKeyHashMap, World,
+};
 
-/// Marker component for automatically updating route interval length.
-#[derive(Reflect, Component)]
-#[reflect(Component)]
-pub struct AutoUpdateLength;
-
-#[derive(Reflect, Component, MapEntities)]
-#[reflect(Component, MapEntities)]
-#[require(Name, RouteTrips, RouteByDirectionTrips)]
-pub struct Route {
-    #[entities]
-    pub stops: Vec<Entity>,
-    pub lengths: Vec<f32>,
+/// What to account as a part of the station
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+pub enum StationRecord {
+    /// All platforms
+    All(StationKey),
+    /// Some platforms
+    Some(EcoVec<NodeKey>),
 }
 
-#[derive(Reflect)]
-pub struct AllTripsDisplayMode {
-    pub departure: bool,
-    pub arrival: bool,
-}
-
-impl AllTripsDisplayMode {
-    pub fn count(&self) -> usize {
-        self.departure as usize + self.arrival as usize
-    }
-}
-
-#[derive(Reflect, Component, Deref, DerefMut)]
-#[reflect(Component)]
-pub struct RouteDisplayModes(Vec<AllTripsDisplayMode>);
-
-fn auto_generate_display_modes(
-    routes: Populated<(Entity, &Route), Without<RouteDisplayModes>>,
-    graph: Res<Graph>,
-    mut commands: Commands,
-) {
-    for (route_entity, route) in routes.iter().filter(|(_, it)| it.stops.len() > 0) {
-        let mut modes: Vec<AllTripsDisplayMode> = Vec::new();
-        modes.resize_with(route.stops.len(), || AllTripsDisplayMode {
-            departure: true,
-            arrival: false,
-        });
-        modes.last_mut().unwrap().arrival = true;
-        modes.last_mut().unwrap().departure = false;
-        for (idx, s) in route.stops.windows(2).enumerate() {
-            let [prev, curr] = s else { unreachable!() };
-            if graph.contains_edge(*prev, *curr) || graph.contains_edge(*curr, *prev) {
-                continue;
+impl StationRecord {
+    pub fn nodes<'a>(&'a self, stations: &'a StationCollection) -> &'a [NodeKey] {
+        match *self {
+            StationRecord::All(station_key) => {
+                stations.get(&station_key).map_or_default(|wfc| wfc.cache.nodes.as_slice())
             }
-            modes[idx].departure = false;
-            modes[idx].arrival = true;
+            StationRecord::Some(ref nodes) => nodes.as_slice(),
         }
-        commands
-            .entity(route_entity)
-            .insert(RouteDisplayModes(modes));
+    }
+    pub fn station_key<'a>(
+        &'a self,
+        node_collection: &'a NodeCollection,
+    ) -> Option<&'a StationKey> {
+        match self {
+            StationRecord::All(station_key) => Some(station_key),
+            StationRecord::Some(nodes) => {
+                nodes.first().and_then(|key| node_collection.get(key)).map(|wfc| &wfc.parent)
+            }
+        }
     }
 }
 
-// TODO: handle update of route
-// TODO: improve sorting logic
-#[derive(Default, Reflect, Component, MapEntities, Deref, DerefMut)]
-#[reflect(Component, MapEntities)]
-#[require(Name)]
-pub struct RouteTrips(#[entities] Vec<Entity>);
-
-#[derive(Default, Reflect, Component, MapEntities)]
-#[reflect(Component, MapEntities)]
-pub struct RouteByDirectionTrips {
-    #[entities]
-    pub downward: Vec<Entity>,
-    #[entities]
-    pub upward: Vec<Entity>,
+/// An interval on the route
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+pub struct RouteInterval {
+    pub station_record: StationRecord,
+    /// Optional milestone to be displayed
+    pub milestone: Option<Distance>,
+    pub canvas_length: Option<CanvasLength>,
+    pub nodes: EcoVec<NodeKey>,
 }
 
-#[derive(EntityEvent)]
-pub struct SortRouteByDirectionTrips {
-    pub entity: Entity,
+impl RouteInterval {
+    fn progresses<'a>(
+        &'a self,
+        world: &'a World,
+        next_stn_nodes: &'a [NodeKey],
+    ) -> impl Iterator<Item = (NodeKey, Option<f32>)> + 'a {
+        let curr_stn_nodes = self.station_record.nodes(&world.stations);
+        std::iter::chain(&self.nodes, curr_stn_nodes).map(|node_key| {
+            (
+                *node_key,
+                gen_progress(
+                    node_key,
+                    &world.graph,
+                    &self.nodes,
+                    curr_stn_nodes,
+                    next_stn_nodes,
+                ),
+            )
+        })
+    }
 }
 
-fn compute_sorted_by_first_entry_estimate(
-    trip_entities: &[Entity],
-    trip_q: &Query<TripQuery>,
-    entry_q: &Query<EntryQuery>,
-) -> Vec<Entity> {
-    let mut out = trip_entities.to_vec();
-    out.sort_unstable_by_key(|trip_entity| {
-        let trip = trip_q.get(*trip_entity).ok();
-        let first_time = trip
-            .and_then(|trip| {
-                entry_q
-                    .iter_many(trip.schedule.iter())
-                    .find_map(|entry| entry.estimate.map(|it| it.arr.min(it.dep)))
-            })
-            .unwrap_or(crate::units::time::TimetableTime(i32::MAX));
-        (first_time, trip_entity.to_bits())
-    });
-    out
+// suboptimal implementation to generate progress
+fn gen_progress(
+    current_node: &NodeKey,
+    graph: &Graph,
+    interval_nodes: &[NodeKey],
+    curr_stn_nodes: &[NodeKey],
+    next_stn_nodes: &[NodeKey],
+) -> Option<f32> {
+    let is_part_of_interval = |key: &NodeKey| {
+        curr_stn_nodes.contains(key) || interval_nodes.contains(key) || next_stn_nodes.contains(key)
+    };
+    // roughly the same as the implementation in graph.rs
+    let successors = |source: &NodeKey| {
+        let source = *source;
+        graph.outgoing_intervals(source).filter_map(move |(interval_key, interval)| {
+            let target = interval_key.other(source);
+            is_part_of_interval(&target)
+                .then_some((target, interval.length(interval_key, graph.nodes())))
+        })
+    };
+    let distance_to_source = curr_stn_nodes
+        .into_iter()
+        .filter_map(|source| dijkstra(source, successors, |node| *node == *current_node))
+        .map(|(_, distance)| distance)
+        .min()?
+        .0 as f32;
+    let distance_to_target = next_stn_nodes
+        .into_iter()
+        .filter_map(|source| dijkstra(source, successors, |node| *node == *current_node))
+        .map(|(_, distance)| distance)
+        .min()?
+        .0 as f32;
+    let ratio = distance_to_source / (distance_to_source + distance_to_target);
+    Some(if ratio.is_nan() { 0.0 } else { ratio })
 }
 
-fn compute_directional_members(
-    route: &Route,
-    trip_entities: &[Entity],
-    downwards: bool,
-    trip_q: &Query<TripQuery>,
-    entry_q: &Query<EntryQuery>,
-    parent_station_or_station: &Query<ParentStationOrStation>,
-) -> Vec<Entity> {
-    trip_entities
-        .iter()
-        .copied()
-        .filter_map(|trip_entity| {
-            let trip = trip_q.get(trip_entity).ok()?;
-            let mut stations = if downwards {
-                either::Either::Left(route.stops.iter())
-            } else {
-                either::Either::Right(route.stops.iter().rev())
-            };
-            let mut found_counter = 0;
-            for it in entry_q.iter_many(trip.schedule.iter()) {
-                let station_entity = parent_station_or_station.get(it.stop()).ok()?.parent();
-                if stations.any(|it| *it == station_entity) {
-                    found_counter += 1;
-                    if found_counter >= 2 {
-                        return Some(trip_entity);
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+pub struct RouteIntervals(pub EcoVec<RouteInterval>);
+
+pub type BucketPoint = (TEstimate, EstimateEntry, u32, f32);
+pub type TripBucket = SmallVec<[Vec<BucketPoint>; 1]>;
+
+#[derive(Clone, Default, Debug, Serialize)]
+pub struct MareyCache {
+    pub map: TripKeyHashMap<TripBucket>,
+}
+
+impl RouteIntervals {
+    fn progresses<'a>(
+        &'a self,
+        world: &'a World,
+    ) -> impl Iterator<Item = impl Iterator<Item = (NodeKey, Option<f32>)>> + 'a {
+        self.0.array_windows().map(|[curr, next]| {
+            let next_stn_nodes = next.station_record.nodes(&world.stations);
+            curr.progresses(world, next_stn_nodes)
+        })
+    }
+
+    fn prepare_lookup(&self, world: &World) -> NodeKeyHashMap<Vec<(u32, f32)>> {
+        puffin::profile_function!();
+        // Where each graph node sits on the Marey chart: every `(line index, progress)` placement.
+        let mut node_lookup: NodeKeyHashMap<Vec<(u32, f32)>> = NodeKeyHashMap::default();
+        for (key, progress) in self.progresses(world).enumerate().flat_map(|(idx, it)| {
+            it.filter_map(move |(key, distance)| Some((key, (idx as u32, distance?))))
+        }) {
+            match node_lookup.get_mut(&key) {
+                Some(entries) => {
+                    if !entries.contains(&progress) {
+                        entries.push(progress);
                     }
                 }
-            }
-            None
-        })
-        .collect()
-}
-
-fn sync_direction_order(existing: &mut Vec<Entity>, members: &[Entity], fallback_order: &[Entity]) {
-    let member_set: EntityHashSet = members.iter().copied().collect();
-    let mut next = Vec::with_capacity(members.len());
-
-    for entity in existing.iter().copied() {
-        if member_set.contains(&entity) {
-            next.push(entity);
-        }
-    }
-
-    for entity in fallback_order.iter().copied() {
-        if member_set.contains(&entity) && !next.contains(&entity) {
-            next.push(entity);
-        }
-    }
-
-    *existing = next;
-}
-
-impl Route {
-    pub fn iter(&self) -> impl Iterator<Item = (Entity, f32)> {
-        self.stops
-            .iter()
-            .copied()
-            .zip(self.lengths.iter().copied())
-            .scan(0.0_f32, |acc, (stop, len)| {
-                let out = (stop, *acc);
-                *acc += len;
-                Some(out)
-            })
-    }
-}
-
-fn update_route_trips(
-    mut routes: Query<(Entity, &Route, &mut RouteTrips, &mut RouteByDirectionTrips)>,
-    changed_routes: Query<Entity, (With<Route>, Changed<Route>)>,
-    changed_station_entries: Query<Entity, (With<Station>, Changed<PlatformEntries>)>,
-    changed_platform_entries: Query<&ChildOf, (With<Platform>, Changed<PlatformEntries>)>,
-    stations: Query<StationQuery>,
-    platform_entries: Query<&PlatformEntries>,
-    entries: Query<&ChildOf, With<EntryMode>>,
-    trip_q: Query<TripQuery>,
-    entry_q: Query<EntryQuery>,
-    parent_station_or_station: Query<ParentStationOrStation>,
-) {
-    let mut affected_routes = EntityHashSet::default();
-
-    for route_entity in &changed_routes {
-        affected_routes.insert(route_entity);
-    }
-
-    let mut changed_stations = EntityHashSet::default();
-    for station in &changed_station_entries {
-        changed_stations.insert(station);
-    }
-    for parent in &changed_platform_entries {
-        changed_stations.insert(parent.parent());
-    }
-
-    if !changed_stations.is_empty() {
-        for (route_entity, route, _, _) in &routes {
-            if route
-                .stops
-                .iter()
-                .any(|station| changed_stations.contains(station))
-            {
-                affected_routes.insert(route_entity);
-            }
-        }
-    }
-
-    if affected_routes.is_empty() {
-        return;
-    }
-
-    for (route_entity, route, mut route_trips, mut by_direction) in &mut routes {
-        if !affected_routes.contains(&route_entity) {
-            continue;
-        }
-
-        let mut trips = EntityHashSet::default();
-        for station_entity in route.stops.iter().copied() {
-            let Ok(station) = stations.get(station_entity) else {
-                continue;
-            };
-            for entry in station.passing_entries(&platform_entries) {
-                let Ok(parent) = entries.get(entry) else {
-                    continue;
-                };
-                trips.insert(parent.parent());
+                None => {
+                    node_lookup.insert(key, vec![progress]);
+                }
             }
         }
 
-        let mut next = route_trips
+        // `progresses` only walks pairs of stations, so the last station is never the `curr`
+        // station of a segment and would otherwise be missing from the lookup. Place it at the
+        // end of the final segment so trips connect to it.
+        if let Some(last) = self.0.last()
+            && let Some(line_index) = self.0.len().checked_sub(2)
+        {
+            let progress = (line_index as u32, 1.0);
+            for &node_key in last.station_record.nodes(&world.stations) {
+                let entries = node_lookup.entry(node_key).or_default();
+                if !entries.contains(&progress) {
+                    entries.push(progress);
+                }
+            }
+        }
+
+        node_lookup
+    }
+
+    pub fn all_passing_trips(&self, world: &World) -> Vec<TripKey> {
+        puffin::profile_function!();
+        let mut trip_keys: Vec<TripKey> = self
             .0
             .iter()
+            .flat_map(|route_interval| {
+                std::iter::chain(
+                    route_interval.station_record.nodes(&world.stations),
+                    &route_interval.nodes,
+                )
+            })
+            .flat_map(|node_key| world.graph.outgoing_intervals(*node_key))
+            .flat_map(|(_, wfc)| &wfc.cache.trips)
             .copied()
-            .filter(|entity| trips.contains(entity))
-            .collect::<Vec<_>>();
-        for entity in trips.iter().copied() {
-            if !next.contains(&entity) {
-                next.push(entity);
-            }
-        }
-        if route_trips.0 != next {
-            route_trips.0 = next.clone();
-        }
-
-        let new_downward = compute_directional_members(
-            route,
-            &next,
-            true,
-            &trip_q,
-            &entry_q,
-            &parent_station_or_station,
-        );
-        let new_upward = compute_directional_members(
-            route,
-            &next,
-            false,
-            &trip_q,
-            &entry_q,
-            &parent_station_or_station,
-        );
-        sync_direction_order(&mut by_direction.downward, &new_downward, &next);
-        sync_direction_order(&mut by_direction.upward, &new_upward, &next);
+            .collect();
+        trip_keys.sort_unstable();
+        trip_keys.dedup();
+        trip_keys
     }
-}
 
-fn sort_route_by_direction_trips(
-    trigger: On<SortRouteByDirectionTrips>,
-    mut routes: Query<(&RouteTrips, &mut RouteByDirectionTrips)>,
-    trip_q: Query<TripQuery>,
-    entry_q: Query<EntryQuery>,
-) {
-    let Ok((route_trips, mut by_direction)) = routes.get_mut(trigger.entity) else {
-        return;
-    };
+    /// Populates trips into a Marey cache
+    pub fn populate_trips(
+        &self,
+        world: &World,
+        cache: &mut MareyCache,
+        trips_to_rebuild: impl Iterator<Item = TripKey>,
+    ) {
+        puffin::profile_function!();
+        let node_lookup = self.prepare_lookup(world);
 
-    let sorted_downward =
-        compute_sorted_by_first_entry_estimate(&by_direction.downward, &trip_q, &entry_q);
-    let sorted_upward =
-        compute_sorted_by_first_entry_estimate(&by_direction.upward, &trip_q, &entry_q);
-
-    by_direction.downward = sorted_downward;
-    by_direction.upward = sorted_upward;
-}
-
-// TODO: revise this
-fn auto_update_length(
-    updated: On<UpdateInterval>,
-    routes: Populated<&mut Route, With<AutoUpdateLength>>,
-    intervals: Query<&Interval>,
-    graph: Res<Graph>,
-) {
-    for mut route in routes {
-        let Route { stops, lengths } = &mut *route;
-        for (i, w) in stops.windows(2).enumerate() {
-            let [p, c] = w else { unreachable!() };
-            let (p, c) = (*p, *c);
-            if (p == updated.source && c == updated.target)
-                || (p == updated.target && c == updated.source)
-            {
-            } else {
+        for trip_key in trips_to_rebuild {
+            let Some(trip) = world.trips.get(&trip_key) else {
                 continue;
-            }
-            let i1 = graph.edge_weight(p, c).cloned();
-            let i2 = graph.edge_weight(c, p).cloned();
-            match (i1, i2) {
-                (Some(e1), Some(e2)) => {
-                    let d1 = intervals.get(e1).unwrap().length;
-                    let d2 = intervals.get(e2).unwrap().length;
-                    let avg_len = (d1.0 as f32 + d2.0 as f32) / 2.0;
-                    lengths[i] = avg_len;
-                }
-                (Some(e), None) | (None, Some(e)) => {
-                    let d = intervals.get(e).unwrap().length;
-                    lengths[i] = d.0 as f32;
-                }
-                (None, None) => {
-                    panic!("Interval disappeared???")
-                }
+            };
+            let bucket = cache.map.entry(trip_key).or_default();
+            prep_marey::prep_single_segment(&trip.schedule, bucket, &world.graph, |entry| {
+                node_lookup.get(&entry.node_key()).map_or(&[], Vec::as_slice)
+            });
+            if bucket.is_empty() {
+                cache.map.remove(&trip_key);
             }
         }
+    }
+
+    /// Populates a single schedule into the Marey cache
+    pub fn populate_schedule(&self, world: &World, schedule: &TripSchedule) -> Option<TripBucket> {
+        let node_lookup = self.prepare_lookup(world);
+        let mut bucket = TripBucket::new();
+        prep_marey::prep_single_segment(schedule, &mut bucket, &world.graph, |entry| {
+            node_lookup.get(&entry.node_key()).map_or(&[], Vec::as_slice)
+        });
+        Some(bucket)
+    }
+
+    pub fn populate_route_timetable(&self, world: &World) -> RouteTimetable {
+        puffin::profile_function!();
+        let mut marey_cache = MareyCache::default();
+        self.populate_trips(
+            world,
+            &mut marey_cache,
+            self.all_passing_trips(world).into_iter(),
+        );
+        RouteTimetable::new(
+            marey_cache,
+            self.0.iter().map(|entry| &entry.station_record),
+        )
     }
 }

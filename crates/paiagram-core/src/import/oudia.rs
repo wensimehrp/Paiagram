@@ -1,188 +1,208 @@
-use bevy::platform::collections::HashMap;
-use bevy::prelude::*;
-use itertools::Itertools;
-use moonshine_core::kind::*;
-use paiagram_oudia::{
-    Direction, ServiceMode, Time as OuDiaTime, TimetableEntry as OuDiaTimetableEntry,
-    parse_oud_to_ir, parse_oud2_to_ir,
+use std::collections::HashMap;
+use std::num::NonZeroU32;
+
+use ecow::EcoVec;
+use ecow::string::ToEcoString;
+use paiagram_oudia::petgraph::visit::EdgeRef;
+use paiagram_oudia::{Station as OudStation, StationToGraph, parse_oud_to_ir, parse_oud2_to_ir};
+use rustc_hash::FxBuildHasher;
+use smallvec::SmallVec;
+
+use crate::graph::IntervalDirection;
+use crate::route::{RouteInterval, RouteIntervals, StationRecord};
+use crate::time::TimetableTime;
+use crate::trip::{TEntry, TEntryId, TravelMode, TripSchedule};
+use crate::{
+    Interval, IntervalKey, LonLat, Node, NodeKey, Route, RouteKey, ServiceClass, ServiceClassKey,
+    Station, StationKey, StrokeStyle, Trip, TripKey, Wfc, World,
 };
 
-use crate::colors::DisplayedColor;
-use crate::entry::{EntryBundle, TravelMode};
-use crate::graph::Graph;
-use crate::import::OuDiaContentType;
-use crate::route::Route;
-use crate::station::Station as StationComponent;
-use crate::trip::class::{Class as ClassComponent, ClassBundle, DisplayedStroke};
-use crate::trip::{TripBundle, TripClass};
-use crate::units::distance::Distance;
-use crate::units::time::TimetableTime;
-
-#[derive(Debug, Clone, Copy)]
-struct TimetableEntry {
-    service_mode: ServiceMode,
-    arrival_time: Option<TimetableTime>,
-    departure_time: Option<TimetableTime>,
+pub(super) enum OudFileType<'a> {
+    OuDiaSecond(&'a str),
+    OuDia(&'a [u8]),
 }
 
-impl From<OuDiaTime> for TimetableTime {
-    fn from(value: OuDiaTime) -> Self {
-        Self(value.seconds())
-    }
-}
-
-pub fn load_oud(msg: On<super::LoadOuDia>, mut commands: Commands, mut graph: ResMut<Graph>) {
-    info!("Loading OUD/OUD2 data...");
-    let root = match &msg.content {
-        OuDiaContentType::OuDiaSecond(s) => parse_oud2_to_ir(s),
-        OuDiaContentType::OuDia(d) => parse_oud_to_ir(d),
-    }
-    .expect("Failed to parse OUD/OUD2 data");
+pub(crate) fn parse_oudia(stream: OudFileType) -> Result<World, Box<dyn std::error::Error>> {
+    puffin::profile_function!();
+    let mut world = World::default();
+    let root = match stream {
+        OudFileType::OuDiaSecond(s) => parse_oud2_to_ir(s)?,
+        OudFileType::OuDia(buf) => parse_oud_to_ir(buf)?,
+    };
     let route = root.route;
-    let mut station_map: HashMap<String, Instance<StationComponent>> = HashMap::new();
-    let mut stations: Vec<Option<Instance<StationComponent>>> = vec![None; route.stations.len()];
-    // let mut break_flags: Vec<bool> = Vec::with_capacity(route.stations.len());
-    for (i, station) in route.stations.iter().enumerate() {
-        // a bit slower but standardized
-        let station_entity =
-            super::make_station(&station.name, &mut station_map, &mut graph, &mut commands);
-        stations[i] = Some(station_entity);
-        // TODO: restore interval breaking mechanism
-        // break_flags.push(station.break_interval);
+    let graph = route.stations.to_graph();
+    let stations_on_route = route.stations.merge_duplicate();
+    let mut route_intervals = EcoVec::with_capacity(stations_on_route.len());
+    let mut stn_to_node_key: HashMap<*const OudStation, (NodeKey, StationKey), _> =
+        HashMap::with_capacity_and_hasher(graph.node_count(), FxBuildHasher);
+    for station in stations_on_route {
+        let (node_key, station_key) = stn_to_node_key
+            .entry(station as *const OudStation)
+            .or_insert((NodeKey::new(), StationKey::new()));
+        route_intervals.push(RouteInterval {
+            station_record: StationRecord::All(*station_key),
+            milestone: None,
+            canvas_length: None,
+            nodes: EcoVec::new(),
+        });
+        let station_name = station.name.clone().to_eco_string();
+        world.stations.insert(
+            *station_key,
+            Wfc::new(Station {
+                name: station_name.clone(),
+                pos: LonLat::ZERO,
+            }),
+        );
+        world.graph.insert_node(
+            *node_key,
+            Node {
+                name: station_name,
+                parent: *station_key,
+                pos: LonLat::ZERO,
+            },
+        );
     }
-
-    let station_instances: Vec<Instance<StationComponent>> =
-        stations.into_iter().map(|e| e.unwrap()).collect();
-    let class_instances: Vec<Entity> = route
-        .classes
-        .into_iter()
-        .map(|it| {
-            let [_, r, g, b] = it.diagram_line_color.0;
-            commands
-                .spawn(ClassBundle {
-                    class: ClassComponent::default(),
-                    name: Name::new(it.name),
-                    stroke: DisplayedStroke {
-                        color: DisplayedColor::Custom(egui::Color32::from_rgb(r, g, b)),
-                        width: 1.0,
-                    },
-                })
-                .id()
-        })
-        .collect();
-
-    let travel_durations: Vec<Option<OuDiaTime>> = route.diagrams[0]
-        .minimum_interval_durations(&route.stations)
-        .collect();
-
-    commands.spawn((
-        Name::new(route.name),
-        Route {
-            stops: station_instances.iter().map(|e| e.entity()).collect(),
-            lengths: travel_durations
-                .iter()
-                .map(|t| match t {
-                    // TODO: write a proper constant
-                    Some(t) => t.seconds() as f32 / 60.0 * 2.0,
-                    None => 1.0 * 2.0,
-                })
-                .collect(),
-        },
-    ));
-
-    for i in 0..station_instances.len().saturating_sub(1) {
-        // if break_flags[i] {
-        //     continue;
-        // }
-        super::add_interval_pair(
-            &mut graph,
-            &mut commands,
-            station_instances[i].entity(),
-            station_instances[i + 1].entity(),
-            travel_durations[i].map_or(Distance::from_m(1000), |it| {
-                Distance::from_m(it.seconds() / 60 * 1000)
+    world.routes.insert(
+        RouteKey::new(),
+        Wfc::new(Route {
+            name: route.name.to_eco_string(),
+            intervals: RouteIntervals(route_intervals),
+        }),
+    );
+    for edge_ref in graph.edge_references() {
+        let source = (*graph.node_weight(edge_ref.source()).unwrap()) as *const OudStation;
+        let target = (*graph.node_weight(edge_ref.target()).unwrap()) as *const OudStation;
+        let (source, _) = *stn_to_node_key.get(&source).unwrap();
+        let (target, _) = *stn_to_node_key.get(&target).unwrap();
+        world.graph.insert_interval(
+            IntervalKey::new(source, target),
+            Wfc::new(Interval {
+                intermediate_nodes: EcoVec::new(),
+                length: NonZeroU32::new(1000),
+                direction: IntervalDirection::Both,
             }),
         );
     }
-
-    // TODO: find a method to support multiple diagrams
-    for diagram in route.diagrams.into_iter().take(1) {
-        for trip in diagram.trips {
-            let times: Vec<TimetableEntry> = trip
-                .times
-                .into_iter()
-                .map(convert_timetable_entry)
-                .collect();
-
-            let trip_class = class_instances[trip.class_index];
-
-            let mut times_chunked: Vec<_> = times
-                .into_iter()
-                .enumerate()
-                .filter_map(|(i, time)| {
-                    if matches!(time.service_mode, ServiceMode::NoOperation) {
-                        return None;
-                    }
-                    let station_index = match trip.direction {
-                        Direction::Down => i,
-                        Direction::Up => station_instances.len() - 1 - i,
-                    };
-                    let stop = station_instances[station_index];
-                    Some((stop, time))
-                })
-                .chunk_by(|(s, _t)| *s)
-                .into_iter()
-                .map(|(s, mut g)| {
-                    let (_, first_time) = g.next().unwrap();
-                    let mut group = [None; 2];
-                    group[0] = first_time.arrival_time;
-                    group[1] = first_time.departure_time;
-                    if let Some((_, last_time)) = g.last() {
-                        group[1] = last_time.departure_time;
-                    }
-                    (s, group, first_time.service_mode)
-                })
-                .collect();
-
-            super::normalize_times(times_chunked.iter_mut().flat_map(|(_, g, _)| g).flatten());
-
-            let nominal_entries: Vec<_> = times_chunked
-                .into_iter()
-                .map(|(stop, [arrival_time, departure_time], passing_mode)| {
-                    // in this case, this would consume the iterator.
-                    let arrival_mode = if matches!(passing_mode, ServiceMode::Pass) {
-                        None
-                    } else {
-                        Some(arrival_time.map_or(TravelMode::Flexible, |t| TravelMode::At(t)))
-                    };
-                    let departure_mode =
-                        departure_time.map_or(TravelMode::Flexible, |t| TravelMode::At(t));
-                    commands
-                        .spawn(EntryBundle::new(
-                            arrival_mode,
-                            departure_mode,
-                            stop.entity(),
-                        ))
-                        .id()
-                })
-                .collect();
-
-            commands
-                .spawn_empty()
-                .add_children(&nominal_entries)
-                .insert(TripBundle::new(
-                    &trip.name.unwrap_or("<??>".to_string()),
-                    TripClass(trip_class.entity()),
-                    nominal_entries,
-                ));
-        }
+    let mut service_classes = route
+        .classes
+        .iter()
+        .map(|cls| {
+            (
+                cls.name.as_str(),
+                ServiceClassKey::new(),
+                0u32,
+                cls.diagram_line_color.clone(),
+            )
+        })
+        .collect::<Vec<_>>();
+    for (name, key, _, color) in &service_classes {
+        let style = StrokeStyle {
+            color: egui::Color32::from_rgb(color.r(), color.g(), color.b()),
+            width: 1,
+        };
+        world.service_classes.insert(
+            *key,
+            Wfc::new(ServiceClass {
+                name: name.to_eco_string(),
+                style,
+            }),
+        );
     }
+    let mut unknown_class_counter = 0u32;
+    let Some(diagram) = route.diagrams.get(0) else {
+        return Err(Box::new(std::io::Error::other(
+            "Route doesn't have a diagram!",
+        )));
+    };
+    let deduplicated = route.stations.merge_duplicate();
+    for (trip, schedule) in diagram.trip_station_times(&deduplicated) {
+        let mut buf = EcoVec::new();
+        for (idx, (stn, entry)) in schedule.enumerate() {
+            let (node, _) = *stn_to_node_key.get(&(stn as *const OudStation)).unwrap();
+            let id = TEntryId::new();
+            let arr_or_pass: TravelMode;
+            let dep: Option<TravelMode>;
+            match (entry.arrival_time, entry.departure_time) {
+                (Some(at), Some(dt)) => {
+                    arr_or_pass = TravelMode::At(TimetableTime::from_hms(0, 0, at.seconds()));
+                    dep = Some(TravelMode::At(TimetableTime::from_hms(0, 0, dt.seconds())));
+                }
+                (Some(at), None) => {
+                    arr_or_pass = TravelMode::At(TimetableTime::from_hms(0, 0, at.seconds()));
+                    dep = None;
+                }
+                (None, Some(dt)) => {
+                    let mode = TravelMode::At(TimetableTime::from_hms(0, 0, dt.seconds()));
+                    if idx == 0 {
+                        arr_or_pass = TravelMode::Flexible;
+                        dep = Some(mode);
+                    } else {
+                        arr_or_pass = mode;
+                        dep = None;
+                    }
+                }
+                (None, None) => {
+                    arr_or_pass = TravelMode::Flexible;
+                    dep = None;
+                }
+            };
+            buf.push(TEntry {
+                node,
+                arr_or_pass,
+                dep,
+                id,
+            });
+        }
+        let (cls_name, cls_key, cls_counter) =
+            service_classes.get_mut(trip.class_index).map_or_else(
+                || ("Unknown Class", None, &mut unknown_class_counter),
+                |(s, key, count, _)| (*s, Some(*key), count),
+            );
+        let name = trip.name.as_ref().map_or_else(
+            || {
+                format!("{} ({})", cls_name, {
+                    *cls_counter += 1;
+                    cls_counter
+                })
+                .into()
+            },
+            |n| n.into(),
+        );
+        world.trips.insert(
+            TripKey::new(),
+            Wfc::new(Trip {
+                name,
+                schedule: TripSchedule::new(buf),
+                service_class: cls_key,
+                vehicles: SmallVec::new(),
+            }),
+        );
+    }
+    Ok(world)
 }
 
-fn convert_timetable_entry(entry: OuDiaTimetableEntry) -> TimetableEntry {
-    TimetableEntry {
-        service_mode: entry.service_mode,
-        arrival_time: entry.arrival_time.map(TimetableTime::from),
-        departure_time: entry.departure_time.map(TimetableTime::from),
+#[cfg(test)]
+mod test {
+    use super::*;
+    type V = Result<(), Box<dyn std::error::Error>>;
+
+    #[test]
+    fn test_generate() -> V {
+        let test_str = include_str!("../../../paiagram-oudia/test/sample.oud2");
+        let imported = parse_oudia(OudFileType::OuDiaSecond(test_str))?;
+        dbg!(imported);
+        Ok(())
+    }
+
+    #[test]
+    fn sample_applies_cleanly() -> V {
+        let test_str = include_str!("../../../paiagram-oudia/test/sample.oud2");
+        let imported = parse_oudia(OudFileType::OuDiaSecond(test_str))?;
+        assert!(!imported.trips.is_empty(), "sample should contain trips");
+        // Applying the imported world is what runs `update_diff`, which looks up the
+        // interval between each pair of consecutive trip entries.
+        let mut world = crate::World::default();
+        world.update(|_| imported.clone());
+        Ok(())
     }
 }

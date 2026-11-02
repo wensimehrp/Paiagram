@@ -1,12 +1,34 @@
 #title[The Network]
 
-Paiagram uses a #link("https://en.wikipedia.org/wiki/Graph_theory")[graph] to organize stations. Every single station is
-a node in the graph. Stations are connected by one-way intervals. Intervals may have different lengths. To create a
-two-way path connecting two stations, you must first create an interval going from station A to B, then another from
-station B to A.
+Paiagram's network is a graph, which contains nodes and intervals.
 
-The graph is automatically managed by Paiagram. You can edit the graph in the #link(<map>)[Map panel]. You can also
-export the graph to a #link("https://graphviz.org/")[Graphviz] `.dot` file for further processing.
+= Nodes
 
-Due to technical limitations and for simplicity, you cannot add multiple intervals with the same direction between two
-stations. If you want to work with 2+ line intervals, the best way to achieve that is by using waypoints.
+In Paiagram, there are two types of nodes: *station nodes* and *intersection nodes*. Station nodes
+are anything that is a part of a station the vehicle might stop and (un)load, or may use to pass the
+station. Station nodes include:
+
+- Railway station platforms
+- Railway station overpass tracks
+- Road vehicle stops
+- #link("https://en.wikipedia.org/wiki/Airport_apron")[Airport aprons]; helipads
+- Docks, piers, berths.
+
+Intersection nodes are anywhere three or more intervals intersect that are not station nodes. They
+include:
+
+- Road intersections
+- Railway switches
+- Taxiway intersections
+- #link("https://en.wikipedia.org/wiki/Fairway_(navigation)")[Shipping fairway intersections]
+- Aviation waypoints and significant points; airway intersections
+
+= Intervals
+
+An *interval* represents a connection between two nodes. Vehicles may travel from one node to
+another one via differnet intervals.
+
+= Modelling
+
+With station nodes, intersection nodes, and intervals, you can model entire railway networks in
+Paiagram.

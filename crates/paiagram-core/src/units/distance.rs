@@ -1,12 +1,29 @@
-use bevy::prelude::Reflect;
 use derive_more::{Add, AddAssign, Sub, SubAssign};
+use pathfinding::num_traits::Zero;
+use serde::{Deserialize, Serialize};
 
-/// The length or distance represented in meters
-#[derive(Reflect, Debug, Clone, Copy, Add, AddAssign, Sub, SubAssign)]
+/// The length or distance represented in metres
+#[derive(
+    Debug,
+    Default,
+    Clone,
+    Copy,
+    Add,
+    AddAssign,
+    Sub,
+    SubAssign,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+)]
 pub struct Distance(pub i32);
 
 impl Distance {
     pub const ZERO: Self = Distance(0);
+    pub const MAX: Self = Distance(i32::MAX);
     #[inline]
     pub fn from_km(km: f32) -> Self {
         Distance((km * 1000.0).round() as i32)
@@ -14,6 +31,15 @@ impl Distance {
     #[inline]
     pub fn from_m(m: i32) -> Self {
         Distance(m)
+    }
+}
+
+impl Zero for Distance {
+    fn zero() -> Self {
+        Self(0)
+    }
+    fn is_zero(&self) -> bool {
+        *self == Self::ZERO
     }
 }
 

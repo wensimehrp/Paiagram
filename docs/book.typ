@@ -1,73 +1,81 @@
-#!/usr/bin/env -S typst compile --features bundle,html --format bundle
-// nix develop ./docs/template#default --command typst watch --features bundle,html --format bundle ./docs/book.typ ./dist --root .
-
-#import "template/lib.typ"
+#import "@preview/haita:0.4.0": *
 #import "./links.typ": links
-#import "@preview/cmarker:0.1.8"
+#import "@preview/cmarker:0.1.10"
 
 // temporary workaround so I don't need to write so many include statements
-#let chapter-path(path) = lib.chapter(path, content: include path + ".typ")
+#let chapter-path(path) = chapter("docs/" + path, content: include path + ".typ")
 
-#lib.book(
+#let other(..args) = (kind: "other", ..args.named())
+
+#book(
   title: "Paiagram " + links.paiagram-version + " Documentation",
   description: "Paiagram user documentation",
-  canonical-url: "https://paiagram.com",
-  root: "docs/",
+  base-url: "https://paiagram.com",
   authors: ("Jeremy Gao",),
-  language: "en",
-  sidebar-image: html.img(
-    src: "https://upload.wikimedia.org/wikipedia/commons/8/88/Thecanadiannearjasper.jpg",
-  ),
-  extra-head-content: {
-    // tracking script
-    html.elem(
-      "script",
-      attrs: (
+  lang: "en",
+  html-renderer: new-hamber.html-renderer.with(
+    sidebar-image: html.div(
+      class: "p-6",
+      image("../crates/paiagram/assets/paiagram-adaptive-no-bg.svg"),
+    ),
+    extra-head-content: {
+      // tracking script
+      html.elem("script", attrs: (
         defer: "",
         src: "https://cloud.umami.is/script.js",
         data-website-id: "067cd05f-b395-4813-916c-2063c383685f",
-      ),
-    )
-    // icon font
-    html.link(
-      rel: "stylesheet",
-      type: "text/css",
-      href: "https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.2/src/bold/style.css",
-    )
-  },
-  debug: true,
+      ))
+      // icon font
+      html.link(
+        rel: "stylesheet",
+        type: "text/css",
+        href: "https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.2/src/bold/style.css",
+      )
+    },
+  ),
   tree: (
     chapter-path("index"),
-    chapter-path("tutorial"),
-    [= Model],
-    chapter-path("model/network"),
-    chapter-path("model/trips-vehicles"),
-    [= User Interface],
-    chapter-path("panels/index"),
-    chapter-path("panels/diagram"),
-    chapter-path("panels/map"),
-    chapter-path("panels/station"),
-    [= Importing],
-    chapter-path("import/qetrc"),
-    chapter-path("import/oudia"),
-    chapter-path("import/gtfs"),
-    [= Exporting],
-    chapter-path("export/paia"),
-    chapter-path("export/oudia"),
-    chapter-path("export/typst-diagram"),
-    lib.separator(),
+    chapter-path("resources"),
+    chapter-path("a-guide-to-timetabling"),
+    other(content: [= Model], children: (
+      chapter-path("model/network"),
+      chapter-path("model/route"),
+      chapter-path("model/trips-vehicles"),
+    )),
+    other(content: [= User Interface], children: (
+      chapter-path("panels/index"),
+      chapter-path("panels/diagram"),
+      chapter-path("panels/map"),
+      chapter-path("panels/route_timetable"),
+      chapter-path("panels/station"),
+    )),
+    other(content: [= Importing], children: (
+      chapter-path("import/qetrc"),
+      chapter-path("import/oudia"),
+      chapter-path("import/gtfs"),
+      chapter-path("import/jgrpp-orderlist"),
+    )),
+    other(content: [= Exporting], children: (
+      chapter-path("export/pdf"),
+      chapter-path("export/paia"),
+      chapter-path("export/oudia"),
+      chapter-path("export/typst-diagram"),
+    )),
+    divider(),
+    chapter-path("misc/extensions"),
     chapter-path("misc/web"),
-    lib.chapter("changelog", content: [
+    chapter-path("misc/debugging"),
+    chapter("docs/changelog", content: [
       #title[Changelog]
-      #cmarker.render(label-prefix: "changelog-", read("../CHANGELOG.md"))
+      #cmarker.render(label-prefix: "changelog-", read("../CHANGELOG.md"), h1-level: 0)
     ]),
-    lib.chapter("license", content: [
-      #title[License]
+    chapter("docs/license", content: [
+      #title[License] <software-license>
 
       This is the License of Paiagram #links.paiagram-version.
 
       #cmarker.render(label-prefix: "license-", read("../LICENSE.md"))
     ]),
-    chapter-path("building"),
+    chapter-path("misc/notes"),
   ),
 )

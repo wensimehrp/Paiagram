@@ -1,0 +1,37 @@
+use egui::*;
+use paiagram_core::*;
+use serde::{Deserialize, Serialize};
+
+use crate::{App, UiCommand};
+
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq)]
+pub(crate) struct StationTile {
+    stn_key: StationKey,
+}
+
+impl super::Tile for StationTile {
+    const NAME: &'static str = "Station";
+    fn main_display(&mut self, app: &mut crate::App, ui: &mut Ui) {
+        puffin::profile_function!();
+        let stations = &app.source.stations;
+        let Some(stn) = stations.get(&self.stn_key) else {
+            ui.centered_and_justified(|ui| ui.heading("Station does not exist!"));
+            return;
+        };
+        ScrollArea::both().show(ui, |ui| {
+            Frame::new().inner_margin(6).show(ui, |ui| {
+                station_ui(&stn.data, &stn.cache, &app, ui);
+            })
+        });
+    }
+}
+
+fn station_ui(stn: &Station, cache: &StationCache, app: &App, ui: &mut Ui) {
+    puffin::profile_function!();
+    ui.heading(stn.name.as_str());
+    let mut all_trips: Vec<TripKey> = Vec::new();
+    all_trips.sort_unstable();
+    all_trips.dedup();
+    let buckets: [Vec<TripKey>; 24] = std::array::from_fn(|_| Vec::new());
+    for trip in all_trips {}
+}

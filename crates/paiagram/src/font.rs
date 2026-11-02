@@ -1,0 +1,160 @@
+use std::sync::{Arc, LazyLock};
+
+use anyhow::{Context as _, bail};
+use egui::mutex::RwLock;
+use egui::{Context, FontDefinitions, FontFamily, FontId, TextStyle};
+use fontdb::{Database, Family, ID};
+use log::{info, warn};
+use parking_lot::Mutex;
+
+pub(crate) static FONT_DATABASE: LazyLock<RwLock<Database>> = LazyLock::new(|| {
+    let mut db = Database::new();
+    db.load_system_fonts();
+    RwLock::new(db)
+});
+
+pub(crate) static TIMETABLTE_TEXT_STYLE: LazyLock<TextStyle> =
+    LazyLock::new(|| TextStyle::Name("timetable font".into()));
+
+pub(crate) static TIMETABLE_FONT_ID: LazyLock<FontId> =
+    LazyLock::new(|| FontId::new(13.0, FontFamily::Name("timetable font".into())));
+
+pub(crate) fn load_default_font(ctx: Context, font_name: Arc<Mutex<String>>) {
+    let mut definitions = FontDefinitions::default();
+    // custom timetable font
+    definitions
+        .families
+        .entry(FontFamily::Name("timetable font".into()))
+        .or_default()
+        .insert(0, "Paiagram-Timetable-Font".into());
+    // monospace fallback. DO NOT USE MONOSPACE FOR TIMETABLE STUFF
+    definitions
+        .families
+        .entry(FontFamily::Monospace)
+        .or_default()
+        .insert(0, "Paiagram-Timetable-Font".into());
+    // proportional fallback.
+    definitions
+        .families
+        .entry(FontFamily::Proportional)
+        .or_default()
+        .insert(0, "Paiagram-Timetable-Font".into());
+    ctx.all_styles_mut(|s| {
+        s.text_styles.insert(TIMETABLTE_TEXT_STYLE.clone(), TIMETABLE_FONT_ID.clone());
+    });
+    definitions.font_data.insert(
+        "Paiagram-Timetable-Font".into(),
+        Arc::new(egui::FontData::from_static(include_bytes!(
+            "../../../assets/fonts/Paiagram-Timetable-Font.ttf"
+        ))),
+    );
+    info!("Loaded Paiagram-Timetable-Font");
+    ctx.set_fonts(definitions.clone());
+    // egui_material_icons::initialize(&ctx);
+    // dynamic query
+    match FONT_DATABASE.read().query(&fontdb::Query {
+        families: &[
+            Family::Name("Sarasa UI SC"),
+            Family::Name("Sarasa Gothic SC"),
+            Family::SansSerif,
+        ],
+        ..Default::default()
+    }) {
+        Some(face_id) => {
+            load_font_name(face_id, font_name.clone());
+            load_font_to_egui(face_id, ctx.clone(), font_name.clone(), definitions);
+        }
+        None => {
+            warn!("Couldn't select font from system");
+            let mut name = font_name.lock();
+            name.clear();
+            name.push_str("Error");
+        }
+    };
+    #[cfg(target_arch = "wasm32")]
+    load_sarasa_cl(ctx.clone(), font_name.clone());
+}
+
+#[cfg(target_arch = "wasm32")]
+fn load_sarasa_cl(ctx: Context, font_name: Arc<Mutex<String>>) {
+    const WASM_FONT_NAME: &str = "SarasaUiCL-Regular.ttf";
+    wasm_bindgen_futures::spawn_local(async move {
+        let parse = async move || -> anyhow::Result<_> {
+            info!("Downloading `{WASM_FONT_NAME}`");
+            let window = web_sys::window().context("Browser window should be always present")?;
+            let document =
+                window.document().context("Browser document should be always present")?;
+            // Use the document's <base> URL instead of `location.href`, which also contains the
+            // query string and fragment (e.g. `#dev`) and would corrupt the font URL.
+            let base_url =
+                document.base_uri().ok().flatten().context("Document has no base URI")?;
+            let query_url = web_sys::Url::new_with_base(WASM_FONT_NAME, &base_url)
+                .map_err(|_| anyhow::anyhow!("Failed to resolve the font URL"))?
+                .href();
+            let res = reqwest::get(query_url.clone())
+                .await
+                .with_context(|| format!("Failed to get font from {query_url}"))?;
+            if !res.status().is_success() {
+                bail!("Response did not success, got code {}", res.status());
+            }
+            res.bytes().await.context("Failed to get bytes from response")
+        };
+        match parse().await {
+            Err(e) => {
+                warn!("Failed to fetch font {WASM_FONT_NAME}: {e}")
+            }
+            Ok(bytes) => {
+                let Some(face_id) = FONT_DATABASE
+                    .write()
+                    .load_font_source(fontdb::Source::Binary(Arc::new(bytes)))
+                    .into_iter()
+                    .next()
+                else {
+                    warn!("Failed to load font {WASM_FONT_NAME}: no valid font face");
+                    return;
+                };
+                load_font_to_egui(
+                    face_id,
+                    ctx.clone(),
+                    font_name,
+                    ctx.fonts(|r| r.definitions().clone()),
+                );
+            }
+        }
+    });
+}
+
+fn load_font_name(face_id: ID, font_name: Arc<Mutex<String>>) {
+    let post_script_name =
+        FONT_DATABASE.read().face(face_id).map_or("UNNAMED FONT".to_string(), |info| {
+            info.post_script_name.to_string()
+        });
+    *font_name.lock() = post_script_name;
+}
+
+pub(crate) fn load_font_to_egui(
+    face_id: ID,
+    ctx: Context,
+    font_name: Arc<Mutex<String>>,
+    mut definitions: FontDefinitions,
+) {
+    let Some(bytes) =
+        FONT_DATABASE.read().with_face_data(face_id, |font_bytes, _index| font_bytes.to_owned())
+    else {
+        warn!("Couldn't load font!");
+        return;
+    };
+    let bytes = Arc::new(bytes);
+    definitions.font_data.insert(
+        "system_font".into(),
+        Arc::new(egui::FontData::from_owned((*bytes).clone())),
+    );
+    definitions
+        .families
+        .entry(FontFamily::Proportional)
+        .or_default()
+        .insert(0, "system_font".into());
+    load_font_name(face_id, font_name);
+    ctx.set_fonts(definitions);
+    ctx.request_repaint();
+}

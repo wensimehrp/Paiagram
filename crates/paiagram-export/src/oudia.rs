@@ -1,0 +1,58 @@
+use std::io::Write;
+
+use paiagram_core::{RouteKey, World};
+use paiagram_oudia::{OuDiaIo, Root, Route, SerializeToOud, Structure, Time as OudTime};
+
+pub struct ExportOuDia {
+    pub world: World,
+    pub route: RouteKey,
+    pub is_oudia_second: bool,
+}
+
+impl paiagram_rw::ExportObject for ExportOuDia {
+    fn extension(&self) -> &str {
+        "oud"
+    }
+    fn default_filename(&self) -> &str {
+        "exported"
+    }
+    fn write_to_vec(&mut self, mut buf: Vec<u8>) -> std::io::Result<Vec<u8>> {
+        let root = make_root(&self.world);
+        let Structure::Struct(_, inner) = root.to_structure() else {
+            unreachable!();
+        };
+        if self.is_oudia_second {
+            // UTF-8
+            inner.serialize_oud_to(&mut buf)?;
+        } else {
+            // Doesn't have UTF-8
+            buf.write_all(&inner.to_shift_jis_string()?)?;
+        }
+        Ok(buf)
+    }
+}
+
+fn make_root(world: &World) -> Root {
+    Root {
+        file_type: "this".into(),
+        file_type_app_comment: None,
+        route: Route {
+            name: "that".into(),
+            stations: Vec::new(),
+            classes: Vec::new(),
+            display_start_time: OudTime::from_hms(4, 0, 0),
+            diagrams: Vec::new(),
+            comment: concat!("Exported by Paiagram ", env!("CARGO_PKG_VERSION")).into(),
+            down_dia_alias: None,
+            up_dia_alias: None,
+            diagram_station_interval_default: 0,
+            enable_operation: 0,
+            operation_number_reverse: false,
+            operation_crosses_start_time: false,
+            reference_diagram_index: None,
+            disable_hidden_class: false,
+        },
+        display_properties: Default::default(),
+        window_position: Default::default(),
+    }
+}

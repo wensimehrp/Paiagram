@@ -1,11 +1,8 @@
-//! # Problems
-//! Scan entities and display their problems
+use crate::{IntervalKey, TripKey};
 
-use bevy::prelude::*;
-
-pub struct ProblemsPlugin;
-impl Plugin for ProblemsPlugin {
-    fn build(&self, app: &mut App) {}
+pub enum Problem {
+    TripCollision {
+        trips: Vec<TripKey>,
+        interval: IntervalKey,
+    },
 }
-
-// TODO: do troubleshooting

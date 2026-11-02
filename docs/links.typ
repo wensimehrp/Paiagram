@@ -1,17 +1,21 @@
 #let links = (
-  repo: "https://github.com/WenSimEHRP/Paiagram",
+  // media
+  repo: "https://github.com/wensimehrp/Paiagram",
   app: "https://paiagram.com/nightly",
   converter: "https://wensimehrp.github.io/Paiagram-oudia/",
   discussions: "https://github.com/WenSimEHRP/Paiagram/discussions",
   discord: "https://discord.com/channels/142724111502802944/1281691431395790908",
+  qq: "865211882",
+  home: "https://paiagram.com",
+  // related projects
   oudia: "https://web.archive.org/web/20250831042417/http://take-okm.a.la9.jp/oudia/",
   oudia-second: "http://oudiasecond.seesaa.net/",
   qetrc-docs: "https://qetrc.readthedocs.io/zh-cn/latest/overview.html",
   qetrc: "https://github.com/CDK6182CHR/qetrc",
   pyetrc: "https://github.com/CDK6182CHR/train_graph",
   sono-sujiya: "https://www.sinjidai.com/sujiya/",
-  qq: "865211882",
-  home: "https://paiagram.com",
+  optdia: "https://www.kakun.jp/computer/optdia-20260525/",
+  // metadata
   paiagram-version: {
     // This Cargo.toml file is formatted using TOML 1.1
     // Typst doesn't yet support that

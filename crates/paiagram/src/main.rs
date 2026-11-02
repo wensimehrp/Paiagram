@@ -1,0 +1,186 @@
+//! The entrypoint of the application
+
+use std::path::PathBuf;
+
+use clap::Parser;
+use log::{error, info, warn};
+use paiagram::{App, UiState};
+use paiagram_core::SaveData;
+use paiagram_rw::SaveCategory;
+use serde::Deserialize;
+use web_time::Instant;
+
+/// Supplies QuickJS's host clock for the upcoming `env.__rquickjs_host_now_us` import that
+/// `rquickjs-sys`'s wasm shim declares.
+#[cfg(target_arch = "wasm32")]
+#[unsafe(no_mangle)]
+pub extern "C" fn __rquickjs_host_now_us() -> f64 {
+    web_sys::js_sys::Date::now() * 1000.0
+}
+
+struct PaiagramApp {
+    app: App,
+    ui_state: UiState,
+    prev_time: Instant,
+}
+
+impl PaiagramApp {
+    fn new(cc: &eframe::CreationContext, msaa_samples: u32) -> Self {
+        // set styles
+        cc.egui_ctx.global_style_mut(|style| {
+            style.spacing.window_margin = egui::Margin::same(2);
+            style.interaction.selectable_labels = false;
+        });
+        let mut app = App::new(&cc.egui_ctx);
+        if let Some(render_state) = &cc.wgpu_render_state {
+            app.init_gpu(render_state, msaa_samples);
+        }
+        // initialize pinyin and romaji search data
+        rayon::spawn(|| {
+            let _ = paiagram::build_matcher("foo bar");
+        });
+        Self {
+            app,
+            ui_state: UiState::default(),
+            prev_time: Instant::now(),
+        }
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn parse_web_arguments() -> Arguments {
+    if let Some(search) =
+        eframe::web_sys::window().and_then(|window| window.location().search().ok())
+    {
+        info!("Handling web args... `{search}`");
+        let query = search.strip_prefix('?').unwrap_or(&search);
+        match serde_html_form::from_str::<Arguments>(&query) {
+            Ok(args) => return args,
+            Err(error) => error!("Failed to parse web args: {error}"),
+        }
+    }
+
+    Arguments::default()
+}
+
+impl eframe::App for PaiagramApp {
+    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
+        egui::Rgba::TRANSPARENT.to_array()
+    }
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let curr_time = Instant::now();
+        paiagram::show_ui(
+            ui,
+            &mut self.app,
+            &mut self.ui_state,
+            curr_time - self.prev_time,
+        );
+        self.prev_time = curr_time;
+    }
+    fn auto_save_interval(&self) -> core::time::Duration {
+        core::time::Duration::from_secs(60)
+    }
+    fn save(&mut self, _storage: &mut dyn eframe::Storage) {
+        // we call save but we don't write into the provided storage
+        let world = self.app.world.clone();
+        SaveCategory::Autosave.save(SaveData::from(world), self.app.file_write_tx.clone());
+    }
+    fn logic(&mut self, _ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        paiagram::update_emergency_save(self.app.world.clone());
+    }
+}
+
+/// Arguments for the application.
+#[derive(Parser, Default, Deserialize)]
+#[command(version, about, long_about = None)]
+struct Arguments {
+    #[arg(
+        short = 'o',
+        long = "open",
+        help = "Path to a .paia file (or any other compatible file formats) to open on startup",
+        num_args = 1..
+    )]
+    #[serde(default)]
+    open: Option<Vec<PathBuf>>,
+    #[arg(long = "locale", help = "Set the localization")]
+    #[serde(default)]
+    locale: Option<String>,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn main() -> eframe::Result<()> {
+    paiagram::setup_emergency_save();
+    env_logger::init();
+    let native_options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_title("Drawer")
+            .with_app_id("Paiagram")
+            .with_inner_size([1280.0, 720.0]),
+        renderer: eframe::Renderer::Wgpu,
+        multisampling: 1,
+        ..Default::default()
+    };
+    let args = Arguments::parse();
+    let msaa_samples = native_options.multisampling.max(1) as u32;
+    info!("Initialized application");
+    eframe::run_native(
+        "Paiagram Drawer",
+        native_options,
+        Box::new(move |cc| Ok(Box::new(PaiagramApp::new(cc, msaa_samples)))),
+    )
+}
+
+#[cfg(target_arch = "wasm32")]
+fn main() {
+    use eframe::wasm_bindgen::JsCast as _;
+    use eframe::web_sys;
+
+    paiagram::setup_emergency_save();
+
+    // Redirect `log` message to `console.log` and friends:
+    eframe::WebLogger::init(log::LevelFilter::Debug).ok();
+
+    let web_options = eframe::WebOptions::default();
+
+    wasm_bindgen_futures::spawn_local(async {
+        let window = web_sys::window().expect("No window");
+        let document = window.document().expect("No document");
+        let canvas = document
+            .get_element_by_id("paiagram_canvas")
+            .expect("Failed to find paiagram_canvas")
+            .dyn_into::<web_sys::HtmlCanvasElement>()
+            .expect("paiagram_canvas was not a HtmlCanvasElement");
+
+        info!("Starting application...");
+
+        // initialize thread pool
+        wasm_bindgen_rayon::init_thread_pool(window.navigator().hardware_concurrency() as usize)
+            .await
+            .unwrap();
+
+        info!("Initialized thread pool");
+
+        let start_result = eframe::WebRunner::new()
+            .start(
+                canvas,
+                web_options,
+                Box::new(|cc| Ok(Box::new(PaiagramApp::new(cc, 1)))),
+            )
+            .await;
+
+        // Remove the loading text and spinner:
+        if let Some(loading_text) = document.get_element_by_id("loading_text") {
+            match start_result {
+                Ok(()) => {
+                    loading_text.remove();
+                }
+                Err(err) => {
+                    loading_text.set_inner_html(
+                        "<p> The app has crashed. See the developer console for details. </p>",
+                    );
+                    panic!("Failed to start eframe: {err:?}");
+                }
+            }
+        }
+    });
+}
