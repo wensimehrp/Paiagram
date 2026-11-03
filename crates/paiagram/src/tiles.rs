@@ -4,9 +4,9 @@ use serde::{Deserialize, Serialize};
 use crate::App;
 
 macro_rules! define_tiles {
-    ($(
-        $name:ident;
-    )*) => { paste::paste! {
+    (pub enum $UiTile:ident {$(
+        $name:ident,
+    )*}) => { paste::paste! {
         $(
             pub(crate) mod $name;
         )*
@@ -14,20 +14,20 @@ macro_rules! define_tiles {
             $( pub(crate) use super::$name::[<$name:camel Tile>]; )*
         }
         #[derive(Serialize, Deserialize, PartialEq)]
-        pub(super) enum UiTile {
+        pub(super) enum $UiTile {
             $( [<$name:camel>](super::tiles::all_tiles::[<$name:camel Tile>]), )*
         }
         macro_rules! for_all_tiles {
             ($tile:expr, $t:ident, $body:expr) => {
                 match $tile {
-                    $( UiTile::[<$name:camel>]($t) => $body, )*
+                    $( $UiTile::[<$name:camel>]($t) => $body, )*
                 }
             }
         }
         $(
-            impl From<$name::[<$name:camel Tile>]> for UiTile {
-                fn from(value: $name::[<$name:camel Tile>]) -> UiTile {
-                    UiTile::[<$name:camel>](value)
+            impl From<$name::[<$name:camel Tile>]> for $UiTile {
+                fn from(value: $name::[<$name:camel Tile>]) -> $UiTile {
+                    $UiTile::[<$name:camel>](value)
                 }
             }
         )*
@@ -36,17 +36,19 @@ macro_rules! define_tiles {
 }
 
 define_tiles!(
-    marey;
-    graph;
-    route_timetable;
-    config;
-    start;
-    station;
-    trip;
-    intervals;
-    service_classes;
-    extension;
-    profiler;
+    pub enum UiTile {
+        marey,
+        graph,
+        route_timetable,
+        config,
+        start,
+        station,
+        trip,
+        intervals,
+        service_classes,
+        extension,
+        profiler,
+    }
 );
 
 fn handle_keyboard_navigation(ui: &Ui) -> Vec2 {
