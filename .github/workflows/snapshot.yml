@@ -24,10 +24,18 @@ jobs:
   build-and-deploy-wasm:
     runs-on: ubuntu-latest
     steps:
+      - name: Free runner disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h
+
       - uses: actions/checkout@v7
       - uses: DeterminateSystems/nix-installer-action@v20
       - uses: DeterminateSystems/magic-nix-cache-action@v13
       - uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: "false"
+          key: ${{ hashFiles('flake.lock') }}
 
       - name: Download Sarasa fonts
         run: nix develop .#default --command just download-font
