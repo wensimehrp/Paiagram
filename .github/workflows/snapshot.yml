@@ -9,8 +9,7 @@ on:
       - "flake.*"
       - "crates/**"
       - ".cargo/**"
-      - "web/nightly/**"
-      - ".github/workflows/nightly.yml"
+      - ".github/workflows/snapshot.yml"
   workflow_dispatch:
 
 concurrency:
