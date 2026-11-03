@@ -277,9 +277,7 @@ fn show_trip_header(
                     .on_hover_text(format!("Click to open the trip\n{name}"))
                     .clicked()
                 {
-                    app.ui_action_tx.send(UiCommand::OpenOrFocus(super::UiTile::Trip(
-                        TripTile::new(*key),
-                    )));
+                    app.open_or_focus(TripTile::new(*key));
                 }
             }
         },

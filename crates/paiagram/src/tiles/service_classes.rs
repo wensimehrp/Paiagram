@@ -124,16 +124,14 @@ impl Tile for ServiceClassesTile {
                     ui.horizontal_wrapped(|ui| {
                         chunk.iter().fold(acc, |acc, &(trip_key, name, time)| {
                             let resp = ui.button(name).clicked();
-                            acc.or(resp.then(|| {
-                                UiCommand::OpenOrFocus(UiTile::Trip(TripTile::new(trip_key)))
-                            }))
+                            acc.or(resp.then(|| TripTile::new(trip_key)))
                         })
                     })
                     .inner
                 })
             });
-            if let Some(action) = scroll_area.inner {
-                app.ui_action_tx.send(action);
+            if let Some(tile) = scroll_area.inner {
+                app.open_or_focus(tile);
             }
         });
     }

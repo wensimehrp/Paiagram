@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::tiles::Tile;
 use crate::tiles::all_tiles::*;
-use crate::{App, UiCommand, UiTile, for_all_tiles};
+use crate::{App, UiTile, for_all_tiles};
 
 #[derive(Serialize, Deserialize)]
 pub struct UiTiles {
@@ -114,22 +114,20 @@ impl<'w> Behavior<UiTile> for TileViewer<'w> {
             ScrollArea::vertical().show(ui, |ui| {
                 #[rustfmt::skip]
                 let tiles: [(_, fn() -> UiTile); 6] = [
-                    ("Intervals",       || UiTile::Intervals(IntervalsTile::default())),
-                    ("Service Classes", || UiTile::ServiceClasses(ServiceClassesTile::default())),
-                    ("Graph",           || UiTile::Graph(GraphTile::default())),
-                    ("Extension",       || UiTile::Extension(ExtensionTile::default())),
-                    ("Config",          || UiTile::Config(ConfigTile::default())),
-                    ("Trip",            || UiTile::Trip(TripTile::default())),
+                    ("Intervals",       || IntervalsTile::default().into()),
+                    ("Service Classes", || ServiceClassesTile::default().into()),
+                    ("Graph",           || GraphTile::default().into()),
+                    ("Extension",       || ExtensionTile::default().into()),
+                    ("Config",          || ConfigTile::default().into()),
+                    ("Trip",            || TripTile::default().into()),
                 ];
                 for (text, tile) in tiles {
                     if ui.button(text).clicked() {
-                        self.app.ui_action_tx.send(UiCommand::OpenOrFocus(tile()));
+                        self.app.open_or_focus(tile());
                     }
                 }
                 if self.app.preferences.dev_mode && ui.button("Profiler").clicked() {
-                    self.app.ui_action_tx.send(UiCommand::OpenOrFocus(UiTile::Profiler(
-                        ProfilerTile::default(),
-                    )));
+                    self.app.open_or_focus(ProfilerTile::default());
                 }
                 ScrollArea::vertical().show_rows(
                     ui,
@@ -141,14 +139,10 @@ impl<'w> Behavior<UiTile> for TileViewer<'w> {
                         {
                             ui.menu_button(info.name.as_str(), |ui| {
                                 if ui.button("Graph").clicked() {
-                                    self.app.ui_action_tx.send(UiCommand::OpenOrFocus(
-                                        UiTile::Marey(MareyTile::new(*route_key)),
-                                    ));
+                                    self.app.open_or_focus(MareyTile::new(*route_key));
                                 }
                                 if ui.button("Route Timetable").clicked() {
-                                    self.app.ui_action_tx.send(UiCommand::OpenOrFocus(
-                                        UiTile::RouteTimetable(RouteTimetableTile::new(*route_key)),
-                                    ));
+                                    self.app.open_or_focus(RouteTimetableTile::new(*route_key));
                                 }
                             });
                         }

@@ -19,11 +19,11 @@ use super::Tile;
 pub struct ExtensionTile {
     script_text: String,
     // wasm only allows saving file on the main thread
-    file_receiver: mpsc::Receiver<JsDataExporter>,
-    file_sender: mpsc::Sender<JsDataExporter>,
     bytecodes: Option<paiagram_extensions::Result<ByteCodes>>,
-    bytecodes_receiver: mpsc::Receiver<paiagram_extensions::Result<ByteCodes>>,
-    bytecodes_sender: mpsc::Sender<paiagram_extensions::Result<ByteCodes>>,
+    file_data_rx: mpsc::Receiver<JsDataExporter>,
+    file_data_tx: mpsc::Sender<JsDataExporter>,
+    bytecodes_rx: mpsc::Receiver<paiagram_extensions::Result<ByteCodes>>,
+    bytecodes_tx: mpsc::Sender<paiagram_extensions::Result<ByteCodes>>,
     edit_mode: bool,
     config_running_status: Arc<Mutex<ConfigRunningStatus>>,
     script_running_status: Arc<Mutex<ScriptRunningStatus>>,
@@ -34,16 +34,16 @@ pub struct ExtensionTile {
 
 impl ExtensionTile {
     pub fn new(script_text: String) -> Self {
-        let (file_sender, file_receiver) = mpsc::channel();
-        let (bytecodes_sender, bytecodes_receiver) = mpsc::channel();
-        compile_script(script_text.as_str().into(), bytecodes_sender.clone());
+        let (file_data_tx, file_data_rx) = mpsc::channel();
+        let (bytecodes_tx, bytecodes_rx) = mpsc::channel();
+        compile_script(script_text.as_str().into(), bytecodes_tx.clone());
         Self {
             script_text,
-            file_receiver,
-            file_sender,
+            file_data_rx,
+            file_data_tx,
             bytecodes: None,
-            bytecodes_receiver,
-            bytecodes_sender,
+            bytecodes_rx,
+            bytecodes_tx,
             edit_mode: false,
             config_running_status: Default::default(),
             script_running_status: Default::default(),
@@ -109,10 +109,10 @@ impl Tile for ExtensionTile {
 
 fn main_display(tile: &mut ExtensionTile, app: &mut crate::App, ui: &mut Ui) {
     puffin::profile_function!();
-    if let Ok(data) = tile.file_receiver.try_recv() {
+    if let Ok(data) = tile.file_data_rx.try_recv() {
         data.write_via_interface(app.file_write_tx.clone());
     }
-    if let Ok(bytecodes) = tile.bytecodes_receiver.try_recv() {
+    if let Ok(bytecodes) = tile.bytecodes_rx.try_recv() {
         tile.bytecodes = Some(bytecodes);
         tile.config_ui = None;
     }
@@ -145,10 +145,7 @@ fn main_display(tile: &mut ExtensionTile, app: &mut crate::App, ui: &mut Ui) {
         return;
     }
     if edit_changed && tile.bytecodes.is_none() {
-        compile_script(
-            tile.script_text.as_str().into(),
-            tile.bytecodes_sender.clone(),
-        );
+        compile_script(tile.script_text.as_str().into(), tile.bytecodes_tx.clone());
     }
     let Some(bytecodes) = &tile.bytecodes else {
         ui.horizontal(|ui| {
@@ -189,7 +186,7 @@ fn main_display(tile: &mut ExtensionTile, app: &mut crate::App, ui: &mut Ui) {
                     selected_items: app.selected_items.clone(),
                 },
                 JsIo {
-                    file_sender: tile.file_sender.clone(),
+                    file_data_tx: tile.file_data_tx.clone(),
                 },
                 tile.return_value_map.clone(),
                 tile.script_running_status.clone(),

@@ -14,7 +14,7 @@ pub struct JsIo {
     /// wasm only allows downloading files in the main thread, hence the file sender to send data
     /// to the main thread.
     #[qjs(skip_trace)]
-    pub file_sender: mpsc::Sender<JsDataExporter>,
+    pub file_data_tx: mpsc::Sender<JsDataExporter>,
 }
 
 #[rquickjs::methods(rename_all = "camelCase")]
@@ -22,7 +22,7 @@ impl JsIo {
     /// Request a file download from JS.
     pub fn save_file(&mut self, filename: String, content: String) {
         let info = JsDataExporter { filename, content };
-        self.file_sender.send(info).unwrap();
+        self.file_data_tx.send(info).unwrap();
     }
 }
 

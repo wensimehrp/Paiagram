@@ -128,7 +128,7 @@ impl CommandPalette {
                 None
             }
         } {
-            app.ui_action_tx.send(UiCommand::OpenOrFocus(tile));
+            app.open_or_focus(tile);
         }
         self.clear();
     }

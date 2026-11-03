@@ -20,7 +20,7 @@ impl super::Tile for IntervalsTile {
     const NAME: &'static str = "Intervals";
     fn main_display(&mut self, app: &mut App, ui: &mut Ui) {
         puffin::profile_function!();
-        Panel::left(ui.id().with("interval left panel")).frame(Frame::NONE).show(ui, |ui| {
+        Panel::left("interval left panel").frame(Frame::NONE).show(ui, |ui| {
             puffin::profile_scope!("interval_list");
             ScrollArea::vertical().auto_shrink(false).show_rows(
                 ui,
@@ -85,9 +85,7 @@ impl super::Tile for IntervalsTile {
                             continue;
                         };
                         if ui.button(trip.name.as_str()).clicked() {
-                            app.ui_action_tx.send(UiCommand::OpenOrFocus(UiTile::Trip(
-                                TripTile::new(*trip_key),
-                            )));
+                            app.open_or_focus(TripTile::new(*trip_key));
                         }
                     }
                 })

@@ -24,6 +24,13 @@ macro_rules! define_tiles {
                 }
             }
         }
+        $(
+            impl From<$name::[<$name:camel Tile>]> for UiTile {
+                fn from(value: $name::[<$name:camel Tile>]) -> UiTile {
+                    UiTile::[<$name:camel>](value)
+                }
+            }
+        )*
         pub(super) use for_all_tiles;
     } };
 }
@@ -66,7 +73,7 @@ fn handle_keyboard_navigation(ui: &Ui) -> Vec2 {
     let mut requires_repaint = false;
     let smoothed_delta = ui.ctx().data_mut(|data| {
         let smoothed_delta: &mut Vec2 =
-            data.get_temp_mut_or(ui.id().with("keyboard pan info"), vec2(0.0, 0.0));
+            data.get_temp_mut_or(ui.scope_id().with("keyboard pan info"), vec2(0.0, 0.0));
         let t = emath::exponential_smooth_factor(0.9, 0.3, dt);
         *smoothed_delta = emath::lerp(*smoothed_delta..=key_pan_delta, t);
         let diff = (*smoothed_delta - key_pan_delta).length();
