@@ -24,9 +24,7 @@ Paiagram is a user-friendly transit scheduler and visualizer. Paiagram has:
 ## Contributing and Development
 
 We welcome any sort of contributions, as long as they are helpful. Please read the
-[Contributor Notes](CONTRIBUTING.md) before starting.
-
-You can also check out `README.md` files in `./crates`.
+[Contributor's Notes](CONTRIBUTING.md) carefully before starting to contribute.
 
 ## License
 

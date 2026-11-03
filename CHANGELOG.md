@@ -30,7 +30,7 @@ documentation. This changelog includes changes to the following:
 - Removed LLT Import.
 - Derived travel modes.
 
-## 0.1.3 (May. 29, 2026)
+## 0.1.3-alpha (May. 29, 2026)
 
 ### Added
 
