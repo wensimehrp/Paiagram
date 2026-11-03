@@ -63,7 +63,7 @@ exit 1
       " text-black dark:text-white"
     })[
       #let a = h.a.with(class: {
-        "block flex-1 flex flex-col text-lg border-b-4 px-8 pb-2 pt-4 border-teal-700"
+        "block flex-1 flex flex-col text-lg border-b-4 px-5 md:px-8 pb-2 pt-4 border-teal-700"
         " hover:bg-gray-500/50 whitespace-nowrap"
       })
       #a(href: links.latest-snapshot, {
@@ -85,10 +85,35 @@ exit 1
     ]
     // Explanation
     #h.article(
-      class: "prose prose-zinc dark:prose-invert mx-auto my-10 max-w-3xl p-5 md:p-10",
+      class: "prose prose-zinc dark:prose-invert mx-auto my-20 max-w-3xl px-5 md:px-10",
     )[
       #import "@preview/cmarker:0.1.10"
       #cmarker.render(read("README.md"), h1-level: 0)
     ]
+    // gallery
+    #let gallery-data = (
+      "https://github.com/user-attachments/assets/1b53f533-ec6e-4183-b7d1-fbf471545318": [
+        = Performant
+        Run nation-wide datasets directly in Paiagram. Even in the browser.
+      ],
+      "https://github.com/user-attachments/assets/a0449615-0bdd-43fe-8b6a-d100d4d5f410": [
+        = Intuitive
+        Hover and select. No need to edit against a table, just drag stringlines in the diagram.
+      ],
+      "https://github.com/user-attachments/assets/81542102-28ed-42a6-a477-0a18765d5403": [
+        = Dark Mode
+        _Ohhhhhhhhh! It's so dark here!_
+      ],
+    )
+    #for (idx, (img-src, desc)) in gallery-data.pairs().enumerate() {
+      let flow-direction = if calc.rem(idx, 2) == 0 { "md:flex-row-reverse" } else { "md:flex-row" }
+      h.div(class: "flex-col " + flow-direction + " mx-auto my-10 px-5 max-w-7xl flex gap-5", {
+        h.section(class: "flex-1 prose p-3", desc)
+        h.img(
+          class: "flex-[2] bg-blue-200 min-w-0 object-cover object-center shadow-lg",
+          src: img-src,
+        )
+      })
+    }
   ]
 ]) <index>

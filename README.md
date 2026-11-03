@@ -1,48 +1,23 @@
 <!--typst-begin-exclude-->
 
+![](https://github.com/user-attachments/assets/bfee66b3-c0a6-49cb-b522-0deecd232a95)
+
 <p align="center">
-  <img src="./assets/paiagram-white-with-shadow-bg.svg">
+  <a href="https://paiagram.com/demo">👉 Click here to run the online demo 👈</a>
 </p>
-
-# Paiagram
-
----
-
-![A fictional railway network featuring mixed services](https://github.com/user-attachments/assets/3819f7b5-c33c-4e71-90a4-d61d8a4bb93b)
-
-_A fictional railway network featuring mixed services_
-
----
-
-[![The Chinese Railway network](https://github.com/user-attachments/assets/1b53f533-ec6e-4183-b7d1-fbf471545318)](https://paiagram.com/0.1.1/?open=example.paia)
-
-[_The Chinese Railway network_](https://paiagram.com/0.1.1/?open=example.paia)
-
----
-
-> [!WARNING]
-> Paiagram is still in development. Don't expect it to be ready for production use right now.
-> Come back by late 2026 to see how it is going. I guarantee you that there would be lots of new commits.
-
-Paiagram is a marey chart editor and timetable visualizer that runs on any modern potatoes.
-
-For context: It runs on some very bad hardware.
 
 <!--typst-end-exclude-->
 
-## Features
+Paiagram is a user-friendly transit scheduler and visualizer. Paiagram has:
 
-- Graph single, double, triple, and quadruple track routes on your chart. In fact, there isn't
-  a limit at all!
-- Create diagrams from arbitrary nodes. The program handles it. Don't worry. Your vehicle data is
-  not tied to the diagram.
-- Translations! You can use the app in Klingon if you wish to. You'd need to translate it first,
-  obviously.
-- Try it on the web! You can download the app bundle and use it directly in your browser without
-  installation. It works completely offline! <!--typst-begin-exclude-->There's also an online
-  build: <https://paiagram.com>.<!--typst-end-exclude-->
-- You can also import OuDiaSecond, qETRC/pyETRC, and GTFS diagrams using the built-in import
-  feature.
+- **GPU-accelerated** workspaces, including a Marey diagram editor and a map tile viewer.
+- **Arbitrary network graphs**: model single through quadruple-track (or unlimited) routes
+  with station and intersection nodes decoupled from vehicle data.
+- An **Interactive map tile** with clickable stations/intervals/trips and map underlays.
+- **OuDia, OuDiaSecond, qETRC/pyETRC, and GTFS import systems**.
+  Import the data directly without translating it yourself.
+- **Web builds** and **desktop builds**. It runs in your phone!
+- Community-provided and official **translations**.
 
 <!--typst-begin-exclude-->
 
@@ -53,29 +28,11 @@ We welcome any sort of contributions, as long as they are helpful. Please read t
 
 You can also check out `README.md` files in `./crates`.
 
-<!--typst-end-exclude-->
-
 ## License
-
-<!--raw-typst
-  Paiagram is released under Mozilla Public License, Version 2.0.
--->
-<!--typst-begin-exclude-->
 
 Paiagram is released under [Mozilla Public License, Version 2.0.](LICENSE.md)
 
-<!--typst-end-exclude-->
-
 ## Translation Status
-
-<!--raw-typst
-  #std.link(
-    "https://hosted.weblate.org/engage/paiagram/",
-    std.html.img(src: "https://hosted.weblate.org/widget/paiagram/paiagram-app/multi-auto.svg")
-  )
--->
-
-<!--typst-begin-exclude-->
 
 [![Translation status](https://hosted.weblate.org/widget/paiagram/paiagram-app/multi-auto.svg)](https://hosted.weblate.org/engage/paiagram/)
 
