@@ -1,43 +1,26 @@
 #!/usr/bin/env bash
 #let _ = ```sh
 case "$1" in
-  compile) typst compile --features bundle,html --format bundle $0 ;;
-  watch)   typst watch   --features bundle,html --format bundle --pretty $0 ;;
+  compile) typst compile --features bundle,html --format bundle $0 ; exit 0 ;;
+  watch)   typst watch   --features bundle,html --format bundle --pretty $0 ; exit 0 ;;
   *)       echo "Unknown option: $1. Enter 'compile' or 'watch'"; exit 1 ;;
 esac
-exit 0
+exit 1
 ```
 
 #import "@preview/typhoon:0.2.0"
 #import "@preview/oxifmt:1.0.0": strfmt
-
-#let realize(label, fn) = {
-  let c = state("__realize-label+a-bunch-of-entropy", none)
-  {
-    show html.elem.where(tag: "a"): elem => c.update(href => elem.attrs.href)
-    link(label)[]
-  }
-  context {
-    fn(c.get())
-  }
-}
-
-// documentation
-#include "docs/book.typ"
+#import "docs/links.typ": links
+#import html as h
+#import "@preview/based:0.2.0"
 
 // the real interesting stuff
 #show html.elem: typhoon.update-elem
-#import html as h
-#import "@preview/based:0.2.0"
-#import "docs/links.typ": links
 
 #let icon-base64 = based.encode64(read("/assets/paiagram-adaptive-no-bg.svg"))
 
-#context [#asset("main-styles.css", typhoon.tailwind-css()) <main-styles>]
-
 #document("index.html", h.html(lang: "en")[
   #h.head[
-    #realize(<main-styles>, href => h.link(rel: "stylesheet", href: href))
     #h.meta(charset: "utf-8")
     #h.meta(name: "viewport", content: "width=device-width, initial-scale=1")
     #h.link(rel: "icon", type: "image/svg+xml", href: "data:image/svg+xml;base64," + icon-base64)
@@ -47,13 +30,14 @@ exit 0
       src: "https://umami-theta-pink.vercel.app/script.js",
       data-website-id: "958a845f-415f-459e-b5a5-7bae194ba9c2",
     ))
-    #h.style(
+    #context h.style(
       ```css
       @import url('https://fonts.googleapis.com/css2?family=Lato:ital,wght@0,100;0,300;0,400;0,700;0,900;1,100;1,300;1,400;1,700;1,900&display=swap');
       :root {
         font-family: "Lato";
       }
-      ```.text,
+      ```.text
+        + typhoon.tailwind-css(),
     )
   ]
   #h.body(class: "bg-white dark:bg-zinc-900")[
@@ -82,11 +66,11 @@ exit 0
         "block flex-1 flex flex-col text-lg border-b-4 px-8 pb-2 pt-4 border-teal-700"
         " hover:bg-gray-500/50 whitespace-nowrap"
       })
-      #a(href: "./latest-snapshot", {
+      #a(href: links.latest-snapshot, {
         h.span[Try it Online]
         h.small[Run the latest snapshot]
-      }) <online-version>
-      #a(href: "docs/index.html", {
+      })
+      #a(href: links.latest-snapshot-docs, {
         h.span[Documentation]
         h.small[Read the docs]
       })
@@ -94,7 +78,7 @@ exit 0
         h.span[Repository]
         h.small[Browse the source]
       })
-      #a(href: links.repo + "/discussions", {
+      #a(href: links.discussions, {
         h.span[Discussions]
         h.small[Official discussion zone]
       })

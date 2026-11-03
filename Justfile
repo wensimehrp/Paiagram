@@ -10,11 +10,17 @@ download-font:
     rm -r fonts
 
 # Build rust docs
-rust-docs:
+build-rust-docs:
     rm -rf dist/api-docs
     mkdir -p dist/api-docs
     cargo doc --workspace --no-deps --release --document-private-items
     mv target/doc/* dist/api-docs
+
+# Build user docs
+build-user-docs:
+    rm -rf dist/docs
+    mkdir -p dist/docs
+    ./docs.typ compile
 
 watch-wasm-app:
     trunk --config ./crates/paiagram serve --public-url .
@@ -22,15 +28,16 @@ watch-wasm-app:
 watch-release-wasm-app:
     trunk --config ./crates/paiagram serve --release --public-url .
 
-# Build WASM binary
+# Build wasm binary
 build-wasm-app:
-    rm -rf dist/app
+    rm -rf dist
     trunk \
         --config ./crates/paiagram \
         build --release \
         --minify \
-        -d $PWD/dist/app --public-url .
+        -d $PWD/dist --public-url .
 
-release-wasm-app: build-wasm-app rust-docs
+# Build the wasm release version
+build-release-wasm-app: build-wasm-app build-rust-docs build-user-docs
     du -sh target/wasm32-unknown-unknown/release/paiagram.wasm | sort -hr
-    du -sh dist/app/* | sort -hr
+    du -sh dist/* | sort -hr

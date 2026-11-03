@@ -3,7 +3,7 @@
 #import "@preview/cmarker:0.1.10"
 
 // temporary workaround so I don't need to write so many include statements
-#let chapter-path(path) = chapter("docs/" + path, content: include path + ".typ")
+#let chapter-path(path) = chapter(path, content: include path + ".typ")
 
 #let other(..args) = (kind: "other", ..args.named())
 
@@ -65,11 +65,11 @@
     chapter-path("misc/extensions"),
     chapter-path("misc/web"),
     chapter-path("misc/debugging"),
-    chapter("docs/changelog", content: [
+    chapter("changelog", content: [
       #title[Changelog]
       #cmarker.render(label-prefix: "changelog-", read("../CHANGELOG.md"), h1-level: 0)
     ]),
-    chapter("docs/license", content: [
+    chapter("license", content: [
       #title[License] <software-license>
 
       This is the License of Paiagram #links.paiagram-version.

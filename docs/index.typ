@@ -22,16 +22,11 @@ timetabling. However, if you do want something to be added into the program,
 
 = Getting Started
 
-#let online-version-link = context {
-  let href = query(<online-version>).first().attrs.href
-  link(href)[web version]
-}
-
-You can use the #online-version-link or the desktop version. The web version runs on Chromium 113+.
-Latest versions of Firefox and Safari are also supported, although they might run at a lower
-framerate. Despite the fact that Paiagram supports Linux and Windows, we do not provide a
-pre-compiled version just yet. You would, unfortunately, have to compile the desktop version
-yourself.
+You can use the #link(links.latest-snapshot)[web version] or the desktop version. The web version
+runs on Chromium 113+. Latest versions of Firefox and Safari are also supported, although they might
+run at a lower framerate. Despite the fact that Paiagram supports Linux and Windows, we do not
+provide a pre-compiled version just yet. You would, unfortunately, have to compile the desktop
+version yourself.
 
 If you have any trouble using the application, feel free to ask in #link(links.discussions)[GitHub
   discussions], or in our QQ group chat: #raw(links.qq).

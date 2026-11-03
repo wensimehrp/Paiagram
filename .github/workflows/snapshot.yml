@@ -33,13 +33,13 @@ jobs:
         run: nix develop .#default --command just download-font
 
       - name: Prepare Pages artifact
-        run: nix develop .#default --command just release-wasm-app
+        run: nix develop .#default --command just build-release-wasm-app
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
           name: wasm-pages
-          path: ./dist/app
+          path: ./dist
 
       - name: Deploy
         uses: peaceiris/actions-gh-pages@v4
@@ -49,5 +49,5 @@ jobs:
           user_name: github-actions[bot]
           user_email: 41898282+github-actions[bot]@users.noreply.github.com
           publish_branch: main
-          publish_dir: ./dist/app
+          publish_dir: ./dist
           destination_dir: new-snapshot

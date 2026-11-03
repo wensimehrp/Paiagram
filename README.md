@@ -41,12 +41,8 @@ For context: It runs on some very bad hardware.
 - Try it on the web! You can download the app bundle and use it directly in your browser without
   installation. It works completely offline! <!--typst-begin-exclude-->There's also an online
   build: <https://paiagram.com>.<!--typst-end-exclude-->
-- You can also import <!--raw-typst
-    #link(<import-oudia>)[OuDiaSecond],
-    #link(<import-qetrc>)[qETRC/pyETRC], and
-    #link(<import-gtfs>)[GTFS] diagrams
-  --><!--typst-begin-exclude-->OuDiaSecond, qETRC/pyETRC, and GTFS diagrams<!--typst-end-exclude-->
-  using the built-in import feature.
+- You can also import OuDiaSecond, qETRC/pyETRC, and GTFS diagrams using the built-in import
+  feature.
 
 <!--typst-begin-exclude-->
 
@@ -62,7 +58,7 @@ You can also check out `README.md` files in `./crates`.
 ## License
 
 <!--raw-typst
-  Paiagram is released under #link(<software-license>)[Mozilla Public License, Version 2.0.]
+  Paiagram is released under Mozilla Public License, Version 2.0.
 -->
 <!--typst-begin-exclude-->
 

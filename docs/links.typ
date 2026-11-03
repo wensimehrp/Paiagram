@@ -23,4 +23,6 @@
     // toml("../Cargo.toml").workspace.package.version
     "0.1.3"
   },
+  latest-snapshot: "https://paiagram.com/latest-snapshot",
+  latest-snapshot-docs: "https://paiagram.com/latest-snapshot-docs",
 )
