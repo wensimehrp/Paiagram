@@ -40,7 +40,7 @@ exit 1
         + typhoon.tailwind-css(),
     )
   ]
-  #h.body(class: "bg-white dark:bg-zinc-900")[
+  #h.body(class: "bg-zinc-100 dark:bg-zinc-800")[
     #h.section(
       class: {
         "w-full p-5 bg-cover bg-center bg-no-repeat"
@@ -108,7 +108,7 @@ exit 1
     #for (idx, (img-src, desc)) in gallery-data.pairs().enumerate() {
       let flow-direction = if calc.rem(idx, 2) == 0 { "md:flex-row-reverse" } else { "md:flex-row" }
       h.div(class: "flex-col " + flow-direction + " mx-auto my-10 px-5 max-w-7xl flex gap-5", {
-        h.section(class: "flex-1 prose p-3", desc)
+        h.section(class: "flex-1 prose prose-zinc dark:prose-invert p-3", desc)
         h.img(
           class: "flex-[2] bg-blue-200 min-w-0 object-cover object-center shadow-lg",
           src: img-src,
