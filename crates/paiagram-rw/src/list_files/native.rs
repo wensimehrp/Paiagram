@@ -16,7 +16,7 @@ impl SaveCategory {
             .filter_map(|entry| entry.ok())
             .map(|entry| entry.path())
             .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("paia"))
-            .filter_map(|path| path.into_string().ok())
+            .filter_map(|path| path.file_name().and_then(|n| n.to_str()).map(String::from))
             .collect::<Vec<_>>();
         files.sort();
         Ok(files)

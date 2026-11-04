@@ -18,7 +18,7 @@ log.workspace = true
 rayon.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-eframe.workspace = true  # provides storage directory
+directories.workspace = true
 rfd.workspace = true
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]

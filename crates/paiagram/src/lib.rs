@@ -20,9 +20,9 @@ use egui::*;
 use egui_i18n::tr;
 pub use emergency_save::{setup_emergency_save, update_emergency_save};
 use log::info;
+use paiagram_core::RouteKey;
 use paiagram_core::import::{ImportMode, ImportType};
 use paiagram_core::time::TimetableTime;
-use paiagram_core::{RouteKey, SaveData};
 use paiagram_export::{ExportGtfs, ExportOuDia};
 use paiagram_rw::ExportObject;
 use rfd::AsyncFileDialog;
@@ -57,6 +57,12 @@ pub fn show_ui(
     {
         puffin::profile_scope!("command_palette");
         ui_state.command_palette.show(ui.ctx(), app);
+    }
+
+    if ui.ctx().input_mut(|i| i.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, Key::S)) {
+        app.save_as();
+    } else if ui.ctx().input_mut(|i| i.consume_key(Modifiers::COMMAND, Key::S)) {
+        app.save();
     }
 
     Panel::top("top panel").exact_size(32.0).show(ui, |ui| {
@@ -105,6 +111,9 @@ pub fn show_ui(
                             if !ui.button(label).clicked() {
                                 continue;
                             }
+                            if matches!(import_mode, ImportMode::Replace) {
+                                app.save_path = None;
+                            }
                             info!("Trying to read {category}");
                             let dialog = AsyncFileDialog::new()
                                 .set_title(button_display)
@@ -120,9 +129,13 @@ pub fn show_ui(
                     });
                 }
                 ui.separator();
-                if ui.button("Save .paia").clicked() {
-                    let new_file = SaveData::from(app.world.clone());
-                    new_file.write_via_interface(app.file_write_tx.clone());
+                if ui.add(Button::new("Save").shortcut_text("Ctrl+S")).clicked() {
+                    app.save();
+                    ui.close();
+                }
+                if ui.add(Button::new("Save As...").shortcut_text("Ctrl+Shift+S")).clicked() {
+                    app.save_as();
+                    ui.close();
                 }
                 ui.separator();
                 if ui.button("Export .oud").clicked() {

@@ -20,7 +20,10 @@ impl SaveCategory {
             let result = (|| {
                 let dir = self.category_path();
                 fs::create_dir_all(&dir).context("Failed to create directory for save")?;
-                let path = dir.join(format!("{}.{}", self.filename(), data.extension()));
+                let filename = self.filename();
+                let ext = data.extension();
+                let stem = filename.strip_suffix(&format!(".{ext}")).unwrap_or(&filename);
+                let path = dir.join(format!("{stem}.{ext}"));
                 let buf = data
                     .write_to_vec(data.default_buf())
                     .context("Failed to serialize to buffer")?;
@@ -47,13 +50,16 @@ fn prune_autosaves(dir: &Path) {
     };
     let mut autosaves: Vec<_> = entries
         .filter_map(|entry| entry.ok())
-        .map(|entry| entry.path())
-        .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("paia"))
+        .map(|entry| {
+            let mtime = entry.metadata().and_then(|m| m.modified()).ok();
+            (mtime, entry.path())
+        })
+        .filter(|(_, path)| path.extension().and_then(|ext| ext.to_str()) == Some("paia"))
         .collect();
 
     autosaves.sort();
     let excess = autosaves.len().saturating_sub(MAX_AUTOSAVES);
-    for path in autosaves.into_iter().take(excess) {
+    for (_, path) in autosaves.into_iter().take(excess) {
         if let Err(error) = fs::remove_file(&path) {
             warn!(
                 "Failed to remove old autosave `{}`: {error}",

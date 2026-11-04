@@ -1,11 +1,14 @@
 use std::ops;
+use std::path::PathBuf;
 use std::sync::mpsc;
 
 use egui::Ui;
 use log::{error, info, warn};
 use paiagram_core::import::ImportMode;
-use paiagram_core::{Source, World};
-use paiagram_rw::{LoadResult, WriteResult};
+use paiagram_core::{SaveData, Source, World};
+#[cfg(target_arch = "wasm32")]
+use paiagram_rw::SaveCategory;
+use paiagram_rw::{ExportObject, LoadResult, WriteResult};
 use paiagram_selection::SelectedItems;
 
 use crate::config::{Preferences, Settings};
@@ -19,14 +22,17 @@ pub struct App {
     pub(crate) preferences: Preferences,
     pub(crate) settings: Settings,
     pub(crate) selected_items: SelectedItems,
+    pub(crate) save_path: Option<PathBuf>,
 
     // action and file operation transmitters and receivers
     ui_command_rx: mpsc::Receiver<UiCommand>,
     world_read_rx: mpsc::Receiver<LoadResult<(World, ImportMode)>>,
     file_write_rx: mpsc::Receiver<WriteResult>,
+    save_write_rx: mpsc::Receiver<WriteResult>,
     ui_command_tx: mpsc::Sender<UiCommand>,
     pub world_read_tx: mpsc::Sender<LoadResult<(World, ImportMode)>>,
     pub file_write_tx: mpsc::Sender<WriteResult>,
+    save_write_tx: mpsc::Sender<WriteResult>,
 }
 
 /// Short definition for accessing the WORLD and SOURCE's data.
@@ -49,6 +55,7 @@ impl App {
     pub fn new(ctx: &egui::Context) -> Self {
         let (ui_command_tx, ui_command_rx) = mpsc::channel();
         let (file_write_tx, file_write_rx) = mpsc::channel();
+        let (save_write_tx, save_write_rx) = mpsc::channel();
         let (world_read_tx, world_read_rx) = mpsc::channel();
         Self {
             source: Source::new(),
@@ -56,13 +63,39 @@ impl App {
             preferences: Preferences::new(ctx),
             settings: Settings::default(),
             selected_items: SelectedItems::None,
+            save_path: None,
             ui_command_tx,
             ui_command_rx,
             world_read_tx,
             world_read_rx,
             file_write_tx,
             file_write_rx,
+            save_write_tx,
+            save_write_rx,
         }
+    }
+    /// Saves the current world to the stored path, or prompts for a location if none is set.
+    pub(crate) fn save(&mut self) {
+        let save_data = SaveData::from(self.world.clone());
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(path) = self.save_path.clone() {
+            save_data.write_to_path(path, self.save_write_tx.clone());
+        } else {
+            save_data.write_via_interface(self.save_write_tx.clone());
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let name = self.save_path.as_ref().and_then(|p| p.to_str()).map(str::to_owned);
+            SaveCategory::Save(name).save(save_data, self.save_write_tx.clone());
+        }
+    }
+    /// Saves the current world to a new location.
+    pub(crate) fn save_as(&mut self) {
+        let save_data = SaveData::from(self.world.clone());
+        #[cfg(not(target_arch = "wasm32"))]
+        save_data.write_via_interface(self.save_write_tx.clone());
+        #[cfg(target_arch = "wasm32")]
+        save_data.write_via_interface(self.file_write_tx.clone());
     }
     /// Initializes the custom WGPU resources used by the Marey tile's render callback.
     ///
@@ -86,7 +119,22 @@ impl App {
             match result {
                 WriteResult::Success(path) => info!("Saved `{}`", path.display()),
                 WriteResult::Error(error) => {
-                    error!("Failed to write file: {error}");
+                    error!("Failed to write file: {error:#}");
+                }
+                WriteResult::Aborted => {
+                    warn!("Write operation aborted")
+                }
+            }
+        }
+        for result in self.save_write_rx.try_iter() {
+            ui.request_repaint();
+            match result {
+                WriteResult::Success(path) => {
+                    info!("Saved `{}`", path.display());
+                    self.save_path = Some(path);
+                }
+                WriteResult::Error(error) => {
+                    error!("Failed to write file: {error:#}");
                 }
                 WriteResult::Aborted => {
                     warn!("Write operation aborted")

@@ -32,7 +32,7 @@ impl SaveCategory {
                 save_bytes_to_indexed_db(self, bytes)
                     .await
                     .map_err(|e| io::Error::other(e.to_string()))
-                    .context("foo bar")
+                    .context("Failed to save data to IndexedDB")
             };
             let _ = tx.send(match result().await {
                 Ok(path) => WriteResult::Success(path),
@@ -64,8 +64,8 @@ async fn save_bytes_to_indexed_db(
 
     let transaction = db.transaction(&[category.category_str()], TransactionMode::ReadWrite)?;
     let store = transaction.object_store(category.category_str())?;
-    let key = &category.filename();
-    let js_key = JsValue::from_str(key);
+    let key = category.filename();
+    let js_key = JsValue::from_str(&key);
 
     let js_array: Uint8Array = Uint8Array::new_with_length(bytes.len() as u32);
     js_array.copy_from(&bytes);
@@ -78,12 +78,14 @@ async fn save_bytes_to_indexed_db(
         if keys.len() > MAX_AUTOSAVES {
             let excess = keys.len() - MAX_AUTOSAVES;
             for old_key in keys.into_iter().take(excess) {
-                store.delete(old_key)?;
+                store.delete(old_key)?.await?;
             }
         }
     }
 
-    Ok(PathBuf::from(key.to_string()))
+    transaction.commit()?.await?;
+
+    Ok(PathBuf::from(key.into_owned()))
 }
 
 /// Downloads the file in the browser.

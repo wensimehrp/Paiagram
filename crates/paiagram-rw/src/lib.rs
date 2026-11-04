@@ -16,6 +16,9 @@ mod paiagram_idb {
     pub const VERSION: u32 = 1;
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+pub mod paths;
+
 pub mod list_files {
     #[cfg(not(target_arch = "wasm32"))]
     mod native;
@@ -78,16 +81,17 @@ impl SaveCategory {
             return name.into();
         }
         let timestamp = jiff::Timestamp::now();
-        timestamp.to_string().into()
+        timestamp.strftime("%Y-%m-%dT%H-%M-%S.%3fZ").to_string().into()
     }
-    /// The base storage directory on native platform. Uses [`eframe::storage_dir`] by default
+    /// The base storage directory on native platform. Uses [`paths::storage_dir`] by default.
     #[cfg(not(target_arch = "wasm32"))]
-    fn base_storage_dir() -> PathBuf {
-        eframe::storage_dir("paiagram").expect("eframe should provide a storage dir")
+    pub fn base_storage_dir() -> PathBuf {
+        paths::storage_dir().expect("platform should provide a storage dir")
     }
     /// The path to the category on native platform.
     #[cfg(not(target_arch = "wasm32"))]
-    fn category_path(&self) -> PathBuf {
+    pub fn category_path(&self) -> PathBuf {
+        #[allow(deprecated)]
         Self::base_storage_dir().join(self.category_str())
     }
 }
@@ -115,6 +119,31 @@ pub trait ExportObject: Sized + Send + 'static {
     /// The default buffer size. The default size is 10 MiB.
     fn default_buf(&self) -> Vec<u8> {
         Vec::with_capacity(10 * 1024 * 1024)
+    }
+    /// Serialize the content and write it directly to `path`.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn write_to_path(mut self, path: PathBuf, tx: mpsc::Sender<WriteResult>) {
+        rayon::spawn(move || {
+            let result: anyhow::Result<_> = (|| {
+                if let Some(parent) = path.parent()
+                    && !parent.as_os_str().is_empty()
+                {
+                    std::fs::create_dir_all(parent).with_context(|| {
+                        format!("Failed to create directory `{}`.", parent.display())
+                    })?;
+                }
+                let buf = self
+                    .write_to_vec(self.default_buf())
+                    .context("Failed to serialize content to buffer.")?;
+                std::fs::write(&path, buf)
+                    .with_context(|| format!("Failed to write to path `{}`.", path.display()))?;
+                Ok(path)
+            })();
+            let _ = tx.send(match result {
+                Ok(path) => WriteResult::Success(path),
+                Err(e) => WriteResult::Error(e),
+            });
+        });
     }
     /// Serialize the content and let the user pick where to save it.
     #[cfg(not(target_arch = "wasm32"))]

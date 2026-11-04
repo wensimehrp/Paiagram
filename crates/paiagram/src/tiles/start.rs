@@ -88,6 +88,13 @@ impl Tile for StartTile {
         if let Some(available_files) = &self.available_files
             && let Some((category, key)) = show_available_save(ui, available_files)
         {
+            app.save_path = match &category {
+                #[cfg(not(target_arch = "wasm32"))]
+                SaveCategory::Save(_) => Some(category.category_path().join(&key)),
+                #[cfg(target_arch = "wasm32")]
+                SaveCategory::Save(_) => Some(std::path::PathBuf::from(&key)),
+                _ => None,
+            };
             let world_read_tx = app.world_read_tx.clone();
             #[cfg(target_arch = "wasm32")]
             wasm_bindgen_futures::spawn_local(async move {

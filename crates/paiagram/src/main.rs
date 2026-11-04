@@ -22,6 +22,7 @@ struct PaiagramApp {
     app: App,
     ui_state: UiState,
     prev_time: Instant,
+    last_autosave: Instant,
 }
 
 impl PaiagramApp {
@@ -39,10 +40,12 @@ impl PaiagramApp {
         rayon::spawn(|| {
             let _ = paiagram::build_matcher("foo bar");
         });
+        let now = Instant::now();
         Self {
             app,
             ui_state: UiState::default(),
-            prev_time: Instant::now(),
+            prev_time: now,
+            last_autosave: now,
         }
     }
 }
@@ -81,11 +84,16 @@ impl eframe::App for PaiagramApp {
         core::time::Duration::from_secs(60)
     }
     fn save(&mut self, _storage: &mut dyn eframe::Storage) {
+        if self.last_autosave.elapsed() < self.auto_save_interval() {
+            return;
+        }
+        self.last_autosave = Instant::now();
         // we call save but we don't write into the provided storage
         let world = self.app.world.clone();
         SaveCategory::Autosave.save(SaveData::from(world), self.app.file_write_tx.clone());
     }
-    fn logic(&mut self, _ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        ctx.request_repaint_after(self.auto_save_interval());
         paiagram::update_emergency_save(self.app.world.clone());
     }
 }
