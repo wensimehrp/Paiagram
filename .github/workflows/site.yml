@@ -26,12 +26,10 @@ jobs:
         run: nix develop .#default --command ./site.typ compile
 
       - name: Deploy
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          personal_token: ${{ secrets.PERSONAL_TOKEN }}
-          external_repository: wensimehrp/Paiagram-archive
-          user_name: github-actions[bot]
-          user_email: 41898282+github-actions[bot]@users.noreply.github.com
-          publish_branch: main
-          publish_dir: ./site
-          destination_dir: site
+        env:
+          PERSONAL_TOKEN: ${{ secrets.PERSONAL_TOKEN }}
+          REPOSITORY: wensimehrp/Paiagram-archive
+          BRANCH: main
+          SOURCE_DIR: ./site
+          TARGET_DIR: site
+        run: ./.github/scripts/deploy-dir.sh

@@ -23,11 +23,6 @@ jobs:
   build-and-deploy-wasm:
     runs-on: ubuntu-latest
     steps:
-      - name: Free runner disk space
-        run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
-          df -h
-
       - uses: actions/checkout@v7
       - uses: DeterminateSystems/nix-installer-action@v20
       - uses: DeterminateSystems/magic-nix-cache-action@v13
@@ -49,12 +44,10 @@ jobs:
           path: ./dist
 
       - name: Deploy
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          personal_token: ${{ secrets.PERSONAL_TOKEN }}
-          external_repository: wensimehrp/Paiagram-archive
-          user_name: github-actions[bot]
-          user_email: 41898282+github-actions[bot]@users.noreply.github.com
-          publish_branch: main
-          publish_dir: ./dist
-          destination_dir: new-snapshot
+        env:
+          PERSONAL_TOKEN: ${{ secrets.PERSONAL_TOKEN }}
+          REPOSITORY: wensimehrp/Paiagram-archive
+          BRANCH: main
+          SOURCE_DIR: ./dist
+          TARGET_DIR: new-snapshot
+        run: ./.github/scripts/deploy-dir.sh
