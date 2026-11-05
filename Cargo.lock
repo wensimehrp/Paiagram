@@ -1950,6 +1950,7 @@ dependencies = [
  "nohash-hasher",
  "parking_lot",
  "profiling",
+ "rayon",
  "self_cell",
  "serde",
  "skrifa 0.44.0",
@@ -3741,9 +3742,9 @@ dependencies = [
 
 [[package]]
 name = "lru"
-version = "0.18.5"
+version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ef9ac18847474e638e3702b76c65d4eb93428471a74778ef0f1be711717f89b5"
+checksum = "4a9f71e3591c7ec44d3e563e87bf14ddc2bada8519dca046e5b0e560cd004e2d"
 dependencies = [
  "hashbrown 0.17.1",
 ]
@@ -7225,9 +7226,9 @@ dependencies = [
 
 [[package]]
 name = "walkers"
-version = "0.64.0"
+version = "0.65.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "39b650d03bf826b34f0c8827f44a8e51e0556efb3f6346421f866609358068d7"
+checksum = "61dbac136e6160135b75ceab738fcc1bb45796d3e6cc1573cc09adb480556b5d"
 dependencies = [
  "bytes",
  "ecolor",
