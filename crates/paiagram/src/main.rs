@@ -89,12 +89,14 @@ impl eframe::App for PaiagramApp {
         }
         self.last_autosave = Instant::now();
         // we call save but we don't write into the provided storage
-        let world = self.app.world.clone();
-        SaveCategory::Autosave.save(SaveData::from(world), self.app.file_write_tx.clone());
+        SaveCategory::Autosave.save(
+            SaveData::from(self.app.world().clone()),
+            self.app.file_write_tx.clone(),
+        );
     }
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         ctx.request_repaint_after(self.auto_save_interval());
-        paiagram::update_emergency_save(self.app.world.clone());
+        paiagram::update_emergency_save(self.app.world().clone());
     }
 }
 

@@ -65,7 +65,6 @@ impl TryFrom<SaveData> for Source {
             SaveData::V1(world) => {
                 let (spatial_tx, spatial_rx) = mpsc::channel();
                 let source = Self {
-                    prev_frame_world: world.clone(),
                     history: Vec::new(),
                     redo_len: 0,
                     revision: 0,

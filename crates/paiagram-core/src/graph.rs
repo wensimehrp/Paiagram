@@ -4,6 +4,7 @@ use ecow::EcoVec;
 use imbl::OrdSet;
 use pathfinding::prelude::astar;
 use serde::{Deserialize, Serialize};
+mod layout;
 
 use crate::{
     Distance, Interval, IntervalCache, IntervalCollection, IntervalKey, LonLat, Node,
@@ -15,7 +16,7 @@ impl NodeKey {
     const MAX: Self = NodeKey(NonZeroU64::MAX);
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SortedKey {
     pub hi: NodeKey,
     pub lo: NodeKey,

@@ -22,6 +22,7 @@ use paiagram_selection::{SelectedItem, SelectedItems};
 
 use super::{Navigatable, Tile};
 use crate::App;
+use crate::distance_to_line::distance_sq_to_line;
 use crate::font::TIMETABLE_FONT_ID;
 use crate::tiles::marey::show_focused_trips::draw_polyline;
 use crate::trip_schedule_visual::WithVisualMod;
@@ -232,7 +233,7 @@ impl Tile for MareyTile {
                     ret
                 });
                 paiagram_export::ExportGraphy {
-                    world: app.world.clone(),
+                    world: app.world().clone(),
                     route: self.key,
                     cache: self.cache.clone(),
                     format: GraphyFormat::Pdf,
@@ -413,7 +414,7 @@ fn main_display(tile: &mut MareyTile, app: &mut App, ui: &mut Ui) {
         // this makes sure that when already selecting item
         // the next action always deselects the item instead of focusing on new item
         && !matches!(app.selected_items, SelectedItems::TripExtension(_)) // it has its own state
-        && matches!(app.selected_items.take(), SelectedItems::None)
+        && let SelectedItems::None = app.selected_items.take()
     {
         if let Some(trip_key) = select_trip_from_pos(tile, pointer_pos, &station_heights) {
             app.selected_items.replace(SelectedItem::Trip(trip_key.into()));
@@ -468,14 +469,14 @@ fn main_display(tile: &mut MareyTile, app: &mut App, ui: &mut Ui) {
                 color: style.color,
             };
             let schedule = trip.schedule.clone().with_entry_shift(selected.editing_offset);
-            let Some(polylines) = route.intervals.populate_schedule(&app.world, &schedule) else {
+            let Some(polylines) = route.intervals.populate_schedule(&app, &schedule) else {
                 continue;
             };
             let polylines = polylines.clone();
             let ret = show_focused_trips::show_focused_trip(
                 &schedule,
                 stroke,
-                &mut app.source,
+                &mut *app,
                 animation_progress,
                 ui,
                 tile,
@@ -538,7 +539,7 @@ fn main_display(tile: &mut MareyTile, app: &mut App, ui: &mut Ui) {
             });
         }
 
-        route.intervals.populate_schedule(&app.world, &schedule).into_iter().flatten().for_each(
+        route.intervals.populate_schedule(&app, &schedule).into_iter().flatten().for_each(
             |polyline| {
                 draw_polyline(
                     &tile.navi,
@@ -588,15 +589,9 @@ fn select_trip_from_pos(
         let y = lerp(curr_y..=next_y, progress);
         [Pos2::new(x1, y), Pos2::new(x2, y)]
     };
+
     let hit = |p1: Pos2, p2: Pos2| {
-        let diff = p2 - p1;
-        let len_sq = diff.length_sq();
-        let t = if len_sq > 0.0 {
-            ((ptr_pos - p1).dot(diff) / len_sq).clamp(0.0, 1.0)
-        } else {
-            0.0
-        };
-        (p1 + t * diff - ptr_pos).length_sq() <= SELECT_RADIUS * SELECT_RADIUS
+        distance_sq_to_line((p1, p2), ptr_pos) <= SELECT_RADIUS * SELECT_RADIUS
     };
 
     tile.cache

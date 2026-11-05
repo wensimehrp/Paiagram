@@ -18,6 +18,7 @@ csv.workspace = true
 derive_more.workspace = true
 ecow.workspace = true
 egui.workspace = true
+fdg-sim.workspace = true
 gtfs-structures.workspace = true
 imbl.workspace = true
 itertools.workspace = true

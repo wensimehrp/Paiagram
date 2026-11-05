@@ -17,7 +17,7 @@ use crate::ui_tiles::UiTiles;
 use crate::{UiCommand, UiTile};
 
 pub struct App {
-    pub(crate) source: Source,
+    source: Source,
     pub(crate) timer: GlobalTimer,
     pub(crate) preferences: Preferences,
     pub(crate) settings: Settings,
@@ -74,9 +74,21 @@ impl App {
             save_write_rx,
         }
     }
+
+    /// Gives the underlying world
+    pub(crate) fn world(&self) -> &World {
+        self.source.world()
+    }
+
+    /// Method to prevent directly calling .clone() on app
+    #[deprecated(note = "Use app.world().clone() instead")]
+    pub(crate) fn clone(&self) -> ! {
+        unreachable!()
+    }
+
     /// Saves the current world to the stored path, or prompts for a location if none is set.
     pub(crate) fn save(&mut self) {
-        let save_data = SaveData::from(self.world.clone());
+        let save_data = SaveData::from(self.world().clone());
         #[cfg(not(target_arch = "wasm32"))]
         if let Some(path) = self.save_path.clone() {
             save_data.write_to_path(path, self.save_write_tx.clone());
@@ -91,7 +103,7 @@ impl App {
     }
     /// Saves the current world to a new location.
     pub(crate) fn save_as(&mut self) {
-        let save_data = SaveData::from(self.world.clone());
+        let save_data = SaveData::from(self.world().clone());
         #[cfg(not(target_arch = "wasm32"))]
         save_data.write_via_interface(self.save_write_tx.clone());
         #[cfg(target_arch = "wasm32")]

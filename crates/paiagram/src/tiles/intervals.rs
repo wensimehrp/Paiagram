@@ -27,13 +27,8 @@ impl super::Tile for IntervalsTile {
             let scroll_area = ScrollArea::vertical().auto_shrink(false);
             scroll_area.show_rows(ui, spacing, total_rows, |ui, row_range| {
                 ui.with_layout(Layout::top_down_justified(Align::Min), |ui| {
-                    for (&interval_key, interval) in app
-                        .source
-                        .graph
-                        .intervals()
-                        .iter()
-                        .skip(row_range.start)
-                        .take(row_range.count())
+                    for (&interval_key, interval) in
+                        app.graph.intervals().iter().skip(row_range.start).take(row_range.count())
                     {
                         let IntervalKey { hi, lo } = interval_key;
                         let hi_text =
@@ -64,7 +59,7 @@ impl super::Tile for IntervalsTile {
                 ui.vertical_centered_justified(|ui| ui.heading("Nothing focused"));
                 return;
             };
-            let Some(interval) = app.source.graph.intervals().get(&interval) else {
+            let Some(interval) = app.graph.intervals().get(&interval) else {
                 ui.vertical_centered_justified(|ui| ui.heading("Interval does not exist"));
                 return;
             };

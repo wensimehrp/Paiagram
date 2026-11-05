@@ -4,6 +4,7 @@
 mod app;
 mod command_palette;
 mod config;
+mod distance_to_line;
 mod emergency_save;
 mod font;
 mod human_time;
@@ -140,7 +141,7 @@ pub fn show_ui(
                 ui.separator();
                 if ui.button("Export .oud").clicked() {
                     ExportOuDia {
-                        world: app.world.clone(),
+                        world: app.world().clone(),
                         route: RouteKey::new(),
                         is_oudia_second: false,
                     }
@@ -148,7 +149,7 @@ pub fn show_ui(
                 }
                 if ui.button("Export GTFS").clicked() {
                     ExportGtfs {
-                        world: app.world.clone(),
+                        world: app.world().clone(),
                     }
                     .write_via_interface(app.file_write_tx.clone());
                 }
@@ -178,11 +179,11 @@ pub fn show_ui(
                         },
                     )
                 });
-                if ui.add_enabled(app.source.redoable(), Button::new("Redo")).clicked() {
-                    app.source.redo();
+                if ui.add_enabled(app.redoable(), Button::new("Redo")).clicked() {
+                    app.redo();
                 }
-                if ui.add_enabled(app.source.undoable(), Button::new("Undo")).clicked() {
-                    app.source.undo();
+                if ui.add_enabled(app.undoable(), Button::new("Undo")).clicked() {
+                    app.undo();
                 }
                 const GIT_REV_SHORT: &str = git_version::git_version!(fallback = "unknown");
                 const GH_LINK: &str = git_version::git_version!(

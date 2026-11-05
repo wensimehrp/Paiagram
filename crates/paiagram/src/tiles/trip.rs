@@ -50,7 +50,7 @@ fn show_trip(tile: &mut TripTile, app: &mut App, ui: &mut Ui) {
     let start_frame = |ui, text, key| {
         Frame::new().inner_margin(6.0).show(ui, |ui| {
             ui.heading(text);
-            select_a_trip(ui, key, &app.world);
+            select_a_trip(ui, key, &app);
         });
     };
 
@@ -107,7 +107,7 @@ fn show_trip(tile: &mut TripTile, app: &mut App, ui: &mut Ui) {
             }
         });
         ui.horizontal_wrapped(|ui| {
-            select_a_trip(ui, &mut tile.trip_key, &app.world);
+            select_a_trip(ui, &mut tile.trip_key, &app);
             let selected_text_atoms = current_service_class
                 .and_then(|key| app.service_classes.get(&key))
                 .map_or("Unknown".into_atoms(), |wfc| {
@@ -156,7 +156,7 @@ fn show_trip(tile: &mut TripTile, app: &mut App, ui: &mut Ui) {
                 schedule.estimates(&app.graph, |estimates| {
                     show_cursor_to_insert_at_idx(ui, 0);
                     for (idx, (estimate, entry)) in estimates.into_iter().copied().enumerate() {
-                        row_ui(&schedule, estimates, estimate, entry, &app.world, ui);
+                        row_ui(&schedule, estimates, estimate, entry, &app, ui);
                         ui.end_row();
                         show_cursor_to_insert_at_idx(ui, idx + 1);
                     }

@@ -25,7 +25,6 @@ egui-i18n.workspace = true
 egui_tiles.workspace = true
 either.workspace = true
 env_logger.workspace = true
-fdg-sim.workspace = true
 fontdb.workspace = true
 futures-channel.workspace = true
 git-version.workspace = true

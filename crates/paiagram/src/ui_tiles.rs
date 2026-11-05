@@ -132,10 +132,10 @@ impl<'w> Behavior<UiTile> for TileViewer<'w> {
                 ScrollArea::vertical().show_rows(
                     ui,
                     ui.spacing().interact_size.y,
-                    self.app.world.routes.len(),
+                    self.app.routes.len(),
                     |ui, range| {
                         for (route_key, info) in
-                            &self.app.world.routes.skip(range.start).take(range.count())
+                            &self.app.routes.skip(range.start).take(range.count())
                         {
                             ui.menu_button(info.name.as_str(), |ui| {
                                 if ui.button("Graph").clicked() {

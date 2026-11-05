@@ -194,7 +194,7 @@ impl Interval {
         &self,
         IntervalKey { hi, lo }: IntervalKey,
         nodes: &NodeCollection,
-    ) -> impl Iterator<Item = LonLat> {
+    ) -> impl Iterator<Item = LonLat> + DoubleEndedIterator {
         chain!(
             nodes.get(&hi).map(|wfc| wfc.pos),
             self.intermediate_nodes.iter().cloned(),
@@ -262,6 +262,17 @@ impl World {
         }
         self
     }
+
+    /// Get the serivce class stroke style of a trip, or return the default style
+    pub fn get_service_class_stroke_or_default(
+        &self,
+        service_class_key: Option<ServiceClassKey>,
+    ) -> egui::Stroke {
+        service_class_key
+            .and_then(|key| self.service_classes.get(&key))
+            .map_or_default(|wfc| wfc.style)
+            .to_egui_stroke()
+    }
 }
 
 /// The truth of the application. This structure holds a write-only log and a set of undos and
@@ -270,8 +281,7 @@ impl World {
 /// The source is not clonable, and should not be cloned anyways.
 pub struct Source {
     /// The current world
-    pub world: World,
-    prev_frame_world: World,
+    world: World,
     history: Vec<World>,
     /// the amount of redos available at this point
     redo_len: usize,
@@ -281,31 +291,34 @@ pub struct Source {
     spatial_rx: mpsc::Receiver<(u64, SpatialCache)>,
 }
 
+impl std::ops::Deref for Source {
+    type Target = World;
+    fn deref(&self) -> &Self::Target {
+        &self.world
+    }
+}
+
 impl Source {
     /// Changes after every successful command, undo, and redo.
     pub fn revision(&self) -> u64 {
         self.revision
     }
-
-    /// The app's spatial cache
+    /// The source's spatial cache
     pub fn spatial(&self) -> &SpatialCache {
         &self.spatial
     }
-
-    /// The world from the previous frame.
-    pub fn prev_frame_world(&self) -> &World {
-        &self.prev_frame_world
-    }
-
     /// Available history
     pub fn history(&self) -> &[World] {
         &self.history
+    }
+    /// The underlying world
+    pub fn world(&self) -> &World {
+        &self.world
     }
 
     /// Saves the current world as the previous frame's. Call once at the start of each frame.
     pub fn begin_frame(&mut self) {
         puffin::profile_function!();
-        self.prev_frame_world = self.world.clone();
         if let Ok((build_idx, new_spatial)) = self.spatial_rx.try_recv() {
             if build_idx == self.revision() {
                 self.spatial = new_spatial;
@@ -398,7 +411,6 @@ impl Source {
         let (spatial_tx, spatial_rx) = mpsc::channel();
         Self {
             world: World::default(),
-            prev_frame_world: World::default(),
             history: Vec::new(),
             redo_len: 0,
             revision: 0,
@@ -406,12 +418,5 @@ impl Source {
             spatial_tx,
             spatial_rx,
         }
-    }
-}
-
-impl std::ops::Deref for Source {
-    type Target = World;
-    fn deref(&self) -> &Self::Target {
-        &self.world
     }
 }

@@ -2,7 +2,7 @@ use egui::*;
 use paiagram_core::*;
 use serde::{Deserialize, Serialize};
 
-use crate::{App, UiCommand};
+use crate::App;
 
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq)]
 pub(crate) struct StationTile {
@@ -11,9 +11,9 @@ pub(crate) struct StationTile {
 
 impl super::Tile for StationTile {
     const NAME: &'static str = "Station";
-    fn main_display(&mut self, app: &mut crate::App, ui: &mut Ui) {
+    fn main_display(&mut self, app: &mut App, ui: &mut Ui) {
         puffin::profile_function!();
-        let stations = &app.source.stations;
+        let stations = &app.stations;
         let Some(stn) = stations.get(&self.stn_key) else {
             ui.centered_and_justified(|ui| ui.heading("Station does not exist!"));
             return;

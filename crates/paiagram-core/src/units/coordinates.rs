@@ -40,6 +40,12 @@ pub struct LonLat {
     pub lat: i32,
 }
 
+impl Default for LonLat {
+    fn default() -> Self {
+        Self::ZERO
+    }
+}
+
 impl LonLat {
     pub const ZERO: Self = Self { lon: 0, lat: 0 };
     const CONVERSION_FACTOR_F64: f64 = 10_000_000.0;

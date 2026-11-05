@@ -172,7 +172,7 @@ fn main_display(tile: &mut ExtensionTile, app: &mut crate::App, ui: &mut Ui) {
         {
             eval_config(
                 JsRuntimeData {
-                    world: app.world.clone(),
+                    world: app.world().clone(),
                     selected_items: app.selected_items.clone(),
                 },
                 tile.config_running_status.clone(),
@@ -182,7 +182,7 @@ fn main_display(tile: &mut ExtensionTile, app: &mut crate::App, ui: &mut Ui) {
         if ui.button("Run script").clicked() {
             run_script(
                 JsRuntimeData {
-                    world: app.world.clone(),
+                    world: app.world().clone(),
                     selected_items: app.selected_items.clone(),
                 },
                 JsIo {
