@@ -146,7 +146,6 @@ impl egui::Widget for &mut Preferences {
                         ui.selectable_value(tp, ThemePreference::Dark, "Always dark");
                         ui.selectable_value(tp, ThemePreference::Light, "Always light");
                         ui.selectable_value(tp, ThemePreference::System, "System theme");
-                        ui.set_theme(self.theme_preference);
                     });
                 ui.end_row();
                 ui.label("Developer Mode");

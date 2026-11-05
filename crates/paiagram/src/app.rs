@@ -120,6 +120,7 @@ impl App {
     /// Apply UI commands and change the main ui state
     pub(super) fn begin_frame(&mut self, ui: &mut Ui, mus: &mut UiTiles) {
         puffin::profile_function!();
+        ui.set_theme(self.preferences.theme_preference);
         self.source.begin_frame();
         for cmd in self.ui_command_rx.try_iter() {
             match cmd {
