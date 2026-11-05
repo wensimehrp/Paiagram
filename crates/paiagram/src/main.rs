@@ -8,7 +8,18 @@ use paiagram::{App, UiState};
 use paiagram_core::SaveData;
 use paiagram_rw::SaveCategory;
 use serde::Deserialize;
+#[cfg(target_family = "wasm")]
+use talc::{sync::TalcLock, wasm::*};
 use web_time::Instant;
+
+#[cfg(not(target_family = "wasm"))]
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
+#[cfg(target_family = "wasm")]
+#[global_allocator]
+static TALC: TalcLock<spinning_top::RawSpinlock, WasmGrowAndClaim, WasmBinning> =
+    TalcLock::new(WasmGrowAndClaim);
 
 /// Supplies QuickJS's host clock for the upcoming `env.__rquickjs_host_now_us` import that
 /// `rquickjs-sys`'s wasm shim declares.
