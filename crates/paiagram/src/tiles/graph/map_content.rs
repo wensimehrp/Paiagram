@@ -97,7 +97,6 @@ pub fn render_map_contents(
                 continue;
             };
             let draw_pos = lon_lat_to_pos(coor);
-            puffin::profile_scope!("draw_text_and_icon");
             if strength > 0.1 {
                 ui.painter().circle(
                     draw_pos,
