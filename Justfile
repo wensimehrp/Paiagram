@@ -34,7 +34,6 @@ build-wasm-app:
     trunk \
         --config ./crates/paiagram \
         build --release \
-        --minify \
         -d $PWD/dist --public-url .
 
 # Build the wasm release version
