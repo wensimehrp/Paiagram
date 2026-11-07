@@ -218,11 +218,7 @@ impl egui::Widget for &mut Settings {
             .show(ui, |ui| {
                 ui.set_max_width(ui.available_width());
                 ui.label("Repeat Frequency");
-                let mut delta = None;
-                ui.add(DurationDragValue(self.repeat_frequency, &mut delta));
-                if let Some(delta) = delta {
-                    self.repeat_frequency += delta;
-                }
+                ui.add(DurationDragValue(&mut self.repeat_frequency));
                 ui.end_row();
             })
             .response
