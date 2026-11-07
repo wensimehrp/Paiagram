@@ -51,7 +51,7 @@ pub fn show_ui(
     ui_state: &mut UiState,
     delta_time: std::time::Duration,
 ) {
-    puffin::GlobalProfiler::lock().new_frame();
+    profiling::finish_frame!();
     puffin::profile_function!();
     app.begin_frame(ui, &mut ui_state.mus);
 
