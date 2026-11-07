@@ -7,6 +7,7 @@ use walkers::{HttpTiles, Map, MapMemory, MercatorProjection, Projector, lon_lat}
 use super::Tile;
 use crate::App;
 mod autonavi;
+mod display_selected_content;
 pub(crate) mod gpu_draw;
 mod map_content;
 mod select_content;
@@ -69,6 +70,9 @@ impl<'a> walkers::Plugin for MapPlugin<'a> {
     ) {
         let MapPlugin { app, trip_icon } = *self;
         map_content::render_map_contents(app, trip_icon, ui, response, projector, map_memory);
+        display_selected_content::display_selected_content(
+            app, ui, response, projector, map_memory,
+        );
         select_content::select_map_contents(app, ui, response, projector, map_memory);
     }
 }
@@ -119,7 +123,7 @@ fn main_display(tile: &mut MapTile, app: &mut App, ui: &mut Ui) {
             None => None,
         },
         map_memory,
-        lon_lat(0.0, 0.0),
+        lon_lat(-123.1139, 49.2612),
     )
     .with_projection(if tile.is_autonavi {
         &MercatorProjectionGcj02
