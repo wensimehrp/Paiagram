@@ -1,16 +1,18 @@
 use egui::*;
-use paiagram_core::time::TimetableTime;
-use paiagram_core::trip::TravelMode::{self, At, Flexible, For};
-use paiagram_core::trip::{EstimateEntry, TEstimate, TripSchedule};
+use either::Either;
+use paiagram_core::time::{TDuration, TTime, TimetableTime};
+use paiagram_core::trip::{EstimateEntry, TEntryId, TEstimate, TravelMode, TripSchedule};
 use paiagram_core::{NodeKey, TripKey, World};
 use paiagram_selection::SelectedItems;
 use serde::{Deserialize, Serialize};
 
+mod widgets;
+use self::widgets::SeparateDisplayDragValue;
 use super::Tile;
 use crate::App;
+use crate::font::TIMETABLTE_TEXT_STYLE;
 use crate::tiles::service_classes::service_class_button_atoms;
 use crate::trip_schedule_visual::WithVisualMod;
-use crate::widgets::{DurationDragValue, TimeDragValue};
 
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub(crate) struct TripTile {
@@ -18,6 +20,8 @@ pub(crate) struct TripTile {
     show_derived: bool,
     #[serde(skip)]
     name_edit_buf: Option<String>,
+    #[serde(skip)]
+    editing_offset: Option<(TEntryId, Either<TDuration, TDuration>)>,
 }
 
 impl PartialEq for TripTile {
@@ -30,7 +34,7 @@ impl Tile for TripTile {
     const NAME: &'static str = "Trip";
     fn main_display(&mut self, app: &mut App, ui: &mut egui::Ui) {
         puffin::profile_function!();
-        show_trip(self, app, ui);
+        Frame::new().inner_margin(6.0).show(ui, |ui| show_trip(self, app, ui));
     }
 }
 
@@ -40,6 +44,7 @@ impl TripTile {
             trip_key: Some(trip_key),
             show_derived: false,
             name_edit_buf: None,
+            editing_offset: None,
         }
     }
 }
@@ -47,129 +52,133 @@ impl TripTile {
 fn show_trip(tile: &mut TripTile, app: &mut App, ui: &mut Ui) {
     puffin::profile_function!();
 
-    let start_frame = |ui, text, key| {
-        Frame::new().inner_margin(6.0).show(ui, |ui| {
-            ui.heading(text);
-            select_a_trip(ui, key, &app);
-        });
-    };
+    let get_trip_sch = |key| app.trips.get(&key).map(|wfc| (key, wfc, wfc.schedule.clone()));
 
-    let Some(trip_key) = tile.trip_key.or(match &app.selected_items {
-        SelectedItems::Trips(trips) => Some(trips.first().trip_key),
-        SelectedItems::TripExtension((trip_key, _)) => Some(*trip_key),
-        _ => None,
-    }) else {
-        start_frame(
-            ui,
-            "Select a trip to display the schedule",
-            &mut tile.trip_key,
-        );
+    let Some((trip_key, trip, base_schedule)) =
+        tile.trip_key.and_then(get_trip_sch).or_else(|| match &app.selected_items {
+            SelectedItems::Trips(t) => get_trip_sch(t.first().trip_key)
+                .map(|(key, wfc, sch)| (key, wfc, sch.with_entry_shift(t.first().editing_offset))),
+            SelectedItems::TripExtension((key, focused_pos)) => get_trip_sch(*key)
+                .map(|(key, wfc, sch)| (key, wfc, sch.with_pushed_entry(*focused_pos))),
+            _ => None,
+        })
+    else {
+        ui.heading("Select a trip to display the schedule");
+        select_a_trip(ui, &mut tile.trip_key, &app);
         return;
     };
 
-    let Some(trip) = app.trips.get(&trip_key) else {
-        start_frame(ui, "The selected trip does not exist", &mut tile.trip_key);
-        return;
-    };
-
-    let schedule = if tile.trip_key.is_some() {
-        trip.schedule.clone()
-    } else if let SelectedItems::Trips(trips) = &app.selected_items {
-        let selected_trip = trips.first();
-        trip.schedule.clone().with_entry_shift(selected_trip.editing_offset)
-    } else if let &SelectedItems::TripExtension((_, focused_pos)) = &app.selected_items {
-        trip.schedule.clone().with_pushed_entry(focused_pos)
-    } else {
-        unreachable!();
-    };
+    // apply tile local editing offset to schedule
+    let visual_schedule = base_schedule.with_entry_shift(tile.editing_offset.map(|(a, b)| {
+        (
+            a,
+            TEstimate {
+                arr: TTime::ZERO,
+                dep: TTime::ZERO,
+            },
+            b,
+        )
+    }));
 
     let trip_name = trip.name.clone();
     let current_service_class = trip.service_class;
 
-    Frame::new().inner_margin(6.0).show(ui, |ui| {
-        ui.horizontal(|ui| {
-            if let Some(buf) = &mut tile.name_edit_buf {
-                ui.text_edit_singleline(buf);
-                if ui.button("Finish").clicked() {
-                    let _ = app.mutate(|mut world| {
-                        let trip = world.trips.get_mut(&trip_key).ok_or("wtf!")?;
-                        trip.name.clear();
-                        trip.name.push_str(buf);
-                        Ok(world)
-                    });
-                    tile.name_edit_buf = None;
-                }
-            } else {
-                ui.heading(trip_name.as_str());
-                if ui.button("Edit").clicked() {
-                    tile.name_edit_buf = Some(trip_name.to_string());
-                }
-            }
-        });
-        ui.horizontal_wrapped(|ui| {
-            select_a_trip(ui, &mut tile.trip_key, &app);
-            let selected_text_atoms = current_service_class
-                .and_then(|key| app.service_classes.get(&key))
-                .map_or("Unknown".into_atoms(), |wfc| {
-                    service_class_button_atoms(wfc).into_atoms()
-                });
-            let combo_box = ComboBox::from_id_salt("change current trip service class")
-                .selected_text(selected_text_atoms)
-                .show_ui(ui, |ui| {
-                    let ret = ui.button("None").clicked().then_some(None);
-                    let scroll_area = ScrollArea::vertical().show_rows(
-                        ui,
-                        ui.spacing().interact_size.y,
-                        app.service_classes.len(),
-                        |ui, range| {
-                            app.service_classes.iter().skip(range.start).take(range.count()).fold(
-                                ret,
-                                |ret, (key, service_class)| {
-                                    ret.or(Button::new(service_class_button_atoms(service_class))
-                                        .atom_ui(ui)
-                                        .clicked()
-                                        .then_some(Some(*key)))
-                                },
-                            )
-                        },
-                    );
-                    scroll_area.inner
-                });
-            if let Some(Some(new_service_class)) = combo_box.inner {
+    ui.horizontal(|ui| {
+        if let Some(buf) = &mut tile.name_edit_buf {
+            ui.text_edit_singleline(buf);
+            if ui.button("Finish").clicked() {
                 let _ = app.mutate(|mut world| {
-                    let trip = world.trips.get_mut(&trip_key).ok_or("wtf?")?;
-                    trip.service_class = new_service_class;
+                    let trip = world.trips.get_mut(&trip_key).ok_or("wtf!")?;
+                    trip.name.clear();
+                    trip.name.push_str(buf);
                     Ok(world)
                 });
+                tile.name_edit_buf = None;
             }
-        })
+        } else {
+            ui.heading(trip_name.as_str());
+            if ui.button("Edit").clicked() {
+                tile.name_edit_buf = Some(trip_name.to_string());
+            }
+        }
     });
 
-    ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
-        Frame::new().inner_margin(6.0).show(ui, |ui| {
-            Grid::new("trip ui").num_columns(2).striped(true).show(ui, |ui| {
-                ui.label("Station");
-                ui.label("Arrival/Pass/Departure");
-                ui.end_row();
-                // Remove button background
-                ui.visuals_mut().widgets.inactive.weak_bg_fill = Color32::TRANSPARENT;
-                schedule.estimates(&app.graph, |estimates| {
-                    show_cursor_to_insert_at_idx(ui, 0);
-                    for (idx, (estimate, entry)) in estimates.into_iter().copied().enumerate() {
-                        row_ui(&schedule, estimates, estimate, entry, &app, ui);
-                        ui.end_row();
-                        show_cursor_to_insert_at_idx(ui, idx + 1);
-                    }
-                    if matches!(app.selected_items, SelectedItems::TripExtension(_))
-                        && !ui.ui_contains_pointer()
-                    {
-                        ui.label("Extending trip").scroll_to_me_animation(
-                            Some(Align::Max),
-                            style::ScrollAnimation::none(),
-                        );
+    ui.horizontal_wrapped(|ui| {
+        select_a_trip(ui, &mut tile.trip_key, &app);
+        let selected_text_atoms = current_service_class
+            .and_then(|key| app.service_classes.get(&key))
+            .map_or("Unknown".into_atoms(), |wfc| {
+                service_class_button_atoms(wfc).into_atoms()
+            });
+        let mut new_service_class = current_service_class;
+        ComboBox::from_id_salt("change current trip service class")
+            .selected_text(selected_text_atoms)
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut new_service_class, None, "Unknown");
+                let spacing = ui.spacing().interact_size.y;
+                let total_rows = app.service_classes.len();
+                ScrollArea::vertical().show_rows(ui, spacing, total_rows, |ui, range| {
+                    let iter = app.service_classes.iter().skip(range.start).take(range.count());
+                    for (key, service_class) in iter {
+                        let atoms = service_class_button_atoms(service_class);
+                        ui.selectable_value(&mut new_service_class, Some(*key), atoms);
                     }
                 });
             });
+        if new_service_class != current_service_class {
+            let _ = app.mutate(|mut world| {
+                let trip = world.trips.get_mut(&trip_key).ok_or("wtf??")?;
+                trip.service_class = new_service_class;
+                Ok(world)
+            });
+        }
+    });
+
+    ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
+        Grid::new("trip ui").num_columns(3).striped(true).show(ui, |ui| {
+            ui.label("Station");
+            ui.label("Arrival/Pass");
+            ui.label("Departure");
+            ui.end_row();
+            // Remove button background
+            ui.visuals_mut().widgets.inactive.weak_bg_fill = Color32::TRANSPARENT;
+            let new_editing_offset = visual_schedule.estimates(&app.graph, |estimates| {
+                show_cursor_to_insert_at_idx(ui, 0);
+                let iter = estimates.into_iter().copied().enumerate();
+                iter.fold(None, |acc, (idx, (estimate, entry))| {
+                    let ret = row_ui(
+                        &visual_schedule,
+                        estimates,
+                        estimate,
+                        tile.editing_offset,
+                        entry,
+                        &app,
+                        ui,
+                    );
+                    ui.end_row();
+                    show_cursor_to_insert_at_idx(ui, idx + 1);
+                    acc.or(ret)
+                })
+            });
+            if new_editing_offset.is_none()
+                && let Some((id, offset)) = tile.editing_offset
+            {
+                let _ = app.mutate(|mut world| {
+                    let trip = world.trips.get_mut(&trip_key).ok_or("??")?;
+                    match offset {
+                        Either::Left(d) => trip.schedule.shift_arr_or_pass(id, d),
+                        Either::Right(d) => trip.schedule.shift_dep(id, d),
+                    }
+                    Ok(world)
+                });
+            };
+            tile.editing_offset = new_editing_offset;
+            if matches!(app.selected_items, SelectedItems::TripExtension(_))
+                && !ui.ui_contains_pointer()
+            {
+                ui.label("Extending...")
+                    .scroll_to_me_animation(Some(Align::Max), style::ScrollAnimation::none());
+            }
         });
     });
 }
@@ -198,141 +207,64 @@ fn row_ui(
     schedule: &TripSchedule,
     estimates: &[(Option<TEstimate>, EstimateEntry)],
     estimate: Option<TEstimate>,
+    edit_offset: Option<(TEntryId, Either<TDuration, TDuration>)>,
     entry: EstimateEntry,
     world: &World,
     ui: &mut Ui,
-) {
-    puffin::profile_function!();
-    const BTN_SIZE: Vec2 = vec2(70.0, 18.0);
-    let Some(node) = world.graph.nodes().get(&entry.node_key()) else {
-        ui.label("No station");
-        return;
+) -> Option<(TEntryId, Either<TDuration, TDuration>)> {
+    // TODO: change this to station name instead
+    let Some(node_name) = world.graph.nodes().get(&entry.node_key()).map(|wfc| wfc.name.as_str())
+    else {
+        ui.label("Unknown Station");
+        return None;
     };
-    if let Some(stn) = world.stations.get(&node.parent) {
-        let mut text = RichText::new(stn.name.as_str());
-        if matches!(entry, EstimateEntry::Derived(..)) {
-            text = text.weak();
-        }
-        if ui.button(text).clicked() {
-            // TODO: push station
-        };
-    } else {
-        ui.colored_label(Color32::RED, "Invalid Station");
+    ui.label(node_name);
+    let Some(estimate) = estimate else {
+        ui.label("No estimate");
+        return None;
     };
-    let mut wide_size = BTN_SIZE;
-    wide_size.x *= 2.0;
-    wide_size.x += ui.spacing().item_spacing.x;
-    let mut arr_pass_dur = None;
-    let mut dep_dur = None;
-    let fmt_str = |f: fn(TEstimate) -> TimetableTime, placeholder: &str| -> RichText {
-        RichText::new(if let Some(e) = estimate {
-            f(e).to_string()
-        } else {
-            placeholder.to_string()
-        })
-        .weak()
-        .font(FontId::new(13.0, FontFamily::Name("timetable font".into())))
+    fn fmt_time_label(time: TimetableTime) -> WidgetText {
+        WidgetText::from(time.to_string()).text_style(TIMETABLTE_TEXT_STYLE.clone()).weak()
+    }
+    let EstimateEntry::Pinned(entry) = entry else {
+        ui.label(fmt_time_label(estimate.arr));
+        ui.label(RichText::from("⇂").weak());
+        return None;
     };
-    let (res1, res2) = ui
-        .horizontal(|ui| match entry {
-            EstimateEntry::Derived(..) => (
-                ui.add_sized(wide_size, Button::new(fmt_str(|e| e.arr, "||"))),
-                None,
-            ),
-            EstimateEntry::Pinned(entry) => (
-                match entry.arr_or_pass {
-                    For(d) => ui.add_sized(BTN_SIZE, DurationDragValue(d, &mut arr_pass_dur)),
-                    At(t) => ui.add_sized(BTN_SIZE, TimeDragValue(t, &mut arr_pass_dur)),
-                    Flexible => ui.add_sized(BTN_SIZE, Button::new(fmt_str(|e| e.arr, "--:--:--"))),
-                },
-                entry.dep.map(|dep| match dep {
-                    For(d) => ui.add_sized(BTN_SIZE, DurationDragValue(d, &mut dep_dur)),
-                    At(t) => ui.add_sized(BTN_SIZE, TimeDragValue(t, &mut dep_dur)),
-                    Flexible => ui.add_sized(BTN_SIZE, Button::new(fmt_str(|e| e.dep, "--:--:--"))),
-                }),
-            ),
-        })
-        .inner;
-
-    // if let Some(dur) = arr_pass_dur {
-    //     cmd_queue.push(Command::TripEntryShiftArrOrPass {
-    //         key: trip_key,
-    //         id: entry.id(),
-    //         dur,
-    //     });
-    // }
-
-    // if let Some(dur) = dep_dur {
-    //     cmd_queue.push(Command::TripEntryShiftDep {
-    //         key: trip_key,
-    //         id: entry.id(),
-    //         dur,
-    //     });
-    // }
-
-    let res1_align = if matches!(entry, EstimateEntry::Pinned(entry) if entry.dep.is_none()) {
-        RectAlign::LEFT
-    } else {
-        RectAlign::RIGHT
+    let (mut arr_or_pass_offset, mut dep_offset) =
+        match edit_offset.and_then(|(id, offset)| (id == entry.id).then_some(offset)) {
+            Some(Either::Left(inner)) => (inner, TDuration::ZERO),
+            Some(Either::Right(inner)) => (TDuration::ZERO, inner),
+            None => (TDuration::ZERO, TDuration::ZERO),
+        };
+    let arr_or_pass_resp = match entry.arr_or_pass {
+        TravelMode::At(t) => ui.add(SeparateDisplayDragValue {
+            modified: &mut arr_or_pass_offset,
+            displayed: t,
+        }),
+        TravelMode::For(d) => ui.add(SeparateDisplayDragValue {
+            modified: &mut arr_or_pass_offset,
+            displayed: d,
+        }),
+        TravelMode::Flexible => ui.label(fmt_time_label(estimate.arr)),
     };
-
-    Popup::menu(&res1).align(res1_align).show(|ui| {
-        let EstimateEntry::Pinned(entry) = entry else {
-            ui.button("Insert");
-            return;
-        };
-        // display departure stuff and change mode
-        let t = estimate.map(|e| e.arr).unwrap_or_default();
-        let d = schedule.dur_since_prev_stable(estimates, entry.id).unwrap_or_default();
-        let mut new_mode = None;
-        if ui.add(TimeDragValue(t, &mut None)).clicked() {
-            new_mode = Some(TravelMode::At(t));
-        };
-        if ui.add(DurationDragValue(d, &mut None)).clicked() {
-            new_mode = Some(TravelMode::For(d));
-        };
-        if ui.button("Flexible").clicked() {
-            new_mode = Some(TravelMode::Flexible);
-        };
-        let mut new_entry = entry;
-        if let Some(mode) = new_mode {
-            new_entry.arr_or_pass = mode;
-            // cmd_queue.push(Command::TripEntryChange {
-            //     key: trip_key,
-            //     id: new_entry.id(),
-            //     new_entry,
-            // });
-        }
-    });
-    let Some(res2) = res2 else {
-        return;
+    let dep_resp = match entry.dep {
+        Some(TravelMode::At(t)) => ui.add(SeparateDisplayDragValue {
+            modified: &mut dep_offset,
+            displayed: t,
+        }),
+        Some(TravelMode::For(d)) => ui.add(SeparateDisplayDragValue {
+            modified: &mut dep_offset,
+            displayed: d,
+        }),
+        Some(TravelMode::Flexible) => ui.label(fmt_time_label(estimate.arr)),
+        None => ui.label(RichText::from("⇂").weak()),
     };
-    Popup::menu(&res2).align(RectAlign::RIGHT).show(|ui| {
-        let EstimateEntry::Pinned(entry) = entry else {
-            return;
-        };
-        let t = estimate.map(|e| e.arr).unwrap_or_default();
-        let d = estimate.map(|e| e.duration()).unwrap_or_default();
-        let mut new_mode = None;
-        if ui.add(TimeDragValue(t, &mut None)).clicked() {
-            new_mode = Some(Some(TravelMode::At(t)));
-        };
-        if ui.add(DurationDragValue(d, &mut None)).clicked() {
-            new_mode = Some(Some(TravelMode::For(d)));
-        };
-        if ui.button("Flexible").clicked() {
-            new_mode = Some(Some(TravelMode::Flexible));
-        };
-        let mut new_entry = entry;
-        if let Some(mode) = new_mode {
-            new_entry.dep = mode;
-            // cmd_queue.push(Command::TripEntryChange {
-            //     key: trip_key,
-            //     id: new_entry.id(),
-            //     new_entry,
-            // });
-        }
-    });
+    arr_or_pass_resp
+        .dragged()
+        .then_some(Either::Left(arr_or_pass_offset))
+        .or(dep_resp.dragged().then_some(Either::Right(dep_offset)))
+        .map(|offset| (entry.id, offset))
 }
 
 fn show_cursor_to_insert_at_idx(ui: &mut Ui, idx: usize) -> Option<NodeKey> {
