@@ -8,6 +8,7 @@ import package::map::graph_common::{
 
 struct NodePoint {
     screen_pos: vec2<f32>,
+    fill: u32,
 }
 
 /// Nodes of the graph.
@@ -23,9 +24,6 @@ struct VertexOut {
 /// Half the side length of a node square, in egui points.
 const NODE_HALF_SIZE: f32 = 4.0;
 
-const PLATFORM_COLOR: vec4<f32> = vec4<f32>(0.9, 0.9, 0.9, 1.0);
-const SWITCH_COLOR: vec4<f32> = vec4<f32>(0.35, 0.35, 0.35, 1.0);
-
 @vertex
 fn vs_main(
     @builtin(vertex_index) vertex_index: u32,
@@ -36,7 +34,7 @@ fn vs_main(
     let screen_pos = node.screen_pos + corner * NODE_HALF_SIZE;
     let clip = screen_pos_to_clip(screen_pos);
 
-    var color = PLATFORM_COLOR;
+    var color = unpack4x8unorm(node.fill);
     // if node.is_platform != 0u {
     //     color = PLATFORM_COLOR;
     // }

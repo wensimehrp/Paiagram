@@ -8,6 +8,7 @@ use walkers::{MapMemory, Projector, lon_lat};
 use crate::App;
 use crate::tiles::map::gpu_draw::GraphCallback;
 use crate::tiles::map::graph_intervals::graph_intervals::IntervalPoint;
+use crate::tiles::map::graph_nodes::graph_nodes::NodePoint;
 
 const ICON_HALF_SIZE: f32 = 18.0;
 
@@ -64,9 +65,9 @@ pub fn render_map_contents(
     let coor_max = pos_to_lon_lat(response.rect.right_bottom());
 
     // Intervals
+    let mut callback = GraphCallback::new();
     {
         puffin::profile_scope!("map_intervals");
-        let mut callback = GraphCallback::new();
         callback.populate_uniforms(response.rect);
         for IntervalRTreeObject {
             interval_key: _,
@@ -85,7 +86,6 @@ pub fn render_map_contents(
             let pos = lon_lat_to_pos(*last) - response.rect.left_top();
             callback.interval_points.push(IntervalPoint::new(pos.into(), 0));
         }
-        ui.painter().add(callback.paint_callback(response.rect));
     }
 
     // Nodes
@@ -97,26 +97,17 @@ pub fn render_map_contents(
                 continue;
             };
             let draw_pos = lon_lat_to_pos(coor);
+            callback.node_points.push(NodePoint::new(
+                (draw_pos - response.rect.left_top()).into(),
+                u32::from_le_bytes(Color32::GRAY.to_array()),
+            ));
             if strength > 0.1 {
-                ui.painter().circle(
-                    draw_pos,
-                    3.0,
-                    ui.visuals().window_fill(),
-                    ui.visuals().window_stroke(),
-                );
                 ui.painter().text(
                     draw_pos + vec2(0.0, 4.0),
                     Align2::CENTER_TOP,
                     node.name.as_str(),
                     FontId::proportional(13.0),
                     node_text_color,
-                );
-            } else {
-                ui.painter().circle(
-                    draw_pos,
-                    3.0,
-                    ui.visuals().window_fill(),
-                    ui.visuals().window_stroke(),
                 );
             }
         }
@@ -126,23 +117,32 @@ pub fn render_map_contents(
     {
         let tint = Color32::WHITE.gamma_multiply(strength);
         puffin::profile_scope!("draw_trip_legs");
-        for trip_leg in app.spatial().trip_legs.get(
-            coor_min,
-            coor_max,
-            TimetableTime(app.timer.seconds() as i32),
-        ) {
-            let Some(trip) = app.trips.get(&trip_leg.trip_key) else {
-                continue;
-            };
-            let Some(draw_pos) =
-                trip_leg_current_pos(trip_leg, app.timer.seconds(), lon_lat_to_pos)
-            else {
-                continue;
-            };
-
-            let fill = app.get_service_class_stroke_or_default(trip.service_class).color;
-
-            if strength > 0.1 {
+        let map_trip_legs = app
+            .spatial()
+            .trip_legs
+            .get(
+                coor_min,
+                coor_max,
+                TimetableTime(app.timer.seconds() as i32),
+            )
+            .filter_map(|trip_leg| {
+                app.trips.get(&trip_leg.trip_key).zip(trip_leg_current_pos(
+                    trip_leg,
+                    app.timer.seconds(),
+                    lon_lat_to_pos,
+                ))
+            })
+            .map(|(trip, draw_pos)| {
+                (
+                    trip,
+                    draw_pos,
+                    app.get_service_class_stroke_or_default(trip.service_class).color,
+                )
+            });
+        if strength > 0.1 {
+            ui.painter().add(callback.paint_callback(response.rect));
+            // simply use egui's image features
+            for (trip, draw_pos, fill) in map_trip_legs {
                 ui.painter().image(
                     trip_icon,
                     Rect::from_center_size(draw_pos, Vec2::splat(ICON_HALF_SIZE * 2.0)),
@@ -156,9 +156,15 @@ pub fn render_map_contents(
                     FontId::proportional(13.0),
                     fill.gamma_multiply(strength),
                 );
-            } else {
-                ui.painter().circle_filled(draw_pos, 3.0, fill);
             }
+        } else {
+            for (_, draw_pos, fill) in map_trip_legs {
+                callback.node_points.push(NodePoint::new(
+                    (draw_pos - response.rect.left_top()).into(),
+                    u32::from_le_bytes(fill.to_array()),
+                ));
+            }
+            ui.painter().add(callback.paint_callback(response.rect));
         }
     }
 }
