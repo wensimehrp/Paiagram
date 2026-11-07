@@ -107,7 +107,6 @@ impl eframe::App for PaiagramApp {
     }
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         ctx.request_repaint_after(self.auto_save_interval());
-        paiagram::update_emergency_save(self.app.world().clone());
     }
 }
 

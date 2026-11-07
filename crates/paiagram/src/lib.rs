@@ -19,7 +19,7 @@ pub use app::App;
 pub use config::AppLanguage;
 use egui::*;
 use egui_i18n::tr;
-pub use emergency_save::{setup_emergency_save, update_emergency_save};
+pub use emergency_save::setup_emergency_save;
 use log::info;
 use paiagram_core::RouteKey;
 use paiagram_core::import::{ImportMode, ImportType};

@@ -12,6 +12,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+arc-swap.workspace = true
 bitflags.workspace = true
 cbor4ii.workspace = true
 csv.workspace = true

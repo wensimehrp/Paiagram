@@ -21,8 +21,9 @@ mod test;
 
 use std::num::NonZeroU32;
 use std::ops::{Deref, DerefMut};
-use std::sync::mpsc;
+use std::sync::{Arc, mpsc};
 
+use arc_swap::ArcSwapOption;
 use ecow::{EcoString, EcoVec};
 use egui::Color32;
 pub use graph::IntervalDirection;
@@ -235,6 +236,9 @@ pub struct World {
     pub routes: RouteCollection,
 }
 
+/// A backup for the current world.
+pub static WORLD_BACKUP: ArcSwapOption<World> = ArcSwapOption::const_empty();
+
 impl World {
     /// Insert every entity from `other`, keeping the entities already present in `self`.
     fn merged(mut self, other: &Self) -> Self {
@@ -316,9 +320,12 @@ impl Source {
         &self.world
     }
 
-    /// Saves the current world as the previous frame's. Call once at the start of each frame.
+    /// Update the source for this frame.
+    /// - Update the world backup
+    /// - Update the spatial caches
     pub fn begin_frame(&mut self) {
         puffin::profile_function!();
+        WORLD_BACKUP.store(Some(Arc::new(self.world.clone())));
         if let Ok((build_idx, new_spatial)) = self.spatial_rx.try_recv() {
             if build_idx == self.revision() {
                 self.spatial = new_spatial;

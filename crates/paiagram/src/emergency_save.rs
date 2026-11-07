@@ -1,20 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 use std::panic::{self, PanicHookInfo};
 use std::path::Path;
-use std::sync::Arc;
 
-use arc_swap::ArcSwapOption;
 use log::error;
-use paiagram_core::{SaveData, World};
-
-/// A backup for the current world. The content stored in this variable would be serialized and
-/// stored upon a panic.
-static WORLD_BACKUP: ArcSwapOption<World> = ArcSwapOption::const_empty();
-
-/// Updates the backup emergency save at [`WORLD_BACKUP`].
-pub fn update_emergency_save(new_world: World) {
-    WORLD_BACKUP.store(Some(Arc::new(new_world)));
-}
+use paiagram_core::{SaveData, WORLD_BACKUP, World};
 
 /// Set up the emergency save pipeline
 pub fn setup_emergency_save() {
