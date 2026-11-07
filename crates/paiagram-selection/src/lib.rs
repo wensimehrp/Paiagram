@@ -15,14 +15,14 @@ macro_rules! gen_selected_items {
             $(type $no_single_name:ident = $no_single_type:ty;)*
         }
     } => {
-        /// Items selected by the user
+        /// A homogenous set of items selected by the user
         #[derive(Clone, Serialize)]
         pub enum SelectedItems {
             $( $selected_name_plural(Vec1<$selected_type>), )*
             $( $no_single_name($no_single_type), )*
             None,
         }
-        /// Item selected by the user
+        /// An item selected by the user
         #[derive(Clone, Serialize)]
         pub enum SelectedItem {
             $( $selected_name($selected_type), )*
@@ -76,11 +76,13 @@ macro_rules! gen_selected_items {
     };
 }
 
+pub type EditingOffset = (TEntryId, TEstimate, Either<TDuration, TDuration>);
+
 #[derive(Clone, Serialize)]
 pub struct TripSelection {
     pub trip_key: TripKey,
     #[serde(skip)]
-    pub editing_offset: Option<(TEntryId, TEstimate, Either<TDuration, TDuration>)>,
+    pub editing_offset: Option<EditingOffset>,
 }
 
 impl TripSelection {
