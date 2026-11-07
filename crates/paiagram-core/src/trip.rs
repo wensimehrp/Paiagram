@@ -119,6 +119,7 @@ impl TripSchedule {
         Some(e1 - e0)
     }
 
+    /// Shift the arr or pass mode of an entry, given the id.
     pub fn shift_arr_or_pass(&mut self, id: TEntryId, duration: TimetableDuration) {
         let Some(entry) = self.entries.make_mut().iter_mut().find(|e| e.id == id) else {
             return;
@@ -141,6 +142,7 @@ impl TripSchedule {
         }
     }
 
+    /// Set the arr or pass mode of an entry, given the id.
     pub fn set_arr_or_pass_mode(&mut self, id: TEntryId, mode: TravelMode) {
         let Some(changed) = self.entries.iter().position(|e| e.id == id) else {
             return;
@@ -202,11 +204,22 @@ impl TripSchedule {
         arrivals
     }
 
+    /// Set the departure mode of an entry in the schedule, given the id.
     pub fn set_dep_mode(&mut self, id: TEntryId, mode: Option<TravelMode>) {
         let Some(entry) = self.entries.make_mut().iter_mut().find(|e| e.id == id) else {
             return;
         };
         entry.dep = mode;
+    }
+
+    /// Removes an entry from the schedule, given the id.
+    pub fn remove(&mut self, id: TEntryId) -> Option<TEntry> {
+        self.entries.iter().position(|entry| entry.id == id).map(|idx| self.entries.remove(idx))
+    }
+
+    /// Push a new entry into the schedule, given the id.
+    pub fn insert(&mut self, idx: usize, entry: TEntry) {
+        self.entries.insert(idx, entry);
     }
 }
 

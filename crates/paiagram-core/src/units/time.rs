@@ -1,4 +1,5 @@
 use std::ops;
+use std::str::FromStr;
 
 use egui::emath;
 use serde::{Deserialize, Serialize};
@@ -134,6 +135,7 @@ impl TimetableTime {
     /// - HH:MM:SS-D
     /// - HH:MM+D
     /// - HH:MM-D
+    // TODO: remove from_str and from_oud2_str
     #[inline]
     pub fn from_str(s: &str) -> Option<Self> {
         let (time_part, day_offset_seconds) = if let Some(idx) = s.rfind(['+', '-']) {
@@ -221,6 +223,13 @@ impl TimetableTime {
     }
 }
 
+impl FromStr for TimetableTime {
+    type Err = &'static str;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        TimetableTime::from_str(s).or(TimetableTime::from_oud2_str(s)).ok_or("Failed!")
+    }
+}
+
 impl emath::Numeric for TimetableTime {
     const INTEGRAL: bool = true;
     const MIN: Self = Self(i32::MIN);
@@ -293,7 +302,7 @@ impl ops::SubAssign<TDuration> for TimetableTime {
 pub struct TimetableDuration(pub i32);
 pub type TDuration = TimetableDuration;
 
-impl TimetableDuration {
+impl TDuration {
     pub const ZERO: Self = Self(0);
     pub const MAX: Self = Self(i32::MAX);
     #[inline]
@@ -308,6 +317,39 @@ impl TimetableDuration {
     }
     pub fn to_ticks(self) -> Tick {
         TimetableTime::to_ticks(self.to_timetable_time())
+    }
+    pub fn from_secs(s: i32) -> Self {
+        Self(s)
+    }
+    pub fn from_hms(h: i32, m: i32, s: i32) -> Self {
+        Self(h * 3600 + m * 60 + s)
+    }
+    /// Parses a [`Duration`] to HH:MM:SS, without the `->` arrow
+    pub fn to_string_no_arrow(&self) -> String {
+        TimetableTime(self.0).to_string()
+    }
+    #[inline]
+    pub fn from_str(s: &str) -> Option<Self> {
+        let time_parts = if let Some((_, rhs)) = s.rsplit_once('→') {
+            rhs
+        } else {
+            s
+        }
+        .trim();
+        Some(Self(TimetableTime::from_str(time_parts)?.0))
+    }
+}
+
+impl FromStr for TDuration {
+    type Err = &'static str;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let time_parts = if let Some((_, rhs)) = s.rsplit_once('→') {
+            rhs
+        } else {
+            s
+        }
+        .trim();
+        <TimetableTime as FromStr>::from_str(time_parts).map(|t| Self(t.0))
     }
 }
 
@@ -332,29 +374,6 @@ impl std::iter::Sum for TDuration {
             s += i
         }
         s
-    }
-}
-
-impl TDuration {
-    pub fn from_secs(s: i32) -> Self {
-        Self(s)
-    }
-    pub fn from_hms(h: i32, m: i32, s: i32) -> Self {
-        Self(h * 3600 + m * 60 + s)
-    }
-    /// Parses a [`Duration`] to HH:MM:SS, without the `->` arrow
-    pub fn to_string_no_arrow(&self) -> String {
-        TimetableTime(self.0).to_string()
-    }
-    #[inline]
-    pub fn from_str(s: &str) -> Option<Self> {
-        let time_parts = if let Some((_, rhs)) = s.rsplit_once('→') {
-            rhs
-        } else {
-            s
-        }
-        .trim();
-        Some(Self(TimetableTime::from_str(time_parts)?.0))
     }
 }
 
@@ -434,5 +453,39 @@ impl ops::Neg for TDuration {
     type Output = Self;
     fn neg(self) -> Self::Output {
         Self(-self.0)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn parse_time_and_durations() {
+        assert_eq!("10:00:00".parse(), Ok(TimetableTime::from_hms(10, 0, 0)));
+        assert_eq!("12:30".parse(), Ok(TimetableTime::from_hms(12, 30, 0)));
+
+        let t = TimetableTime::from_str("08:15:30+1").unwrap();
+        assert_eq!(t.hour(), 8);
+        assert_eq!(t.minute(), 15);
+        assert_eq!(t.second(), 30);
+        assert_eq!(t.day(), 1);
+
+        let t4 = TimetableTime::from_oud2_str("1234").unwrap();
+        assert_eq!(t4, TimetableTime::from_hms(12, 34, 0));
+
+        let t5 = TimetableTime::from_oud2_str("930").unwrap();
+        assert_eq!(t5, TimetableTime::from_hms(9, 30, 0));
+
+        // Test TDuration
+        let d1 = TDuration::from_str("→ 01:00:00").unwrap();
+        assert_eq!(d1, TDuration::from_hms(1, 0, 0));
+
+        let d2 = TDuration::from_str("02:30:00").unwrap();
+        assert_eq!(d2, TDuration::from_hms(2, 30, 0));
+
+        // Display
+        assert_eq!(t.to_string(), "08:15:30+1");
+        assert_eq!(d1.to_string(), "→ 01:00:00");
     }
 }
