@@ -19,12 +19,16 @@ pub(crate) static TIMETABLTE_TEXT_STYLE: LazyLock<TextStyle> =
 pub(crate) static TIMETABLE_FONT_ID: LazyLock<FontId> =
     LazyLock::new(|| FontId::new(13.0, FontFamily::Name("timetable font".into())));
 
+pub(crate) fn timetable_font_family() -> FontFamily {
+    FontFamily::Name("timetable font".into())
+}
+
 pub(crate) fn load_default_font(ctx: Context, font_name: Arc<Mutex<String>>) {
     let mut definitions = FontDefinitions::default();
     // custom timetable font
     definitions
         .families
-        .entry(FontFamily::Name("timetable font".into()))
+        .entry(timetable_font_family())
         .or_default()
         .insert(0, "Paiagram-Timetable-Font".into());
     // monospace fallback. DO NOT USE MONOSPACE FOR TIMETABLE STUFF
@@ -154,6 +158,7 @@ pub(crate) fn load_font_to_egui(
         .entry(FontFamily::Proportional)
         .or_default()
         .insert(0, "system_font".into());
+    definitions.families.entry(timetable_font_family()).or_default().push("system_font".into());
     load_font_name(face_id, font_name);
     ctx.set_fonts(definitions);
     ctx.request_repaint();

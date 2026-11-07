@@ -13,7 +13,7 @@ use paiagram_core::{RouteKey, TripKey};
 use paiagram_rw::ExportObject;
 use serde::{Deserialize, Serialize};
 
-use crate::font::TIMETABLTE_TEXT_STYLE;
+use crate::font::{TIMETABLTE_TEXT_STYLE, timetable_font_family};
 use crate::tiles::trip::TripTile;
 use crate::{App, UiCommand};
 
@@ -264,12 +264,15 @@ fn show_trip_header(
                     width: 1.0,
                     color: fill.gamma_multiply(0.5),
                 };
-                let button = Button::new(RichText::new(name).color(if fill.intensity() > 0.5 {
-                    Color32::BLACK
-                } else {
-                    Color32::WHITE
-                }))
-                .truncate();
+                let button =
+                    Button::new(RichText::new(name).family(timetable_font_family()).color(
+                        if fill.intensity() > 0.5 {
+                            Color32::BLACK
+                        } else {
+                            Color32::WHITE
+                        },
+                    ))
+                    .truncate();
 
                 if ui
                     .place(cell_rect, button)
