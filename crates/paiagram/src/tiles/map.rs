@@ -22,7 +22,7 @@ mod graph_nodes {
 
 #[derive(Serialize, Deserialize, Default)]
 #[serde(default)]
-pub(crate) struct GraphTile {
+pub(crate) struct MapTile {
     map_memory: Option<MapMemory>,
     is_autonavi: bool,
     // cache zone
@@ -32,14 +32,14 @@ pub(crate) struct GraphTile {
     trip_icon: Option<TextureHandle>,
 }
 
-impl PartialEq for GraphTile {
+impl PartialEq for MapTile {
     fn eq(&self, _: &Self) -> bool {
         true
     }
 }
 
-impl Tile for GraphTile {
-    const NAME: &'static str = "Graph";
+impl Tile for MapTile {
+    const NAME: &'static str = "Map";
     fn main_display(&mut self, app: &mut App, ui: &mut Ui) {
         puffin::profile_function!();
         Frame::canvas(ui.style())
@@ -73,7 +73,7 @@ impl<'a> walkers::Plugin for MapPlugin<'a> {
     }
 }
 
-fn main_display(tile: &mut GraphTile, app: &mut App, ui: &mut Ui) {
+fn main_display(tile: &mut MapTile, app: &mut App, ui: &mut Ui) {
     puffin::profile_function!();
     let viewport = ui.available_size();
     let tile_window = Window::new("foo bar")

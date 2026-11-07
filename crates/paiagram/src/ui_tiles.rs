@@ -116,7 +116,7 @@ impl<'w> Behavior<UiTile> for TileViewer<'w> {
                 let tiles: [(_, fn() -> UiTile); 6] = [
                     ("Intervals",       || IntervalsTile::default().into()),
                     ("Service Classes", || ServiceClassesTile::default().into()),
-                    ("Graph",           || GraphTile::default().into()),
+                    ("Map",             || MapTile::default().into()),
                     ("Extension",       || ExtensionTile::default().into()),
                     ("Config",          || ConfigTile::default().into()),
                     ("Trip",            || TripTile::default().into()),

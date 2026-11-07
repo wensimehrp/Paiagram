@@ -5,7 +5,7 @@ use itertools::Itertools;
 use paiagram_core::{Wgs84LonLat, World};
 use walkers::{MapMemory, MercatorProjection, Pixels, Projection, lon_lat};
 
-use crate::tiles::graph::autonavi::MercatorProjectionGcj02;
+use crate::tiles::map::autonavi::MercatorProjectionGcj02;
 
 /// Calculate the median center of projected coordinates
 fn get_median_center(coords: impl Iterator<Item = (f64, f64)> + Clone) -> (f64, f64) {

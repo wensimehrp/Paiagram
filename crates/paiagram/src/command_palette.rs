@@ -92,7 +92,7 @@ impl CommandPalette {
         let panel_info: [(EcoString, MatchedType); 4] = [
             (tr!("tile-start").into(),       MatchedType::Tile(|| UiTile::Start(StartTile::default())),),
             (tr!("tile-settings").into(),    MatchedType::Tile(|| UiTile::Config(ConfigTile)),),
-            (tr!("tile-graph").into(),       MatchedType::Tile(|| UiTile::Graph(GraphTile::default()))),
+            (tr!("tile-graph").into(),       MatchedType::Tile(|| UiTile::Map(MapTile::default()))),
             ("Load OuDiaSecond".into(),     MatchedType::LoadOuDiaSecond),
         ];
 

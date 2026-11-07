@@ -9,7 +9,7 @@ use walkers::{MapMemory, Projector, lon_lat};
 
 use crate::App;
 use crate::distance_to_line::distance_sq_to_line;
-use crate::tiles::graph::map_content::trip_leg_current_pos;
+use crate::tiles::map::map_content::trip_leg_current_pos;
 use crate::trip_schedule_visual::WithVisualMod;
 
 const SELECTION_RADIUS: f32 = 10.0;

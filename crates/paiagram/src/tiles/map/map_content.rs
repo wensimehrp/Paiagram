@@ -6,8 +6,8 @@ use paiagram_core::{LonLat, Wgs84LonLat};
 use walkers::{MapMemory, Projector, lon_lat};
 
 use crate::App;
-use crate::tiles::graph::gpu_draw::GraphCallback;
-use crate::tiles::graph::graph_intervals::graph_intervals::IntervalPoint;
+use crate::tiles::map::gpu_draw::GraphCallback;
+use crate::tiles::map::graph_intervals::graph_intervals::IntervalPoint;
 
 const ICON_HALF_SIZE: f32 = 18.0;
 

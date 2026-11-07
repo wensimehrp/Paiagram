@@ -38,7 +38,7 @@ macro_rules! define_tiles {
 define_tiles!(
     pub enum UiTile {
         marey,
-        graph,
+        map,
         route_timetable,
         config,
         start,

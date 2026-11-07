@@ -115,7 +115,7 @@ impl App {
     /// pass egui uses (eframe's `NativeOptions::multisampling`).
     pub fn init_gpu(&mut self, render_state: &eframe::egui_wgpu::RenderState, msaa_samples: u32) {
         crate::tiles::marey::gpu_draw::init(render_state, msaa_samples);
-        crate::tiles::graph::gpu_draw::init(render_state, msaa_samples);
+        crate::tiles::map::gpu_draw::init(render_state, msaa_samples);
     }
     /// Apply UI commands and change the main ui state
     pub(super) fn begin_frame(&mut self, ui: &mut Ui, mus: &mut UiTiles) {

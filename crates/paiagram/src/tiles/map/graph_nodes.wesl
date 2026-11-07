@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import package::graph::graph_common::{
+import package::map::graph_common::{
     SQUARE_CORNERS,
     SQUARE_MESH_LENGTH,
     screen_pos_to_clip,

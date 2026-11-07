@@ -16,10 +16,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     generate_bindings(&out_dir, "package::marey::gpu_trip", "gpu_trip")?;
     generate_bindings(
         &out_dir,
-        "package::graph::graph_intervals",
+        "package::map::graph_intervals",
         "graph_intervals",
     )?;
-    generate_bindings(&out_dir, "package::graph::graph_nodes", "graph_nodes")?;
+    generate_bindings(&out_dir, "package::map::graph_nodes", "graph_nodes")?;
 
     Ok(())
 }
