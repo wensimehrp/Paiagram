@@ -1,6 +1,6 @@
 use egui::*;
 use itertools::Itertools;
-use paiagram_core::spatial_index::{NodesRTree, SpatialCache};
+use paiagram_core::spatial_index::{NodeRTreeObject, NodesRTree, SpatialCache};
 use paiagram_core::time::TimetableTime;
 use paiagram_core::trip::TripSchedule;
 use paiagram_core::{IntervalKey, LonLat, NodeKey, Wgs84LonLat, World};
@@ -95,7 +95,7 @@ fn _select_map_contents(
                 pointer_pos,
                 lon_lat_to_pos.clone(),
             )
-            .map(SelectedItem::Node)
+            .map(|n| SelectedItem::Node(n.node_key))
         })
         .or_else(|| {
             intervals
@@ -132,11 +132,11 @@ pub fn find_node_within_range(
     coor_max: LonLat,
     pointer_pos: Pos2,
     lon_lat_to_pos: impl Fn(LonLat) -> Pos2 + Clone,
-) -> Option<NodeKey> {
+) -> Option<NodeRTreeObject> {
     nodes
         .get(coor_min, coor_max)
         .map(|node| (node, lon_lat_to_pos(node.coor).distance_sq(pointer_pos)))
         .filter_map(|(node, dist_sq)| (dist_sq < SELECTION_RADIUS_SQ).then_some((node, dist_sq)))
         .min_by(|(_, d1), (_, d2)| f32::total_cmp(d1, d2))
-        .map(|(n, _)| n.node_key)
+        .map(|(n, _)| n)
 }

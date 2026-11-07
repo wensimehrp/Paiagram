@@ -1,5 +1,6 @@
 use egui::*;
 use itertools::Itertools;
+use paiagram_core::spatial_index::NodesRTree;
 use paiagram_core::trip::TripSchedule;
 use paiagram_core::{
     IntervalKey, LonLat, Node, NodeKey, Station, StationKey, Wfc, Wgs84LonLat, World,
@@ -8,12 +9,13 @@ use paiagram_selection::{SelectedItems, TripSelection};
 use walkers::{MapMemory, Projector, lon_lat};
 
 use crate::App;
+use crate::tiles::map::select_content::find_node_within_range;
 use crate::trip_schedule_visual::WithVisualMod;
 
 pub fn display_selected_content(
     app: &mut App,
     ui: &mut Ui,
-    response: &Response,
+    map_response: &Response,
     projector: &Projector,
     _map_memory: &MapMemory,
 ) {
@@ -34,6 +36,8 @@ pub fn display_selected_content(
     };
 
     // display stuff
+    let mut remove_smoothed_node_pos = true;
+    let smoothed_node_id = ui.scope_id().with("node pointer animation");
     match &app.selected_items {
         SelectedItems::Trips(trips) => {
             for TripSelection {
@@ -56,8 +60,22 @@ pub fn display_selected_content(
             let points = map_trip_lines(&app, schedule, lon_lat_to_pos);
             ui.painter().line(points, Stroke::new(3.0, Color32::GREEN));
         }
-        SelectedItems::Nodes(nodes) => {
-            if let Some(to_connect) = handle_node_selection(ui, nodes, lon_lat_to_pos, app) {}
+        SelectedItems::Nodes(selected_nodes) => {
+            remove_smoothed_node_pos = false;
+            if let Some(pair_to_connect) = handle_node_selection(
+                ui,
+                map_response,
+                selected_nodes,
+                lon_lat_to_pos,
+                pos_to_lon_lat,
+                app,
+                smoothed_node_id,
+            ) {
+                let _ = app.mutate(|mut world| {
+                    world.graph.connect_nodes(pair_to_connect);
+                    Ok(world)
+                });
+            }
         }
         // SelectedItems::TripExtension((trip_key, focused_pos)) => {}
         SelectedItems::Intervals(intervals) => {
@@ -138,6 +156,11 @@ pub fn display_selected_content(
             // unimplemented
         }
     }
+    if remove_smoothed_node_pos {
+        ui.data_mut(|data| {
+            data.remove::<Pos2>(smoothed_node_id);
+        })
+    }
 }
 
 fn map_trip_lines(
@@ -183,11 +206,14 @@ fn map_trip_lines(
 
 fn handle_node_selection(
     ui: &mut Ui,
-    nodes: &[NodeKey],
-    lon_lat_to_pos: impl Fn(LonLat) -> Pos2 + Clone,
+    map_response: &Response,
+    selected_nodes: &[NodeKey],
+    lon_lat_to_pos: impl Fn(LonLat) -> Pos2 + Copy,
+    pos_to_lon_lat: impl Fn(Pos2) -> LonLat + Copy,
     app: &App,
-) -> Option<NodeKey> {
-    for node in nodes.iter().filter_map(|key| app.graph.nodes().get(key)) {
+    smoothed_node_id: Id,
+) -> Option<(NodeKey, NodeKey)> {
+    for node in selected_nodes.iter().filter_map(|key| app.graph.nodes().get(key)) {
         ui.painter().circle(
             lon_lat_to_pos(node.pos),
             5.0,
@@ -195,24 +221,42 @@ fn handle_node_selection(
             Stroke::new(1.5, Color32::RED),
         );
     }
-    let selected = nodes.first()?;
-    if nodes.len() > 0 {
-        return None;
-    };
+    let selected = selected_nodes.first()?;
+    let node = app.graph.nodes().get(selected)?;
+    let pointer_pos = ui.pointer_hover_pos()?;
+    let aabb = Rect::from_pos(pointer_pos).expand(200.0);
+    let found = find_node_within_range(
+        &app.spatial().nodes,
+        pos_to_lon_lat(aabb.left_top()),
+        pos_to_lon_lat(aabb.right_bottom()),
+        pointer_pos,
+        lon_lat_to_pos,
+    );
     let mut requires_repaint = false;
-    // let new_pos = station_heights[station_idx];
-    // let smoothed_logical_y = ui.data_mut(|data| {
-    //     let smoothed: &mut CanvasLength =
-    //         data.get_temp_mut_or(ui.scope_id().with("pointer animation"), new_logical_y);
-    //     let t = emath::exponential_smooth_factor(0.9, 0.05, dt);
-    //     *smoothed = CanvasLength(lerp(smoothed.0..=new_logical_y.0, t as f64));
-    //     if (*smoothed - new_logical_y).0.abs() > 0.1 {
-    //         requires_repaint = true;
-    //     }
-    //     *smoothed
-    // });
+    let dt = ui.input(|input| input.stable_dt).at_most(0.1);
+    let new_pos = found.map_or(pointer_pos, |n| lon_lat_to_pos(n.coor));
+    let smoothed_pos = ui.data_mut(|data| {
+        let smoothed: &mut Pos2 = data.get_temp_mut_or(smoothed_node_id, new_pos);
+        let t = emath::exponential_smooth_factor(0.9, 0.05, dt);
+        *smoothed = smoothed.lerp(new_pos, t);
+        if smoothed.distance_sq(new_pos) > 0.1 * 0.1 {
+            requires_repaint = true;
+        }
+        *smoothed
+    });
     if requires_repaint {
         ui.request_repaint();
     }
-    None
+    ui.painter().line_segment(
+        [lon_lat_to_pos(node.pos), smoothed_pos],
+        Stroke::new(2.0, Color32::RED),
+    );
+    ui.painter().circle(
+        smoothed_pos,
+        4.0,
+        Color32::RED.gamma_multiply(0.5),
+        Stroke::new(1.0, Color32::RED),
+    );
+    let connected_node = found?.node_key;
+    map_response.clicked().then_some((*selected, connected_node))
 }
