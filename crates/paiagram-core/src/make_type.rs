@@ -3,6 +3,7 @@ macro_rules! make_type {
         $(#[$struct_attr:meta])*
         $struct_name:ident,
         $(key = $key_impl:ty,)?
+        get_name = $get_name_path:expr,
         data { $(
             $(#[$field_attr:meta])*
             $field_name:ident: $field_type:ty,
@@ -28,9 +29,21 @@ macro_rules! make_type {
             [<$struct_name Key>],
             WorldFieldContainer<$struct_name, [<$struct_name Cache>]>
         >;
+
+        impl std::fmt::Debug for [<$struct_name Key>] {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                let Some(world) = crate::WORLD_BACKUP.load_full() else {
+                    return Ok(());
+                };
+                let Some(name) = ($get_name_path)(&*world, self) else {
+                    return Ok(());
+                };
+                write!(f, "{name}")
+            }
+        }
     } };
     (@make_key_impl $struct_name:ident) => { paste::paste! {
-        #[derive(Serialize, Deserialize, Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+        #[derive(Serialize, Deserialize, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
         pub struct [<$struct_name Key>](std::num::NonZeroU64);
 
         pub type [<$struct_name KeyHashMap>]<T> = nohash_hasher::IntMap<[<$struct_name Key>], T>;
@@ -43,9 +56,9 @@ macro_rules! make_type {
 
         impl [<$struct_name Key>] {
             pub fn new() -> Self {
-                Self(crate::key_gen::next_id(
+                Self(<Self as Key>::next_id(
                     &[<$struct_name:snake:upper _COUNTER>],
-                    crate::key_gen::client_id(),
+                    <Self as Key>::client_id(),
                 ))
             }
         }

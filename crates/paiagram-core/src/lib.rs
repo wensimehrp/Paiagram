@@ -28,7 +28,7 @@ use ecow::{EcoString, EcoVec};
 use egui::Color32;
 pub use graph::IntervalDirection;
 use itertools::chain;
-pub use key_gen::{MAX_CLIENT_ID, client_id, set_client_id};
+pub use key_gen::Key;
 use make_type::make_type;
 use nohash_hasher::BuildNoHashHasher;
 use route::RouteIntervals;
@@ -40,23 +40,6 @@ pub use units::*;
 
 use crate::import::ImportMode;
 use crate::trip::TripSchedule;
-
-pub trait Key: Clone + Copy {
-    /// Return the key in bits
-    fn to_bits(self) -> u64;
-    /// Return the creation time of the key
-    fn creation_time(self) -> std::time::SystemTime {
-        crate::key_gen::creation_time(self.to_bits())
-    }
-    /// Return the id of the client that allocated the key
-    fn client(self) -> u8 {
-        crate::key_gen::client(self.to_bits())
-    }
-    /// Return the generation
-    fn generation(self) -> u16 {
-        crate::key_gen::generation(self.to_bits())
-    }
-}
 
 #[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
 pub struct WorldFieldContainer<D, C> {
@@ -98,6 +81,7 @@ pub type Wfc<D, C> = WorldFieldContainer<D, C>;
 
 make_type! {
     Trip,
+    get_name = |world: &World, key| world.trips.get(key).map(|wfc| wfc.name.clone()),
     data {
         name: EcoString,
         schedule: TripSchedule,
@@ -110,6 +94,7 @@ make_type! {
 
 make_type! {
     Vehicle,
+    get_name = |world: &World, key| world.vehicles.get(key).map(|wfc| wfc.name.clone()),
     data {
         name: EcoString,
     }
@@ -121,6 +106,7 @@ make_type! {
 
 make_type! {
     Station,
+    get_name = |world: &World, key| world.stations.get(key).map(|wfc| wfc.name.clone()),
     data {
         name: EcoString,
         pos: LonLat,
@@ -136,6 +122,7 @@ make_type! {
     /// A _platform_, which represents a position where the vehicle can stop,
     /// or pass, or a _switch_, which is a railway switch or traffic junction.
     Node,
+    get_name = |world: &World, key| world.graph.nodes.get(key).map(|wfc| wfc.name.clone()),
     data {
         /// The position of the node
         name: EcoString,
@@ -148,6 +135,7 @@ make_type! {
 make_type! {
     /// The service class of the vehicle
     ServiceClass,
+    get_name = |world: &World, key| world.service_classes.get(key).map(|wfc| wfc.name.clone()),
     data {
         /// The name of the service class
         name: EcoString,
@@ -160,6 +148,7 @@ make_type! {
 make_type! {
     /// The route.
     Route,
+    get_name = |world: &World, key| world.routes.get(key).map(|wfc| wfc.name.clone()),
     data {
         /// The name of the route.
         name: EcoString,
@@ -173,6 +162,11 @@ make_type! {
     /// its endpoints, [`IntervalKey`], uniquely identifies it. Parallel edges are not allowed.
     Interval,
     key = graph::SortedKey,
+    get_name = |world: &World, key: &IntervalKey| {
+        world.graph.nodes
+            .get(&key.hi).zip(world.graph.nodes.get(&key.lo))
+            .map(|(n1, n2)| format!("{} <-> {}", n1.name, n2.name))
+    },
     data {
         /// The nodes between the two nodes this interval connects.
         /// Stored in high -> low order
@@ -226,6 +220,7 @@ impl Default for StrokeStyle {
     }
 }
 
+/// The source of everything in the app.
 #[derive(Serialize, Deserialize, Default, Clone, Debug, PartialEq)]
 pub struct World {
     pub trips: TripCollection,
@@ -236,7 +231,7 @@ pub struct World {
     pub routes: RouteCollection,
 }
 
-/// A backup for the current world.
+/// A backup for the current world. This can be used to implement emergency save
 pub static WORLD_BACKUP: ArcSwapOption<World> = ArcSwapOption::const_empty();
 
 impl World {
@@ -303,6 +298,18 @@ impl std::ops::Deref for Source {
 }
 
 impl Source {
+    pub fn new() -> Self {
+        let (spatial_tx, spatial_rx) = mpsc::channel();
+        Self {
+            world: World::default(),
+            history: Vec::new(),
+            redo_len: 0,
+            revision: 0,
+            spatial: SpatialCache::default(),
+            spatial_tx,
+            spatial_rx,
+        }
+    }
     /// Changes after every successful command, undo, and redo.
     pub fn revision(&self) -> u64 {
         self.revision
@@ -410,20 +417,5 @@ impl Source {
         self.revision += 1;
         self.spawn_spatial_build();
         Ok(())
-    }
-}
-
-impl Source {
-    pub fn new() -> Self {
-        let (spatial_tx, spatial_rx) = mpsc::channel();
-        Self {
-            world: World::default(),
-            history: Vec::new(),
-            redo_len: 0,
-            revision: 0,
-            spatial: SpatialCache::default(),
-            spatial_tx,
-            spatial_rx,
-        }
     }
 }
