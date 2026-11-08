@@ -70,7 +70,7 @@ gtfs-structures = { version = "0.50.1", default-features = false }
 ib-matcher = { version = "0.4.5", features = ["pinyin", "romaji"] }
 idb = "0.6.5"
 image = { version = "0.25.10", default-features = false, features = ["png"] }
-imbl = { version = "7.0.2", features = ["debug", "serde"] }
+imbl = { version = "7.0.2", features = ["debug", "serde", "triomphe"] }
 itertools = "0.14.0"
 jiff = "0.2.38"
 krilla = "0.8.2"
