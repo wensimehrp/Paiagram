@@ -1,14 +1,12 @@
 use egui::*;
 use itertools::Itertools;
-use paiagram_core::spatial_index::NodesRTree;
 use paiagram_core::trip::TripSchedule;
-use paiagram_core::{
-    IntervalKey, LonLat, Node, NodeKey, Station, StationKey, Wfc, Wgs84LonLat, World,
-};
+use paiagram_core::{Coord, IntervalKey, Node, NodeKey, Station, StationKey, Wfc, World, XyPos};
 use paiagram_selection::{SelectedItems, TripSelection};
-use walkers::{MapMemory, Projector, lon_lat};
+use walkers::Projector;
 
 use crate::App;
+use crate::tiles::map::projection::XyProjection;
 use crate::tiles::map::select_content::find_node_within_range;
 use crate::trip_schedule_visual::WithVisualMod;
 
@@ -17,23 +15,15 @@ pub fn display_selected_content(
     ui: &mut Ui,
     map_response: &Response,
     projector: &Projector,
-    _map_memory: &MapMemory,
 ) {
     puffin::profile_function!();
 
-    let pos_to_lon_lat = |pos: Pos2| -> LonLat {
-        let coor = projector.unproject(pos.to_vec2());
-        Wgs84LonLat {
-            lon: coor.x(),
-            lat: coor.y(),
-        }
-        .into()
-    };
-
-    let lon_lat_to_pos = |coor: LonLat| {
-        let wgs84_lon_lat: Wgs84LonLat = coor.into();
-        projector.project(lon_lat(wgs84_lon_lat.lon, wgs84_lon_lat.lat)).to_pos2()
-    };
+    let coord_type = app.graph.coord_type;
+    let pos_to_xy = |pos: Pos2| XyProjection::pos_to_xy(projector, pos);
+    let xy_to_pos = |xy: XyPos| XyProjection::xy_to_pos(projector, xy);
+    let pos_to_coord =
+        |pos: Pos2| -> Coord { coord_type.unproject(XyProjection::pos_to_xy(projector, pos)) };
+    let coord_to_pos = |coor: Coord| XyProjection::xy_to_pos(projector, coord_type.project(coor));
 
     // display stuff
     let mut remove_smoothed_node_pos = true;
@@ -49,7 +39,7 @@ pub fn display_selected_content(
                     continue;
                 };
                 let schedule = trip.schedule.clone().with_entry_shift(*editing_offset);
-                let points = map_trip_lines(&app, schedule, lon_lat_to_pos);
+                let points = map_trip_lines(&app, schedule, coord_to_pos);
                 ui.painter().line(points, Stroke::new(3.0, Color32::GREEN));
             }
         }
@@ -57,7 +47,7 @@ pub fn display_selected_content(
             if let Some(trip) = app.trips.get(trip_key) =>
         {
             let schedule = trip.schedule.clone().with_pushed_entry(*focused_pos);
-            let points = map_trip_lines(&app, schedule, lon_lat_to_pos);
+            let points = map_trip_lines(&app, schedule, coord_to_pos);
             ui.painter().line(points, Stroke::new(3.0, Color32::GREEN));
         }
         SelectedItems::Nodes(selected_nodes) => {
@@ -66,8 +56,9 @@ pub fn display_selected_content(
                 ui,
                 map_response,
                 selected_nodes,
-                lon_lat_to_pos,
-                pos_to_lon_lat,
+                coord_to_pos,
+                pos_to_xy,
+                xy_to_pos,
                 app,
                 smoothed_node_id,
             ) {
@@ -85,7 +76,7 @@ pub fn display_selected_content(
                 };
                 let points: Vec<_> = interval
                     .positions(*interval_key, app.graph.nodes())
-                    .map(lon_lat_to_pos)
+                    .map(coord_to_pos)
                     .collect();
                 ui.painter().line(points, Stroke::new(3.0, Color32::RED));
             }
@@ -94,7 +85,7 @@ pub fn display_selected_content(
             let SelectedItems::Coordinate((coord, edit_buf)) = &mut app.selected_items else {
                 unreachable!()
             };
-            let pos = lon_lat_to_pos(*coord);
+            let pos = coord_to_pos(*coord);
             let resp = ui
                 .interact(
                     Rect::from_pos(pos).expand(10.0),
@@ -112,12 +103,12 @@ pub fn display_selected_content(
             if resp.dragged()
                 && let Some(pointer_pos) = resp.interact_pointer_pos()
             {
-                *coord = pos_to_lon_lat(pointer_pos)
+                *coord = pos_to_coord(pointer_pos)
             }
             let popup = Popup::from_response(&resp).kind(PopupKind::Menu).show(|ui| {
                 ui.add(WidgetAtom::new((
                     RichText::new("New Node").strong().atom_grow(true),
-                    Wgs84LonLat::from(*coord).to_string().atom_align(Align2::RIGHT_CENTER),
+                    coord_type.display(*coord).atom_align(Align2::RIGHT_CENTER),
                 )));
                 ui.horizontal(|ui| {
                     ui.text_edit_singleline(edit_buf);
@@ -166,7 +157,7 @@ pub fn display_selected_content(
 fn map_trip_lines(
     world: &World,
     schedule: TripSchedule,
-    lon_lat_to_pos: impl Fn(LonLat) -> Pos2 + Clone,
+    coord_to_pos: impl Fn(Coord) -> Pos2 + Clone,
 ) -> Vec<Pos2> {
     schedule.estimates(&world.graph, |estimates| {
         let mut v = Vec::new();
@@ -177,14 +168,14 @@ fn map_trip_lines(
                     v.extend(
                         interval
                             .positions(interval_key, world.graph.nodes())
-                            .map(lon_lat_to_pos.clone()),
+                            .map(coord_to_pos.clone()),
                     )
                 } else {
                     v.extend(
                         interval
                             .positions(interval_key, world.graph.nodes())
                             .rev()
-                            .map(lon_lat_to_pos.clone()),
+                            .map(coord_to_pos.clone()),
                     )
                 }
             } else {
@@ -196,7 +187,7 @@ fn map_trip_lines(
                     .iter()
                     .flatten()
                     .copied()
-                    .map(lon_lat_to_pos.clone()),
+                    .map(coord_to_pos.clone()),
                 );
             }
         }
@@ -208,14 +199,15 @@ fn handle_node_selection(
     ui: &mut Ui,
     map_response: &Response,
     selected_nodes: &[NodeKey],
-    lon_lat_to_pos: impl Fn(LonLat) -> Pos2 + Copy,
-    pos_to_lon_lat: impl Fn(Pos2) -> LonLat + Copy,
+    coord_to_pos: impl Fn(Coord) -> Pos2 + Copy,
+    pos_to_xy: impl Fn(Pos2) -> XyPos + Copy,
+    xy_to_pos: impl Fn(XyPos) -> Pos2 + Copy,
     app: &App,
     smoothed_node_id: Id,
 ) -> Option<(NodeKey, NodeKey)> {
     for node in selected_nodes.iter().filter_map(|key| app.graph.nodes().get(key)) {
         ui.painter().circle(
-            lon_lat_to_pos(node.pos),
+            coord_to_pos(node.pos),
             5.0,
             Color32::RED.gamma_multiply(0.5),
             Stroke::new(1.5, Color32::RED),
@@ -227,14 +219,14 @@ fn handle_node_selection(
     let aabb = Rect::from_pos(pointer_pos).expand(200.0);
     let found = find_node_within_range(
         &app.spatial().nodes,
-        pos_to_lon_lat(aabb.left_top()),
-        pos_to_lon_lat(aabb.right_bottom()),
+        pos_to_xy(aabb.left_top()),
+        pos_to_xy(aabb.right_bottom()),
         pointer_pos,
-        lon_lat_to_pos,
+        xy_to_pos,
     );
     let mut requires_repaint = false;
     let dt = ui.input(|input| input.stable_dt).at_most(0.1);
-    let new_pos = found.map_or(pointer_pos, |n| lon_lat_to_pos(n.coor));
+    let new_pos = found.map_or(pointer_pos, |n| xy_to_pos(n.xy));
     let smoothed_pos = ui.data_mut(|data| {
         let smoothed: &mut Pos2 = data.get_temp_mut_or(smoothed_node_id, new_pos);
         let t = emath::exponential_smooth_factor(0.9, 0.05, dt);
@@ -248,7 +240,7 @@ fn handle_node_selection(
         ui.request_repaint();
     }
     ui.painter().line_segment(
-        [lon_lat_to_pos(node.pos), smoothed_pos],
+        [coord_to_pos(node.pos), smoothed_pos],
         Stroke::new(2.0, Color32::RED),
     );
     ui.painter().circle(

@@ -15,7 +15,6 @@ categories.workspace = true
 anyhow.workspace = true
 bytemuck.workspace = true
 clap.workspace = true
-coordtransform.workspace = true
 ecow.workspace = true
 eframe.workspace = true
 egui.workspace = true

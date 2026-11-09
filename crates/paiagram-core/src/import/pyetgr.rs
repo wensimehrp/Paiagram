@@ -19,7 +19,7 @@ use crate::time::{TTime, TimetableTime};
 use crate::trip::{TEntry, TEntryId, TravelMode, TripSchedule};
 use crate::units::distance::Distance;
 use crate::{
-    Interval, IntervalKey, LonLat, Node, NodeKey, Route, RouteKey, ServiceClass, ServiceClassKey,
+    Coord, Interval, IntervalKey, Node, NodeKey, Route, RouteKey, ServiceClass, ServiceClassKey,
     Station as PaiagramStation, StationKey, StrokeStyle, Trip as PaiagramTrip, TripKey, Wfc, World,
 };
 
@@ -166,13 +166,13 @@ pub(super) fn parse_pyetgr(data: &[u8]) -> Option<World> {
             let station_name = station.name.to_eco_string();
             let stn_info = PaiagramStation {
                 name: station_name.clone(),
-                pos: LonLat::ZERO,
+                pos: Coord::ZERO,
             };
             let node_key = NodeKey::new();
             let node_info = Node {
                 name: station_name,
                 parent: stn_key,
-                pos: LonLat::ZERO,
+                pos: Coord::ZERO,
             };
             route_intervals.push(RouteInterval {
                 station_record: StationRecord::All(stn_key),

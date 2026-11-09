@@ -227,9 +227,10 @@ fn show_trip_handles(
                             Ok(world)
                         });
                     }
-                    let duration = trip_schedule.estimates(&source.graph, |estimates| {
-                        trip_schedule.dur_since_prev_stable(estimates, entry.id)
-                    });
+                    let duration =
+                        trip_schedule.estimates(&source.graph, |estimates| {
+                            trip_schedule.dur_since_prev_stable(estimates, entry.id)
+                        });
                     let btn = Button::new("For").right_text(
                         RichText::from(
                             duration.map_or("--:--:--".into(), |d| d.to_string_no_arrow()),

@@ -300,7 +300,7 @@ impl TripSchedule {
             OUTPUT_BUFFER.with(|r| {
                 let mut output_buf = r.borrow_mut();
                 output_buf.clear();
-                self.estimates_inner(&graph, &mut estimate_buf, &mut output_buf, f)
+                self.estimates_inner(graph, &mut estimate_buf, &mut output_buf, f)
             })
         })
     }
@@ -308,7 +308,7 @@ impl TripSchedule {
     pub fn full_route<'a>(&'a self, graph: &'a Graph) -> impl Iterator<Item = EstimateEntry> + 'a {
         self.entries
             .array_windows()
-            .flat_map(|[curr, next]| {
+            .flat_map(move |[curr, next]| {
                 let shortest_path = graph
                     .shortest_path(curr.node, next.node)
                     .map_or_default(|(mut nodes, _)| {
@@ -420,7 +420,7 @@ fn unwind(
             return Some(Distance::ZERO);
         }
         let key = IntervalKey::new(a, b);
-        graph.intervals.get(&key).map(|e| e.length(key, graph.nodes()))
+        graph.intervals.get(&key).map(|e| e.length(key, graph))
     };
     // Dwelling does not count towards the average velocity.
     let stop_dur: TDuration = esb.iter().map(|s| s.dur).sum();

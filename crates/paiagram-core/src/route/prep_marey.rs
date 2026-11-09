@@ -18,7 +18,7 @@ pub(super) fn prep_single_segment<'a>(
         trip_bucket.push(points);
     };
 
-    let trip_entries = trip_schedule.estimates(&graph, |entries| entries.to_vec());
+    let trip_entries = trip_schedule.estimates(graph, |entries| entries.to_vec());
     if trip_entries.len() < 2 {
         return;
     }

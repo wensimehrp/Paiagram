@@ -2,7 +2,7 @@ use std::io::{self, Write};
 
 use paiagram_core::time::{TTime, TimetableTime};
 use paiagram_core::trip::{EstimateEntry, TravelMode};
-use paiagram_core::{Key, NodeKey, ServiceClassKey, StationKey, TripKey, Wgs84LonLat, World};
+use paiagram_core::{Key, NodeKey, ServiceClassKey, StationKey, TripKey, World};
 use paiagram_rw::ExportObject;
 use zip::ZipWriter;
 use zip::write::FileOptions;
@@ -64,12 +64,12 @@ fn write_stops<W: Write + io::Seek>(writer: &mut ZipWriter<W>, world: &World) ->
 
     // A Paiagram station becomes a GTFS parent station...
     for (key, station) in &world.stations {
-        let pos = Wgs84LonLat::from(station.pos);
+        let (lon, lat) = station.pos.to_wgs84();
         csv.write_record([
             station_id(*key),
             station.name.to_string(),
-            format!("{:.7}", pos.lat),
-            format!("{:.7}", pos.lon),
+            format!("{:.7}", lat),
+            format!("{:.7}", lon),
             "1".to_string(),
             String::new(),
         ])?;
@@ -77,12 +77,12 @@ fn write_stops<W: Write + io::Seek>(writer: &mut ZipWriter<W>, world: &World) ->
 
     // ...and each of its nodes becomes a platform/stop below it.
     for (key, node) in world.graph.nodes() {
-        let pos = Wgs84LonLat::from(node.pos);
+        let (lon, lat) = node.pos.to_wgs84();
         csv.write_record([
             node_id(*key),
             node.name.to_string(),
-            format!("{:.7}", pos.lat),
-            format!("{:.7}", pos.lon),
+            format!("{:.7}", lat),
+            format!("{:.7}", lon),
             "0".to_string(),
             station_id(node.parent),
         ])?;

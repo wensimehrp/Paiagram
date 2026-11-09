@@ -4,7 +4,7 @@
 use either::Either;
 use paiagram_core::time::{TDuration, TimetableTime};
 use paiagram_core::trip::{TEntryId, TEstimate};
-use paiagram_core::{IntervalKey, LonLat, NodeKey, RouteKey, ServiceClassKey, StationKey, TripKey};
+use paiagram_core::{Coord, IntervalKey, NodeKey, RouteKey, ServiceClassKey, StationKey, TripKey};
 use serde::Serialize;
 use vec1::{Vec1, vec1};
 
@@ -115,7 +115,7 @@ gen_selected_items! {
     type (ServiceClass, ServiceClasses) = ServiceClassKey;  // Batch edit color
     type (Route, Routes) = RouteKey;
     no_single_selection {
-        type Coordinate = (LonLat, String);                               // Add new station
+        type Coordinate = (Coord, String);                                // Add new station
         type TripExtension = (TripKey, Option<(NodeKey, TimetableTime)>); // Extend current trip
         type RouteExtension = ();                                         // Extend current route
     }

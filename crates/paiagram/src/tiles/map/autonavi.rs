@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Projection and provider module for AutoNavi (Amap, or 高德)
+//! Tile provider module for AutoNavi (Amap, or 高德)
 
+use walkers::TileId;
 use walkers::sources::{Attribution, TileSource};
-use walkers::{MercatorProjection, Pixels, Position, Projection, TileId};
 
 pub struct AutoNavi;
 
@@ -30,25 +30,5 @@ impl TileSource for AutoNavi {
     }
     fn max_zoom(&self) -> u8 {
         18
-    }
-}
-
-pub struct MercatorProjectionGcj02;
-
-impl Projection for MercatorProjectionGcj02 {
-    fn project(&self, position: Position, zoom: f64) -> Pixels {
-        let (x, y) = coordtransform::wgs84_to_gcj02(position.x(), position.y());
-        Projection::project(&MercatorProjection, Position::new(x, y), zoom)
-    }
-
-    fn unproject(&self, pixels: Pixels, zoom: f64) -> Position {
-        let pos = Projection::unproject(&MercatorProjection, pixels, zoom);
-        let (x, y) = coordtransform::gcj02_to_wgs84(pos.x(), pos.y());
-        Position::new(x, y)
-    }
-
-    fn scale_pixel_per_meter(&self, position: Position, zoom: f64) -> f64 {
-        let (x, y) = coordtransform::wgs84_to_gcj02(position.x(), position.y());
-        Projection::scale_pixel_per_meter(&MercatorProjection, Position::new(x, y), zoom)
     }
 }

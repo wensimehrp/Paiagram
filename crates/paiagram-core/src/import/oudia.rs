@@ -13,7 +13,7 @@ use crate::route::{RouteInterval, RouteIntervals, StationRecord};
 use crate::time::TimetableTime;
 use crate::trip::{TEntry, TEntryId, TravelMode, TripSchedule};
 use crate::{
-    Interval, IntervalKey, LonLat, Node, NodeKey, Route, RouteKey, ServiceClass, ServiceClassKey,
+    Coord, Interval, IntervalKey, Node, NodeKey, Route, RouteKey, ServiceClass, ServiceClassKey,
     Station, StationKey, StrokeStyle, Trip, TripKey, Wfc, World,
 };
 
@@ -50,7 +50,7 @@ pub(crate) fn parse_oudia(stream: OudFileType) -> Result<World, Box<dyn std::err
             *station_key,
             Wfc::new(Station {
                 name: station_name.clone(),
-                pos: LonLat::ZERO,
+                pos: Coord::ZERO,
             }),
         );
         world.graph.insert_node(
@@ -58,7 +58,7 @@ pub(crate) fn parse_oudia(stream: OudFileType) -> Result<World, Box<dyn std::err
             Node {
                 name: station_name,
                 parent: *station_key,
-                pos: LonLat::ZERO,
+                pos: Coord::ZERO,
             },
         );
     }

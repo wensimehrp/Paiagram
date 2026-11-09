@@ -14,11 +14,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let out_dir = PathBuf::from(std::env::var("OUT_DIR")?);
 
     generate_bindings(&out_dir, "package::marey::gpu_trip", "gpu_trip")?;
-    generate_bindings(
-        &out_dir,
-        "package::map::graph_intervals",
-        "graph_intervals",
-    )?;
+    generate_bindings(&out_dir, "package::map::graph_intervals", "graph_intervals")?;
     generate_bindings(&out_dir, "package::map::graph_nodes", "graph_nodes")?;
 
     Ok(())

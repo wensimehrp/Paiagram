@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 mod layout;
 
 use crate::{
-    Distance, Interval, IntervalCache, IntervalCollection, IntervalKey, LonLat, Node,
-    NodeCollection, NodeKey, Wfc, Wgs84LonLat,
+    Coord, CoordType, Distance, Interval, IntervalCache, IntervalCollection, IntervalKey, Node,
+    NodeCollection, NodeKey, Wfc,
 };
 
 impl NodeKey {
@@ -53,6 +53,8 @@ pub enum IntervalDirection {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
 #[serde(into = "GraphNoCache", from = "GraphNoCache")]
 pub struct Graph {
+    /// How this graph's coordinates are stored and projected for display.
+    pub coord_type: CoordType,
     pub(crate) nodes: NodeCollection,
     pub(crate) intervals: IntervalCollection,
     adjacency: OrdSet<(NodeKey, NodeKey)>,
@@ -60,14 +62,22 @@ pub struct Graph {
 
 #[derive(Serialize, Deserialize)]
 struct GraphNoCache {
+    coord_type: CoordType,
     nodes: NodeCollection,
     intervals: IntervalCollection,
 }
 
 impl From<GraphNoCache> for Graph {
-    fn from(GraphNoCache { nodes, intervals }: GraphNoCache) -> Self {
+    fn from(
+        GraphNoCache {
+            coord_type,
+            nodes,
+            intervals,
+        }: GraphNoCache,
+    ) -> Self {
         let adjacency = intervals.iter().flat_map(|(k, _)| [(k.hi, k.lo), (k.lo, k.hi)]).collect();
         Self {
+            coord_type,
             nodes,
             intervals,
             adjacency,
@@ -78,10 +88,17 @@ impl From<GraphNoCache> for Graph {
 impl From<Graph> for GraphNoCache {
     fn from(
         Graph {
-            nodes, intervals, ..
+            coord_type,
+            nodes,
+            intervals,
+            adjacency: _,
         }: Graph,
     ) -> Self {
-        Self { nodes, intervals }
+        Self {
+            coord_type,
+            nodes,
+            intervals,
+        }
     }
 }
 
@@ -135,10 +152,7 @@ impl Graph {
         let (Some(from), Some(to)) = (self.nodes.get(&from), self.nodes.get(&to)) else {
             return Distance::ZERO;
         };
-        Distance(
-            Wgs84LonLat::from(from.pos).distance_to_meters(Wgs84LonLat::from(to.pos)).round()
-                as i32,
-        )
+        Distance(self.coord_type.distance_to_meters(from.pos, to.pos).round() as i32)
     }
 
     /// Finds a shortest path with A*.
@@ -153,7 +167,7 @@ impl Graph {
                 self.outgoing_intervals(node).map(move |(interval_key, interval)| {
                     (
                         interval_key.other(node),
-                        interval.length(interval_key, &self.nodes),
+                        interval.length(interval_key, self),
                     )
                 })
             },
@@ -172,8 +186,8 @@ impl Graph {
     pub fn update_node_coordinate(
         &mut self,
         node_key: NodeKey,
-        new_coordinate: LonLat,
-    ) -> Option<LonLat> {
+        new_coordinate: Coord,
+    ) -> Option<Coord> {
         let node = self.nodes.get_mut(&node_key)?;
         Some(std::mem::replace(&mut node.pos, new_coordinate))
     }

@@ -25,13 +25,13 @@ use crate::route::{RouteInterval, RouteIntervals, StationRecord};
 use crate::time::TimetableTime;
 use crate::trip::{TEntry, TEntryId, TravelMode, TripSchedule};
 use crate::{
-    Interval, IntervalKey, LonLat, Node, NodeKey, Route, RouteKey, ServiceClass, ServiceClassKey,
-    Station, StationKey, StrokeStyle, Trip, TripKey, Wfc, Wgs84LonLat, World,
+    Coord, Interval, IntervalKey, Node, NodeKey, Route, RouteKey, ServiceClass, ServiceClassKey,
+    Station, StationKey, StrokeStyle, Trip, TripKey, Wfc, World,
 };
 
 /// The position of a GTFS stop. Missing coordinates default to `(0, 0)`.
-fn stop_lonlat(stop: &Stop) -> LonLat {
-    Wgs84LonLat::new(stop.longitude.unwrap_or(0.0), stop.latitude.unwrap_or(0.0)).into()
+fn stop_lonlat(stop: &Stop) -> Coord {
+    Coord::from_wgs84(stop.longitude.unwrap_or(0.0), stop.latitude.unwrap_or(0.0))
 }
 
 pub(super) fn parse_gtfs(data: &[u8]) -> Result<World, Box<dyn std::error::Error>> {

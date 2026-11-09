@@ -173,6 +173,13 @@ impl World {
             }
         }
 
+        // Changing the coordinate type reinterprets every stored coordinate, so the spatial
+        // caches have to be rebuilt as well.
+        if self.graph.coord_type != new.graph.coord_type {
+            spatial_dirty = true;
+        }
+        ret.graph.coord_type = new.graph.coord_type;
+
         (ret, spatial_dirty)
     }
 }

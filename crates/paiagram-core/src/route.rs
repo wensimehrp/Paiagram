@@ -99,8 +99,7 @@ fn gen_progress(
         let source = *source;
         graph.outgoing_intervals(source).filter_map(move |(interval_key, interval)| {
             let target = interval_key.other(source);
-            is_part_of_interval(&target)
-                .then_some((target, interval.length(interval_key, graph.nodes())))
+            is_part_of_interval(&target).then_some((target, interval.length(interval_key, graph)))
         })
     };
     let distance_to_source = curr_stn_nodes

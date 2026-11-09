@@ -1,14 +1,16 @@
 use egui::emath::inverse_lerp;
 use egui::*;
+use paiagram_core::XyPos;
 use paiagram_core::spatial_index::{IntervalRTreeObject, NodeRTreeObject, TripLegRTreeObject};
 use paiagram_core::time::TimetableTime;
-use paiagram_core::{LonLat, Wgs84LonLat};
-use walkers::{MapMemory, Projector, lon_lat};
+use walkers::Projector;
 
 use crate::App;
+use crate::font::TIMETABLE_FONT_ID;
 use crate::tiles::map::gpu_draw::GraphCallback;
 use crate::tiles::map::graph_intervals::graph_intervals::IntervalPoint;
 use crate::tiles::map::graph_nodes::graph_nodes::NodePoint;
+use crate::tiles::map::projection::XyProjection;
 
 const ICON_HALF_SIZE: f32 = 18.0;
 
@@ -37,32 +39,26 @@ pub fn render_map_contents(
     ui: &mut Ui,
     response: &Response,
     projector: &Projector,
-    map_memory: &MapMemory,
 ) {
     puffin::profile_function!();
 
     const DISPLAY_ZOOM_THRESHOLD: f64 = 8.0;
+    const DISPLAY_ZOOM_HARD_THRESHOLD: f64 = 7.0;
     let strength = ui.animate_bool_responsive(
         ui.scope_id().with("text display animation"),
-        map_memory.zoom() > DISPLAY_ZOOM_THRESHOLD,
+        projector.zoom() > DISPLAY_ZOOM_THRESHOLD,
     );
-
-    let pos_to_lon_lat = |pos: Pos2| -> LonLat {
-        let coor = projector.unproject(pos.to_vec2());
-        Wgs84LonLat {
-            lon: coor.x(),
-            lat: coor.y(),
-        }
-        .into()
+    let strength = if projector.zoom() > DISPLAY_ZOOM_HARD_THRESHOLD {
+        strength
+    } else {
+        0.0
     };
 
-    let lon_lat_to_pos = |coor: LonLat| {
-        let wgs84_lon_lat: Wgs84LonLat = coor.into();
-        projector.project(lon_lat(wgs84_lon_lat.lon, wgs84_lon_lat.lat)).to_pos2()
-    };
+    let pos_to_xy = |pos: Pos2| XyProjection::pos_to_xy(projector, pos);
+    let xy_to_pos = |xy: XyPos| XyProjection::xy_to_pos(projector, xy);
 
-    let coor_min = pos_to_lon_lat(response.rect.left_top());
-    let coor_max = pos_to_lon_lat(response.rect.right_bottom());
+    let xy_min = pos_to_xy(response.rect.left_top());
+    let xy_max = pos_to_xy(response.rect.right_bottom());
 
     // Intervals
     let mut callback = GraphCallback::new();
@@ -72,64 +68,68 @@ pub fn render_map_contents(
         for IntervalRTreeObject {
             interval_key: _,
             nodes,
-        } in app.spatial().intervals.get(coor_min, coor_max)
+        } in app.spatial().intervals.get(xy_min, xy_max)
         {
-            let Some((last, rest)) = nodes.split_last() else {
+            let Some(((last, _), rest)) = nodes.split_last() else {
                 continue;
             };
             callback.interval_points.extend(
                 rest.iter()
                     .copied()
-                    .map(lon_lat_to_pos)
+                    .map(|(xy, _)| xy)
+                    .map(xy_to_pos)
                     .map(|pos| IntervalPoint::new((pos - response.rect.left_top()).into(), 1)),
             );
-            let pos = lon_lat_to_pos(*last) - response.rect.left_top();
+            let pos = xy_to_pos(*last) - response.rect.left_top();
             callback.interval_points.push(IntervalPoint::new(pos.into(), 0));
         }
     }
 
     // Nodes
-    {
+    ui.scope(|ui| {
         puffin::profile_scope!("draw_nodes");
-        let node_text_color = ui.visuals().strong_text_color().gamma_multiply(strength);
-        for NodeRTreeObject { node_key, coor } in app.spatial().nodes.get(coor_min, coor_max) {
+        ui.set_opacity(strength);
+        ui.visuals_mut().text_options.color_transfer_function =
+            epaint::FontColorTransferFunction::Off;
+        for NodeRTreeObject { node_key, xy } in app.spatial().nodes.get(xy_min, xy_max) {
             let Some(node) = app.graph.nodes().get(&node_key) else {
                 continue;
             };
-            let draw_pos = lon_lat_to_pos(coor);
+            let node_pos = xy_to_pos(xy);
             callback.node_points.push(NodePoint::new(
-                (draw_pos - response.rect.left_top()).into(),
+                (node_pos - response.rect.left_top()).into(),
                 u32::from_le_bytes(Color32::GRAY.to_array()),
             ));
             if strength > 0.1 {
-                ui.painter().text(
-                    draw_pos + vec2(0.0, 4.0),
-                    Align2::CENTER_TOP,
-                    node.name.as_str(),
+                let galley = ui.painter().layout(
+                    node.name.to_string(),
                     FontId::proportional(13.0),
-                    node_text_color,
+                    Color32::BLACK,
+                    200.0,
                 );
-            }
+                let text_pos = node_pos + vec2(0.0, 4.0) - vec2(galley.size().x / 2.0, 0.0);
+                ui.painter().rect_filled(
+                    Rect::from_min_size(text_pos, galley.size()).expand(2.0),
+                    2.0,
+                    Color32::from_white_alpha(128),
+                );
+                ui.painter().galley(text_pos, galley, Color32::WHITE);
+            };
         }
-    }
+    });
 
     // Trip legs
     {
-        let tint = Color32::WHITE.gamma_multiply(strength);
         puffin::profile_scope!("draw_trip_legs");
         let map_trip_legs = app
             .spatial()
             .trip_legs
-            .get(
-                coor_min,
-                coor_max,
-                TimetableTime(app.timer.seconds() as i32),
-            )
+            .get(xy_min, xy_max, TimetableTime(app.timer.seconds() as i32))
             .filter_map(|trip_leg| {
                 app.trips.get(&trip_leg.trip_key).zip(trip_leg_current_pos(
                     trip_leg,
                     app.timer.seconds(),
-                    lon_lat_to_pos,
+                    xy_to_pos,
                 ))
             })
             .map(|(trip, draw_pos)| {
@@ -142,21 +142,33 @@ pub fn render_map_contents(
         if strength > 0.1 {
             ui.painter().add(callback.paint_callback(response.rect));
             // simply use egui's image features
-            for (trip, draw_pos, fill) in map_trip_legs {
-                ui.painter().image(
-                    trip_icon,
-                    Rect::from_center_size(draw_pos, Vec2::splat(ICON_HALF_SIZE * 2.0)),
-                    Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
-                    tint,
-                );
-                ui.painter().text(
-                    draw_pos + Vec2::new(0.0, -ICON_HALF_SIZE),
-                    Align2::CENTER_BOTTOM,
-                    trip.name.as_str(),
-                    FontId::proportional(13.0),
-                    fill.gamma_multiply(strength),
-                );
-            }
+            ui.scope(|ui| {
+                ui.set_opacity(strength);
+                ui.visuals_mut().text_options.color_transfer_function =
+                    epaint::FontColorTransferFunction::Off;
+                for (trip, trip_pos, fill) in map_trip_legs {
+                    ui.painter().image(
+                        trip_icon,
+                        Rect::from_center_size(trip_pos, Vec2::splat(ICON_HALF_SIZE * 2.0)),
+                        Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
+                        Color32::WHITE,
+                    );
+                    let galley = ui.painter().layout(
+                        trip.name.to_string(),
+                        TIMETABLE_FONT_ID.clone(),
+                        fill,
+                        100.0,
+                    );
+                    let text_pos = trip_pos + Vec2::new(0.0, -ICON_HALF_SIZE)
+                        - vec2(galley.size().x / 2.0, galley.size().y);
+                    ui.painter().rect_filled(
+                        Rect::from_min_size(text_pos, galley.size()).expand(2.0),
+                        2.0,
+                        Color32::from_white_alpha(128),
+                    );
+                    ui.painter().galley(text_pos, galley, fill);
+                }
+            });
         } else {
             for (_, draw_pos, fill) in map_trip_legs {
                 callback.node_points.push(NodePoint::new(
@@ -179,7 +191,7 @@ pub fn trip_leg_current_pos(
         next_arr,
     }: TripLegRTreeObject,
     current_secs: f64,
-    lon_lat_to_pos: impl Fn(LonLat) -> Pos2,
+    xy_to_pos: impl Fn(XyPos) -> Pos2,
 ) -> Option<Pos2> {
     let curr_progress = {
         let t1 = curr_dep.0 as f64;
@@ -208,11 +220,11 @@ pub fn trip_leg_current_pos(
         })
         .unwrap_or(0);
 
-    let (prev_coor, prev_progress) = interval[prev_idx];
-    let (next_coor, next_progress) = interval[prev_idx + 1];
+    let (prev_xy, prev_progress) = interval[prev_idx];
+    let (next_xy, next_progress) = interval[prev_idx + 1];
     let normalized_progress =
         inverse_lerp(prev_progress..=next_progress, curr_progress).unwrap_or(0.0);
-    let prev_pos = lon_lat_to_pos(prev_coor);
-    let next_pos = lon_lat_to_pos(next_coor);
+    let prev_pos = xy_to_pos(prev_xy);
+    let next_pos = xy_to_pos(next_xy);
     Some(prev_pos.lerp(next_pos, normalized_progress))
 }

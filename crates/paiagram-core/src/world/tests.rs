@@ -9,7 +9,7 @@ use crate::import::{ImportMode, ImportType, make_world};
 use crate::time::TimetableTime;
 use crate::trip::{TEntry, TEntryId, TravelMode, TripSchedule};
 use crate::{
-    Interval, LonLat, Node, NodeKey, Source, Station, StationKey, TripKey, Vehicle, VehicleKey,
+    Coord, Interval, Node, NodeKey, Source, Station, StationKey, TripKey, Vehicle, VehicleKey,
 };
 
 fn populated_world() -> (World, StationKey, NodeKey, NodeKey, VehicleKey, TripKey) {
@@ -24,7 +24,7 @@ fn populated_world() -> (World, StationKey, NodeKey, NodeKey, VehicleKey, TripKe
         station,
         Wfc::new(Station {
             name: "station".into(),
-            pos: LonLat::ZERO,
+            pos: Coord::ZERO,
         }),
     );
     for node in [a, b] {
@@ -33,7 +33,7 @@ fn populated_world() -> (World, StationKey, NodeKey, NodeKey, VehicleKey, TripKe
             Node {
                 name: "node".into(),
                 parent: station,
-                pos: LonLat::ZERO,
+                pos: Coord::ZERO,
             },
         );
     }
@@ -167,7 +167,7 @@ fn moving_a_node_updates_station_caches() {
         new_station,
         Wfc::new(Station {
             name: "new station".into(),
-            pos: LonLat::ZERO,
+            pos: Coord::ZERO,
         }),
     );
     let mut node = changed.graph.nodes.get(&b).unwrap().clone();

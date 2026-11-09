@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use fdg_sim::{ForceGraph, Node, Simulation, SimulationParameters};
 
-use crate::{NodeKey, Source, Wgs84LonLat, XyPos};
+use crate::{NodeKey, Source, XyPos};
 
 impl Source {
     pub fn auto_layout(&mut self) {
@@ -39,12 +39,12 @@ fn auto_layout(source: &mut Source) {
     }
     let _ = source.mutate(|mut world| {
         for node in simulation.get_graph().node_weights() {
-            let new_coor: Wgs84LonLat = XyPos {
-                x: node.location.x as f64,
-                y: node.location.y as f64,
-            }
-            .into();
-            world.graph.update_node_coordinate(node.data, new_coor.into());
+            let xy = XyPos(
+                node.location.x.round() as i32,
+                node.location.y.round() as i32,
+            );
+            let new_coord = world.graph.coord_type.unproject(xy);
+            world.graph.update_node_coordinate(node.data, new_coord);
         }
         Ok(world)
     });

@@ -109,7 +109,7 @@ make_type! {
     get_name = |world: &World, key| world.stations.get(key).map(|wfc| wfc.name.clone()),
     data {
         name: EcoString,
-        pos: LonLat,
+        pos: Coord,
     }
     cache {
         nodes: EcoVec<NodeKey>,
@@ -127,7 +127,7 @@ make_type! {
         /// The position of the node
         name: EcoString,
         parent: StationKey,
-        pos: LonLat,
+        pos: Coord,
     }
     cache { }
 }
@@ -170,7 +170,7 @@ make_type! {
     data {
         /// The nodes between the two nodes this interval connects.
         /// Stored in high -> low order
-        intermediate_nodes: EcoVec<LonLat>,
+        intermediate_nodes: EcoVec<Coord>,
         /// The length of the interval. If the length is None, then it is calculated from
         /// the intermediate nodes and the endpoint node positions.
         length: Option<NonZeroU32>,
@@ -189,7 +189,7 @@ impl Interval {
         &self,
         IntervalKey { hi, lo }: IntervalKey,
         nodes: &NodeCollection,
-    ) -> impl Iterator<Item = LonLat> + DoubleEndedIterator {
+    ) -> impl Iterator<Item = Coord> + DoubleEndedIterator {
         chain!(
             nodes.get(&hi).map(|wfc| wfc.pos),
             self.intermediate_nodes.iter().cloned(),

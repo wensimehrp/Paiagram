@@ -2,10 +2,10 @@
 
 use egui::Vec2;
 use itertools::Itertools;
-use paiagram_core::{Wgs84LonLat, World};
-use walkers::{MapMemory, MercatorProjection, Pixels, Projection, lon_lat};
+use paiagram_core::{CoordType, WgsProjection, World};
+use walkers::{MapMemory, Pixels, Projection};
 
-use crate::tiles::map::autonavi::MercatorProjectionGcj02;
+use super::projection::XyProjection;
 
 /// Calculate the median center of projected coordinates
 fn get_median_center(coords: impl Iterator<Item = (f64, f64)> + Clone) -> (f64, f64) {
@@ -70,18 +70,15 @@ const FIT_PADDING: f64 = 0.9;
 
 /// Build a [`MapMemory`] that centers and zooms the map so that the graph's nodes fit inside a
 /// viewport of `viewport` size (in screen points).
-pub(super) fn fit_viewport_to_nodes(world: &World, is_autonavi: bool, viewport: Vec2) -> MapMemory {
+pub(super) fn fit_viewport_to_nodes(world: &World, viewport: Vec2) -> MapMemory {
     let mut map_memory = MapMemory::default();
 
     if viewport.x <= 0.0 || viewport.y <= 0.0 {
         return map_memory;
     }
 
-    let projection: Box<dyn Projection> = if is_autonavi {
-        Box::new(MercatorProjectionGcj02)
-    } else {
-        Box::new(MercatorProjection)
-    };
+    let coord_type = world.graph.coord_type;
+    let projection = XyProjection;
 
     let zoom = map_memory.zoom();
     let coords: Vec<(f64, f64)> = world
@@ -89,8 +86,8 @@ pub(super) fn fit_viewport_to_nodes(world: &World, is_autonavi: bool, viewport: 
         .nodes()
         .values()
         .map(|node| {
-            let pos: Wgs84LonLat = node.pos.into();
-            let projected = projection.project(lon_lat(pos.lon, pos.lat), zoom);
+            let position = XyProjection::to_position(coord_type.project(node.pos));
+            let projected = Projection::project(&projection, position, zoom);
             (projected.x(), projected.y())
         })
         .collect();
@@ -115,7 +112,7 @@ pub(super) fn fit_viewport_to_nodes(world: &World, is_autonavi: bool, viewport: 
 
     let zoom_delta = fit_scale(viewport.x, span_x).min(fit_scale(viewport.y, span_y)).log2();
 
-    let center = projection.unproject(Pixels::new(center_x, center_y), zoom);
+    let center = Projection::unproject(&projection, Pixels::new(center_x, center_y), zoom);
     map_memory.center_at(center);
 
     if !zoom_delta.is_finite() {
@@ -124,7 +121,11 @@ pub(super) fn fit_viewport_to_nodes(world: &World, is_autonavi: bool, viewport: 
         return map_memory;
     }
 
-    let max_zoom = if is_autonavi { 18.0 } else { 19.0 };
+    // AutoNavi does not serve tiles past zoom 18.
+    let max_zoom = match coord_type {
+        CoordType::Wgs(WgsProjection::GcjAndMercator) => 18.0,
+        _ => 19.0,
+    };
     let fitted_zoom = (zoom + zoom_delta).clamp(0.0, max_zoom);
     let _ = map_memory.set_zoom(fitted_zoom);
     map_memory
