@@ -159,6 +159,7 @@ pub(crate) fn load_font_to_egui(
         .or_default()
         .insert(0, "system_font".into());
     definitions.families.entry(timetable_font_family()).or_default().push("system_font".into());
+    definitions.families.entry(FontFamily::Monospace).or_default().push("system_font".into());
     load_font_name(face_id, font_name);
     ctx.set_fonts(definitions);
     ctx.request_repaint();
