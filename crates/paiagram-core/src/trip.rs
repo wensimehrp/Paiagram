@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 #![doc = include_str!("trip/README.md")]
 
-use std::cell::RefCell;
+use std::cell::Cell;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use ecow::EcoVec;
@@ -276,8 +276,8 @@ struct EstimateSketch {
 type OutputInner = (Option<TEstimate>, EstimateEntry);
 
 thread_local! {
-    static ESTIMATE_BUFFER: RefCell<Vec<EstimateSketch>> = RefCell::new(Vec::with_capacity(100));
-    static OUTPUT_BUFFER: RefCell<Vec<OutputInner>> = RefCell::new(Vec::with_capacity(100));
+    static ESTIMATE_BUFFER: Cell<Vec<EstimateSketch>> = Cell::new(Vec::new());
+    static OUTPUT_BUFFER: Cell<Vec<OutputInner>> = Cell::new(Vec::new());
 }
 
 enum StackElem {
@@ -294,15 +294,19 @@ impl TripSchedule {
         F: FnMut(&[OutputInner]) -> R,
     {
         puffin::profile_function!();
-        ESTIMATE_BUFFER.with(|r| {
-            let mut estimate_buf = r.borrow_mut();
-            estimate_buf.clear();
-            OUTPUT_BUFFER.with(|r| {
-                let mut output_buf = r.borrow_mut();
-                output_buf.clear();
-                self.estimates_inner(graph, &mut estimate_buf, &mut output_buf, f)
-            })
-        })
+
+        let mut estimate_buf = ESTIMATE_BUFFER.take();
+        estimate_buf.clear();
+
+        let mut output_buf = OUTPUT_BUFFER.take();
+        output_buf.clear();
+
+        let ret = self.estimates_inner(graph, &mut estimate_buf, &mut output_buf, f);
+
+        OUTPUT_BUFFER.set(output_buf);
+        ESTIMATE_BUFFER.set(estimate_buf);
+
+        ret
     }
 
     pub fn full_route<'a>(&'a self, graph: &'a Graph) -> impl Iterator<Item = EstimateEntry> + 'a {
