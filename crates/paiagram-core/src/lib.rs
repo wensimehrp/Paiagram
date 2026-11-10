@@ -27,6 +27,7 @@ use arc_swap::ArcSwapOption;
 use ecow::{EcoString, EcoVec};
 use egui::Color32;
 pub use graph::IntervalDirection;
+use imbl::OrdMap;
 use itertools::chain;
 pub use key_gen::Key;
 use make_type::make_type;
@@ -230,30 +231,59 @@ pub static WORLD_BACKUP: ArcSwapOption<World> = ArcSwapOption::const_empty();
 
 impl World {
     /// Insert every entity from `other`, keeping the entities already present in `self`.
-    fn merged(mut self, other: &Self) -> Self {
+    fn merged(self, other: &Self) -> Self {
         puffin::profile_function!();
-        for (key, value) in &other.vehicles {
-            self.vehicles.insert(*key, value.clone());
+        let Self {
+            trips: trips_current,
+            vehicles: vehicles_current,
+            stations: stations_current,
+            graph: graph_current,
+            service_classes: service_classes_current,
+            routes: routes_current,
+        } = self;
+        let Self {
+            trips: trips_incoming,
+            vehicles: vehicles_incoming,
+            stations: stations_incoming,
+            graph: graph_incoming,
+            service_classes: service_classes_incoming,
+            routes: routes_incoming,
+        } = other;
+        fn merge<K: Ord + Clone + Copy, V: Clone>(
+            mut current: OrdMap<K, V>,
+            incoming: &OrdMap<K, V>,
+        ) -> OrdMap<K, V> {
+            for (key, value) in incoming {
+                current.insert(*key, value.clone());
+            }
+            current
         }
-        for (key, value) in &other.stations {
-            self.stations.insert(*key, value.clone());
-        }
-        for (key, value) in &other.graph.nodes {
-            self.graph.nodes.insert(*key, value.clone());
-        }
-        for (key, value) in &other.graph.intervals {
-            self.graph.insert_interval(*key, value.clone());
-        }
-        for (key, value) in &other.trips {
-            self.trips.insert(*key, value.clone());
-        }
-        for (key, value) in &other.service_classes {
-            self.service_classes.insert(*key, value.clone());
-        }
-        for (key, value) in &other.routes {
-            self.routes.insert(*key, value.clone());
-        }
-        self
+        use rayon::join;
+        // stupid blob of stuff
+        #[rustfmt::skip]
+        let (((trips, vehicles), (stations, graph)), (service_classes, routes)) = join(
+            || join(
+                || join(
+                    || merge(trips_current, trips_incoming),
+                    || merge(vehicles_current, vehicles_incoming)),
+                || join(
+                    || merge(stations_current, stations_incoming),
+                    || {
+                        let mut graph_current = graph_current;
+                        for (key, value) in &graph_incoming.nodes {
+                            graph_current.nodes.insert(*key, value.clone());
+                        }
+                        for (key, value) in &graph_incoming.intervals {
+                            graph_current.insert_interval(*key, value.clone());
+                        }
+                        graph_current.coord_type = graph_incoming.coord_type;
+                        graph_current
+                    })),
+            || join(
+                || merge(service_classes_current, service_classes_incoming),
+                || merge(routes_current, routes_incoming),
+        ));
+        Self { trips, vehicles, stations, graph, service_classes, routes }
     }
 
     /// Get the serivce class stroke style of a trip, or return the default style
