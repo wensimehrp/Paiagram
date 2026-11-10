@@ -6,12 +6,12 @@ A trip is the basic unit in the network. Each trip has a class, associated vehic
 list which defines which stations to visit.
 
 A trip runs on the network graph. Its path is defined by its schedule. A schedule contains a set of
-trip entries, and each of them has an arrival mode, a departure mode, and is associated with a
-station in the network graph. A trip could never jump between two stations, unless there are
-absolutely no paths connecting those two stations, which is considered an error.
+trip entries, and each of them has an arrival mode, a departure mode, and is associated with a node
+in the network graph. A trip can never jump between two stations, unless there are absolutely no
+paths connecting those two stations, which is considered an error.
 
 Sometimes the trip does not take your desired route. In this case, you can add dummy entries with
-Non-stop arrival mode and Flexible departure mode (see #link(<travel-mode>)[Travel Mode] for
+Non-stop arrival mode and Flexible departure mode (see #link(<travel-mode>)[Travel Mode] for more
 details).
 
 = Travel Mode <travel-mode>
@@ -69,7 +69,7 @@ Each entry in the trip entry list falls into one of the following categories:
   [Derived], [The trip is not guaranteed to visit this station.], [No travel modes],
 )
 
-You cannot edit the time of derived entries. However, it is possible to convert derived entries to
+You cannot edit the time of derived entries. However, you may possible to convert derived entries to
 fixed or timetabled entries. In contrast, you can only delete timetabled and fixed entries.
 
 == Editing the Trip's Path

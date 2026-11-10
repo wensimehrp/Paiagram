@@ -18,7 +18,7 @@ Paiagram can help you on...:
 
 Paiagram is not an all-in-one tool where you would find every single feature related with
 timetabling. However, if you do want something to be added into the program,
-#link("https://github.com/WenSimEHRP/Paiagram/issues")[feel free to open a ticket!]
+#link(links.issues)[feel free to open a ticket!]
 
 = Getting Started
 

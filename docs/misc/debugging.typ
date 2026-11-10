@@ -5,4 +5,6 @@ official development repository, and include the following:*
 
 - a screenshot, if applicable
 - the console log output, if applicable
-- the profiler dump with the save, if applicable.
+// - the profiler dump with the save, if applicable.
+
+The profiler *might crash* without producing an emergency save *in browser builds*.

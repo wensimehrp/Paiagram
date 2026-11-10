@@ -14,3 +14,5 @@ Anyways, we don't want anything on #link(
 )[this list] to happen again.
 
 = How To Make a Timetable?
+
+= Making Your Service Classes
