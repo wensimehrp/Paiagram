@@ -3,67 +3,42 @@
 
   inputs = {
     nixpkgs.url = "https://channels.nixos.org/nixpkgs-unstable/nixexprs.tar.zst";
-    rust-overlay.url = "github:oxalica/rust-overlay";
-    flake-utils.url = "github:numtide/flake-utils";
+    rust-overlay = {
+      url = "github:oxalica/rust-overlay";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs =
-    {
-      nixpkgs,
-      rust-overlay,
-      flake-utils,
-      ...
-    }:
-    flake-utils.lib.eachDefaultSystem (
-      system:
-      let
-        overlays = [ (import rust-overlay) ];
+  outputs = inputs: {
+    devShells = builtins.mapAttrs (system: pkgs: {
+      default =
+        let
+          overlays = [ (import inputs.rust-overlay) ];
 
-        pkgs = import nixpkgs {
-          inherit system overlays;
-        };
+          pkgs = import inputs.nixpkgs {
+            inherit system overlays;
+          };
 
-        rustToolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
+          rustToolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
 
-        runtimeLibs = with pkgs; [
-          vulkan-loader
-          libX11
-          libXcursor
-          libXi
-          libXrandr
-          libxkbcommon
-          wayland
-          libGL
-          libudev-zero
-          alsa-lib
-          dbus
-        ];
-
-        # for building the application
-        # cargoToml = fromTOML (builtins.readFile ./Cargo.toml);
-      in
-      {
-        packages.default = pkgs.rustPlatform.buildRustPackage {
-          pname = "paiagram";
-          version = "0.1.3"; # keep it hardcoded until nix supports toml v1.1
-          src = pkgs.lib.cleanSource ./.;
-          cargoLock.lockFile = ./Cargo.lock;
-          nativeBuildInputs = with pkgs; [
-            mold
-            pkg-config
-            makeWrapper
+          runtimeLibs = with pkgs; [
+            vulkan-loader
+            libX11
+            libXcursor
+            libXi
+            libXrandr
+            libxkbcommon
+            wayland
+            libGL
+            libudev-zero
+            alsa-lib
+            dbus
           ];
-          buildInputs = runtimeLibs;
-
-          postInstall = ''
-            wrapProgram $out/bin/paiagram \
-              --prefix LD_LIBRARY_PATH : "${pkgs.lib.makeLibraryPath (runtimeLibs ++ [ pkgs.stdenv.cc.cc ])}"
-          '';
-        };
-        devShells.default =
-          with pkgs;
-          mkShell {
-            buildInputs = [
+        in
+        pkgs.mkShell {
+          buildInputs =
+            with pkgs;
+            [
               rustToolchain
               pkg-config
               just
@@ -85,12 +60,12 @@
               stdenv.cc.cc
             ];
 
-            RUST_SRC_PATH = "${rustToolchain}/lib/rustlib/src/rust/library";
-            LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath (runtimeLibs ++ [ stdenv.cc.cc ]);
+          RUST_SRC_PATH = "${rustToolchain}/lib/rustlib/src/rust/library";
+          LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath (runtimeLibs ++ [ pkgs.stdenv.cc.cc ]);
 
-            # QuickJS (compiled by rquickjs-sys) must be built with a wasm-capable clang.
-            CC_wasm32_unknown_unknown = "${llvmPackages.clang-unwrapped}/bin/clang";
-          };
-      }
-    );
+          # QuickJS (compiled by rquickjs-sys) must be built with a wasm-capable clang.
+          CC_wasm32_unknown_unknown = "${pkgs.llvmPackages.clang-unwrapped}/bin/clang";
+        };
+    }) inputs.nixpkgs.legacyPackages;
+  };
 }
