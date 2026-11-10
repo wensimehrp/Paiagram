@@ -180,15 +180,11 @@ mod test {
         let kudari_trains = diagrams.clone().flat_map(|it| it.at(["Kudari", "Ressya"]));
         let nobori_trains = diagrams.flat_map(|it| it.at(["Nobori", "Ressya"]));
         for train in kudari_trains.chain(nobori_trains) {
-            let Structure::Struct(_, vals) = train else {
-                panic!()
-            };
+            let Structure::Struct(_, vals) = train else { panic!() };
             let mut times: Vec<_> = train
                 .at(["EkiJikoku"])
                 .flat_map(|it| {
-                    let Structure::Pair(_, vals) = it else {
-                        panic!()
-                    };
+                    let Structure::Pair(_, vals) = it else { panic!() };
                     vals.iter().map(|it| parse_to_timetable_entry(it).unwrap())
                 })
                 .collect();

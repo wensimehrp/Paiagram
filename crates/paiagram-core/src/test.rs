@@ -38,10 +38,8 @@ fn save_file_writes_and_reads_a_real_file() {
 
     let world = sample_world();
     let unique = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let path = std::env::temp_dir().join(format!(
-        "paiagram-save-test-{}-{unique}.paia",
-        std::process::id()
-    ));
+    let path = std::env::temp_dir()
+        .join(format!("paiagram-save-test-{}-{unique}.paia", std::process::id()));
 
     {
         let bytes = SaveData::from(world.clone())

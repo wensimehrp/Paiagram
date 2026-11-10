@@ -246,13 +246,11 @@ where
     where
         'a: 'r,
     {
-        self.flat_map(|it| {
-            if let Structure::Struct(_, fields) = it {
-                fields.iter()
-            } else {
-                [].iter()
-            }
-        })
+        self.flat_map(
+            |it| {
+                if let Structure::Struct(_, fields) = it { fields.iter() } else { [].iter() }
+            },
+        )
     }
 }
 

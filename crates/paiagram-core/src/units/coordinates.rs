@@ -51,17 +51,11 @@ impl XyPos {
     pub const EPSG_FACTOR: f64 = EARTH_RADIUS_METERS * 2.0 * PI;
     /// Scales a normalized EPSG:3857 position into [`XyPos`].
     pub fn from_epsg(x: f64, y: f64) -> Self {
-        Self(
-            (x * Self::EPSG_FACTOR).round() as i32,
-            (y * Self::EPSG_FACTOR).round() as i32,
-        )
+        Self((x * Self::EPSG_FACTOR).round() as i32, (y * Self::EPSG_FACTOR).round() as i32)
     }
     /// Scales this position back to a normalized EPSG:3857 position.
     pub fn to_epsg(self) -> (f64, f64) {
-        (
-            f64::from(self.0) / Self::EPSG_FACTOR,
-            f64::from(self.1) / Self::EPSG_FACTOR,
-        )
+        (f64::from(self.0) / Self::EPSG_FACTOR, f64::from(self.1) / Self::EPSG_FACTOR)
     }
 }
 
@@ -81,11 +75,8 @@ impl Default for CoordType {
 }
 
 impl CoordType {
-    pub const ALL: &'static [Self] = &[
-        Self::Wgs(WgsProjection::Mercator),
-        Self::Wgs(WgsProjection::GcjAndMercator),
-        Self::Flat,
-    ];
+    pub const ALL: &'static [Self] =
+        &[Self::Wgs(WgsProjection::Mercator), Self::Wgs(WgsProjection::GcjAndMercator), Self::Flat];
 
     pub const fn is_flat(self) -> bool {
         matches!(self, Self::Flat)

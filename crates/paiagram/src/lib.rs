@@ -148,10 +148,8 @@ pub fn show_ui(
                     .write_via_interface(app.file_write_tx.clone());
                 }
                 if ui.button("Export GTFS").clicked() {
-                    ExportGtfs {
-                        world: app.world().clone(),
-                    }
-                    .write_via_interface(app.file_write_tx.clone());
+                    ExportGtfs { world: app.world().clone() }
+                        .write_via_interface(app.file_write_tx.clone());
                 }
             });
             Popup::menu(&ui.button(tr!("menu-about"))).show(|ui| {
@@ -209,10 +207,7 @@ pub fn show_ui(
                 egui::DragValue::new(&mut app.timer.animation_speed).fixed_decimals(1).suffix("×"),
             );
             egui::Popup::menu(&time_response).show(|ui| {
-                ui.checkbox(
-                    &mut app.timer.sync_to_real_time,
-                    tr!("menu-sync-system-clock"),
-                );
+                ui.checkbox(&mut app.timer.sync_to_real_time, tr!("menu-sync-system-clock"));
             });
             if !app.timer.sync_to_real_time
                 && time_response.dragged()

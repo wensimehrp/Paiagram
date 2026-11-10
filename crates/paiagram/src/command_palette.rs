@@ -111,9 +111,7 @@ impl CommandPalette {
 
         let Some(item) = egui::ScrollArea::vertical()
             .auto_shrink([false, true])
-            .show(ui, |ui| {
-                self.alternatives_ui(ui, enter_pressed, scroll_to_selected_alternative)
-            })
+            .show(ui, |ui| self.alternatives_ui(ui, enter_pressed, scroll_to_selected_alternative))
             .inner
         else {
             return;

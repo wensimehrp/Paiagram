@@ -61,10 +61,7 @@ fn prune_autosaves(dir: &Path) {
     let excess = autosaves.len().saturating_sub(MAX_AUTOSAVES);
     for (_, path) in autosaves.into_iter().take(excess) {
         if let Err(error) = fs::remove_file(&path) {
-            warn!(
-                "Failed to remove old autosave `{}`: {error}",
-                path.display()
-            );
+            warn!("Failed to remove old autosave `{}`: {error}", path.display());
         }
     }
 }

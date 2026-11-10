@@ -165,14 +165,7 @@ fn new_document(
     let station_stroke = gray_stroke(0.6, 1.0);
     for height_mm in &station_heights {
         let y = to_y(height_mm.0);
-        draw_line(
-            &mut surface,
-            content_left,
-            y,
-            content_right,
-            y,
-            &station_stroke,
-        );
+        draw_line(&mut surface, content_left, y, content_right, y, &station_stroke);
     }
 
     // Time scale (lines and labels).
@@ -347,10 +340,9 @@ fn draw_trips(
             // the same height (mirroring the Marey tile's CPU drawing).
             let mut points = Vec::with_capacity(polyline.len() * 2);
             for (estimate, _entry, idx, progress) in polyline {
-                let (Some(start), Some(end)) = (
-                    station_heights.get(*idx as usize),
-                    station_heights.get(*idx as usize + 1),
-                ) else {
+                let (Some(start), Some(end)) =
+                    (station_heights.get(*idx as usize), station_heights.get(*idx as usize + 1))
+                else {
                     continue;
                 };
                 let y_mm = start.0 + (end.0 - start.0) * *progress as f64;
@@ -408,11 +400,7 @@ fn draw_text(surface: &mut Surface<'_>, font: &Font, x: f32, y: f32, text: &str,
     if text.is_empty() {
         return;
     }
-    let x = if centered {
-        x - estimate_text_width(text) * 0.5
-    } else {
-        x
-    };
+    let x = if centered { x - estimate_text_width(text) * 0.5 } else { x };
     surface.draw_text(
         Point::from_xy(x, y),
         font.clone(),

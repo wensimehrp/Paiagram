@@ -20,22 +20,13 @@ fn populated_world() -> (World, StationKey, NodeKey, NodeKey, VehicleKey, TripKe
     let trip = TripKey::new();
 
     let mut world = World::default();
-    world.stations.insert(
-        station,
-        Wfc::new(Station {
-            name: "station".into(),
-            pos: Coord::ZERO,
-        }),
-    );
+    world.stations.insert(station, Wfc::new(Station { name: "station".into(), pos: Coord::ZERO }));
     for node in [a, b] {
-        world.graph.insert_node(
-            node,
-            Node {
-                name: "node".into(),
-                parent: station,
-                pos: Coord::ZERO,
-            },
-        );
+        world.graph.insert_node(node, Node {
+            name: "node".into(),
+            parent: station,
+            pos: Coord::ZERO,
+        });
     }
     world.graph.insert_interval(
         IntervalKey::new(a, b),
@@ -45,12 +36,7 @@ fn populated_world() -> (World, StationKey, NodeKey, NodeKey, VehicleKey, TripKe
             direction: IntervalDirection::Both,
         }),
     );
-    world.vehicles.insert(
-        vehicle,
-        Wfc::new(Vehicle {
-            name: "vehicle".into(),
-        }),
-    );
+    world.vehicles.insert(vehicle, Wfc::new(Vehicle { name: "vehicle".into() }));
     world.trips.insert(
         trip,
         Wfc::new(Trip {
@@ -113,18 +99,9 @@ fn building_a_world_populates_derived_caches() {
     let (world, spatial_dirty) = World::default().update_diff(new);
 
     let interval = IntervalKey::new(a, b);
-    assert_eq!(
-        world.graph.intervals.get(&interval).unwrap().cache.trips.as_slice(),
-        &[trip]
-    );
-    assert_eq!(
-        world.vehicles.get(&vehicle).unwrap().cache.trips.as_slice(),
-        &[trip]
-    );
-    assert_eq!(
-        world.stations.get(&station).unwrap().cache.nodes.as_slice(),
-        &[a, b]
-    );
+    assert_eq!(world.graph.intervals.get(&interval).unwrap().cache.trips.as_slice(), &[trip]);
+    assert_eq!(world.vehicles.get(&vehicle).unwrap().cache.trips.as_slice(), &[trip]);
+    assert_eq!(world.stations.get(&station).unwrap().cache.nodes.as_slice(), &[a, b]);
     assert_eq!(world.graph.neighbor_intervals(a).count(), 1);
     assert!(spatial_dirty);
 }
@@ -163,26 +140,16 @@ fn moving_a_node_updates_station_caches() {
 
     let new_station = StationKey::new();
     let mut changed = world.clone();
-    changed.stations.insert(
-        new_station,
-        Wfc::new(Station {
-            name: "new station".into(),
-            pos: Coord::ZERO,
-        }),
-    );
+    changed
+        .stations
+        .insert(new_station, Wfc::new(Station { name: "new station".into(), pos: Coord::ZERO }));
     let mut node = changed.graph.nodes.get(&b).unwrap().clone();
     node.data.parent = new_station;
     changed.graph.nodes.insert(b, node);
 
     let (updated, _) = world.update_diff(changed);
-    assert_eq!(
-        updated.stations.get(&station).unwrap().cache.nodes.as_slice(),
-        &[a]
-    );
-    assert_eq!(
-        updated.stations.get(&new_station).unwrap().cache.nodes.as_slice(),
-        &[b]
-    );
+    assert_eq!(updated.stations.get(&station).unwrap().cache.nodes.as_slice(), &[a]);
+    assert_eq!(updated.stations.get(&new_station).unwrap().cache.nodes.as_slice(), &[b]);
 }
 
 #[test]
@@ -192,22 +159,14 @@ fn updating_a_trips_vehicles_moves_its_cache_entry() {
 
     let new_vehicle = VehicleKey::new();
     let mut changed = world.clone();
-    changed.vehicles.insert(
-        new_vehicle,
-        Wfc::new(Vehicle {
-            name: "new vehicle".into(),
-        }),
-    );
+    changed.vehicles.insert(new_vehicle, Wfc::new(Vehicle { name: "new vehicle".into() }));
     let mut changed_trip = changed.trips.get(&trip).unwrap().clone();
     changed_trip.data.vehicles = smallvec![new_vehicle];
     changed.trips.insert(trip, changed_trip);
 
     let (updated, _) = world.update_diff(changed);
     assert!(updated.vehicles.get(&old_vehicle).unwrap().cache.trips.is_empty());
-    assert_eq!(
-        updated.vehicles.get(&new_vehicle).unwrap().cache.trips.as_slice(),
-        &[trip]
-    );
+    assert_eq!(updated.vehicles.get(&new_vehicle).unwrap().cache.trips.as_slice(), &[trip]);
 }
 
 #[test]

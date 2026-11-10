@@ -180,10 +180,7 @@ pub struct DisplayProperties {
         default = false
     )]
     pub display_outer_terminal_terminal: bool,
-    #[oudia(
-        type(single_pair_single_entry = "DiagramDisplayOuterTerminal"),
-        default = 0
-    )]
+    #[oudia(type(single_pair_single_entry = "DiagramDisplayOuterTerminal"), default = 0)]
     pub diagram_display_outer_terminal: i32,
     #[oudia(type(single_pair_single_entry = "SecondRoundChaku"), default = 0)]
     pub second_round_arrival: i32,
@@ -193,10 +190,7 @@ pub struct DisplayProperties {
     pub display_2400: bool,
     #[oudia(type(single_pair_single_entry = "OperationNumberRows"), default = 1)]
     pub operation_number_rows: i32,
-    #[oudia(
-        type(single_pair_single_entry = "DisplayInOutLinkCode"),
-        default = false
-    )]
+    #[oudia(type(single_pair_single_entry = "DisplayInOutLinkCode"), default = false)]
     pub display_in_out_link_code: bool,
 }
 
@@ -263,45 +257,27 @@ pub struct Route {
         default = String::new()
     )]
     pub comment: String,
-    #[oudia(
-        type(single_pair_single_entry = "KudariDiaAlias"),
-        alias = "下りダイヤ別名"
-    )]
+    #[oudia(type(single_pair_single_entry = "KudariDiaAlias"), alias = "下りダイヤ別名")]
     pub down_dia_alias: Option<String>,
-    #[oudia(
-        type(single_pair_single_entry = "NoboriDiaAlias"),
-        alias = "上りダイヤ別名"
-    )]
+    #[oudia(type(single_pair_single_entry = "NoboriDiaAlias"), alias = "上りダイヤ別名")]
     pub up_dia_alias: Option<String>,
     /// Default vertical spacing (in the diagram's Y-coordinate units) between
     /// adjacent stations on the diagram.
-    #[oudia(
-        type(single_pair_single_entry = "DiagramDgrYZahyouKyoriDefault"),
-        default = 60
-    )]
+    #[oudia(type(single_pair_single_entry = "DiagramDgrYZahyouKyoriDefault"), default = 60)]
     pub diagram_station_interval_default: i32,
     #[oudia(type(single_pair_single_entry = "EnableOperation"), default = 0)]
     pub enable_operation: i32,
     /// Whether operation numbers are shown in reverse order.
-    #[oudia(
-        type(single_pair_single_entry = "OperationNumberReverse"),
-        default = false
-    )]
+    #[oudia(type(single_pair_single_entry = "OperationNumberReverse"), default = false)]
     pub operation_number_reverse: bool,
     /// Whether operations are allowed to cross the diagram's start time.
-    #[oudia(
-        type(single_pair_single_entry = "OperationCrossKitenJikoku"),
-        default = false
-    )]
+    #[oudia(type(single_pair_single_entry = "OperationCrossKitenJikoku"), default = false)]
     pub operation_crosses_start_time: bool,
     /// Index of the reference (baseline) diagram.
     #[oudia(type(single_pair_single_entry = "KijunDiaIndex"))]
     pub reference_diagram_index: Option<i32>,
     /// Whether to ignore classes marked as hidden.
-    #[oudia(
-        type(single_pair_single_entry = "DisableHiddenSyubetsu"),
-        default = false
-    )]
+    #[oudia(type(single_pair_single_entry = "DisableHiddenSyubetsu"), default = false)]
     pub disable_hidden_class: bool,
 }
 
@@ -381,10 +357,7 @@ pub struct Class {
         default = Color([0, 255, 255, 255])
     )]
     pub timetable_background_color: Color,
-    #[oudia(
-        type(single_pair_single_entry = "DiagramSenStyle"),
-        alias = "ダイヤ線スタイル"
-    )]
+    #[oudia(type(single_pair_single_entry = "DiagramSenStyle"), alias = "ダイヤ線スタイル")]
     pub diagram_line_style: DiagramLineStyle,
     #[oudia(type(single_pair_single_entry = "DiagramSenIsBold"), default = false)]
     pub diagram_line_is_bold: bool,
@@ -415,15 +388,9 @@ pub struct Diagram {
     pub main_back_color_index: i32,
     #[oudia(type(single_pair_single_entry = "SubBackColorIndex"), default = 1)]
     pub sub_back_color_index: i32,
-    #[oudia(
-        type(single_pair_single_entry = "PatternDiagramPreviewEnable"),
-        default = false
-    )]
+    #[oudia(type(single_pair_single_entry = "PatternDiagramPreviewEnable"), default = false)]
     pub pattern_diagram_preview_enable: bool,
-    #[oudia(
-        type(single_pair_single_entry = "PatternDiagramPreviewCycleSecond"),
-        default = 600
-    )]
+    #[oudia(type(single_pair_single_entry = "PatternDiagramPreviewCycleSecond"), default = 600)]
     pub pattern_diagram_preview_cycle_second: i32,
 }
 
@@ -492,11 +459,7 @@ pub struct Trip {
     pub is_canceled: bool,
     #[oudia(type(single_pair_single_entry = "Houkou"), alias = "方向")]
     pub direction: Direction,
-    #[oudia(
-        type(single_pair_single_entry = "Syubetsu"),
-        alias = "種別",
-        default = 0
-    )]
+    #[oudia(type(single_pair_single_entry = "Syubetsu"), alias = "種別", default = 0)]
     pub class_index: usize,
     #[oudia(
         type(single_pair_many_entries = "EkiJikoku"),
@@ -602,11 +565,8 @@ impl Diagram {
         stations: &[Station],
     ) -> impl Iterator<Item = Option<Time>> {
         (0..stations.len().saturating_sub(1)).map(move |idx| {
-            let mut extreme = if MINIMUM {
-                Time::from_seconds(i32::MAX)
-            } else {
-                Time::from_seconds(i32::MIN)
-            };
+            let mut extreme =
+                if MINIMUM { Time::from_seconds(i32::MAX) } else { Time::from_seconds(i32::MIN) };
             let mut exist: bool = false;
             for trip in self.trips.iter() {
                 let (curr, next) = match trip.direction {
@@ -627,11 +587,7 @@ impl Diagram {
                 let Some(diff) = travelling_duration(curr, next) else {
                     continue;
                 };
-                extreme = if MINIMUM {
-                    min(extreme, diff)
-                } else {
-                    max(extreme, diff)
-                };
+                extreme = if MINIMUM { min(extreme, diff) } else { max(extreme, diff) };
                 exist = true;
             }
             exist.then_some(extreme)
@@ -664,19 +620,11 @@ impl Diagram {
 #[derive(Debug, Clone, Error)]
 pub enum IrConversionError {
     #[error("Missing field '{missing}' when converting AST to '{processing}'")]
-    MissingField {
-        processing: &'static str,
-        missing: &'static str,
-    },
+    MissingField { processing: &'static str, missing: &'static str },
     #[error(
         "Index out of bounds when trying to generate '{field}' for '{processing}' (checked index '{index}', but the length is only '{len}')"
     )]
-    IndexOutOfBounds {
-        field: &'static str,
-        processing: &'static str,
-        index: usize,
-        len: usize,
-    },
+    IndexOutOfBounds { field: &'static str, processing: &'static str, index: usize, len: usize },
     #[error("Failed to parse integer: {0}")]
     ParseIntError(#[from] std::num::ParseIntError),
     #[error("Failed to parse timetable entry: {0}")]

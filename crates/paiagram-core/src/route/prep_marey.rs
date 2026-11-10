@@ -64,20 +64,10 @@ pub(super) fn prep_single_segment<'a>(
 
             let segment = if let Some(idx) = matched_idx {
                 let mut a = local_edges.swap_remove(idx);
-                a.push((
-                    *estimate,
-                    *curr_entry,
-                    current_line_index,
-                    current_line_progress,
-                ));
+                a.push((*estimate, *curr_entry, current_line_index, current_line_progress));
                 a
             } else {
-                vec![(
-                    *estimate,
-                    *curr_entry,
-                    current_line_index,
-                    current_line_progress,
-                )]
+                vec![(*estimate, *curr_entry, current_line_index, current_line_progress)]
             };
 
             let mut segment = Some(segment);

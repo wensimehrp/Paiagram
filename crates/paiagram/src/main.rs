@@ -52,12 +52,7 @@ impl PaiagramApp {
             let _ = paiagram::build_matcher("foo bar");
         });
         let now = Instant::now();
-        Self {
-            app,
-            ui_state: UiState::default(),
-            prev_time: now,
-            last_autosave: now,
-        }
+        Self { app, ui_state: UiState::default(), prev_time: now, last_autosave: now }
     }
 }
 
@@ -83,12 +78,7 @@ impl eframe::App for PaiagramApp {
     }
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let curr_time = Instant::now();
-        paiagram::show_ui(
-            ui,
-            &mut self.app,
-            &mut self.ui_state,
-            curr_time - self.prev_time,
-        );
+        paiagram::show_ui(ui, &mut self.app, &mut self.ui_state, curr_time - self.prev_time);
         self.prev_time = curr_time;
     }
     fn auto_save_interval(&self) -> core::time::Duration {
@@ -100,10 +90,8 @@ impl eframe::App for PaiagramApp {
         }
         self.last_autosave = Instant::now();
         // we call save but we don't write into the provided storage
-        SaveCategory::Autosave.save(
-            SaveData::from(self.app.world().clone()),
-            self.app.file_write_tx.clone(),
-        );
+        SaveCategory::Autosave
+            .save(SaveData::from(self.app.world().clone()), self.app.file_write_tx.clone());
     }
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         ctx.request_repaint_after(self.auto_save_interval());
@@ -181,11 +169,7 @@ fn main() {
         info!("Initialized thread pool");
 
         let start_result = eframe::WebRunner::new()
-            .start(
-                canvas,
-                web_options,
-                Box::new(|cc| Ok(Box::new(PaiagramApp::new(cc, 1)))),
-            )
+            .start(canvas, web_options, Box::new(|cc| Ok(Box::new(PaiagramApp::new(cc, 1)))))
             .await;
 
         // Remove the loading text and spinner:

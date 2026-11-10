@@ -8,11 +8,7 @@ pub type ReturnVariableName = String;
 pub type ReturnValueMap = HashMap<ReturnVariableName, ConfigUiReturnValue>;
 
 #[derive(Clone, Debug, Deserialize)]
-#[serde(
-    tag = "type",
-    rename_all = "camelCase",
-    rename_all_fields = "camelCase"
-)]
+#[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum ConfigUi {
     Text {
         desc: String,
@@ -77,27 +73,20 @@ impl ConfigUi {
 
     fn get_return_value(&self) -> Option<(ReturnVariableName, ConfigUiReturnValue)> {
         match self {
-            Self::Radio {
-                variable, default, ..
-            } => Some((
-                variable.clone(),
-                ConfigUiReturnValue::Number(*default as f64),
-            )),
-            Self::Tickbox {
-                variable, default, ..
-            } => Some((variable.clone(), ConfigUiReturnValue::Boolean(*default))),
-            Self::TextInput {
-                variable, default, ..
-            } => Some((
+            Self::Radio { variable, default, .. } => {
+                Some((variable.clone(), ConfigUiReturnValue::Number(*default as f64)))
+            }
+            Self::Tickbox { variable, default, .. } => {
+                Some((variable.clone(), ConfigUiReturnValue::Boolean(*default)))
+            }
+            Self::TextInput { variable, default, .. } => Some((
                 variable.clone(),
                 ConfigUiReturnValue::String(default.as_ref().map_or_default(String::clone)),
             )),
-            Self::DragValue {
-                variable, default, ..
-            } => Some((variable.clone(), ConfigUiReturnValue::Number(*default))),
-            Self::CollapsingHeader {
-                variable, items, ..
-            } => Some((
+            Self::DragValue { variable, default, .. } => {
+                Some((variable.clone(), ConfigUiReturnValue::Number(*default)))
+            }
+            Self::CollapsingHeader { variable, items, .. } => Some((
                 variable.clone(),
                 ConfigUiReturnValue::Map(
                     items.iter().filter_map(ConfigUi::get_return_value).collect(),
@@ -143,10 +132,7 @@ impl<'a> ConfigUiList<'a> {
             if let Some(desc) = elem.desc() {
                 ui.label(desc);
                 Frame::NONE
-                    .inner_margin(Margin {
-                        left: 12,
-                        ..Default::default()
-                    })
+                    .inner_margin(Margin { left: 12, ..Default::default() })
                     .show(ui, |ui| self.show_inner(ui, elem));
             } else {
                 self.show_inner(ui, elem);
@@ -161,27 +147,16 @@ impl<'a> ConfigUiList<'a> {
             ConfigUi::Separator => {
                 ui.separator();
             }
-            ConfigUi::CollapsingHeader {
-                variable,
-                desc,
-                items,
-                ..
-            } => {
+            ConfigUi::CollapsingHeader { variable, desc, items, .. } => {
                 let Some(ConfigUiReturnValue::Map(map)) = self.return_value.get_mut(variable)
                 else {
                     unreachable!();
                 };
                 ui.collapsing(desc, |ui| {
-                    ConfigUiList {
-                        ui_definition: items,
-                        return_value: map,
-                    }
-                    .show_ui(ui);
+                    ConfigUiList { ui_definition: items, return_value: map }.show_ui(ui);
                 });
             }
-            ConfigUi::Radio {
-                variable, items, ..
-            } => {
+            ConfigUi::Radio { variable, items, .. } => {
                 let Some(ConfigUiReturnValue::Number(current_value)) =
                     self.return_value.get_mut(variable)
                 else {
@@ -201,11 +176,7 @@ impl<'a> ConfigUiList<'a> {
                 };
                 ui.checkbox(current_value, desc);
             }
-            ConfigUi::TextInput {
-                variable,
-                placeholder,
-                ..
-            } => {
+            ConfigUi::TextInput { variable, placeholder, .. } => {
                 let Some(ConfigUiReturnValue::String(current_value)) =
                     self.return_value.get_mut(variable)
                 else {
@@ -215,13 +186,7 @@ impl<'a> ConfigUiList<'a> {
                     .hint_text(placeholder.as_ref().map_or_default(String::as_str))
                     .show(ui);
             }
-            ConfigUi::DragValue {
-                variable,
-                integer,
-                min,
-                max,
-                ..
-            } => {
+            ConfigUi::DragValue { variable, integer, min, max, .. } => {
                 let Some(ConfigUiReturnValue::Number(current_value)) =
                     self.return_value.get_mut(variable)
                 else {

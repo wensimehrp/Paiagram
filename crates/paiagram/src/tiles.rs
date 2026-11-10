@@ -122,10 +122,7 @@ pub(crate) trait Navigatable {
         rect.top() + ((logical_y - self.offset_y()) / self.y_per_screen_unit_f64()) as f32
     }
     fn screen_pos_to_xy(&self, pos: egui::Pos2) -> (Self::XOffset, Self::YOffset) {
-        (
-            self.screen_x_to_logical_x(pos.x),
-            self.screen_y_to_logical_y(pos.y),
-        )
+        (self.screen_x_to_logical_x(pos.x), self.screen_y_to_logical_y(pos.y))
     }
     fn xy_to_screen_pos(&self, x: Self::XOffset, y: Self::YOffset) -> egui::Pos2 {
         let screen_x = self.logical_x_to_screen_x(x);

@@ -15,25 +15,13 @@ pub struct Time(i32);
 
 impl Debug for Time {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{:02}:{:02}:{:02}",
-            self.hour(),
-            self.minute(),
-            self.second()
-        )
+        write!(f, "{:02}:{:02}:{:02}", self.hour(), self.minute(), self.second())
     }
 }
 
 impl Display for Time {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{:02}:{:02}:{:02}",
-            self.hour(),
-            self.minute(),
-            self.second()
-        )
+        write!(f, "{:02}:{:02}:{:02}", self.hour(), self.minute(), self.second())
     }
 }
 

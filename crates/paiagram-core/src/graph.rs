@@ -33,10 +33,7 @@ impl SortedKey {
         }
     }
     pub fn new(v1: NodeKey, v2: NodeKey) -> Self {
-        Self {
-            hi: std::cmp::max(v1, v2),
-            lo: std::cmp::min(v1, v2),
-        }
+        Self { hi: std::cmp::max(v1, v2), lo: std::cmp::min(v1, v2) }
     }
 }
 
@@ -68,37 +65,15 @@ struct GraphNoCache {
 }
 
 impl From<GraphNoCache> for Graph {
-    fn from(
-        GraphNoCache {
-            coord_type,
-            nodes,
-            intervals,
-        }: GraphNoCache,
-    ) -> Self {
+    fn from(GraphNoCache { coord_type, nodes, intervals }: GraphNoCache) -> Self {
         let adjacency = intervals.iter().flat_map(|(k, _)| [(k.hi, k.lo), (k.lo, k.hi)]).collect();
-        Self {
-            coord_type,
-            nodes,
-            intervals,
-            adjacency,
-        }
+        Self { coord_type, nodes, intervals, adjacency }
     }
 }
 
 impl From<Graph> for GraphNoCache {
-    fn from(
-        Graph {
-            coord_type,
-            nodes,
-            intervals,
-            adjacency: _,
-        }: Graph,
-    ) -> Self {
-        Self {
-            coord_type,
-            nodes,
-            intervals,
-        }
+    fn from(Graph { coord_type, nodes, intervals, adjacency: _ }: Graph) -> Self {
+        Self { coord_type, nodes, intervals }
     }
 }
 
@@ -165,10 +140,7 @@ impl Graph {
             |node| {
                 let node = *node;
                 self.outgoing_intervals(node).map(move |(interval_key, interval)| {
-                    (
-                        interval_key.other(node),
-                        interval.length(interval_key, self),
-                    )
+                    (interval_key.other(node), interval.length(interval_key, self))
                 })
             },
             |node| self.heuristic(*node, end),

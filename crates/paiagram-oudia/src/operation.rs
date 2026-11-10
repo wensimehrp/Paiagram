@@ -147,17 +147,11 @@ pub enum OperationParseError {
     #[error("missing required parameter for {field}")]
     MissingRequiredParam { field: &'static str },
     #[error("invalid {field}: {message}")]
-    InvalidField {
-        field: &'static str,
-        message: String,
-    },
+    InvalidField { field: &'static str, message: String },
     #[error("invalid optional parameter at index {idx}: {message}")]
     InvalidOptionalParam { idx: usize, message: String },
     #[error("invalid OUD time '{value}': {source}")]
-    InvalidOudTime {
-        value: String,
-        source: std::num::ParseIntError,
-    },
+    InvalidOudTime { value: String, source: std::num::ParseIntError },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -199,12 +193,7 @@ impl TryFrom<&[Option<&str>]> for ShuntOperation {
         let departure_time = parse_time_opt(value.get(1).copied().flatten())?;
         let arrival_time = parse_time_opt(value.get(2).copied().flatten())?;
         let display_time = parse_bool_required(value, 3, "display time flag")?;
-        Ok(Self {
-            track_index,
-            departure_time,
-            arrival_time,
-            display_time,
-        })
+        Ok(Self { track_index, departure_time, arrival_time, display_time })
     }
 }
 
@@ -356,10 +345,7 @@ impl<'a> TryFrom<&[Option<&'a str>]> for ChangeOperationNumberOperation {
         let operation_numbers = parse_operation_numbers(value.get(0).copied().flatten());
         let reverse = parse_bool_opt(value.get(1).copied().flatten())
             .unwrap_or_else(|| operation_numbers.is_empty());
-        Ok(Self {
-            operation_numbers,
-            reverse,
-        })
+        Ok(Self { operation_numbers, reverse })
     }
 }
 
@@ -416,17 +402,17 @@ impl<'a> TryFrom<RawOperation<'a>> for AfterOperation {
             OperationType::Type1 => Ok(Self::Couple(value.params.as_slice().try_into()?)),
             OperationType::Type2 => Ok(Self::Decouple(value.params.as_slice().try_into()?)),
             OperationType::Type3 => Ok(Self::ExitToDepot(value.params.as_slice().try_into()?)),
-            OperationType::Type4 => Ok(Self::ExitToExternalRoute(
-                value.params.as_slice().try_into()?,
-            )),
+            OperationType::Type4 => {
+                Ok(Self::ExitToExternalRoute(value.params.as_slice().try_into()?))
+            }
             OperationType::Type5 => Ok(Self::ContinuePreviousTrip(ContinuePreviousTripOperation {
                 time: parse_time_opt(value.params.get(0).copied().flatten())?,
                 operation_numbers: SmallVec::new(),
                 next_junction_type: parse_optional::<i32>(value.params.as_slice(), 1)?,
             })),
-            OperationType::Type6 => Ok(Self::ChangeOperationNumber(
-                value.params.as_slice().try_into()?,
-            )),
+            OperationType::Type6 => {
+                Ok(Self::ChangeOperationNumber(value.params.as_slice().try_into()?))
+            }
         }
     }
 }
@@ -464,10 +450,9 @@ where
     let Some(s) = parse_non_empty(value.get(idx).copied().flatten()) else {
         return Ok(None);
     };
-    let parsed = s.parse::<T>().map_err(|e| OperationParseError::InvalidOptionalParam {
-        idx,
-        message: e.to_string(),
-    })?;
+    let parsed = s
+        .parse::<T>()
+        .map_err(|e| OperationParseError::InvalidOptionalParam { idx, message: e.to_string() })?;
     Ok(Some(parsed))
 }
 
@@ -475,10 +460,9 @@ fn parse_time_opt(s: Option<&str>) -> Result<Option<Time>, OperationParseError> 
     let Some(s) = parse_non_empty(s) else {
         return Ok(None);
     };
-    Time::from_oud_str(s).map(Some).map_err(|source| OperationParseError::InvalidOudTime {
-        value: s.to_string(),
-        source,
-    })
+    Time::from_oud_str(s)
+        .map(Some)
+        .map_err(|source| OperationParseError::InvalidOudTime { value: s.to_string(), source })
 }
 
 fn parse_bool_raw(s: &str) -> Result<bool, OperationParseError> {
@@ -587,10 +571,7 @@ pub mod operation {
             for (idx, s) in matched.take(5).enumerate() {
                 params[idx] = s
             }
-            Ok(RawOperation {
-                operation_type,
-                params,
-            })
+            Ok(RawOperation { operation_type, params })
         }
     }
 }

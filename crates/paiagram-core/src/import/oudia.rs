@@ -48,19 +48,13 @@ pub(crate) fn parse_oudia(stream: OudFileType) -> Result<World, Box<dyn std::err
         let station_name = station.name.clone().to_eco_string();
         world.stations.insert(
             *station_key,
-            Wfc::new(Station {
-                name: station_name.clone(),
-                pos: Coord::ZERO,
-            }),
+            Wfc::new(Station { name: station_name.clone(), pos: Coord::ZERO }),
         );
-        world.graph.insert_node(
-            *node_key,
-            Node {
-                name: station_name,
-                parent: *station_key,
-                pos: Coord::ZERO,
-            },
-        );
+        world.graph.insert_node(*node_key, Node {
+            name: station_name,
+            parent: *station_key,
+            pos: Coord::ZERO,
+        });
     }
     world.routes.insert(
         RouteKey::new(),
@@ -87,12 +81,7 @@ pub(crate) fn parse_oudia(stream: OudFileType) -> Result<World, Box<dyn std::err
         .classes
         .iter()
         .map(|cls| {
-            (
-                cls.name.as_str(),
-                ServiceClassKey::new(),
-                0u32,
-                cls.diagram_line_color.clone(),
-            )
+            (cls.name.as_str(), ServiceClassKey::new(), 0u32, cls.diagram_line_color.clone())
         })
         .collect::<Vec<_>>();
     for (name, key, _, color) in &service_classes {
@@ -100,19 +89,13 @@ pub(crate) fn parse_oudia(stream: OudFileType) -> Result<World, Box<dyn std::err
             color: egui::Color32::from_rgb(color.r(), color.g(), color.b()),
             width: 1,
         };
-        world.service_classes.insert(
-            *key,
-            Wfc::new(ServiceClass {
-                name: name.to_eco_string(),
-                style,
-            }),
-        );
+        world
+            .service_classes
+            .insert(*key, Wfc::new(ServiceClass { name: name.to_eco_string(), style }));
     }
     let mut unknown_class_counter = 0u32;
     let Some(diagram) = route.diagrams.get(0) else {
-        return Err(Box::new(std::io::Error::other(
-            "Route doesn't have a diagram!",
-        )));
+        return Err(Box::new(std::io::Error::other("Route doesn't have a diagram!")));
     };
     let deduplicated = route.stations.merge_duplicate();
     for (trip, schedule) in diagram.trip_station_times(&deduplicated) {
@@ -146,12 +129,7 @@ pub(crate) fn parse_oudia(stream: OudFileType) -> Result<World, Box<dyn std::err
                     dep = None;
                 }
             };
-            buf.push(TEntry {
-                node,
-                arr_or_pass,
-                dep,
-                id,
-            });
+            buf.push(TEntry { node, arr_or_pass, dep, id });
         }
         let (cls_name, cls_key, cls_counter) =
             service_classes.get_mut(trip.class_index).map_or_else(

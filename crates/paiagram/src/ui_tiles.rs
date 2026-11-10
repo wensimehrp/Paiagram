@@ -57,13 +57,10 @@ impl UiTiles {
 impl Default for UiTiles {
     fn default() -> Self {
         Self {
-            tree: Tree::new_tabs(
-                Id::unique("main"),
-                vec![
-                    UiTile::Start(StartTile::default()),
-                    UiTile::Config(ConfigTile::default()),
-                ],
-            ),
+            tree: Tree::new_tabs(Id::unique("main"), vec![
+                UiTile::Start(StartTile::default()),
+                UiTile::Config(ConfigTile::default()),
+            ]),
             maximized: None,
         }
     }

@@ -38,10 +38,7 @@ impl World {
                 Remove(key, _) => {
                     ret.vehicles.remove(key);
                 }
-                Update {
-                    old: (key, old),
-                    new: (_, new_vehicle),
-                } => {
+                Update { old: (key, old), new: (_, new_vehicle) } => {
                     ret.vehicles.insert(*key, updated(old, new_vehicle));
                 }
             }
@@ -55,10 +52,7 @@ impl World {
                 Remove(key, _) => {
                     ret.stations.remove(key);
                 }
-                Update {
-                    old: (key, old),
-                    new: (_, new_station),
-                } => {
+                Update { old: (key, old), new: (_, new_station) } => {
                     ret.stations.insert(*key, updated(old, new_station));
                 }
             }
@@ -81,10 +75,7 @@ impl World {
                     }
                     ret.graph.nodes.remove(&node_key);
                 }
-                Update {
-                    old: (node_key, old_node),
-                    new: (_, new_node),
-                } => {
+                Update { old: (node_key, old_node), new: (_, new_node) } => {
                     let node_key = *node_key;
                     if old_node.parent != new_node.parent {
                         if let Some(station) = ret.stations.get_mut(&old_node.parent) {
@@ -108,10 +99,7 @@ impl World {
                 Remove(key, _) => {
                     ret.graph.remove_interval(key);
                 }
-                Update {
-                    old: (key, old),
-                    new: (_, new_interval),
-                } => {
+                Update { old: (key, old), new: (_, new_interval) } => {
                     ret.graph.insert_interval(*key, updated(old, new_interval));
                 }
             }
@@ -128,10 +116,7 @@ impl World {
                     remove_trip_from_caches(&mut ret, *key, trip, &self.graph);
                     ret.trips.remove(key);
                 }
-                Update {
-                    old: (key, old_trip),
-                    new: (_, new_trip),
-                } => {
+                Update { old: (key, old_trip), new: (_, new_trip) } => {
                     remove_trip_from_caches(&mut ret, *key, old_trip, &self.graph);
                     add_trip_to_caches(&mut ret, *key, new_trip, &new.graph);
                     ret.trips.insert(*key, updated(old_trip, new_trip));
@@ -147,10 +132,7 @@ impl World {
                 Remove(key, _) => {
                     ret.service_classes.remove(key);
                 }
-                Update {
-                    old: (key, old),
-                    new: (_, new_class),
-                } => {
+                Update { old: (key, old), new: (_, new_class) } => {
                     ret.service_classes.insert(*key, updated(old, new_class));
                 }
             }
@@ -164,10 +146,7 @@ impl World {
                 Remove(key, _) => {
                     ret.routes.remove(key);
                 }
-                Update {
-                    old: (key, old),
-                    new: (_, new_route),
-                } => {
+                Update { old: (key, old), new: (_, new_route) } => {
                     ret.routes.insert(*key, updated(old, new_route));
                 }
             }
@@ -186,18 +165,12 @@ impl World {
 
 /// Clone a new entry but discard its cache; `update_diff` rebuilds it after insertion.
 fn fresh<D: Clone, C: Default>(value: &Wfc<D, C>) -> Wfc<D, C> {
-    Wfc {
-        data: value.data.clone(),
-        cache: C::default(),
-    }
+    Wfc { data: value.data.clone(), cache: C::default() }
 }
 
 /// Replace an entry's data while preserving the cache maintained by the old world.
 fn updated<D: Clone, C: Clone>(old: &Wfc<D, C>, new: &Wfc<D, C>) -> Wfc<D, C> {
-    Wfc {
-        data: new.data.clone(),
-        cache: old.cache.clone(),
-    }
+    Wfc { data: new.data.clone(), cache: old.cache.clone() }
 }
 
 fn add_trip_to_caches(ret: &mut World, trip_key: crate::TripKey, trip: &Trip, graph: &Graph) {

@@ -71,13 +71,7 @@ impl RouteInterval {
         std::iter::chain(&self.nodes, curr_stn_nodes).map(|node_key| {
             (
                 *node_key,
-                gen_progress(
-                    node_key,
-                    &world.graph,
-                    &self.nodes,
-                    curr_stn_nodes,
-                    next_stn_nodes,
-                ),
+                gen_progress(node_key, &world.graph, &self.nodes, curr_stn_nodes, next_stn_nodes),
             )
         })
     }
@@ -234,14 +228,7 @@ impl RouteIntervals {
     pub fn populate_route_timetable(&self, world: &World) -> RouteTimetable {
         puffin::profile_function!();
         let mut marey_cache = MareyCache::default();
-        self.populate_trips(
-            world,
-            &mut marey_cache,
-            self.all_passing_trips(world).into_iter(),
-        );
-        RouteTimetable::new(
-            marey_cache,
-            self.0.iter().map(|entry| &entry.station_record),
-        )
+        self.populate_trips(world, &mut marey_cache, self.all_passing_trips(world).into_iter());
+        RouteTimetable::new(marey_cache, self.0.iter().map(|entry| &entry.station_record))
     }
 }

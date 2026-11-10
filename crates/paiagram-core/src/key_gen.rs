@@ -61,10 +61,7 @@ pub trait Key: Clone + Copy {
     /// allocating keys; changing it later is safe but advances the timestamp by one
     /// centisecond to avoid reusing counters.
     fn set_client_id(client: u8) {
-        assert!(
-            client <= Self::MAX_CLIENT_ID,
-            "client id does not fit in 6 bits"
-        );
+        assert!(client <= Self::MAX_CLIENT_ID, "client id does not fit in 6 bits");
         CLIENT_ID.store(client, Ordering::Relaxed);
     }
 
@@ -95,16 +92,10 @@ pub trait Key: Clone + Copy {
             } else {
                 now_cs().max(last_time + 1)
             };
-            assert!(
-                time <= Self::MAX_TIME_CS,
-                "key timestamp exceeds the 42-bit field"
-            );
+            assert!(time <= Self::MAX_TIME_CS, "key timestamp exceeds the 42-bit field");
 
-            let mut counter = if time == last_time && client == last_client {
-                last_counter + 1
-            } else {
-                0
-            };
+            let mut counter =
+                if time == last_time && client == last_client { last_counter + 1 } else { 0 };
             if counter > Self::COUNTER_MASK {
                 // This centisecond's counter is full; wait for the clock to advance.
                 std::hint::spin_loop();

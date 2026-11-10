@@ -1,6 +1,7 @@
+# See https://rust-lang.github.io/rustfmt/ for details on the settings
+# The settings listed here is mostly to make code more compact
 edition = "2024"
 max_width = 100
-chain_width = 100
 newline_style = "Unix"
 use_field_init_shorthand = true
 use_try_shorthand = true
@@ -9,3 +10,6 @@ comment_width = 100
 format_code_in_doc_comments = true
 wrap_comments = true
 group_imports = "StdExternalCrate"
+combine_control_expr = true
+overflow_delimited_expr = true
+use_small_heuristics = "Max"

@@ -13,14 +13,10 @@ async fn open_database() -> Result<Database> {
     let mut request = factory.open(paiagram_idb::DATABASE, Some(paiagram_idb::VERSION))?;
     request.on_upgrade_needed(|event| {
         let Ok(db) = event.database() else { return };
-        let _ = db.create_object_store(
-            SaveCategory::Autosave.category_str(),
-            ObjectStoreParams::new(),
-        );
-        let _ = db.create_object_store(
-            SaveCategory::Save(None).category_str(),
-            ObjectStoreParams::new(),
-        );
+        let _ =
+            db.create_object_store(SaveCategory::Autosave.category_str(), ObjectStoreParams::new());
+        let _ = db
+            .create_object_store(SaveCategory::Save(None).category_str(), ObjectStoreParams::new());
     });
     request.await
 }

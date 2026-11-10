@@ -135,13 +135,7 @@ fn write_routes<W: Write + io::Seek>(writer: &mut ZipWriter<W>, world: &World) -
 fn write_trips<W: Write + io::Seek>(writer: &mut ZipWriter<W>, world: &World) -> io::Result<()> {
     writer.start_file("trips.txt", FileOptions::DEFAULT)?;
     let mut csv = csv::Writer::from_writer(writer);
-    csv.write_record([
-        "route_id",
-        "service_id",
-        "trip_id",
-        "trip_short_name",
-        "trip_headsign",
-    ])?;
+    csv.write_record(["route_id", "service_id", "trip_id", "trip_short_name", "trip_headsign"])?;
 
     for (key, trip) in &world.trips {
         let route_id = trip
@@ -173,13 +167,7 @@ fn write_stop_times<W: Write + io::Seek>(
 ) -> io::Result<()> {
     writer.start_file("stop_times.txt", FileOptions::DEFAULT)?;
     let mut csv = csv::Writer::from_writer(writer);
-    csv.write_record([
-        "trip_id",
-        "arrival_time",
-        "departure_time",
-        "stop_id",
-        "stop_sequence",
-    ])?;
+    csv.write_record(["trip_id", "arrival_time", "departure_time", "stop_id", "stop_sequence"])?;
 
     for (key, trip) in &world.trips {
         let trip_id = trip_id(*key);
@@ -287,12 +275,7 @@ fn entry_times(entry: &paiagram_core::trip::TEntry) -> (Option<TTime>, Option<TT
 /// GTFS times are `HH:MM:SS` and may exceed 24 hours for trips past midnight.
 fn format_time(time: TimetableTime) -> String {
     let seconds = time.0.max(0);
-    format!(
-        "{:02}:{:02}:{:02}",
-        seconds / 3600,
-        seconds % 3600 / 60,
-        seconds % 60
-    )
+    format!("{:02}:{:02}:{:02}", seconds / 3600, seconds % 3600 / 60, seconds % 60)
 }
 
 fn station_id(key: StationKey) -> String {

@@ -30,37 +30,26 @@ impl SpatialCache {
             || NodesRTree::from_world(world.clone()),
             || TripLegsRTree::from_world_and_cache(world.clone(), cache),
         );
-        Self {
-            intervals,
-            nodes,
-            trip_legs,
-        }
+        Self { intervals, nodes, trip_legs }
     }
 }
 
 /// Normalise the two corners of a query and build the matching 2D envelope.
 fn envelope_2d(xy_min: XyPos, xy_max: XyPos) -> AABB<[i64; 2]> {
-    AABB::from_corners(
-        [xy_min.0.min(xy_max.0) as i64, xy_min.1.min(xy_max.1) as i64],
-        [xy_min.0.max(xy_max.0) as i64, xy_min.1.max(xy_max.1) as i64],
-    )
+    AABB::from_corners([xy_min.0.min(xy_max.0) as i64, xy_min.1.min(xy_max.1) as i64], [
+        xy_min.0.max(xy_max.0) as i64,
+        xy_min.1.max(xy_max.1) as i64,
+    ])
 }
 
 /// Like [`envelope_2d`], but collapsed onto the given instant on the time axis.
 fn envelope_3d(xy_min: XyPos, xy_max: XyPos, time: TimetableTime) -> AABB<[i64; 3]> {
     let t = i64::from(time.0);
-    AABB::from_corners(
-        [
-            xy_min.0.min(xy_max.0) as i64,
-            xy_min.1.min(xy_max.1) as i64,
-            t,
-        ],
-        [
-            xy_min.0.max(xy_max.0) as i64,
-            xy_min.1.max(xy_max.1) as i64,
-            t,
-        ],
-    )
+    AABB::from_corners([xy_min.0.min(xy_max.0) as i64, xy_min.1.min(xy_max.1) as i64, t], [
+        xy_min.0.max(xy_max.0) as i64,
+        xy_min.1.max(xy_max.1) as i64,
+        t,
+    ])
 }
 
 #[derive(Clone, Debug)]
@@ -109,10 +98,7 @@ fn build_progress(
         // Short path if the interval has not been created
         let hi_pos = graph.nodes().get(&key.hi).map_or_default(|wfc| wfc.pos);
         let lo_pos = graph.nodes().get(&key.lo).map_or_default(|wfc| wfc.pos);
-        eco_vec![
-            (graph.coord_type.project(hi_pos), 0.0),
-            (graph.coord_type.project(lo_pos), 1.0)
-        ]
+        eco_vec![(graph.coord_type.project(hi_pos), 0.0), (graph.coord_type.project(lo_pos), 1.0)]
     }
 }
 

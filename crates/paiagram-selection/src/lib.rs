@@ -87,10 +87,7 @@ pub struct TripSelection {
 
 impl TripSelection {
     pub fn new(trip_key: TripKey) -> Self {
-        Self {
-            trip_key,
-            editing_offset: None,
-        }
+        Self { trip_key, editing_offset: None }
     }
 }
 

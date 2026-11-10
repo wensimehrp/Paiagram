@@ -73,11 +73,7 @@ fn merge_or_push_columns(
 ) -> EcoVec<(TripKey, EcoVec<RouteTimetableEntry>)> {
     puffin::profile_function!();
     let first_idx = new_column.first().unwrap().2 as usize;
-    let start_idx = if is_inbound {
-        first_idx
-    } else {
-        station_count - 1 - first_idx
-    };
+    let start_idx = if is_inbound { first_idx } else { station_count - 1 - first_idx };
     let new_entries: EcoVec<RouteTimetableEntry> = new_column
         .iter()
         .map(|&(es, entry, ..)| RouteTimetableEntry::Active((es, entry)))
@@ -111,13 +107,7 @@ impl RouteTimetable {
         puffin::profile_function!();
         let station_records: EcoVec<_> = station_records
             .cloned()
-            .map(|it| {
-                (
-                    it,
-                    StationDisplayMode::DEPARTURE,
-                    StationDisplayMode::DEPARTURE,
-                )
-            })
+            .map(|it| (it, StationDisplayMode::DEPARTURE, StationDisplayMode::DEPARTURE))
             .collect();
         let station_count = station_records.len();
         let (inbound_columns, outbound_columns) = marey_cache.map.into_iter().fold(
@@ -144,11 +134,7 @@ impl RouteTimetable {
                 )
             },
         );
-        Self {
-            station_records,
-            inbound_columns,
-            outbound_columns,
-        }
+        Self { station_records, inbound_columns, outbound_columns }
     }
 
     // TODO: handle outbound export

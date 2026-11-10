@@ -9,12 +9,7 @@ impl Diagram {
     pub fn trip_station_times<'a, 'stn>(
         &'a self,
         stations: &'stn [&'stn Station],
-    ) -> impl Iterator<
-        Item = (
-            &'stn Trip,
-            impl Iterator<Item = (&'stn Station, &'stn TimetableEntry)>,
-        ),
-    >
+    ) -> impl Iterator<Item = (&'stn Trip, impl Iterator<Item = (&'stn Station, &'stn TimetableEntry)>)>
     where
         'a: 'stn,
     {

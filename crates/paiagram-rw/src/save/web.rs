@@ -50,14 +50,10 @@ async fn save_bytes_to_indexed_db(
     let mut open_request = factory.open(paiagram_idb::DATABASE, Some(paiagram_idb::VERSION))?;
     open_request.on_upgrade_needed(move |event| {
         let Ok(db) = event.database() else { return };
-        let _ = db.create_object_store(
-            SaveCategory::Autosave.category_str(),
-            ObjectStoreParams::new(),
-        );
-        let _ = db.create_object_store(
-            SaveCategory::Save(None).category_str(),
-            ObjectStoreParams::new(),
-        );
+        let _ =
+            db.create_object_store(SaveCategory::Autosave.category_str(), ObjectStoreParams::new());
+        let _ = db
+            .create_object_store(SaveCategory::Save(None).category_str(), ObjectStoreParams::new());
     });
 
     let db = open_request.await?;

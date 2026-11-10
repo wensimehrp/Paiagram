@@ -363,13 +363,7 @@ impl TripSchedule {
                 StackElem::ForAt(node, ad, dt) => {
                     if let Some((prev_t, prev_n)) = prev_stable {
                         let ok = unwind(graph, esb, otb, prev_t, prev_n, node, ad);
-                        otb.push((
-                            ok.then(|| TEstimate {
-                                arr: prev_t + ad,
-                                dep: dt,
-                            }),
-                            entry,
-                        ));
+                        otb.push((ok.then(|| TEstimate { arr: prev_t + ad, dep: dt }), entry));
                     } else {
                         esb.clear();
                         otb.push((None, entry));
@@ -455,11 +449,7 @@ fn unwind(
     let mut cur = prev_n;
     for s in esb.drain(..) {
         let dis = interval_length(cur, s.node).unwrap().0 as f64;
-        let leg = if total_dis_f == 0.0 {
-            0.0
-        } else {
-            travel_s * dis / total_dis_f
-        };
+        let leg = if total_dis_f == 0.0 { 0.0 } else { travel_s * dis / total_dis_f };
         t_f += leg;
         let arr = TimetableTime(t_f.round() as i32);
         let dep = arr + s.dur;
@@ -476,17 +466,11 @@ fn make_se(estimate_entry: EstimateEntry) -> StackElem {
     let node = estimate_entry.node_key();
     let match_entry = match estimate_entry {
         EstimateEntry::Pinned(tentry) => tentry,
-        EstimateEntry::Derived(node) => TEntry {
-            node,
-            arr_or_pass: TravelMode::Flexible,
-            dep: None,
-            id: TEntryId(0),
-        },
+        EstimateEntry::Derived(node) => {
+            TEntry { node, arr_or_pass: TravelMode::Flexible, dep: None, id: TEntryId(0) }
+        }
     };
-    match (
-        match_entry.arr_or_pass,
-        match_entry.dep.unwrap_or(Tm::Flexible),
-    ) {
+    match (match_entry.arr_or_pass, match_entry.dep.unwrap_or(Tm::Flexible)) {
         (Tm::At(at), Tm::At(dt)) => Se::AtAt(node, at, dt),
         (Tm::At(at), Tm::For(dd)) => Se::AtAt(node, at, at + dd),
         (Tm::At(at), Tm::Flexible) => Se::AtAt(node, at, at),

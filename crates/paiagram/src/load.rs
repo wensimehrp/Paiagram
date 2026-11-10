@@ -13,11 +13,7 @@ pub(crate) fn load_file(
 ) {
     let pick_data = async {
         let handle = dialog.pick_file().await;
-        if let Some(handle) = handle {
-            Some(handle.read().await)
-        } else {
-            None
-        }
+        if let Some(handle) = handle { Some(handle.read().await) } else { None }
     };
     let process = async move {
         #[cfg(debug_assertions)]

@@ -56,10 +56,7 @@ impl ByteCodes {
             promise.finish::<()>().catch(&ctx).map_err(script_error)?;
             let metadata_val: Value = module.get("metadata").catch(&ctx).map_err(script_error)?;
             let metadata = Metadata::parse(&ctx, metadata_val)?;
-            Ok(Self {
-                inner: bytes.into(),
-                metadata,
-            })
+            Ok(Self { inner: bytes.into(), metadata })
         })
     }
 }
@@ -111,17 +108,12 @@ pub fn run_script(
 ) {
     *status.lock() = ScriptRunningStatus::Running;
     rayon::spawn(move || {
-        let result = with_context(
-            runtime_data,
-            Some(io),
-            &bytecodes,
-            |_ctx, module, world, io| {
-                let entry: Function = module.get("run")?;
-                let io = io.expect("run always receives io");
-                entry.call::<_, ()>((world.clone(), return_values, io))?;
-                Ok(Some(std::mem::take(&mut world.borrow_mut().world)))
-            },
-        );
+        let result = with_context(runtime_data, Some(io), &bytecodes, |_ctx, module, world, io| {
+            let entry: Function = module.get("run")?;
+            let io = io.expect("run always receives io");
+            entry.call::<_, ()>((world.clone(), return_values, io))?;
+            Ok(Some(std::mem::take(&mut world.borrow_mut().world)))
+        });
         *status.lock() = ScriptRunningStatus::Finished(result);
     });
 }

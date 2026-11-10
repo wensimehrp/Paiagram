@@ -82,9 +82,7 @@ impl<'a> OuterType<'a> {
 }
 
 fn inspect_type(ty: &Type) -> OuterType<'_> {
-    if let Type::Path(TypePath {
-        qself: None, path, ..
-    }) = ty
+    if let Type::Path(TypePath { qself: None, path, .. }) = ty
         && let Some(segment) = path.segments.last()
         && let PathArguments::AngleBracketed(args) = &segment.arguments
         && let Some(GenericArgument::Type(inner_ty)) = args.args.first()
@@ -100,10 +98,7 @@ fn inspect_type(ty: &Type) -> OuterType<'_> {
 }
 
 fn is_bool_type(ty: &Type) -> bool {
-    if let Type::Path(TypePath {
-        qself: None, path, ..
-    }) = ty
-    {
+    if let Type::Path(TypePath { qself: None, path, .. }) = ty {
         return path.is_ident("bool");
     }
     false

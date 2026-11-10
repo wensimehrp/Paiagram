@@ -103,9 +103,7 @@ pub(crate) struct Settings {
 
 impl Default for Settings {
     fn default() -> Self {
-        Self {
-            repeat_frequency: TDuration::from_hms(24, 0, 0),
-        }
+        Self { repeat_frequency: TDuration::from_hms(24, 0, 0) }
     }
 }
 

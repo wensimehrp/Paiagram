@@ -70,10 +70,8 @@ fn _setup_emergency_save(panic_info: &PanicHookInfo<'_>) {
 }
 
 fn show_dialog(path: &Path) {
-    let desc = format!(
-        "The app has crashed. An emergency save at {} has been created.",
-        path.display()
-    );
+    let desc =
+        format!("The app has crashed. An emergency save at {} has been created.", path.display());
     let title = "Emergency Save";
     cfg_select! {
         target_arch = "wasm32" => wasm_bindgen_futures::spawn_local(async move {

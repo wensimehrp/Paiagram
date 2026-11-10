@@ -129,10 +129,10 @@ fn load_sarasa_cl(ctx: Context, font_name: Arc<Mutex<String>>) {
 }
 
 fn load_font_name(face_id: ID, font_name: Arc<Mutex<String>>) {
-    let post_script_name =
-        FONT_DATABASE.read().face(face_id).map_or("UNNAMED FONT".to_string(), |info| {
-            info.post_script_name.to_string()
-        });
+    let post_script_name = FONT_DATABASE
+        .read()
+        .face(face_id)
+        .map_or("UNNAMED FONT".to_string(), |info| info.post_script_name.to_string());
     *font_name.lock() = post_script_name;
 }
 
@@ -149,10 +149,9 @@ pub(crate) fn load_font_to_egui(
         return;
     };
     let bytes = Arc::new(bytes);
-    definitions.font_data.insert(
-        "system_font".into(),
-        Arc::new(egui::FontData::from_owned((*bytes).clone())),
-    );
+    definitions
+        .font_data
+        .insert("system_font".into(), Arc::new(egui::FontData::from_owned((*bytes).clone())));
     definitions
         .families
         .entry(FontFamily::Proportional)

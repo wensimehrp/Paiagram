@@ -22,9 +22,7 @@ static ROMAJI_MATCH_DATA: LazyLock<RomajiMatchConfig> =
 /// Builds a very permissive matcher
 pub fn build_matcher(query: &str) -> IbMatcher<'_> {
     IbMatcher::builder(query)
-        .plain(Some(
-            PlainMatchConfig::builder().case_insensitive(true).build(),
-        ))
+        .plain(Some(PlainMatchConfig::builder().case_insensitive(true).build()))
         .pinyin(PINYIN_MATCH_DATA.shallow_clone())
         .romaji(ROMAJI_MATCH_DATA.shallow_clone())
         .maybe_mix_lang(Some(true))

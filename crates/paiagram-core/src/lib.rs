@@ -67,10 +67,7 @@ impl<D, C> WorldFieldContainer<D, C> {
     where
         C: Default,
     {
-        Self {
-            data,
-            cache: C::default(),
-        }
+        Self { data, cache: C::default() }
     }
     fn new_with_cache(data: D, cache: C) -> Self {
         Self { data, cache }
@@ -213,10 +210,7 @@ impl StrokeStyle {
 
 impl Default for StrokeStyle {
     fn default() -> Self {
-        Self {
-            color: Color32::GRAY,
-            width: 1,
-        }
+        Self { color: Color32::GRAY, width: 1 }
     }
 }
 

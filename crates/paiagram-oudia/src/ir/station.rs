@@ -17,16 +17,10 @@ pub struct Station {
     )]
     pub name: String,
     /// The abbreviation used in timetables.
-    #[oudia(
-        type(single_pair_single_entry = "EkimeiJikokuRyaku"),
-        alias = "駅名時刻略"
-    )]
+    #[oudia(type(single_pair_single_entry = "EkimeiJikokuRyaku"), alias = "駅名時刻略")]
     pub timetable_abbreviation: Option<String>,
     /// The abbreviation used in diagrams.
-    #[oudia(
-        type(single_pair_single_entry = "EkimeiDiaRyaku"),
-        alias = "駅名ダイヤ略"
-    )]
+    #[oudia(type(single_pair_single_entry = "EkimeiDiaRyaku"), alias = "駅名ダイヤ略")]
     pub diagram_abbreviation: Option<String>,
     /// Stations that branch off at certain points may repeat themselves on
     /// the diagram. This index refers to the other station in the station list
@@ -48,10 +42,7 @@ pub struct Station {
     pub tracks: Vec<Track>,
     #[oudia(type(single_pair_single_entry = "Ekikibo"), alias = "駅規模")]
     pub station_type: StationType,
-    #[oudia(
-        type(single_pair_single_entry = "Ekijikokukeisiki"),
-        alias = "駅時刻形式"
-    )]
+    #[oudia(type(single_pair_single_entry = "Ekijikokukeisiki"), alias = "駅時刻形式")]
     pub station_timetable_format: StationTimetableFormat,
     /// The main track for down (Kudari) trains, as a track index.
     #[oudia(type(single_pair_single_entry = "DownMain"), default = 0)]
@@ -59,20 +50,11 @@ pub struct Station {
     /// The main track for up (Nobori) trains, as a track index.
     #[oudia(type(single_pair_single_entry = "UpMain"), default = 0)]
     pub up_main_track_index: i32,
-    #[oudia(
-        type(single_pair_single_entry = "DiagramTrackDisplay"),
-        default = false
-    )]
+    #[oudia(type(single_pair_single_entry = "DiagramTrackDisplay"), default = false)]
     pub diagram_track_display: bool,
-    #[oudia(
-        type(single_pair_single_entry = "JikokuhyouTrackDisplayKudari"),
-        default = false
-    )]
+    #[oudia(type(single_pair_single_entry = "JikokuhyouTrackDisplayKudari"), default = false)]
     pub timetable_track_display_down: bool,
-    #[oudia(
-        type(single_pair_single_entry = "JikokuhyouTrackDisplayNobori"),
-        default = false
-    )]
+    #[oudia(type(single_pair_single_entry = "JikokuhyouTrackDisplayNobori"), default = false)]
     pub timetable_track_display_up: bool,
     /// Marks a boundary between two parts of a line (e.g. where a loop joins).
     #[oudia(type(single_pair_single_entry = "Kyoukaisen"), default = false)]
@@ -95,26 +77,14 @@ pub struct Station {
     /// Index into the diagram background color list for the next station.
     #[oudia(type(single_pair_single_entry = "DiagramColorNextEki"), default = 0)]
     pub next_station_color_index: i32,
-    #[oudia(
-        type(single_pair_single_entry = "JikokuhyouTrackOmit"),
-        default = false
-    )]
+    #[oudia(type(single_pair_single_entry = "JikokuhyouTrackOmit"), default = false)]
     pub timetable_track_omit: bool,
     /// Whether to show times at this station in the "box diagram" operation table.
-    #[oudia(
-        type(single_pair_single_entry = "OperationTableDisplayJikoku"),
-        default = false
-    )]
+    #[oudia(type(single_pair_single_entry = "OperationTableDisplayJikoku"), default = false)]
     pub operation_table_display_time: bool,
-    #[oudia(
-        type(single_pair_single_entry = "JikokuhyouOperationOrigin"),
-        default = 0
-    )]
+    #[oudia(type(single_pair_single_entry = "JikokuhyouOperationOrigin"), default = 0)]
     pub timetable_operation_origin: i32,
-    #[oudia(
-        type(single_pair_single_entry = "JikokuhyouOperationTerminal"),
-        default = 0
-    )]
+    #[oudia(type(single_pair_single_entry = "JikokuhyouOperationTerminal"), default = 0)]
     pub timetable_operation_terminal: i32,
     #[oudia(
         type(single_pair_single_entry = "JikokuhyouOperationOriginDownBeforeUpAfter"),
@@ -240,10 +210,7 @@ pub struct Track {
     #[oudia(type(single_pair_single_entry = "TrackRyakusyou"), alias = "Track略称")]
     pub abbreviation: String,
     /// The abbreviation used for up (Nobori) trains on this track.
-    #[oudia(
-        type(single_pair_single_entry = "TrackNoboriRyakusyou"),
-        alias = "Track上り略称"
-    )]
+    #[oudia(type(single_pair_single_entry = "TrackNoboriRyakusyou"), alias = "Track上り略称")]
     pub up_abbreviation: Option<String>,
 }
 

@@ -149,10 +149,7 @@ pub(super) fn parse_pyetgr(data: &[u8]) -> Option<World> {
             key,
             Wfc::new(ServiceClass {
                 name: name.to_eco_string(),
-                style: StrokeStyle {
-                    color: Color32::from_rgb(r, g, b),
-                    width: 1,
-                },
+                style: StrokeStyle { color: Color32::from_rgb(r, g, b), width: 1 },
             }),
         );
     }
@@ -164,16 +161,9 @@ pub(super) fn parse_pyetgr(data: &[u8]) -> Option<World> {
             }
             let stn_key = StationKey::new();
             let station_name = station.name.to_eco_string();
-            let stn_info = PaiagramStation {
-                name: station_name.clone(),
-                pos: Coord::ZERO,
-            };
+            let stn_info = PaiagramStation { name: station_name.clone(), pos: Coord::ZERO };
             let node_key = NodeKey::new();
-            let node_info = Node {
-                name: station_name,
-                parent: stn_key,
-                pos: Coord::ZERO,
-            };
+            let node_info = Node { name: station_name, parent: stn_key, pos: Coord::ZERO };
             route_intervals.push(RouteInterval {
                 station_record: StationRecord::All(stn_key),
                 milestone: Some(Distance::from_km(station.distance_km)),
@@ -236,12 +226,7 @@ pub(super) fn parse_pyetgr(data: &[u8]) -> Option<World> {
                     arr_or_pass = TravelMode::At(arr_time);
                     dep = Some(TravelMode::At(dep_time));
                 }
-                TEntry {
-                    node,
-                    arr_or_pass,
-                    dep,
-                    id: TEntryId::new(),
-                }
+                TEntry { node, arr_or_pass, dep, id: TEntryId::new() }
             })
             .collect();
         world.trips.insert(

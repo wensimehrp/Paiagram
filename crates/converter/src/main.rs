@@ -67,10 +67,7 @@ fn convert(input: &str, format: OutputFormat) -> Result<String, String> {
             .map_err(|e| e.to_string()),
     };
     result.map_err(|err| {
-        format!(
-            "Error serializing IR to {}:\n{err}",
-            format.extension().to_ascii_uppercase()
-        )
+        format!("Error serializing IR to {}:\n{err}", format.extension().to_ascii_uppercase())
     })
 }
 

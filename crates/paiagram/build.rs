@@ -33,11 +33,7 @@ fn generate_bindings(
     module: &str,
     name: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let wgsl = compile_wesl(
-        WESL_PACKAGE_ROOT,
-        module,
-        &out_dir.join(format!("{name}.wgsl")),
-    )?;
+    let wgsl = compile_wesl(WESL_PACKAGE_ROOT, module, &out_dir.join(format!("{name}.wgsl")))?;
 
     WgslBindgenOptionBuilder::default()
         .workspace_root(out_dir.to_path_buf())

@@ -203,11 +203,7 @@ impl TimetableTime {
     #[inline]
     pub fn to_oud2_string(&self, show_seconds: bool) -> String {
         let (h, m, s, _) = self.to_hmsd();
-        if show_seconds {
-            format!("{:2}{:02}{:02}", h, m, s)
-        } else {
-            format!("{:2}{:02}", h, m)
-        }
+        if show_seconds { format!("{:2}{:02}{:02}", h, m, s) } else { format!("{:2}{:02}", h, m) }
     }
     /// Return the normalized time that is in 24 hour range
     #[inline]
@@ -330,12 +326,7 @@ impl TDuration {
     }
     #[inline]
     pub fn from_str(s: &str) -> Option<Self> {
-        let time_parts = if let Some((_, rhs)) = s.rsplit_once('→') {
-            rhs
-        } else {
-            s
-        }
-        .trim();
+        let time_parts = if let Some((_, rhs)) = s.rsplit_once('→') { rhs } else { s }.trim();
         Some(Self(TimetableTime::from_str(time_parts)?.0))
     }
 }
@@ -343,12 +334,7 @@ impl TDuration {
 impl FromStr for TDuration {
     type Err = &'static str;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let time_parts = if let Some((_, rhs)) = s.rsplit_once('→') {
-            rhs
-        } else {
-            s
-        }
-        .trim();
+        let time_parts = if let Some((_, rhs)) = s.rsplit_once('→') { rhs } else { s }.trim();
         <TimetableTime as FromStr>::from_str(time_parts).map(|t| Self(t.0))
     }
 }

@@ -59,27 +59,18 @@ pub(super) fn parse_gtfs(data: &[u8]) -> Result<World, Box<dyn std::error::Error
                 .filter(|s| s.longitude.is_some() && s.latitude.is_some())
                 .map_or_else(|| stop_lonlat(stop), |s| stop_lonlat(s));
             let key = StationKey::new();
-            world.stations.insert(
-                key,
-                Wfc::new(Station {
-                    name: name.to_eco_string(),
-                    pos,
-                }),
-            );
+            world.stations.insert(key, Wfc::new(Station { name: name.to_eco_string(), pos }));
             key
         });
 
         let pos = stop_lonlat(stop);
         let name = stop.name.clone().unwrap_or_else(|| stop_id.clone());
         let node_key = NodeKey::new();
-        world.graph.insert_node(
-            node_key,
-            Node {
-                name: name.to_eco_string(),
-                parent: station_key,
-                pos,
-            },
-        );
+        world.graph.insert_node(node_key, Node {
+            name: name.to_eco_string(),
+            parent: station_key,
+            pos,
+        });
         node_keys.insert(stop_id.clone(), node_key);
         node_station.insert(stop_id.clone(), station_key);
     }
@@ -117,10 +108,9 @@ pub(super) fn parse_gtfs(data: &[u8]) -> Result<World, Box<dyn std::error::Error
         };
 
         for window in trip.stop_times.windows(2) {
-            let (Some(&a), Some(&b)) = (
-                node_keys.get(&window[0].stop.id),
-                node_keys.get(&window[1].stop.id),
-            ) else {
+            let (Some(&a), Some(&b)) =
+                (node_keys.get(&window[0].stop.id), node_keys.get(&window[1].stop.id))
+            else {
                 continue;
             };
             if a == b {
@@ -157,10 +147,7 @@ pub(super) fn parse_gtfs(data: &[u8]) -> Result<World, Box<dyn std::error::Error
             .unwrap_or_else(|| route_id.clone());
         world.routes.insert(
             RouteKey::new(),
-            Wfc::new(Route {
-                name: name.to_eco_string(),
-                intervals: RouteIntervals(intervals),
-            }),
+            Wfc::new(Route { name: name.to_eco_string(), intervals: RouteIntervals(intervals) }),
         );
     }
 
@@ -184,12 +171,7 @@ pub(super) fn parse_gtfs(data: &[u8]) -> Result<World, Box<dyn std::error::Error
                 (None, Some(dep)) => (TravelMode::At(dep), None),
                 (None, None) => (TravelMode::Flexible, None),
             };
-            entries.push(TEntry {
-                node,
-                arr_or_pass,
-                dep,
-                id: TEntryId::new(),
-            });
+            entries.push(TEntry { node, arr_or_pass, dep, id: TEntryId::new() });
         }
         if entries.is_empty() {
             continue;

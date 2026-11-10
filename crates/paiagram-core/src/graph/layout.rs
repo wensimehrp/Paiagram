@@ -39,10 +39,7 @@ fn auto_layout(source: &mut Source) {
     }
     let _ = source.mutate(|mut world| {
         for node in simulation.get_graph().node_weights() {
-            let xy = XyPos(
-                node.location.x.round() as i32,
-                node.location.y.round() as i32,
-            );
+            let xy = XyPos(node.location.x.round() as i32, node.location.y.round() as i32);
             let new_coord = world.graph.coord_type.unproject(xy);
             world.graph.update_node_coordinate(node.data, new_coord);
         }
