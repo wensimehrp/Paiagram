@@ -202,8 +202,6 @@ impl NodesRTree {
 #[derive(Default, Clone, Debug)]
 pub struct TripLegsRTree(RTree<TripLegRTreeObject>);
 
-use rayon::prelude::*;
-
 impl TripLegsRTree {
     /// Build the tree from the estimated legs of every trip.
     fn from_world_and_cache(
@@ -211,33 +209,33 @@ impl TripLegsRTree {
         progresses: FxHashMap<IntervalKey, EcoVec<(XyPos, f32)>>,
     ) -> Self {
         puffin::profile_function!();
-        let iter_candidates: Vec<_> = world.trips.iter().collect();
-        let objects_iter = iter_candidates.into_par_iter().flat_map(|(trip_key, trip)| {
-            let legs = trip.schedule.estimates(&world.graph, |e| {
-                let iter = e.array_windows().filter_map(|[(curr_est, curr), (next_est, next)]| {
-                    let (curr_est, next_est) = (curr_est.as_ref()?, next_est.as_ref()?);
+        let mut objects = Vec::with_capacity(world.trips.len() * 10);
+        for (trip_key, trip) in &world.trips {
+            trip.schedule.estimates(&world.graph, |e| {
+                for [(curr_est, curr), (next_est, next)] in e.array_windows() {
+                    let (Some(curr_est), Some(next_est)) = (curr_est, next_est) else {
+                        continue;
+                    };
                     if curr.node_key() == next.node_key() {
-                        return None;
+                        continue;
                     }
                     let interval_key = IntervalKey::new(curr.node_key(), next.node_key());
                     let progresses = progresses
                         .get(&interval_key)
                         .cloned()
                         .unwrap_or_else(|| build_progress(&world.graph, interval_key, None));
-                    Some(TripLegRTreeObject {
+                    objects.push(TripLegRTreeObject {
                         interval: progresses,
                         is_hi_to_lo: curr.node_key() == interval_key.hi,
                         trip_key: *trip_key,
                         curr_arr: curr_est.arr,
                         curr_dep: curr_est.dep,
                         next_arr: next_est.arr,
-                    })
-                });
-                iter.collect::<Vec<_>>()
-            });
-            legs.into_par_iter()
-        });
-        Self(RTree::bulk_load(objects_iter.collect()))
+                    });
+                }
+            })
+        }
+        Self(RTree::bulk_load(objects))
     }
 
     /// Every trip leg whose geometry intersects the given box and whose time
