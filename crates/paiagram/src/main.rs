@@ -12,10 +12,12 @@ use serde::Deserialize;
 use talc::{sync::TalcLock, wasm::*};
 use web_time::Instant;
 
+// native allocator
 #[cfg(not(target_family = "wasm"))]
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
+// wasm allocator
 #[cfg(target_family = "wasm")]
 #[global_allocator]
 static TALC: TalcLock<spinning_top::RawSpinlock, WasmGrowAndClaim, WasmBinning> =
@@ -38,12 +40,12 @@ struct PaiagramApp {
 
 impl PaiagramApp {
     fn new(cc: &eframe::CreationContext, msaa_samples: u32) -> Self {
+        let mut app = App::new(&cc.egui_ctx);
         // set styles
         cc.egui_ctx.global_style_mut(|style| {
             style.spacing.window_margin = egui::Margin::same(2);
             style.interaction.selectable_labels = false;
         });
-        let mut app = App::new(&cc.egui_ctx);
         if let Some(render_state) = &cc.wgpu_render_state {
             app.init_gpu(render_state, msaa_samples);
         }
@@ -54,22 +56,6 @@ impl PaiagramApp {
         let now = Instant::now();
         Self { app, ui_state: UiState::default(), prev_time: now, last_autosave: now }
     }
-}
-
-#[cfg(target_arch = "wasm32")]
-fn parse_web_arguments() -> Arguments {
-    if let Some(search) =
-        eframe::web_sys::window().and_then(|window| window.location().search().ok())
-    {
-        info!("Handling web args... `{search}`");
-        let query = search.strip_prefix('?').unwrap_or(&search);
-        match serde_html_form::from_str::<Arguments>(&query) {
-            Ok(args) => return args,
-            Err(error) => error!("Failed to parse web args: {error}"),
-        }
-    }
-
-    Arguments::default()
 }
 
 impl eframe::App for PaiagramApp {
@@ -115,6 +101,29 @@ struct Arguments {
     locale: Option<String>,
 }
 
+impl Arguments {
+    #[cfg(target_arch = "wasm32")]
+    fn parse_web() -> Self {
+        match web_sys::window().and_then(|window| window.location().search().ok()).map(
+            |url_string| {
+                info!("Handling web args... `{url_string}`");
+                let query = url_string.strip_prefix('?').unwrap_or(&url_string);
+                serde_html_form::from_str::<Self>(&query)
+            },
+        ) {
+            None => {
+                warn!("Failed to get URL string in browser window");
+                Self::default()
+            }
+            Some(Err(e)) => {
+                error!("Failed to parse web arguments: {e}");
+                Self::default()
+            }
+            Some(Ok(args)) => args,
+        }
+    }
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result<()> {
     paiagram::setup_emergency_save();
@@ -149,6 +158,8 @@ fn main() {
     eframe::WebLogger::init(log::LevelFilter::Debug).ok();
 
     let web_options = eframe::WebOptions::default();
+
+    let args = Arguments::parse_web();
 
     wasm_bindgen_futures::spawn_local(async {
         let window = web_sys::window().expect("No window");
