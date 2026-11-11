@@ -85,7 +85,8 @@ paiagram-oudia.path = "crates/paiagram-oudia"
 paiagram-oudia-macros.path = "crates/paiagram-oudia-macros"
 paiagram-rw.path = "crates/paiagram-rw"
 paiagram-selection.path = "crates/paiagram-selection"
-parking_lot = "0.12.5"
+# https://github.com/Amanieu/parking_lot/blob/85827ffa2ffb0b60d416e2e2a091f36b0e8e5a91/README.md?plain=1#L72-L86
+parking_lot = { version = "0.12.5", features = ["nightly"] }
 paste = "1.0.15"
 pathfinding = "4.16.0"
 pest = "2.8.6"
@@ -158,9 +159,6 @@ wgsl_bindgen = "0.23.3"
 zip = { version = "9.1.3", default-features = false, features = ["deflate"] }
 zrip = "0.8.13"
 
-[patch.crates-io]
-puffin = { git = "https://github.com/EmbarkStudios/puffin", rev = "39c8970abd6a95871bcaf0d3581c494885f2edd5", features = ["web"] }
-
 # Enable a small amount of optimization in the dev profile.
 [profile.dev]
 opt-level = 1
@@ -176,3 +174,6 @@ strip = "debuginfo"
 lto = "fat"
 panic = "abort"
 codegen-units = 1
+
+[patch.crates-io]
+puffin = { git = "https://github.com/EmbarkStudios/puffin", rev = "39c8970abd6a95871bcaf0d3581c494885f2edd5", features = ["web"] }

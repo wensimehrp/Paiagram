@@ -1,6 +1,6 @@
 use std::ops;
 use std::path::PathBuf;
-use std::sync::mpsc;
+use std::sync::{OnceLock, mpsc};
 
 use egui::Ui;
 use log::{error, info, warn};
@@ -16,6 +16,11 @@ use crate::timer::GlobalTimer;
 use crate::ui_tiles::UiTiles;
 use crate::{UiCommand, UiTile};
 
+type ProfileData = (puffin::ThreadInfo, Box<[puffin::ScopeDetails]>, puffin::StreamInfo);
+
+/// tx used to transport profile data to the main thread
+static PROFILE_TX: OnceLock<mpsc::Sender<ProfileData>> = OnceLock::new();
+
 pub struct App {
     source: Source,
     pub(crate) timer: GlobalTimer,
@@ -25,14 +30,15 @@ pub struct App {
     pub(crate) save_path: Option<PathBuf>,
 
     // action and file operation transmitters and receivers
-    ui_command_rx: mpsc::Receiver<UiCommand>,
-    world_read_rx: mpsc::Receiver<LoadResult<(World, ImportMode)>>,
-    file_write_rx: mpsc::Receiver<WriteResult>,
-    save_write_rx: mpsc::Receiver<WriteResult>,
     ui_command_tx: mpsc::Sender<UiCommand>,
+    ui_command_rx: mpsc::Receiver<UiCommand>,
     pub world_read_tx: mpsc::Sender<LoadResult<(World, ImportMode)>>,
+    world_read_rx: mpsc::Receiver<LoadResult<(World, ImportMode)>>,
     pub file_write_tx: mpsc::Sender<WriteResult>,
+    file_write_rx: mpsc::Receiver<WriteResult>,
     save_write_tx: mpsc::Sender<WriteResult>,
+    save_write_rx: mpsc::Receiver<WriteResult>,
+    profile_rx: mpsc::Receiver<ProfileData>,
 }
 
 /// Short definition for accessing the WORLD and SOURCE's data.
@@ -57,6 +63,22 @@ impl App {
         let (file_write_tx, file_write_rx) = mpsc::channel();
         let (save_write_tx, save_write_rx) = mpsc::channel();
         let (world_read_tx, world_read_rx) = mpsc::channel();
+        let (profile_tx, profile_rx) = mpsc::channel();
+        PROFILE_TX.set(profile_tx).unwrap();
+        rayon::broadcast(|_| {
+            puffin::ThreadProfiler::initialize(puffin::now_ns, |a, b, c| {
+                let _ = PROFILE_TX.get().unwrap().send((
+                    a.clone(),
+                    b.to_vec().into_boxed_slice(),
+                    puffin::StreamInfo {
+                        stream: c.stream.to_vec().into(),
+                        num_scopes: c.num_scopes,
+                        depth: c.depth,
+                        range_ns: c.range_ns,
+                    },
+                ));
+            });
+        });
         Self {
             source: Source::new(),
             timer: GlobalTimer::new(),
@@ -72,6 +94,7 @@ impl App {
             file_write_rx,
             save_write_tx,
             save_write_rx,
+            profile_rx,
         }
     }
 
@@ -82,6 +105,7 @@ impl App {
 
     /// Method to prevent directly calling .clone() on app
     #[deprecated(note = "Use app.world().clone() instead")]
+    #[allow(unused)]
     pub(crate) fn clone(&self) -> ! {
         unreachable!()
     }
@@ -120,6 +144,11 @@ impl App {
     /// Apply UI commands and change the main ui state
     pub(super) fn begin_frame(&mut self, ui: &mut Ui, mus: &mut UiTiles) {
         puffin::profile_function!();
+        let mut global_profiler = puffin::GlobalProfiler::lock();
+        global_profiler.new_frame();
+        for (info, scope_details, stream_scope_times) in self.profile_rx.try_iter() {
+            global_profiler.report(info, &scope_details, &stream_scope_times.as_stream_into_ref());
+        }
         ui.set_theme(self.preferences.theme_preference);
         self.source.begin_frame();
         for cmd in self.ui_command_rx.try_iter() {
