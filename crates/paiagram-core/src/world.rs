@@ -22,7 +22,6 @@ impl World {
     /// whether its spatial data changed.
     /// The new world is applied as a diff against the old one.
     fn update_diff(&self, new: World) -> (World, bool) {
-        puffin::profile_function!();
         // The new world is only a source of changed values. Caches are derived from the old
         // world and patched incrementally; anything only present in the new world's cache is
         // discarded.

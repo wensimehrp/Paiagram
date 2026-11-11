@@ -29,8 +29,6 @@ use paiagram_rw::ExportObject;
 use rfd::AsyncFileDialog;
 use tiles::{UiTile, for_all_tiles};
 use ui_tiles::{TileViewer, UiTiles};
-#[cfg(target_arch = "wasm32")]
-pub use wasm_bindgen_rayon::init_thread_pool;
 pub use widgets::search::build_matcher;
 
 use crate::command_palette::CommandPalette;
@@ -51,8 +49,6 @@ pub fn show_ui(
     ui_state: &mut UiState,
     delta_time: std::time::Duration,
 ) {
-    profiling::finish_frame!();
-    puffin::profile_function!();
     app.begin_frame(ui, &mut ui_state.mus);
 
     {
