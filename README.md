@@ -21,7 +21,11 @@ Paiagram is a user-friendly transit scheduler and visualizer. Paiagram has:
 
 <!--typst-begin-exclude-->
 
-## Contributing and Development
+## Compiling and Development
+
+Please refer to [Contributor's Notes] for details.
+
+## Contributing
 
 We welcome any sort of contributions, as long as they are helpful. Please read the
 [Contributor's Notes](CONTRIBUTING.md) carefully before starting to contribute.
