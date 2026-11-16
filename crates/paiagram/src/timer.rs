@@ -1,4 +1,4 @@
-use jiff::Zoned;
+use jiff::ZonedDateTime;
 use paiagram_core::time::TimetableTime;
 
 /// Token used to unlock the timer.
@@ -75,7 +75,7 @@ impl GlobalTimer {
 
     /// The current time of day as seconds in f64 since midnight.
     fn current_real_time_seconds() -> f64 {
-        let now = Zoned::now();
+        let now = ZonedDateTime::now();
         let time = now.datetime().time();
         time.hour() as f64 * 3600.0
             + time.minute() as f64 * 60.0

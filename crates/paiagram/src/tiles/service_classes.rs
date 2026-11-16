@@ -83,10 +83,8 @@ impl Tile for ServiceClassesTile {
             ui.heading(selected_class.name.as_str());
             Grid::new(selected_class.name.as_str()).num_columns(2).show(ui, |ui| {
                 ui.label("Creation time");
-                let time_string = jiff::Zoned::try_from(selected_class_key.creation_time())
-                    .map_or("Unknown".into(), |zoned| {
-                        format!("{}", zoned.strftime("%F %T %:z"))
-                    });
+                let time_string = jiff::ZonedDateTime::try_from(selected_class_key.creation_time())
+                    .map_or("Unknown".into(), |zoned| format!("{}", zoned.strftime("%F %T %:z")));
                 ui.label(time_string);
                 ui.end_row();
             });
@@ -143,10 +141,7 @@ pub fn service_class_button_atoms<'a>(
     let service_class_str = service_class.name.as_str();
     let stroke_atom = Atom::paint([35.0, 15.0], |ui, args| {
         let rect = args.rect;
-        let stroke = Stroke::new(
-            service_class.style.width as f32 * 1.0,
-            service_class.style.color,
-        );
+        let stroke = Stroke::new(service_class.style.width as f32 * 1.0, service_class.style.color);
         ui.painter().line_segment([rect.left_center(), rect.right_center()], stroke);
         let stroke = Stroke::new(2.0, service_class.style.color);
         ui.painter().line_segment([rect.left_top(), rect.left_bottom()], stroke);

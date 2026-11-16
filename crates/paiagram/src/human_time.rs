@@ -39,7 +39,10 @@ pub(crate) fn to_human_time_string(time: web_time::SystemTime) -> String {
 
         let timestamp = timestamp.expect("system time is outside Jiff's supported range");
 
-        return timestamp.to_zoned(jiff::tz::TimeZone::UTC).strftime("%b %d, %Y").to_string();
+        return timestamp
+            .to_zoned_datetime(jiff::tz::TimeZone::UTC)
+            .strftime("%b %d, %Y")
+            .to_string();
     };
 
     match (is_future, unit) {
