@@ -23,7 +23,7 @@ impl Tick {
         let ticks = seconds * Self::TICKS_PER_SECOND as f64;
         Self(ticks as i64)
     }
-    pub fn as_seconds_f64(self) -> f64 {
+    pub fn to_seconds_f64(self) -> f64 {
         let ticks_per_second = Self::from_timetable_time(TimetableTime(1)).0 as f64;
         self.0 as f64 / ticks_per_second
     }

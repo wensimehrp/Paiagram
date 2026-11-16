@@ -32,6 +32,7 @@ use crate::trip_schedule_visual::WithVisualMod;
 pub(crate) struct MareyTile {
     key: RouteKey,
     navi: MareyTileNavigation,
+    sync_viewport_to_clock: bool,
     cache: MareyCache,
     callback: gpu_draw::MareyCallback,
     /// We store the world to compare the cache. World is just a set of shared pointers so it is
@@ -44,19 +45,21 @@ pub(crate) struct MareyTile {
 struct MareyTileNoCache {
     key: RouteKey,
     navi: MareyTileNavigation,
+    sync_viewport_to_clock: bool,
 }
 
 impl From<MareyTile> for MareyTileNoCache {
-    fn from(MareyTile { key, navi, .. }: MareyTile) -> Self {
-        Self { key, navi }
+    fn from(MareyTile { key, navi, sync_viewport_to_clock, .. }: MareyTile) -> Self {
+        Self { key, navi, sync_viewport_to_clock }
     }
 }
 
 impl From<MareyTileNoCache> for MareyTile {
-    fn from(MareyTileNoCache { key, navi }: MareyTileNoCache) -> Self {
+    fn from(MareyTileNoCache { key, navi, sync_viewport_to_clock }: MareyTileNoCache) -> Self {
         Self {
             key,
             navi,
+            sync_viewport_to_clock,
             cache: MareyCache::default(),
             callback: gpu_draw::MareyCallback::new(key),
             prev_world: None,
@@ -69,22 +72,23 @@ impl MareyTile {
         Self {
             key,
             navi: MareyTileNavigation::default(),
+            sync_viewport_to_clock: false,
             cache: MareyCache::default(),
             callback: gpu_draw::MareyCallback::new(key),
             prev_world: None,
         }
     }
-    fn update_cache(&mut self, curr_world: &World) -> bool {
+    fn update_cache<'world>(
+        &mut self,
+        curr_world: &'world World,
+    ) -> Option<&'world Wfc<Route, RouteCache>> {
         puffin::profile_function!();
-        let Some(curr_route) = curr_world.routes.get(&self.key) else {
-            return false;
-        };
+        let curr_route = curr_world.routes.get(&self.key)?;
         // TODO: reuse MareyCache
         let (_rebuild_route, trips_to_rebuild) = match self.prev_world.as_ref() {
-            None => (
-                true,
-                Either::Left(curr_route.intervals.all_passing_trips(curr_world).into_iter()),
-            ),
+            None => {
+                (true, Either::Left(curr_route.intervals.all_passing_trips(curr_world).into_iter()))
+            }
             Some(prev_world) => {
                 let rebuild_route = prev_world.graph.nodes().ptr_eq(curr_world.graph.nodes())
                     || prev_world.graph.intervals().ptr_eq(curr_world.graph.intervals())
@@ -101,7 +105,7 @@ impl MareyTile {
         curr_route.intervals.populate_trips(curr_world, &mut self.cache, trips_to_rebuild);
         self.prev_world = Some(curr_world.clone());
         self.callback.populate_entry_segments(&self.cache, curr_world);
-        true
+        Some(curr_route)
     }
 }
 
@@ -172,10 +176,7 @@ impl Navigatable for MareyTileNavigation {
     }
     fn clamp_zoom(&self, zoom_x: f32, zoom_y: f32) -> (f32, f32) {
         let ppmm = CanvasLength::egui_pts_per_mm() as f32;
-        (
-            zoom_x.clamp(0.00005, 0.4),
-            zoom_y.clamp(ppmm * 0.1, ppmm * 2048.0),
-        )
+        (zoom_x.clamp(0.00005, 0.4), zoom_y.clamp(ppmm * 0.1, ppmm * 2048.0))
     }
     fn post_navigation(&mut self, response: &egui::Response) {
         let max_tick = Tick::from_timetable_time(TimetableTime(366 * 86400)).0;
@@ -207,8 +208,7 @@ impl Tile for MareyTile {
     }
     fn main_display(&mut self, app: &mut App, ui: &mut Ui) {
         puffin::profile_function!();
-        let trip_exists = self.update_cache(app);
-        if !trip_exists {
+        let Some(curr_route) = self.update_cache(app) else {
             ui.centered_and_justified(|ui| ui.heading("Route does not exist"));
             return;
         };
@@ -241,6 +241,7 @@ impl Tile for MareyTile {
                 }
                 .write_via_interface(app.file_write_tx.clone());
             }
+            ui.checkbox(&mut self.sync_viewport_to_clock, "Sync viewport to clock");
         });
         Frame::canvas(ui.style())
             .inner_margin(Margin::ZERO)
@@ -290,10 +291,7 @@ fn draw_time_lines(painter: &mut Painter, navi: &MareyTileNavigation) {
             continue;
         }
         // TODO: make stroke depend on current theme
-        let mut current_stroke = Stroke {
-            width: 0.6,
-            color: Color32::GRAY,
-        };
+        let mut current_stroke = Stroke { width: 0.6, color: Color32::GRAY };
         if strength.is_finite() {
             // strange bug here
             current_stroke.color = current_stroke.color.gamma_multiply(strength as f32);
@@ -335,7 +333,16 @@ fn main_display(tile: &mut MareyTile, app: &mut App, ui: &mut Ui) {
     let (response, mut painter) =
         ui.allocate_painter(ui.available_size_before_wrap(), Sense::click_and_drag());
     tile.navi.visible_rect = response.rect;
-    tile.navi.handle_navigation(ui, &response);
+    let moved = tile.navi.handle_navigation(ui, &response);
+    if tile.sync_viewport_to_clock
+        && moved
+        && let Some(key) = app.timer.try_lock()
+    {
+        app.timer.update_seconds(tile.navi.x_offset.to_seconds_f64(), &key);
+        app.timer.unlock(key);
+    } else if tile.sync_viewport_to_clock {
+        tile.navi.x_offset = Tick::from_seconds_f64(app.timer.seconds());
+    }
 
     draw_time_lines(&mut painter, &tile.navi);
 
@@ -344,10 +351,7 @@ fn main_display(tile: &mut MareyTile, app: &mut App, ui: &mut Ui) {
     };
 
     let (station_heights, max_height) = route.intervals.0.iter().fold(
-        (
-            Vec::with_capacity(route.intervals.0.len()),
-            CanvasLength::ZERO,
-        ),
+        (Vec::with_capacity(route.intervals.0.len()), CanvasLength::ZERO),
         |(mut acc, height_so_far), interval| {
             let Some(station) = interval
                 .station_record
@@ -356,10 +360,7 @@ fn main_display(tile: &mut MareyTile, app: &mut App, ui: &mut Ui) {
             else {
                 return (acc, height_so_far);
             };
-            let station_line_stroke = Stroke {
-                width: 0.6,
-                color: Color32::GRAY,
-            };
+            let station_line_stroke = Stroke { width: 0.6, color: Color32::GRAY };
             let mut y = tile.navi.logical_y_to_screen_y(height_so_far);
             station_line_stroke.round_center_to_pixel(ui.pixels_per_point(), &mut y);
             painter.hline(response.rect.x_range(), y, station_line_stroke);
@@ -371,10 +372,7 @@ fn main_display(tile: &mut MareyTile, app: &mut App, ui: &mut Ui) {
                 station_line_stroke.color,
             );
             acc.push(height_so_far);
-            (
-                acc,
-                height_so_far + interval.canvas_length.unwrap_or(CanvasLength::from_cm(1.5)),
-            )
+            (acc, height_so_far + interval.canvas_length.unwrap_or(CanvasLength::from_cm(1.5)))
         },
     );
 
@@ -429,12 +427,7 @@ fn main_display(tile: &mut MareyTile, app: &mut App, ui: &mut Ui) {
             let t = tile.navi.screen_x_to_logical_x(pointer_pos.x).to_timetable_time();
             let trip_key = TripKey::new();
             let id = TEntryId::new();
-            let new_entry = TEntry {
-                node: *node,
-                arr_or_pass: TravelMode::At(t),
-                dep: None,
-                id,
-            };
+            let new_entry = TEntry { node: *node, arr_or_pass: TravelMode::At(t), dep: None, id };
             let _ = app.mutate(|mut world| {
                 world.trips.insert(
                     trip_key,
@@ -505,10 +498,7 @@ fn main_display(tile: &mut MareyTile, app: &mut App, ui: &mut Ui) {
             && let Some(station) = app.stations.get(station_key)
             && let Some(node) = station.cache.nodes.first()
         {
-            Some((
-                *node,
-                tile.navi.screen_x_to_logical_x(pointer_pos.x).to_timetable_time(),
-            ))
+            Some((*node, tile.navi.screen_x_to_logical_x(pointer_pos.x).to_timetable_time()))
         } else {
             focused_pos
         };
@@ -541,13 +531,7 @@ fn main_display(tile: &mut MareyTile, app: &mut App, ui: &mut Ui) {
 
         route.intervals.populate_schedule(&app, &schedule).into_iter().flatten().for_each(
             |polyline| {
-                draw_polyline(
-                    &tile.navi,
-                    &polyline,
-                    &station_heights,
-                    &mut painter,
-                    stroke,
-                );
+                draw_polyline(&tile.navi, &polyline, &station_heights, &mut painter, stroke);
             },
         );
 
@@ -560,15 +544,7 @@ fn main_display(tile: &mut MareyTile, app: &mut App, ui: &mut Ui) {
     if let Some(pos) = ui.pointer_hover_pos()
         && ui.ui_contains_pointer()
     {
-        paint_time_cursor(
-            &tile.navi,
-            &station_heights,
-            pos,
-            ui,
-            response.rect,
-            route,
-            app,
-        );
+        paint_time_cursor(&tile.navi, &station_heights, pos, ui, response.rect, route, app);
     }
 }
 
@@ -629,11 +605,7 @@ fn find_nearest_station_idx_from_pos(
         let next = station_heights[idx];
         let mid = CanvasLength((prev.0 + next.0) / 2.0);
 
-        if target_y <= mid {
-            Some(idx - 1)
-        } else {
-            Some(idx)
-        }
+        if target_y <= mid { Some(idx - 1) } else { Some(idx) }
     }
 }
 
