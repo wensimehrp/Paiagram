@@ -32,6 +32,7 @@ use ui_tiles::{TileViewer, UiTiles};
 pub use widgets::search::build_matcher;
 
 use crate::command_palette::CommandPalette;
+use crate::timer::GlobalTimer;
 
 #[derive(Default)]
 pub struct UiState {
@@ -192,30 +193,40 @@ pub fn show_ui(
     Panel::bottom("bottom panel").exact_size(24.0).show(ui, |ui| {
         puffin::profile_scope!("bottom_panel");
         ui.horizontal_centered(|ui| {
-            let mut time = TimetableTime(app.timer.seconds() as i32);
+            let timer = &mut app.timer;
+            let mut time = TimetableTime(timer.seconds() as i32);
             ui.add_enabled(
-                !app.timer.sync_to_real_time,
-                egui::Checkbox::new(&mut app.timer.animation_playing, ""),
+                !timer.sync_to_real_time,
+                egui::Checkbox::new(&mut timer.animation_playing, ""),
             );
             let time_response = ui.add(DragValue::new(&mut time));
             ui.add_enabled(
-                !app.timer.sync_to_real_time,
-                egui::DragValue::new(&mut app.timer.animation_speed).fixed_decimals(1).suffix("×"),
+                !timer.sync_to_real_time,
+                egui::DragValue::new(&mut timer.animation_speed).fixed_decimals(1).suffix("×"),
             );
             egui::Popup::menu(&time_response).show(|ui| {
-                ui.checkbox(&mut app.timer.sync_to_real_time, tr!("menu-sync-system-clock"));
+                ui.checkbox(&mut timer.sync_to_real_time, tr!("menu-sync-system-clock"));
             });
-            if !app.timer.sync_to_real_time
+            if !timer.sync_to_real_time
                 && time_response.dragged()
-                && let Some(key) = app.timer.try_lock()
+                && let Some(key) = timer.try_lock()
             {
-                app.timer.update_seconds(time.0 as f64, &key);
-                app.timer.unlock(key);
+                timer.update_seconds(time.0 as f64, &key);
+                timer.unlock(key);
             }
-            if app.timer.animation_playing || app.timer.sync_to_real_time {
+            if timer.animation_playing || timer.sync_to_real_time {
                 ui.ctx().request_repaint();
             }
-            app.timer.march(delta_time.as_secs_f64());
+            if let Some(key) = timer.try_lock() {
+                if timer.sync_to_real_time {
+                    timer.update_seconds(GlobalTimer::current_real_time_seconds(), &key);
+                } else if timer.animation_playing {
+                    let speed = timer.animation_speed as f64;
+                    let seconds_delta = delta_time.as_secs_f64() * speed;
+                    timer.update_seconds(timer.seconds() + seconds_delta, &key);
+                }
+                timer.unlock(key);
+            }
         })
     });
     egui::CentralPanel::default().frame(Frame::default()).show(ui, |ui| {
