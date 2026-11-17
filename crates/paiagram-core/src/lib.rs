@@ -231,7 +231,7 @@ pub static WORLD_BACKUP: ArcSwapOption<World> = ArcSwapOption::const_empty();
 
 impl World {
     /// Insert every entity from `other`, keeping the entities already present in `self`.
-    fn merged(self, other: &Self) -> Self {
+    fn union(self, other: Self) -> Self {
         puffin::profile_function!();
         let Self {
             trips: trips_current,
@@ -249,39 +249,20 @@ impl World {
             service_classes: service_classes_incoming,
             routes: routes_incoming,
         } = other;
-        fn merge<K: Ord + Clone + Copy, V: Clone>(
-            mut current: OrdMap<K, V>,
-            incoming: &OrdMap<K, V>,
-        ) -> OrdMap<K, V> {
-            for (key, value) in incoming {
-                current.insert(*key, value.clone());
-            }
-            current
-        }
         use rayon::join;
         // stupid blob of stuff
         #[rustfmt::skip]
         let (((trips, vehicles), (stations, graph)), (service_classes, routes)) = join(
             || join(
                 || join(
-                    || merge(trips_current, trips_incoming),
-                    || merge(vehicles_current, vehicles_incoming)),
+                    || trips_current.union(trips_incoming),
+                    || vehicles_current.union(vehicles_incoming)),
                 || join(
-                    || merge(stations_current, stations_incoming),
-                    || {
-                        let mut graph_current = graph_current;
-                        for (key, value) in &graph_incoming.nodes {
-                            graph_current.nodes.insert(*key, value.clone());
-                        }
-                        for (key, value) in &graph_incoming.intervals {
-                            graph_current.insert_interval(*key, value.clone());
-                        }
-                        graph_current.coord_type = graph_incoming.coord_type;
-                        graph_current
-                    })),
+                    || stations_current.union(stations_incoming),
+                    || graph_current.union(graph_incoming))),
             || join(
-                || merge(service_classes_current, service_classes_incoming),
-                || merge(routes_current, routes_incoming),
+                || service_classes_current.union(service_classes_incoming),
+                || routes_current.union(routes_incoming),
         ));
         Self { trips, vehicles, stations, graph, service_classes, routes }
     }
@@ -404,7 +385,7 @@ impl Source {
         puffin::profile_function!();
         self.mutate(move |existing| {
             Ok(match mode {
-                ImportMode::Merge => existing.merged(&world),
+                ImportMode::Merge => existing.union(world),
                 ImportMode::Replace => world,
             })
         })

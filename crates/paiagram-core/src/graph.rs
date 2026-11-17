@@ -200,4 +200,13 @@ impl Graph {
         self.adjacency.remove(&(key.lo, key.hi));
         self.intervals.remove(key)
     }
+
+    pub(crate) fn union(self, incoming: Graph) -> Self {
+        Self {
+            coord_type: incoming.coord_type,
+            nodes: self.nodes.union(incoming.nodes),
+            intervals: self.intervals.union(incoming.intervals),
+            adjacency: self.adjacency.union(incoming.adjacency),
+        }
+    }
 }
