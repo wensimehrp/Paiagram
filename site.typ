@@ -59,7 +59,7 @@ exit 1
       ),
     )
     #h.div(class: {
-      "flex flex-row flex-wrap px-5 my-10 max-w-5xl justify-between gap-5 mx-auto"
+      "flex flex-row flex-wrap px-5 my-10 max-w-6xl justify-between gap-5 mx-auto"
       " text-black dark:text-white"
     })[
       #let a = h.a.with(class: {
@@ -81,6 +81,10 @@ exit 1
       #a(href: links.discussions, {
         h.span[Discussions]
         h.small[Official discussion zone]
+      })
+      #a(href: links.feedback-google-forms, {
+        h.span[Feedbacks]
+        h.small[Rate Paiagram!]
       })
     ]
     // Explanation
