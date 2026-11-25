@@ -119,5 +119,9 @@ exit 1
         )
       })
     }
+    #h.div(
+      class: "mx-auto text-center my-10 prose",
+      link(links.site-metrics)[Site visitor history dashboard],
+    )
   ]
 ]) <index>
