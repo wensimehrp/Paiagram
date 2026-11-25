@@ -27,7 +27,7 @@ exit 1
     #h.title("Paiagram")
     #h.elem("script", attrs: (
       defer: "",
-      src: "https://umami-theta-pink.vercel.app/script.js",
+      src: "https://stats.paiagram.com/script.js",
       data-website-id: "958a845f-415f-459e-b5a5-7bae194ba9c2",
     ))
     #context h.style(

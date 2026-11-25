@@ -25,7 +25,7 @@
     "0.1.3"
   },
   // site maintenance
-  site-metrics: "https://umami-theta-pink.vercel.app/share/O6Qv1L1GGWr5NUlG",
+  site-metrics: "https://stats.paiagram.com/share/O6Qv1L1GGWr5NUlG",
   robosign: "https://paiagram.com/robosign",
   feedback-google-forms: "https://docs.google.com/forms/d/e/1FAIpQLSfjlhsdtEmyFArNr6JYVgcV1n79fdHDW9bga_B_0QOxSy7fdg/viewform",
   latest-snapshot: "https://paiagram.com/latest-snapshot",
