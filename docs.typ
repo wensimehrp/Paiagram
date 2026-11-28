@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 #let _ = ```sh
+just build-fonts
 case "$1" in
   compile) typst compile --features bundle,html --format bundle $0 ./dist/docs; exit 0 ;;
   watch)   typst watch   --features bundle,html --format bundle --pretty $0 ./dist/docs; exit 0 ;;
