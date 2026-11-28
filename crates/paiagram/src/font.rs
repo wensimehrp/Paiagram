@@ -49,7 +49,7 @@ pub(crate) fn load_default_font(ctx: Context, font_name: Arc<Mutex<String>>) {
     definitions.font_data.insert(
         "Paiagram-Timetable-Font".into(),
         Arc::new(egui::FontData::from_static(include_bytes!(
-            "../../../assets/fonts/Paiagram-Timetable-Font.ttf"
+            "../../../Paiagram-Timetable-Font/build/Paiagram-Timetable-Font.ttf"
         ))),
     );
     info!("Loaded Paiagram-Timetable-Font");

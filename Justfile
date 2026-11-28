@@ -1,3 +1,7 @@
+font_dir := "Paiagram-Timetable-Font/Paiagram-Timetable-Font.sfdir"
+font_build_dir := "Paiagram-Timetable-Font/build/"
+font_build_basename := "Paiagram-Timetable-Font/build/Paiagram-Timetable-Font"
+
 default:
     just --list
 
@@ -8,6 +12,12 @@ download-font:
     rm fonts.7z
     mv fonts/SarasaUiCL-Regular.ttf crates/paiagram/
     rm -r fonts
+
+build-font extension:
+    mkdir -p {{ font_build_dir }}
+    fontforge -lang=ff -c 'Open("{{ font_dir }}"); SelectAll(); AutoHint(); AutoInstr(); Generate("{{ font_build_basename }}.{{ extension }}");'
+
+build-fonts: (build-font "ttf") (build-font "otf") (build-font "woff2")
 
 # Build rust docs
 build-rust-docs:
@@ -22,14 +32,14 @@ build-user-docs:
     mkdir -p dist/docs
     ./docs.typ compile
 
-watch-wasm-app:
+watch-wasm-app: build-fonts
     trunk --config ./crates/paiagram serve --public-url .
 
-watch-release-wasm-app:
+watch-release-wasm-app: build-fonts
     trunk --config ./crates/paiagram serve --release --public-url .
 
 # Build wasm binary
-build-wasm-app:
+build-wasm-app: build-fonts
     rm -rf dist
     trunk \
         --config ./crates/paiagram \

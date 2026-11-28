@@ -1,0 +1,18 @@
+StartChar: seven
+Encoding: 55 55 7
+Width: 512
+VWidth: 972
+Flags: HW
+LayerCount: 2
+Fore
+SplineSet
+26 973 m 1
+ 486 973 l 1
+ 486 858 l 1
+ 256 51 l 1
+ 126 51 l 1
+ 357 858 l 1
+ 26 858 l 1
+ 26 973 l 1
+EndSplineSet
+EndChar

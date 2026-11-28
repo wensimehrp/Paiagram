@@ -32,6 +32,11 @@
         href: "https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.2/src/bold/style.css",
       )
     },
+    footer-content: [
+      Powered by #link("https://github.com/wensimehrp/haita")[Haita]. Return to #link(
+        links.home,
+      )[home page]
+    ],
   ),
   tree: (
     chapter-path("index"),

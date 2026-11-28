@@ -10,12 +10,15 @@ The table includes these elements:
 
 #html.div({
   import "@preview/based:0.2.0"
-  let font-bytes = read("/assets/fonts/Paiagram-Timetable-Font.ttf", encoding: none)
-  let font-base64 = "data:font/truetype;charset=utf-8;base64," + based.base64.encode(font-bytes)
+  let font-bytes = read(
+    "/Paiagram-Timetable-Font/build/Paiagram-Timetable-Font.woff2",
+    encoding: none,
+  )
+  let font-base64 = "data:font/woff2;charset=utf-8;base64," + based.base64.encode(font-bytes)
   let css-block = ```css
   @font-face {
       font-family: "Paiagram-Timetable-Font";
-      src: url("__SOURCE__") format("truetype");
+      src: url("__SOURCE__") format("woff2");
       font-style: normal;
       font-weight: normal;
       text-rendering: optimizeLegibility;

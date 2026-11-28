@@ -52,6 +52,7 @@
               typst
               trunk
               imagemagick
+              fontforge
             ]
             ++ runtimeLibs
             ++ [

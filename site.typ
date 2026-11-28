@@ -19,6 +19,8 @@ exit 1
 
 #let icon-base64 = based.encode64(read("/assets/paiagram-adaptive-no-bg.svg"))
 
+#document("font.html", include "Paiagram-Timetable-Font/font-page.typ") <font-page>
+
 #document("index.html", h.html(lang: "en")[
   #h.head[
     #h.meta(charset: "utf-8")
@@ -104,6 +106,10 @@ exit 1
         = Intuitive
         Hover and select. No need to edit against a table, just drag stringlines in the diagram.
       ],
+      "https://github.com/user-attachments/assets/482d0aec-f089-4e2f-9fe2-119105148a21": [
+        = Custom Font
+        Check out #link(<font-page>)[Paiagram-Timetable-Font]!
+      ],
       "https://github.com/user-attachments/assets/81542102-28ed-42a6-a477-0a18765d5403": [
         = Dark Mode
         _Ohhhhhhhhh! It's so dark here!_
@@ -120,7 +126,7 @@ exit 1
       })
     }
     #h.div(
-      class: "mx-auto text-center my-10 prose",
+      class: "mx-auto text-center my-10 prose dark:prose-invert",
       link(links.site-metrics)[Site visitor history dashboard],
     )
   ]

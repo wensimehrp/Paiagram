@@ -1,0 +1,57 @@
+SplineFontDB: 3.2
+FontName: Paiagram-Timetable-Font
+FullName: Paiagram-Timetable-Font
+FamilyName: Paiagram-Timetable-Font
+Weight: Regular
+Copyright: Copyright (c) 2026, Jeremy Gao, akashiyaki01c
+UComments: "2026-8-4: Created with FontForge (http://fontforge.org)"
+Version: 1.0
+ItalicAngle: 0
+UnderlinePosition: -102
+UnderlineWidth: 51
+Ascent: 1024
+Descent: 0
+InvalidEm: 0
+LayerCount: 2
+Layer: 0 0 "Back" 1
+Layer: 1 0 "Fore" 0
+XUID: [1021 625 1867800087 12898454]
+FSType: 0
+OS2Version: 0
+OS2_WeightWidthSlopeOnly: 0
+OS2_UseTypoMetrics: 1
+CreationTime: 1785783789
+ModificationTime: 315532800
+PfmFamily: 17
+TTFWeight: 400
+TTFWidth: 5
+LineGap: 92
+VLineGap: 0
+OS2TypoAscent: 0
+OS2TypoAOffset: 1
+OS2TypoDescent: 0
+OS2TypoDOffset: 1
+OS2TypoLinegap: 92
+OS2WinAscent: 0
+OS2WinAOffset: 1
+OS2WinDescent: 0
+OS2WinDOffset: 1
+HheadAscent: 0
+HheadAOffset: 1
+HheadDescent: 0
+HheadDOffset: 1
+OS2Vendor: 'PfEd'
+MarkAttachClasses: 1
+DEI: 91125
+LangName: 1033
+Encoding: UnicodeBmp
+UnicodeInterp: none
+NameList: AGL For New Fonts
+DisplaySize: -36
+AntiAlias: 1
+FitToEm: 0
+WinInfo: 7072 68 22
+BeginPrivate: 0
+EndPrivate
+TeXData: 1 0 0 1048576 524288 349525 0 1048576 349525 783286 444596 497025 792723 393216 433062 380633 303038 157286 324010 404750 52429 2506097 1059062 262144
+EndSplineFont

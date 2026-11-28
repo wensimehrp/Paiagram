@@ -15,3 +15,5 @@ result
 *.zip
 dist
 site
+# timetable font build artifact
+Paiagram-Timetable-Font/build
