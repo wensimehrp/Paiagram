@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: MPL-2.0
 #![doc = include_str!("route/README.md")]
 
+use std::iter;
+
 use ecow::EcoVec;
+use itertools::{Either, Itertools};
 use pathfinding::prelude::dijkstra;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
@@ -62,18 +65,33 @@ pub struct RouteInterval {
 }
 
 impl RouteInterval {
+    /// Generates the progresses of each node in the interval between the current station record and
+    /// the next station record.
+    ///
+    /// Each item in the output iterator is sorted.
     fn progresses<'a>(
         &'a self,
         world: &'a World,
         next_stn_nodes: &'a [NodeKey],
     ) -> impl Iterator<Item = (NodeKey, Option<f32>)> + 'a {
         let curr_stn_nodes = self.station_record.nodes(&world.stations);
-        std::iter::chain(&self.nodes, curr_stn_nodes).map(|node_key| {
-            (
-                *node_key,
-                gen_progress(node_key, &world.graph, &self.nodes, curr_stn_nodes, next_stn_nodes),
-            )
-        })
+        iter::chain(&self.nodes, curr_stn_nodes)
+            .map(|node_key| {
+                (
+                    *node_key,
+                    gen_progress(
+                        node_key,
+                        &world.graph,
+                        &self.nodes,
+                        curr_stn_nodes,
+                        next_stn_nodes,
+                    ),
+                )
+            })
+            .sorted_by(|&(_, a), (_, b)| match (a, b) {
+                (Some(x), Some(y)) => x.total_cmp(y),
+                _ => a.is_some().cmp(&b.is_some()),
+            })
     }
 }
 
@@ -124,51 +142,37 @@ pub struct MareyCache {
 }
 
 impl RouteIntervals {
+    /// Returns an iterator that outputs the progresses of all nodes in a station interval,
+    /// including the starting nodes of an interval.
     fn progresses<'a>(
         &'a self,
         world: &'a World,
-    ) -> impl Iterator<Item = impl Iterator<Item = (NodeKey, Option<f32>)>> + 'a {
-        self.0.array_windows().map(|[curr, next]| {
+    ) -> impl Iterator<Item = impl Iterator<Item = (NodeKey, Option<f32>)> + 'a> + 'a {
+        let records = &self.0;
+        let intermediate_iter = records.array_windows().map(|[curr, next]| {
             let next_stn_nodes = next.station_record.nodes(&world.stations);
-            curr.progresses(world, next_stn_nodes)
-        })
+            Either::Left(curr.progresses(world, next_stn_nodes))
+        });
+        let last_iter = records
+            .last()
+            .into_iter()
+            .map(|last| Either::Right(last.nodes.iter().map(|&node| (node, Some(0.0)))));
+        iter::chain(intermediate_iter, last_iter)
     }
 
-    fn prepare_lookup(&self, world: &World) -> NodeKeyHashMap<Vec<(u32, f32)>> {
+    /// Prepare a lookup for the
+    fn prepare_lookup(&self, world: &World) -> NodeKeyHashMap<SmallVec<[(u32, f32); 1]>> {
         puffin::profile_function!();
-        // Where each graph node sits on the Marey chart: every `(line index, progress)` placement.
-        let mut node_lookup: NodeKeyHashMap<Vec<(u32, f32)>> = NodeKeyHashMap::default();
-        for (key, progress) in self.progresses(world).enumerate().flat_map(|(idx, it)| {
-            it.filter_map(move |(key, distance)| Some((key, (idx as u32, distance?))))
-        }) {
-            match node_lookup.get_mut(&key) {
-                Some(entries) => {
-                    if !entries.contains(&progress) {
-                        entries.push(progress);
-                    }
-                }
-                None => {
-                    node_lookup.insert(key, vec![progress]);
-                }
-            }
-        }
-
-        // `progresses` only walks pairs of stations, so the last station is never the `curr`
-        // station of a segment and would otherwise be missing from the lookup. Place it at the
-        // end of the final segment so trips connect to it.
-        if let Some(last) = self.0.last()
-            && let Some(line_index) = self.0.len().checked_sub(2)
-        {
-            let progress = (line_index as u32, 1.0);
-            for &node_key in last.station_record.nodes(&world.stations) {
-                let entries = node_lookup.entry(node_key).or_default();
-                if !entries.contains(&progress) {
-                    entries.push(progress);
-                }
-            }
-        }
-
-        node_lookup
+        self.progresses(world)
+            .enumerate()
+            .flat_map(|(idx, it)| {
+                it.filter_map(move |(key, progress)| Some((key, (idx as u32, progress?))))
+            })
+            .fold(NodeKeyHashMap::default(), |mut node_lookup, (key, progress)| {
+                let key_indices = node_lookup.entry(key).or_default();
+                key_indices.push(progress);
+                node_lookup
+            })
     }
 
     pub fn all_passing_trips(&self, world: &World) -> Vec<TripKey> {
@@ -177,7 +181,7 @@ impl RouteIntervals {
             .0
             .iter()
             .flat_map(|route_interval| {
-                std::iter::chain(
+                iter::chain(
                     route_interval.station_record.nodes(&world.stations),
                     &route_interval.nodes,
                 )
@@ -205,12 +209,22 @@ impl RouteIntervals {
             let Some(trip) = world.trips.get(&trip_key) else {
                 continue;
             };
-            let bucket = cache.map.entry(trip_key).or_default();
-            prep_marey::prep_single_segment(&trip.schedule, bucket, &world.graph, |entry| {
-                node_lookup.get(&entry.node_key()).map_or(&[], Vec::as_slice)
+            let mut bucket = cache.map.remove(&trip_key).unwrap_or_default();
+            bucket.clear();
+            trip.schedule.estimates(&world.graph, |est| {
+                let update = |a, b| {
+                    prep_marey::make_trip_segments(a, b, |node_key| {
+                        node_lookup.get(&node_key).map_or(&[], SmallVec::as_slice)
+                    })
+                };
+                let mut all_edges = est.iter().fold(
+                    prep_marey::TripAllEdges { active: TripBucket::new(), finalized: &mut bucket },
+                    update,
+                );
+                all_edges.finalized.extend(all_edges.active.drain(..));
             });
-            if bucket.is_empty() {
-                cache.map.remove(&trip_key);
+            if !bucket.is_empty() {
+                cache.map.insert(trip_key, bucket);
             }
         }
     }
@@ -219,8 +233,17 @@ impl RouteIntervals {
     pub fn populate_schedule(&self, world: &World, schedule: &TripSchedule) -> Option<TripBucket> {
         let node_lookup = self.prepare_lookup(world);
         let mut bucket = TripBucket::new();
-        prep_marey::prep_single_segment(schedule, &mut bucket, &world.graph, |entry| {
-            node_lookup.get(&entry.node_key()).map_or(&[], Vec::as_slice)
+        schedule.estimates(&world.graph, |est| {
+            let update = |a, b| {
+                prep_marey::make_trip_segments(a, b, |node_key| {
+                    node_lookup.get(&node_key).map_or(&[], SmallVec::as_slice)
+                })
+            };
+            let mut all_edges = est.iter().fold(
+                prep_marey::TripAllEdges { active: TripBucket::new(), finalized: &mut bucket },
+                update,
+            );
+            all_edges.finalized.extend(all_edges.active.drain(..));
         });
         Some(bucket)
     }

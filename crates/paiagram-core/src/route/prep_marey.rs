@@ -1,104 +1,46 @@
-use crate::graph::Graph;
-use crate::route::{BucketPoint, TripBucket};
-use crate::trip::{EstimateEntry, TripSchedule};
+use smallvec::SmallVec;
 
-pub(super) fn prep_single_segment<'a>(
-    trip_schedule: &TripSchedule,
-    trip_bucket: &mut TripBucket,
-    graph: &Graph,
-    mut node_lookup: impl FnMut(&EstimateEntry) -> &'a [(u32, f32)],
-) {
-    puffin::profile_function!();
-    trip_bucket.clear();
+use crate::NodeKey;
+use crate::route::TripBucket;
+use crate::trip::{EstimateEntry, TEstimate};
 
-    let mut push_to_bucket = |points: Vec<BucketPoint>| {
-        if points.len() < 2 {
-            return;
-        }
-        trip_bucket.push(points);
+pub(super) struct TripAllEdges<'a> {
+    /// Active edges that may be expanded.
+    pub active: TripBucket,
+    /// Finalized edges that are either invalidated because of an invalid estimate or finalized
+    /// because it's impossible to extend the edge any more
+    pub finalized: &'a mut TripBucket,
+}
+
+/// Prepare the segments for a trip on a marey chart
+pub(super) fn make_trip_segments<'a>(
+    mut all_edges: TripAllEdges<'a>,
+    (estimate, entry): &(Option<TEstimate>, EstimateEntry),
+    mut node_lookup: impl FnMut(NodeKey) -> &'a [(u32, f32)],
+) -> TripAllEdges<'a> {
+    let &Some(estimate) = estimate else {
+        // invalid estimate invalidates the working set
+        all_edges.finalized.extend(all_edges.active.drain(..));
+        return all_edges;
     };
 
-    let trip_entries = trip_schedule.estimates(graph, |entries| entries.to_vec());
-    if trip_entries.len() < 2 {
-        return;
-    }
+    let curr_idxs = node_lookup(entry.node_key());
+    let mut new_active = SmallVec::new();
 
-    // points, end index
-    let mut local_edges: Vec<Vec<BucketPoint>> = Vec::new();
-    let mut previous_indices: &[(u32, f32)] = &[];
-
-    if let Some((_, first_entry)) = trip_entries.first() {
-        previous_indices = node_lookup(first_entry);
-    }
-
-    for entry_idx in 0..trip_entries.len() {
-        let (curr_estimate, curr_entry) = &trip_entries[entry_idx];
-        let next = trip_entries.get(entry_idx + 1);
-
-        if previous_indices.is_empty() {
-            if let Some((_, next_entry)) = next {
-                previous_indices = node_lookup(next_entry);
-            }
-            for it in local_edges.drain(..) {
-                push_to_bucket(it);
-            }
-            continue;
-        }
-
-        let Some(estimate) = curr_estimate else {
-            for it in local_edges.drain(..) {
-                push_to_bucket(it);
-            }
-            if let Some((_, next_entry)) = next {
-                previous_indices = node_lookup(next_entry);
-            }
-            continue;
-        };
-
-        let mut next_local_edges: Vec<Vec<BucketPoint>> = Vec::new();
-
-        for (current_line_index, current_line_progress) in previous_indices.iter().copied() {
-            let matched_idx = local_edges
-                .iter()
-                .position(|it| current_line_index.abs_diff(it.last().unwrap().2) <= 1);
-
-            let segment = if let Some(idx) = matched_idx {
-                let mut a = local_edges.swap_remove(idx);
-                a.push((*estimate, *curr_entry, current_line_index, current_line_progress));
-                a
-            } else {
-                vec![(*estimate, *curr_entry, current_line_index, current_line_progress)]
-            };
-
-            let mut segment = Some(segment);
-            if let Some((_, next_entry)) = next {
-                // A segment can only be continued when the next entry has a placement on
-                // the same layout line or a neighbouring one; otherwise it ends here and
-                // the next entry starts a fresh segment.
-                let continues = node_lookup(next_entry)
-                    .iter()
-                    .any(|(next_line_index, _)| next_line_index.abs_diff(current_line_index) <= 1);
-                if continues {
-                    next_local_edges.push(segment.take().unwrap());
-                }
-            }
-
-            if let Some(it) = segment {
-                push_to_bucket(it);
-            }
-        }
-
-        for it in local_edges.drain(..) {
-            push_to_bucket(it);
-        }
-
-        local_edges = next_local_edges;
-        if let Some((_, next_entry)) = next {
-            previous_indices = node_lookup(next_entry);
+    for &(curr_idx, curr_progress) in curr_idxs {
+        if let Some(pos) = all_edges.active.iter().position(|edge| {
+            let (_estimate, _node, station_idx, _progress) = edge.last().unwrap();
+            station_idx.abs_diff(curr_idx) <= 1
+        }) {
+            let mut edge = all_edges.active.swap_remove(pos);
+            edge.push((estimate, *entry, curr_idx, curr_progress));
+            new_active.push(edge);
+        } else {
+            new_active.push(vec![(estimate, *entry, curr_idx, curr_progress)]);
         }
     }
 
-    for it in local_edges.drain(..) {
-        push_to_bucket(it);
-    }
+    all_edges.finalized.extend(all_edges.active.drain(..));
+    all_edges.active = new_active;
+    all_edges
 }
